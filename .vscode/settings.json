@@ -1,0 +1,15 @@
+{
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "node_modules": true
+  },
+  "workbench.colorCustomizations": {
+    "activityBar.background": "#531C05",
+    "titleBar.activeBackground": "#742707",
+    "titleBar.activeForeground": "#FFFAF7"
+  }
+}

@@ -1,0 +1,13 @@
+.vscode
+.git
+.nyc_output
+coverage
+dist/*.spec.*
+src
+testProject
+.gitignore
+.travis.yml
+rokudeploy.json
+*.pkg
+tsconfig.json
+tslint.json
