@@ -34,6 +34,7 @@ class DebuggerVariableRequestResponse {
         }
       }
 
+      this.byteLength = offSet;
       this.success = (this.variables.length === this.numVariables);
     }
   }
@@ -158,7 +159,6 @@ class VariableInfo {
           this.success = true;
           break;
         case 'Double':
-          // tslint:disable-next-line:no-var-keyword
           var view = new DataView(buffer);
           value = view.getFloat64(byteLength, true);
           this.byteLength = byteLength + 8;
@@ -171,7 +171,7 @@ class VariableInfo {
           this.success = true;
           break;
         case 'Integer':
-          this.value = buffer.readUInt32LE(byteLength);
+          this.value = buffer.readInt32LE(byteLength);
           this.byteLength = byteLength + 4;
           this.success = true;
           break;
