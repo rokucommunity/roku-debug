@@ -7,13 +7,17 @@ import { DebuggerVariableRequestResponse } from './DebuggerVariableRequestRespon
 import { DebuggerUpdateThreads } from './DebuggerUpdateThreads';
 import { DebuggerUpdateUndefined } from './DebuggerUpdateUndefined';
 import { DebuggerUpdateConnectIoPort } from './DebuggerUpdateConnectIoPort';
+import { DebuggerHandshake } from './DebuggerHandshake';
 import { util } from './util';
 
-const port = 8081;
+const CONTROLLER_PORT = 8081;
+const DEBUGGER_MAGIC = 'bsdebug\0'; // 64-bit = [b'bsdebug\0' little-endian]
 
 export class BrightscriptDebugger {
   public scriptTitle: string;
   public host: string;
+  public handshakeComplete = false;
+  public protocolVersion = [];
 
   private CONTROLLER_CLIENT: Net.Socket;
   private unhandledData: Buffer;
@@ -34,13 +38,12 @@ export class BrightscriptDebugger {
 
     (async () => {
 
-      const DEBUGGER_MAGIC = 'bsdebug\0'; // 64-bit = [b'bsdebug\0' little-endian]
 
       // Create a new TCP client.`
       this.CONTROLLER_CLIENT = new Net.Socket();
       // Send a connection request to the server.
-      console.log('port', port, 'host', applicationDeployConfig.host);
-      this.CONTROLLER_CLIENT.connect({ port: port, host: applicationDeployConfig.host }, () => {
+      console.log('port', CONTROLLER_PORT, 'host', applicationDeployConfig.host);
+      this.CONTROLLER_CLIENT.connect({ port: CONTROLLER_PORT, host: applicationDeployConfig.host }, () => {
         // If there is no error, the server has accepted the request and created a new
         // socket dedicated to us.
         console.log('TCP connection established with the server.');
@@ -51,30 +54,14 @@ export class BrightscriptDebugger {
         console.log(this.CONTROLLER_CLIENT);
       });
 
-      let requests = 0;
       this.CONTROLLER_CLIENT.on('data', (buffer) => {
-        if (requests === 0) {
-          const magicIsValid = (DEBUGGER_MAGIC === buffer.toString());
-          console.log('Magic is valid:', magicIsValid);
-        } else if (requests === 1) {
-          let protocolVersion = [
-            buffer.readUInt32LE(0),
-            buffer.readUInt32LE(4),
-            buffer.readUInt32LE(8),
-            '' // build ID
-          ];
-
-          console.log('Protocol Version:', protocolVersion.join('.'));
-          this.unhandledData = buffer.slice(12);
-          this.parseUnhandledData(this.unhandledData);
-          // this.handleDebuggerUpdate(this.getDebuggerUpdate(buffer.slice(12)), CONTROLLER_CLIENT);
-        } else {
+        if (this.unhandledData) {
           this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
-          this.parseUnhandledData(this.unhandledData);
-          // this.handleDebuggerUpdate(this.getDebuggerUpdate(buffer), CONTROLLER_CLIENT);
+        } else {
+          this.unhandledData = buffer;
         }
-        requests ++;
 
+        this.parseUnhandledData(this.unhandledData);
       });
 
       this.CONTROLLER_CLIENT.on('end', () => {
@@ -91,50 +78,75 @@ export class BrightscriptDebugger {
   }
 
   private parseUnhandledData(unhandledData: Buffer): boolean {
-    let debuggerRequestResponse = new DebuggerRequestResponse(unhandledData);
-    if (debuggerRequestResponse.success) {
-      console.log(this.requests[debuggerRequestResponse.requestId]);
-      if (this.requests[debuggerRequestResponse.requestId] === 'STOP' || this.requests[debuggerRequestResponse.requestId] === 'CONTINUE') {
-        this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
+    if (this.handshakeComplete) {
+      let debuggerRequestResponse = new DebuggerRequestResponse(unhandledData);
+      if (debuggerRequestResponse.success) {
+        console.log(this.requests[debuggerRequestResponse.requestId]);
+        if (this.requests[debuggerRequestResponse.requestId] === 'STOP' || this.requests[debuggerRequestResponse.requestId] === 'CONTINUE') {
+          this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
+          return true;
+        }
+
+        if (this.requests[debuggerRequestResponse.requestId] === 'VARIABLES') {
+          let debuggerVariableRequestResponse = new DebuggerVariableRequestResponse(unhandledData);
+          if (debuggerVariableRequestResponse.success) {
+            this.removedProcessedBytes(debuggerVariableRequestResponse, unhandledData);
+            return true;
+          }
+        }
+      }
+
+      let debuggerUpdateThreads = new DebuggerUpdateThreads(unhandledData);
+      if (debuggerUpdateThreads.success) {
+        this.handleThreadsUpdate(debuggerUpdateThreads);
+        this.removedProcessedBytes(debuggerUpdateThreads, unhandledData);
         return true;
       }
 
-      if (this.requests[debuggerRequestResponse.requestId] === 'VARIABLES') {
-        let debuggerVariableRequestResponse = new DebuggerVariableRequestResponse(unhandledData);
-        if (debuggerVariableRequestResponse.success) {
-          this.removedProcessedBytes(debuggerVariableRequestResponse, unhandledData);
-          return true;
-        }
+      let debuggerUpdateUndefined = new DebuggerUpdateUndefined(unhandledData);
+      if (debuggerUpdateUndefined.success) {
+        this.removedProcessedBytes(debuggerUpdateUndefined, unhandledData);
+        return true;
+      }
+
+      let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
+      if (debuggerUpdateConnectIoPort.success) {
+        this.connectToIoPort(debuggerUpdateConnectIoPort);
+        this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
+        return true;
+      }
+
+    } else {
+      let debuggerHandshake = new DebuggerHandshake(unhandledData);
+      if (debuggerHandshake.success) {
+        return this.verifyHandshake(debuggerHandshake, unhandledData);
       }
     }
 
-    let debuggerUpdateThreads = new DebuggerUpdateThreads(unhandledData);
-    if (debuggerUpdateThreads.success) {
-      this.handleThreadsUpdate(debuggerUpdateThreads);
-      this.removedProcessedBytes(debuggerUpdateThreads, unhandledData);
-      return true;
-    }
-
-    let debuggerUpdateUndefined = new DebuggerUpdateUndefined(unhandledData);
-    if (debuggerUpdateUndefined.success) {
-      this.removedProcessedBytes(debuggerUpdateUndefined, unhandledData);
-      return true;
-    }
-
-    let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
-    if (debuggerUpdateConnectIoPort.success) {
-      this.connectToIoPort(debuggerUpdateConnectIoPort);
-      this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
-      return true;
-    }
-
-    console.log(unhandledData);
     return false;
   }
 
   private removedProcessedBytes(responseHandler, unhandledData: Buffer) {
     console.log(responseHandler);
     this.unhandledData = unhandledData.slice(responseHandler.byteLength);
+    this.parseUnhandledData(this.unhandledData);
+  }
+
+  private verifyHandshake(debuggerHandshake: DebuggerHandshake, unhandledData: Buffer): boolean {
+    const magicIsValid = (DEBUGGER_MAGIC === debuggerHandshake.magic);
+    if (magicIsValid) {
+      console.log('Magic is valid.');
+      this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion, ''];
+      console.log('Protocol Version:', this.protocolVersion.join('.'));
+
+      this.handshakeComplete = true;
+      this.removedProcessedBytes(debuggerHandshake, unhandledData);
+      return true;
+    } else {
+      console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic)
+      this.CONTROLLER_CLIENT.end();
+      return false;
+    }
   }
 
   private connectToIoPort(connectIoPortResponse: DebuggerUpdateConnectIoPort) {
