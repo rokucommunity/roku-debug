@@ -1,3 +1,5 @@
+import { BufferReader } from './BufferReader';
+
 const UPDATE_TYPES = {
   0: 'UNDEF',
   1: 'IO_PORT_OPENED',
@@ -25,17 +27,26 @@ class DebuggerUpdateUndefined {
   public data = -1;
 
   constructor(buffer: Buffer) {
+    // The minimum size of a undefined response
     if (buffer.byteLength >= 12) {
-      this.requestId = buffer.readUInt32LE(0);
-      if (this.requestId === 0) {
-        this.errorCode = ERROR_CODES[buffer.readUInt32LE(4)];
-        this.updateType = UPDATE_TYPES[buffer.readUInt32LE(8)];
+      try {
+        let bufferReader = new BufferReader(buffer);
+        this.requestId = bufferReader.readUInt32LE();
 
-        if (this.updateType === 'UNDEF') {
-          this.data = buffer.readUInt8(12);
-          this.success = true;
-          this.byteLength = 13;
+        // Updates will always have an id of zero because we didn't ask for this information
+        if (this.requestId === 0) {
+          this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
+          this.updateType = UPDATE_TYPES[bufferReader.readUInt32LE()];
+
+          // Only handle undefined events in this class
+          if (this.updateType === 'UNDEF') {
+            this.data = bufferReader.readUInt8();
+            this.byteLength = bufferReader.offset;
+            this.success = true;
+          }
         }
+      } catch (error) {
+        // Could not process
       }
     }
   }

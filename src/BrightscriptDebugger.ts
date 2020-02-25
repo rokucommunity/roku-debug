@@ -37,8 +37,6 @@ export class BrightscriptDebugger {
     await rokuDeploy.deploy(applicationDeployConfig);
 
     (async () => {
-
-
       // Create a new TCP client.`
       this.CONTROLLER_CLIENT = new Net.Socket();
       // Send a connection request to the server.

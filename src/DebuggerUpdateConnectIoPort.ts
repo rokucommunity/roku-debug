@@ -1,4 +1,6 @@
-const UPDATE_TYPES = {
+import { BufferReader } from './BufferReader';
+
+export const UPDATE_TYPES = {
   0: 'UNDEF',
   1: 'IO_PORT_OPENED',
   2: 'ALL_THREADS_STOPPED',
@@ -25,17 +27,26 @@ class DebuggerUpdateConnectIoPort {
   public data = -1;
 
   constructor(buffer: Buffer) {
+    // The minimum size of a connect to IO port request
     if (buffer.byteLength >= 16) {
-      this.requestId = buffer.readUInt32LE(0);
-      if (this.requestId === 0) {
-        this.errorCode = ERROR_CODES[buffer.readUInt32LE(4)];
-        this.updateType = UPDATE_TYPES[buffer.readUInt32LE(8)];
+      try {
+        let bufferReader = new BufferReader(buffer);
+        this.requestId = bufferReader.readUInt32LE();
 
-        if (this.updateType === 'IO_PORT_OPENED') {
-          this.data = buffer.readUInt32LE(12);
-          this.byteLength = 16;
-          this.success = true;
+        // Updates will always have an id of zero because we didn't ask for this information
+        if (this.requestId === 0) {
+          this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
+          this.updateType = UPDATE_TYPES[bufferReader.readUInt32LE()];
+
+          // Only handle IO port events in this class
+          if (this.updateType === 'IO_PORT_OPENED') {
+            this.data = bufferReader.readUInt32LE();
+            this.byteLength = bufferReader.offset;
+            this.success = true;
+          }
         }
+      } catch (error) {
+        // Could not parse
       }
     }
   }

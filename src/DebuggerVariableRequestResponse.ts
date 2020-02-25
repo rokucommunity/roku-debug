@@ -1,4 +1,4 @@
-import { util } from './util';
+import { BufferReader } from './BufferReader';
 
 const ERROR_CODES = {
   0: 'OK',
@@ -20,22 +20,32 @@ class DebuggerVariableRequestResponse {
   public variables = [];
 
   constructor(buffer: Buffer) {
+    // Minimum variable request response size
     if (buffer.byteLength >= 13) {
-      this.requestId = buffer.readUInt32LE(0);
-      this.errorCode = ERROR_CODES[buffer.readUInt32LE(4)];
-      this.numVariables = buffer.readUInt32LE(8);
+      try {
+        let bufferReader = new BufferReader(buffer);
+        this.requestId = bufferReader.readUInt32LE();
 
-      let offSet = 12;
-      for (let i = 0; i < this.numVariables; i++) {
-        let variableInfo = new VariableInfo(buffer, offSet);
-        if (variableInfo.success) {
-          offSet = variableInfo.byteLength;
-          this.variables.push(variableInfo);
+        // Any request id less then one is an update and we should not process it here
+        if (this.requestId > 0) {
+          this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
+          this.numVariables = bufferReader.readUInt32LE();
+
+          // iterate over each variable in the buffer data and create a Variable Info object
+          for (let i = 0; i < this.numVariables; i++) {
+            let variableInfo = new VariableInfo(bufferReader);
+            if (variableInfo.success) {
+              // All the necessary variable data was present. Push to the variables array.
+              this.variables.push(variableInfo);
+            }
+          }
+
+          this.byteLength = bufferReader.offset;
+          this.success = (this.variables.length === this.numVariables);
         }
+      } catch (error) {
+        // Could not process
       }
-
-      this.byteLength = offSet;
-      this.success = (this.variables.length === this.numVariables);
     }
   }
 }
@@ -71,7 +81,6 @@ const VARIABLE_TYPES = {
 
 class VariableInfo {
   public success = false;
-  public byteLength = 0;
 
   // response flags
   public isChildKey: boolean;
@@ -89,38 +98,35 @@ class VariableInfo {
   public elementCount = -1;
   public value: any;
 
-  constructor(buffer: Buffer, offset: number) {
-    if (buffer.byteLength >= 13) {
-      let bitwiseMask = buffer.readUInt8(0 + offset);
+  constructor(bufferReader: BufferReader) {
+    if (bufferReader.byteLength >= 13) {
+      // Determine the different variable properties
+      let bitwiseMask = bufferReader.readUInt8();
       for (const property in FLAGS) {
-        // tslint:disable-next-line:no-bitwise
         this[property] = (bitwiseMask & FLAGS[property]) > 0;
       }
 
-      this.variableType = VARIABLE_TYPES[buffer.readUInt8(1 + offset)];
-
-      let byteLength = offset + 2;
+      this.variableType = VARIABLE_TYPES[bufferReader.readUInt8()];
 
       if (this.isNameHere) {
-        let nameResults = getString(buffer, byteLength);
-        if (nameResults.success) {
-          this.name = nameResults.value;
-          byteLength = nameResults.byteLength;
-        }
+        // YAY we have a name. Pull it out of the buffer.
+        this.name = bufferReader.readNTString();
       }
 
       if (this.isRefCounted) {
-        this.refCount = buffer.readUInt32LE(byteLength);
-        byteLength += 4;
+        // This variables reference counts are tracked and we can pull it from the buffer.
+        this.refCount = bufferReader.readUInt32LE();
       }
 
       if (this.isContainer) {
-        this.keyType = VARIABLE_TYPES[buffer.readUInt8(byteLength)];
-        byteLength += 1;
-        this.elementCount = buffer.readUInt32LE(byteLength);
-        byteLength += 4;
+        // It is a form of container object.
+        // Are the key strings or integers for example
+        this.keyType = VARIABLE_TYPES[bufferReader.readUInt8()];
+        // Equivalent to length on arrays
+        this.elementCount = bufferReader.readUInt32LE();
       }
 
+      // Pull out the variable data based on the type if that type returns a value
       let value: any;
       switch (this.variableType) {
         case 'Interface':
@@ -128,85 +134,46 @@ class VariableInfo {
         case 'String':
         case 'Subroutine':
         case 'Function':
-          let valueResults = getString(buffer, byteLength);
-          if (valueResults.success) {
-            this.value = valueResults.value;
-            this.byteLength = valueResults.byteLength;
-            this.success = true;
-          }
+          this.value = bufferReader.readNTString();
+          this.success = true;
           break;
         case 'Subtyped_Object':
           let names = [];
           for (let i = 0; i < 2; i++) {
-              // tslint:disable-next-line:no-shadowed-variable
-              let valueResults = getString(buffer, byteLength);
-              if (valueResults.success) {
-                names.push(valueResults.value);
-                byteLength = valueResults.byteLength;
-              }
+              names.push(bufferReader.readNTString());
           }
 
           if (names.length === 2) {
             this.value = names.join('; ');
-            this.byteLength = byteLength;
             this.success = true;
           }
           break;
         case 'Boolean':
-          value = buffer.readUInt8(byteLength);
-          this.value = (value > 0);
-          this.byteLength = byteLength + 1;
+          this.value = (bufferReader.readUInt8() > 0);
           this.success = true;
           break;
         case 'Double':
-          var view = new DataView(buffer);
-          value = view.getFloat64(byteLength, true);
-          this.byteLength = byteLength + 8;
+          this.value = bufferReader.readDouble();
           this.success = true;
           break;
         case 'Float':
-          var view = new DataView(buffer);
-          value = view.getFloat32(byteLength, true);
-          this.byteLength = byteLength + 4;
+          this.value = bufferReader.readFloat();
           this.success = true;
           break;
         case 'Integer':
-          this.value = buffer.readInt32LE(byteLength);
-          this.byteLength = byteLength + 4;
+          this.value = bufferReader.readInt32LE();
           this.success = true;
           break;
         case 'LongInteger':
-          this.value = buffer.readBigUInt64LE(byteLength);
-          this.byteLength = byteLength + 8;
+          this.value = bufferReader.readUInt64LE();
           this.success = true;
           break;
         default:
           this.value = null;
-          this.byteLength = byteLength;
           this.success = true;
       }
     }
   }
-}
-
-function getString(buffer, offset) {
-  let completeValue = false;
-  let value = '';
-  let byteLength = offset;
-  for (byteLength; byteLength <= buffer.length; byteLength ++) {
-    value = buffer.toString('utf8', offset, byteLength);
-
-    if (value.endsWith('\0')) {
-      completeValue = true;
-      break;
-    }
-  }
-
-  return {
-    byteLength: byteLength,
-    value: value,
-    success: completeValue
-  };
 }
 
 export { DebuggerVariableRequestResponse };

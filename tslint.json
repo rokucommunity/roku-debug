@@ -9,6 +9,7 @@
         "quotemark": {
             "options": "single"
         },
+        "no-bitwise": false,
         "no-var-keyword": false,
         "no-var-requires": false,
         "no-floating-promises": true,
