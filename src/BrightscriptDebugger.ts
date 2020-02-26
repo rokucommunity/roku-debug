@@ -5,6 +5,7 @@ import * as Net from 'net';
 import { DebuggerRequestResponse } from './DebuggerRequestResponse';
 import { DebuggerVariableRequestResponse } from './DebuggerVariableRequestResponse';
 import { DebuggerStacktraceRequestResponse } from './DebuggerStacktraceRequestResponse';
+import { DebuggerThreadsRequestResponse } from './DebuggerThreadsRequestResponse';
 import { DebuggerUpdateThreads } from './DebuggerUpdateThreads';
 import { DebuggerUpdateUndefined } from './DebuggerUpdateUndefined';
 import { DebuggerUpdateConnectIoPort } from './DebuggerUpdateConnectIoPort';
@@ -98,6 +99,14 @@ export class BrightscriptDebugger {
           let debuggerStacktraceRequestResponse = new DebuggerStacktraceRequestResponse(unhandledData);
           if (debuggerStacktraceRequestResponse.success) {
             this.removedProcessedBytes(debuggerStacktraceRequestResponse, unhandledData);
+            return true;
+          }
+        }
+
+        if (this.requests[debuggerRequestResponse.requestId] === 'THREADS') {
+          let debuggerThreadsRequestResponse = new DebuggerThreadsRequestResponse(unhandledData);
+          if (debuggerThreadsRequestResponse.success) {
+            this.removedProcessedBytes(debuggerThreadsRequestResponse, unhandledData);
             return true;
           }
         }
@@ -200,7 +209,7 @@ export class BrightscriptDebugger {
         // TODO: remove temporary code
         let buffer = Buffer.alloc(12, 0);
         buffer.writeUInt32LE(12, 0);
-        buffer.writeUInt32LE(1, 4);
+        buffer.writeUInt32LE(this.requests.length, 4);
         buffer.writeUInt32LE(2, 8);
 
         this.requests.push('CONTINUE');
@@ -208,9 +217,16 @@ export class BrightscriptDebugger {
         this.firstRunContinueFired = true;
       } else {
 
+        let treadsBuffer = Buffer.alloc(12, 0);
+        treadsBuffer.writeUInt32LE(treadsBuffer.length, 0);
+        treadsBuffer.writeUInt32LE(this.requests.length, 4);
+        treadsBuffer.writeUInt32LE(3, 8);
+        this.requests.push('THREADS');
+        this.CONTROLLER_CLIENT.write(treadsBuffer);
+
         let stackTraceBuffer = Buffer.alloc(16, 0);
-        stackTraceBuffer.writeUInt32LE(16, 0);
-        stackTraceBuffer.writeUInt32LE(2, 4);
+        stackTraceBuffer.writeUInt32LE(stackTraceBuffer.length, 0);
+        stackTraceBuffer.writeUInt32LE(this.requests.length, 4);
         stackTraceBuffer.writeUInt32LE(4, 8);
         stackTraceBuffer.writeUInt32LE(update.data.primaryThreadIndex, 12);
         this.requests.push('STACKTRACE');
@@ -218,8 +234,8 @@ export class BrightscriptDebugger {
 
         // TODO: remove temporary code
         let variablesBuffer = Buffer.alloc(25, 0);
-        variablesBuffer.writeUInt32LE(25, 0);
-        variablesBuffer.writeUInt32LE(3, 4);
+        variablesBuffer.writeUInt32LE(variablesBuffer.length, 0);
+        variablesBuffer.writeUInt32LE(this.requests.length, 4);
         variablesBuffer.writeUInt32LE(5, 8);
         variablesBuffer.writeUInt8(0x01, 12);
         variablesBuffer.writeUInt32LE(update.data.primaryThreadIndex, 13);
