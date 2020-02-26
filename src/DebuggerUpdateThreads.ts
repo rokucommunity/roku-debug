@@ -1,4 +1,4 @@
-import { BufferReader } from './BufferReader';
+import { SmartBuffer } from 'smart-buffer';
 
 const STOP_REASONS = {
   0: 'UNDEFINED',
@@ -38,7 +38,7 @@ class DebuggerUpdateThreads {
   constructor(buffer: Buffer) {
     if (buffer.byteLength >= 12) {
       try {
-        let bufferReader = new BufferReader(buffer);
+        let bufferReader = SmartBuffer.fromBuffer(buffer);
         this.requestId = bufferReader.readUInt32LE();
         if (this.requestId === 0) {
           this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
@@ -46,19 +46,15 @@ class DebuggerUpdateThreads {
 
           let threadsUpdate: ThreadsStopped | ThreadAttached;
           if (this.updateType === 'ALL_THREADS_STOPPED') {
-            threadsUpdate = new ThreadsStopped(bufferReader, 12);
-            if (threadsUpdate.success) {
-              this.data = threadsUpdate;
-              this.byteLength = bufferReader.offset;
-              this.success = true;
-            }
+            threadsUpdate = new ThreadsStopped(bufferReader);
           } else if (this.updateType === 'THREAD_ATTACHED') {
-            threadsUpdate = new ThreadAttached(bufferReader, 12);
-            if (threadsUpdate.success) {
-              this.data = threadsUpdate;
-              this.byteLength = bufferReader.byteLength;
-              this.success = true;
-            }
+            threadsUpdate = new ThreadAttached(bufferReader);
+          }
+
+          if (threadsUpdate && threadsUpdate.success) {
+            this.data = threadsUpdate;
+            this.byteLength = bufferReader.readOffset;
+            this.success = true;
           }
         }
       } catch (error) {
@@ -76,11 +72,11 @@ class ThreadsStopped {
   public stopReason = -1;
   public stopReasonDetail: string;
 
-  constructor(bufferReader: BufferReader, offset: number) {
-    if (bufferReader.byteLength >= offset + 6) {
+  constructor(bufferReader: SmartBuffer) {
+    if (bufferReader.length >= bufferReader.readOffset + 6) {
       this.primaryThreadIndex = bufferReader.readInt32LE();
       this.stopReason = STOP_REASONS[bufferReader.readUInt8()];
-      this.stopReasonDetail = bufferReader.readNTString();
+      this.stopReasonDetail = bufferReader.readStringNT();
       this.success = true;
     }
   }
@@ -94,11 +90,11 @@ class ThreadAttached {
   public stopReason = -1;
   public stopReasonDetail: string;
 
-  constructor(bufferReader: BufferReader, offset: number) {
-    if (bufferReader.byteLength >= offset + 6) {
+  constructor(bufferReader: SmartBuffer) {
+    if (bufferReader.length >= bufferReader.readOffset + 6) {
       this.threadIndex = bufferReader.readInt32LE();
       this.stopReason = STOP_REASONS[bufferReader.readUInt8()];
-      this.stopReasonDetail = bufferReader.readNTString();
+      this.stopReasonDetail = bufferReader.readStringNT();
       this.success = true;
     }
   }

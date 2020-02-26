@@ -1,4 +1,4 @@
-import { BufferReader } from './BufferReader';
+import { SmartBuffer } from 'smart-buffer';
 
 const ERROR_CODES = {
   0: 'OK',
@@ -22,13 +22,13 @@ class DebuggerRequestResponse {
     // The smallest a request response can be
     if (buffer.byteLength >= 8) {
       try {
-        let bufferReader = new BufferReader(buffer);
+        let bufferReader = SmartBuffer.fromBuffer(buffer);
         this.requestId = bufferReader.readUInt32LE();
 
         // Any request id less then one is an update and we should not process it here
         if (this.requestId > 0) {
           this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
-          this.byteLength = bufferReader.offset;
+          this.byteLength = bufferReader.readOffset;
           this.success = true;
         }
       } catch (error) {

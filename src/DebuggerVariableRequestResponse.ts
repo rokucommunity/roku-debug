@@ -1,4 +1,4 @@
-import { BufferReader } from './BufferReader';
+import { SmartBuffer } from 'smart-buffer';
 
 const ERROR_CODES = {
   0: 'OK',
@@ -23,7 +23,7 @@ class DebuggerVariableRequestResponse {
     // Minimum variable request response size
     if (buffer.byteLength >= 13) {
       try {
-        let bufferReader = new BufferReader(buffer);
+        let bufferReader = SmartBuffer.fromBuffer(buffer);
         this.requestId = bufferReader.readUInt32LE();
 
         // Any request id less then one is an update and we should not process it here
@@ -40,7 +40,7 @@ class DebuggerVariableRequestResponse {
             }
           }
 
-          this.byteLength = bufferReader.offset;
+          this.byteLength = bufferReader.readOffset;
           this.success = (this.variables.length === this.numVariables);
         }
       } catch (error) {
@@ -98,8 +98,8 @@ class VariableInfo {
   public elementCount = -1;
   public value: any;
 
-  constructor(bufferReader: BufferReader) {
-    if (bufferReader.byteLength >= 13) {
+  constructor(bufferReader: SmartBuffer) {
+    if (bufferReader.length >= 13) {
       // Determine the different variable properties
       let bitwiseMask = bufferReader.readUInt8();
       for (const property in FLAGS) {
@@ -110,7 +110,7 @@ class VariableInfo {
 
       if (this.isNameHere) {
         // YAY we have a name. Pull it out of the buffer.
-        this.name = bufferReader.readNTString();
+        this.name = bufferReader.readStringNT();
       }
 
       if (this.isRefCounted) {
@@ -134,13 +134,13 @@ class VariableInfo {
         case 'String':
         case 'Subroutine':
         case 'Function':
-          this.value = bufferReader.readNTString();
+          this.value = bufferReader.readStringNT();
           this.success = true;
           break;
         case 'Subtyped_Object':
           let names = [];
           for (let i = 0; i < 2; i++) {
-              names.push(bufferReader.readNTString());
+              names.push(bufferReader.readStringNT());
           }
 
           if (names.length === 2) {
@@ -153,11 +153,11 @@ class VariableInfo {
           this.success = true;
           break;
         case 'Double':
-          this.value = bufferReader.readDouble();
+          this.value = bufferReader.readDoubleLE();
           this.success = true;
           break;
         case 'Float':
-          this.value = bufferReader.readFloat();
+          this.value = bufferReader.readFloatLE();
           this.success = true;
           break;
         case 'Integer':
@@ -165,7 +165,7 @@ class VariableInfo {
           this.success = true;
           break;
         case 'LongInteger':
-          this.value = bufferReader.readUInt64LE();
+          this.value = bufferReader.readBigInt64LE();
           this.success = true;
           break;
         default:

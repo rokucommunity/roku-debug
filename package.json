@@ -73,6 +73,7 @@
   },
   "dependencies": {
     "fs-extra": "^8.1.0",
-    "roku-deploy": "file:/Users/chris/roku/roku-deploy"
+    "roku-deploy": "file:/Users/chris/roku/roku-deploy",
+    "smart-buffer": "^4.1.0"
   }
 }

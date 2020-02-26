@@ -1,4 +1,4 @@
-import { BufferReader } from './BufferReader';
+import { SmartBuffer } from 'smart-buffer';
 
 const UPDATE_TYPES = {
   0: 'UNDEF',
@@ -30,7 +30,7 @@ class DebuggerUpdateUndefined {
     // The minimum size of a undefined response
     if (buffer.byteLength >= 12) {
       try {
-        let bufferReader = new BufferReader(buffer);
+        let bufferReader = SmartBuffer.fromBuffer(buffer);
         this.requestId = bufferReader.readUInt32LE();
 
         // Updates will always have an id of zero because we didn't ask for this information
@@ -41,7 +41,7 @@ class DebuggerUpdateUndefined {
           // Only handle undefined events in this class
           if (this.updateType === 'UNDEF') {
             this.data = bufferReader.readUInt8();
-            this.byteLength = bufferReader.offset;
+            this.byteLength = bufferReader.readOffset;
             this.success = true;
           }
         }

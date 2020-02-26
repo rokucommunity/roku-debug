@@ -10,10 +10,11 @@ import { DebuggerUpdateThreads } from './DebuggerUpdateThreads';
 import { DebuggerUpdateUndefined } from './DebuggerUpdateUndefined';
 import { DebuggerUpdateConnectIoPort } from './DebuggerUpdateConnectIoPort';
 import { DebuggerHandshake } from './DebuggerHandshake';
+import { SmartBuffer } from 'smart-buffer';
 import { util } from './util';
 
 const CONTROLLER_PORT = 8081;
-const DEBUGGER_MAGIC = 'bsdebug\0'; // 64-bit = [b'bsdebug\0' little-endian]
+const DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
 
 export class BrightscriptDebugger {
   public scriptTitle: string;
@@ -50,8 +51,8 @@ export class BrightscriptDebugger {
 
         // The client can also receive data from the server by reading from its socket.
         // The client can now send data to the server by writing to its socket.
-        this.CONTROLLER_CLIENT.write(Buffer.from(DEBUGGER_MAGIC));
-        console.log(this.CONTROLLER_CLIENT);
+        let buffer = new SmartBuffer({ size: Buffer.byteLength(DEBUGGER_MAGIC) + 1 }).writeStringNT(DEBUGGER_MAGIC).toBuffer();
+        this.CONTROLLER_CLIENT.write(buffer);
       });
 
       this.CONTROLLER_CLIENT.on('data', (buffer) => {

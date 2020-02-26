@@ -1,4 +1,4 @@
-import { BufferReader } from './BufferReader';
+import { SmartBuffer } from 'smart-buffer';
 
 class DebuggerHandshake {
   public success = false;
@@ -14,12 +14,12 @@ class DebuggerHandshake {
     // Required size of the handshake
     if (buffer.byteLength >= 20) {
       try {
-        let bufferReader = new BufferReader(buffer);
-        this.magic = bufferReader.readNTString();
+        let bufferReader = SmartBuffer.fromBuffer(buffer);
+        this.magic = bufferReader.readStringNT();
         this.majorVersion = bufferReader.readInt32LE();
         this.minorVersion = bufferReader.readInt32LE();
         this.patchVersion = bufferReader.readInt32LE();
-        this.byteLength = bufferReader.offset;
+        this.byteLength = bufferReader.readOffset;
         this.success = true;
       } catch (error) {
         // Could not parse
