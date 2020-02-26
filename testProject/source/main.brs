@@ -5,8 +5,6 @@ Sub RunUserInterface()
     screen.SetMessagePort(port)
     screen.Show()
 
-
-    stop
     'urls = util_findServerUrls(["192.168.1.8", "192.168.1.20"])
     'b_printc("urls: ", urls)
 

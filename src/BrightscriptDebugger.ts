@@ -4,6 +4,7 @@ import * as Net from 'net';
 // The port number and hostname of the server.
 import { DebuggerRequestResponse } from './DebuggerRequestResponse';
 import { DebuggerVariableRequestResponse } from './DebuggerVariableRequestResponse';
+import { DebuggerStacktraceRequestResponse } from './DebuggerStacktraceRequestResponse';
 import { DebuggerUpdateThreads } from './DebuggerUpdateThreads';
 import { DebuggerUpdateUndefined } from './DebuggerUpdateUndefined';
 import { DebuggerUpdateConnectIoPort } from './DebuggerUpdateConnectIoPort';
@@ -92,6 +93,14 @@ export class BrightscriptDebugger {
             return true;
           }
         }
+
+        if (this.requests[debuggerRequestResponse.requestId] === 'STACKTRACE') {
+          let debuggerStacktraceRequestResponse = new DebuggerStacktraceRequestResponse(unhandledData);
+          if (debuggerStacktraceRequestResponse.success) {
+            this.removedProcessedBytes(debuggerStacktraceRequestResponse, unhandledData);
+            return true;
+          }
+        }
       }
 
       let debuggerUpdateThreads = new DebuggerUpdateThreads(unhandledData);
@@ -141,7 +150,7 @@ export class BrightscriptDebugger {
       this.removedProcessedBytes(debuggerHandshake, unhandledData);
       return true;
     } else {
-      console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic)
+      console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
       this.CONTROLLER_CLIENT.end();
       return false;
     }
@@ -198,18 +207,26 @@ export class BrightscriptDebugger {
         this.CONTROLLER_CLIENT.write(buffer);
         this.firstRunContinueFired = true;
       } else {
-        // TODO: remove temporary code
-        let buffer = Buffer.alloc(25, 0);
-        buffer.writeUInt32LE(25, 0);
-        buffer.writeUInt32LE(2, 4);
-        buffer.writeUInt32LE(5, 8);
-        buffer.writeUInt8(0x01, 12);
-        buffer.writeUInt32LE(update.data.primaryThreadIndex, 13);
-        buffer.writeUInt32LE(0, 17);
-        buffer.writeUInt32LE(0, 21);
 
+        let stackTraceBuffer = Buffer.alloc(16, 0);
+        stackTraceBuffer.writeUInt32LE(16, 0);
+        stackTraceBuffer.writeUInt32LE(2, 4);
+        stackTraceBuffer.writeUInt32LE(4, 8);
+        stackTraceBuffer.writeUInt32LE(update.data.primaryThreadIndex, 12);
+        this.requests.push('STACKTRACE');
+        this.CONTROLLER_CLIENT.write(stackTraceBuffer);
+
+        // TODO: remove temporary code
+        let variablesBuffer = Buffer.alloc(25, 0);
+        variablesBuffer.writeUInt32LE(25, 0);
+        variablesBuffer.writeUInt32LE(3, 4);
+        variablesBuffer.writeUInt32LE(5, 8);
+        variablesBuffer.writeUInt8(0x01, 12);
+        variablesBuffer.writeUInt32LE(update.data.primaryThreadIndex, 13);
+        variablesBuffer.writeUInt32LE(0, 17);
+        variablesBuffer.writeUInt32LE(0, 21);
         this.requests.push('VARIABLES');
-        this.CONTROLLER_CLIENT.write(buffer);
+        this.CONTROLLER_CLIENT.write(variablesBuffer);
       }
     } else {
     }
