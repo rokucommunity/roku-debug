@@ -16,16 +16,37 @@ import { util } from './util';
 const CONTROLLER_PORT = 8081;
 const DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
 
+const enum COMMANDS {
+  STOP = 1,
+  CONTINUE,
+  THREADS,
+  STACKTRACE,
+  VARIABLES,
+  STEP,
+  EXIT_CHANNEL = 122
+}
+
+const enum STEP_TYPE {
+  STEP_TYPE_NONE,
+  STEP_TYPE_LINE,
+  STEP_TYPE_OVER,
+  STEP_TYPE_OUT
+}
+
 export class BrightscriptDebugger {
   public scriptTitle: string;
   public host: string;
   public handshakeComplete = false;
   public protocolVersion = [];
+  public primaryThread: number;
+  public stackFrameIndex: number;
 
   private CONTROLLER_CLIENT: Net.Socket;
   private unhandledData: Buffer;
   private firstRunContinueFired = false;
-  private requests = ['nill'];
+  private stopped = false;
+  private totalRequests = 0;
+  private activeRequests = {};
 
   public async start(applicationDeployConfig: any) {
     console.log('start - SocketDebugger');
@@ -71,24 +92,100 @@ export class BrightscriptDebugger {
 
       // Don't forget to catch error, for your own sake.
       this.CONTROLLER_CLIENT.on('error', function(err) {
-        console.log(`Error: ${err}`);
+        console.error(`Error: ${err}`);
       });
     })();
 
     console.timeEnd(debugSetupEnd);
   }
 
+  public get isStopped(): boolean {
+    return this.stopped;
+  }
+
+  public continue(): number {
+    let commandSent = this.stopped ? this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.CONTINUE) : -1;
+    this.stopped = commandSent > -1;
+    return commandSent;
+  }
+
+  public pause(): number {
+    return !this.stopped ? this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.STOP) : -1;
+  }
+
+  public exitChannel(): number {
+    return this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.EXIT_CHANNEL);
+  }
+
+  public stepIn(): number {
+    return this.step(STEP_TYPE.STEP_TYPE_LINE);
+  }
+
+  public stepOver(): number {
+    return this.step(STEP_TYPE.STEP_TYPE_OVER);
+  }
+
+  public stepOut(): number {
+    return this.step(STEP_TYPE.STEP_TYPE_OUT);
+  }
+
+  private step(stepType: STEP_TYPE) {
+    let buffer = new SmartBuffer({ size: 17 });
+    buffer.writeUInt32LE(this.primaryThread); // thread_index
+    buffer.writeUInt8(stepType); // step_type
+    return this.stopped ? this.makeRequest(buffer, COMMANDS.STEP) : -1;
+  }
+
+  public threads(): number {
+    return this.stopped ? this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.THREADS) : -1;
+  }
+
+  public stackTrace(threadIndex: number = this.primaryThread): number {
+    let buffer = new SmartBuffer({ size: 16 });
+    buffer.writeUInt32LE(threadIndex); // thread_index
+    return this.stopped && threadIndex > -1 ? this.makeRequest(buffer, COMMANDS.STACKTRACE) : -1;
+  }
+
+  public getVariables(variablePathEntries: Array<string> = [], getChildKeys: boolean = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread): number {
+    if (this.stopped && threadIndex > -1) {
+      let buffer = new SmartBuffer({ size: 25 });
+      buffer.writeUInt8(getChildKeys ? 1 : 0); // variable_request_flags
+      buffer.writeUInt32LE(threadIndex); // thread_index
+      buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
+      buffer.writeUInt32LE(variablePathEntries.length); // variable_path_len
+      variablePathEntries.forEach(variablePathEntry => {
+        buffer.writeStringNT(variablePathEntry); // variable_path_entries - optional
+      });
+      return this.makeRequest(buffer, COMMANDS.VARIABLES, variablePathEntries);
+    }
+    return -1;
+  }
+
+  private makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?): number {
+    let requestId = ++this.totalRequests;
+    buffer.insertUInt32LE(command, 0); // command_code
+    buffer.insertUInt32LE(requestId, 0); // request_id
+    buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length
+
+    this.CONTROLLER_CLIENT.write(buffer.toBuffer());
+    this.activeRequests[requestId] = {
+      commandType: command,
+      extraData: extraData
+    };
+    return requestId;
+  }
+
   private parseUnhandledData(unhandledData: Buffer): boolean {
     if (this.handshakeComplete) {
       let debuggerRequestResponse = new DebuggerRequestResponse(unhandledData);
       if (debuggerRequestResponse.success) {
-        console.log(this.requests[debuggerRequestResponse.requestId]);
-        if (this.requests[debuggerRequestResponse.requestId] === 'STOP' || this.requests[debuggerRequestResponse.requestId] === 'CONTINUE') {
+        let commandType = this.activeRequests[debuggerRequestResponse.requestId].commandType;
+        if (commandType === COMMANDS.STOP || commandType === COMMANDS.CONTINUE || commandType === COMMANDS.STEP || commandType === COMMANDS.EXIT_CHANNEL) {
           this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
           return true;
         }
 
-        if (this.requests[debuggerRequestResponse.requestId] === 'VARIABLES') {
+        if (commandType === COMMANDS.VARIABLES) {
           let debuggerVariableRequestResponse = new DebuggerVariableRequestResponse(unhandledData);
           if (debuggerVariableRequestResponse.success) {
             this.removedProcessedBytes(debuggerVariableRequestResponse, unhandledData);
@@ -96,7 +193,7 @@ export class BrightscriptDebugger {
           }
         }
 
-        if (this.requests[debuggerRequestResponse.requestId] === 'STACKTRACE') {
+        if (commandType === COMMANDS.STACKTRACE) {
           let debuggerStacktraceRequestResponse = new DebuggerStacktraceRequestResponse(unhandledData);
           if (debuggerStacktraceRequestResponse.success) {
             this.removedProcessedBytes(debuggerStacktraceRequestResponse, unhandledData);
@@ -104,7 +201,7 @@ export class BrightscriptDebugger {
           }
         }
 
-        if (this.requests[debuggerRequestResponse.requestId] === 'THREADS') {
+        if (commandType === COMMANDS.THREADS) {
           let debuggerThreadsRequestResponse = new DebuggerThreadsRequestResponse(unhandledData);
           if (debuggerThreadsRequestResponse.success) {
             this.removedProcessedBytes(debuggerThreadsRequestResponse, unhandledData);
@@ -145,6 +242,10 @@ export class BrightscriptDebugger {
 
   private removedProcessedBytes(responseHandler, unhandledData: Buffer) {
     console.log(responseHandler);
+    if (this.activeRequests[responseHandler.requestId]) {
+      delete this.activeRequests[responseHandler.requestId];
+    }
+
     this.unhandledData = unhandledData.slice(responseHandler.byteLength);
     this.parseUnhandledData(this.unhandledData);
   }
@@ -204,46 +305,20 @@ export class BrightscriptDebugger {
   }
 
   private handleThreadsUpdate(update) {
+    this.stopped = true;
     if (update.updateType === 'ALL_THREADS_STOPPED') {
       if (!this.firstRunContinueFired) {
         console.log('Sending first run continue command');
-        // TODO: remove temporary code
-        let buffer = Buffer.alloc(12, 0);
-        buffer.writeUInt32LE(12, 0);
-        buffer.writeUInt32LE(this.requests.length, 4);
-        buffer.writeUInt32LE(2, 8);
-
-        this.requests.push('CONTINUE');
-        this.CONTROLLER_CLIENT.write(buffer);
+        this.continue();
         this.firstRunContinueFired = true;
       } else {
+        this.primaryThread = update.data.primaryThreadIndex;
+        this.stackFrameIndex = 0;
 
-        let treadsBuffer = Buffer.alloc(12, 0);
-        treadsBuffer.writeUInt32LE(treadsBuffer.length, 0);
-        treadsBuffer.writeUInt32LE(this.requests.length, 4);
-        treadsBuffer.writeUInt32LE(3, 8);
-        this.requests.push('THREADS');
-        this.CONTROLLER_CLIENT.write(treadsBuffer);
-
-        let stackTraceBuffer = Buffer.alloc(16, 0);
-        stackTraceBuffer.writeUInt32LE(stackTraceBuffer.length, 0);
-        stackTraceBuffer.writeUInt32LE(this.requests.length, 4);
-        stackTraceBuffer.writeUInt32LE(4, 8);
-        stackTraceBuffer.writeUInt32LE(update.data.primaryThreadIndex, 12);
-        this.requests.push('STACKTRACE');
-        this.CONTROLLER_CLIENT.write(stackTraceBuffer);
-
-        // TODO: remove temporary code
-        let variablesBuffer = Buffer.alloc(25, 0);
-        variablesBuffer.writeUInt32LE(variablesBuffer.length, 0);
-        variablesBuffer.writeUInt32LE(this.requests.length, 4);
-        variablesBuffer.writeUInt32LE(5, 8);
-        variablesBuffer.writeUInt8(0x01, 12);
-        variablesBuffer.writeUInt32LE(update.data.primaryThreadIndex, 13);
-        variablesBuffer.writeUInt32LE(0, 17);
-        variablesBuffer.writeUInt32LE(0, 21);
-        this.requests.push('VARIABLES');
-        this.CONTROLLER_CLIENT.write(variablesBuffer);
+        this.threads();
+        this.stackTrace();
+        this.getVariables(['m']);
+        this.stepIn();
       }
     } else {
     }
