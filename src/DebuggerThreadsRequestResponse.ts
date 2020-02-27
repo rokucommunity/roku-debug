@@ -3,7 +3,7 @@ import { ERROR_CODES, STOP_REASONS } from './Constants';
 
 class DebuggerThreadsRequestResponse {
   public success = false;
-  public byteLength = 0;
+  public readOffset = 0;
 
   // response fields
   public requestId = -1;
@@ -31,7 +31,7 @@ class DebuggerThreadsRequestResponse {
             }
           }
 
-          this.byteLength = bufferReader.readOffset;
+          this.readOffset = bufferReader.readOffset;
           this.success = (this.threads.length === this.threadsCount);
         }
       } catch (error) {

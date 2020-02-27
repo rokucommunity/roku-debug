@@ -3,7 +3,7 @@ import { ERROR_CODES, VARIABLE_FLAGS, VARIABLE_TYPES } from './Constants';
 
 class DebuggerVariableRequestResponse {
   public success = false;
-  public byteLength = 0;
+  public readOffset = 0;
 
   // response fields
   public requestId = -1;
@@ -32,7 +32,7 @@ class DebuggerVariableRequestResponse {
             }
           }
 
-          this.byteLength = bufferReader.readOffset;
+          this.readOffset = bufferReader.readOffset;
           this.success = (this.variables.length === this.numVariables);
         }
       } catch (error) {

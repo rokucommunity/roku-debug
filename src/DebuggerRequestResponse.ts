@@ -3,7 +3,7 @@ import { ERROR_CODES } from './Constants';
 
 class DebuggerRequestResponse {
   public success = false;
-  public byteLength = 0;
+  public readOffset = 0;
 
   // response fields
   public requestId = -1;
@@ -20,7 +20,7 @@ class DebuggerRequestResponse {
         // Any request id less then one is an update and we should not process it here
         if (this.requestId > 0) {
           this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
-          this.byteLength = bufferReader.readOffset;
+          this.readOffset = bufferReader.readOffset;
           this.success = true;
         }
       } catch (error) {

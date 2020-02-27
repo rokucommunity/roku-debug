@@ -3,7 +3,7 @@ import { ERROR_CODES,  UPDATE_TYPES } from './Constants';
 
 class DebuggerUpdateUndefined {
   public success = false;
-  public byteLength = 0;
+  public readOffset = 0;
 
   // response fields
   public requestId = -1;
@@ -26,7 +26,7 @@ class DebuggerUpdateUndefined {
           // Only handle undefined events in this class
           if (this.updateType === 'UNDEF') {
             this.data = bufferReader.readUInt8();
-            this.byteLength = bufferReader.readOffset;
+            this.readOffset = bufferReader.readOffset;
             this.success = true;
           }
         }

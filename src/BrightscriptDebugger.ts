@@ -230,7 +230,7 @@ export class BrightscriptDebugger {
       delete this.activeRequests[responseHandler.requestId];
     }
 
-    this.unhandledData = unhandledData.slice(responseHandler.byteLength);
+    this.unhandledData = unhandledData.slice(responseHandler.readOffset);
     this.parseUnhandledData(this.unhandledData);
   }
 

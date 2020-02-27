@@ -3,7 +3,7 @@ import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES } from './Constants';
 
 class DebuggerUpdateThreads {
   public success = false;
-  public byteLength = 0;
+  public readOffset = 0;
 
   // response fields
   public requestId = -1;
@@ -29,7 +29,7 @@ class DebuggerUpdateThreads {
 
           if (threadsUpdate && threadsUpdate.success) {
             this.data = threadsUpdate;
-            this.byteLength = bufferReader.readOffset;
+            this.readOffset = bufferReader.readOffset;
             this.success = true;
           }
         }

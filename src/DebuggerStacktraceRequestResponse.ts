@@ -3,7 +3,7 @@ import { ERROR_CODES } from './Constants';
 
 class DebuggerStacktraceRequestResponse {
   public success = false;
-  public byteLength = 0;
+  public readOffset = 0;
 
   // response fields
   public requestId = -1;
@@ -31,7 +31,7 @@ class DebuggerStacktraceRequestResponse {
             }
           }
 
-          this.byteLength = bufferReader.readOffset;
+          this.readOffset = bufferReader.readOffset;
           this.success = (this.entries.length === this.stackSize);
         }
       } catch (error) {

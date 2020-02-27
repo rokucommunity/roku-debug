@@ -3,7 +3,7 @@ import { ERROR_CODES, UPDATE_TYPES } from './Constants';
 
 class DebuggerUpdateConnectIoPort {
   public success = false;
-  public byteLength = 0;
+  public readOffset = 0;
 
   // response fields
   public requestId = -1;
@@ -26,7 +26,7 @@ class DebuggerUpdateConnectIoPort {
           // Only handle IO port events in this class
           if (this.updateType === 'IO_PORT_OPENED') {
             this.data = bufferReader.readUInt32LE();
-            this.byteLength = bufferReader.readOffset;
+            this.readOffset = bufferReader.readOffset;
             this.success = true;
           }
         }
