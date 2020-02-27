@@ -1,13 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-
-const ERROR_CODES = {
-  0: 'OK',
-  1: 'OTHER_ERR',
-  2: 'UNDEFINED_COMMAND',
-  3: 'CANT_CONTINUE',
-  4: 'NOT_STOPPED',
-  5: 'INVALID_ARGS'
-};
+import { ERROR_CODES, VARIABLE_FLAGS, VARIABLE_TYPES } from './Constants';
 
 class DebuggerVariableRequestResponse {
   public success = false;
@@ -50,35 +42,6 @@ class DebuggerVariableRequestResponse {
   }
 }
 
-const FLAGS = {
-  isChildKey: 0x01,
-  isConst: 0x02,
-  isContainer: 0x04,
-  isNameHere: 0x08,
-  isRefCounted: 0x10,
-  isValueHere: 0x20
-};
-
-const VARIABLE_TYPES = {
-  1: 'AA',
-  2: 'Array',
-  3: 'Boolean',
-  4: 'Double',
-  5: 'Float',
-  6: 'Function',
-  7: 'Integer',
-  8: 'Interface',
-  9: 'Invalid',
-  10: 'List',
-  11: 'Long_Integer',
-  12: 'Object',
-  13: 'String',
-  14: 'Subroutine',
-  15: 'Subtyped_Object',
-  16: 'Uninitialized',
-  17: 'Unknown'
-};
-
 class VariableInfo {
   public success = false;
 
@@ -102,8 +65,8 @@ class VariableInfo {
     if (bufferReader.length >= 13) {
       // Determine the different variable properties
       let bitwiseMask = bufferReader.readUInt8();
-      for (const property in FLAGS) {
-        this[property] = (bitwiseMask & FLAGS[property]) > 0;
+      for (const property in VARIABLE_FLAGS) {
+        this[property] = (bitwiseMask & VARIABLE_FLAGS[property]) > 0;
       }
 
       this.variableType = VARIABLE_TYPES[bufferReader.readUInt8()];

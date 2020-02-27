@@ -1,20 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-
-export const UPDATE_TYPES = {
-  0: 'UNDEF',
-  1: 'IO_PORT_OPENED',
-  2: 'ALL_THREADS_STOPPED',
-  3: 'THREAD_ATTACHED'
-};
-
-const ERROR_CODES = {
-  0: 'OK',
-  1: 'OTHER_ERR',
-  2: 'UNDEFINED_COMMAND',
-  3: 'CANT_CONTINUE',
-  4: 'NOT_STOPPED',
-  5: 'INVALID_ARGS'
-};
+import { ERROR_CODES, UPDATE_TYPES } from './Constants';
 
 class DebuggerUpdateConnectIoPort {
   public success = false;

@@ -1,13 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-
-const ERROR_CODES = {
-  0: 'OK',
-  1: 'OTHER_ERR',
-  2: 'UNDEFINED_COMMAND',
-  3: 'CANT_CONTINUE',
-  4: 'NOT_STOPPED',
-  5: 'INVALID_ARGS'
-};
+import { ERROR_CODES } from './Constants';
 
 class DebuggerStacktraceRequestResponse {
   public success = false;

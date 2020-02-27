@@ -10,28 +10,12 @@ import { DebuggerUpdateThreads } from './DebuggerUpdateThreads';
 import { DebuggerUpdateUndefined } from './DebuggerUpdateUndefined';
 import { DebuggerUpdateConnectIoPort } from './DebuggerUpdateConnectIoPort';
 import { DebuggerHandshake } from './DebuggerHandshake';
+import { COMMANDS, STEP_TYPE } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { util } from './util';
 
 const CONTROLLER_PORT = 8081;
 const DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
-
-const enum COMMANDS {
-  STOP = 1,
-  CONTINUE,
-  THREADS,
-  STACKTRACE,
-  VARIABLES,
-  STEP,
-  EXIT_CHANNEL = 122
-}
-
-const enum STEP_TYPE {
-  STEP_TYPE_NONE,
-  STEP_TYPE_LINE,
-  STEP_TYPE_OVER,
-  STEP_TYPE_OUT
-}
 
 export class BrightscriptDebugger {
   public scriptTitle: string;
