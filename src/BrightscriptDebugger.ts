@@ -1,5 +1,5 @@
-import * as rokuDeploy from 'roku-deploy';
 import * as Net from 'net';
+import * as EventEmitter from 'events';
 
 // The port number and hostname of the server.
 import { DebuggerRequestResponse } from './DebuggerRequestResponse';
@@ -19,12 +19,12 @@ const DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
 
 export class BrightscriptDebugger {
   public scriptTitle: string;
-  public host: string;
   public handshakeComplete = false;
   public protocolVersion = [];
   public primaryThread: number;
   public stackFrameIndex: number;
 
+  private emitter: EventEmitter;
   private CONTROLLER_CLIENT: Net.Socket;
   private unhandledData: Buffer;
   private firstRunContinueFired = false;
@@ -32,105 +32,160 @@ export class BrightscriptDebugger {
   private totalRequests = 0;
   private activeRequests = {};
 
-  public async start(applicationDeployConfig: any) {
+  constructor(
+    private host: string,
+    private stopOnEntry: boolean = false
+  ) {
+    this.emitter = new EventEmitter();
+  }
+
+    /**
+     * Subscribe to various events
+     * @param eventName
+     * @param handler
+     */
+    public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
+    public on(eventName: 'data' | 'suspend' | 'runtime-error', handler: (data: any) => void);
+    public on(eventName: 'connected', handler: (connected: boolean) => void);
+    public on(eventname: 'io-output', handler: (output: string) => void);
+    // public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
+    // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
+    public on(eventName: string, handler: (payload: any) => void) {
+        this.emitter.on(eventName, handler);
+        return () => {
+            if (this.emitter !== undefined) {
+                this.emitter.removeListener(eventName, handler);
+            }
+        };
+    }
+
+    private emit(
+        eventName:
+            'app-exit' |
+            'cannot-continue' |
+            'close' |
+            'connected' |
+            'data' |
+            'io-output' |
+            'runtime-error' |
+            'start' |
+            'suspend',
+        data?
+    ) {
+        //emit these events on next tick, otherwise they will be processed immediately which could cause issues
+        setTimeout(() => {
+            //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
+            if (this.emitter) {
+                this.emitter.emit(eventName, data);
+            }
+        }, 0);
+    }
+
+  public async connect(): Promise<boolean> {
     console.log('start - SocketDebugger');
     const debugSetupEnd = 'total socket debugger setup time';
     console.time(debugSetupEnd);
 
-    // Enable the remoteDebug option.
-    applicationDeployConfig.remoteDebug = true;
+    // Create a new TCP client.`
+    this.CONTROLLER_CLIENT = new Net.Socket();
+    // Send a connection request to the server.
+    console.log('port', CONTROLLER_PORT, 'host', this.host);
+    this.CONTROLLER_CLIENT.connect({ port: CONTROLLER_PORT, host: this.host }, () => {
+      // If there is no error, the server has accepted the request and created a new
+      // socket dedicated to us.
+      console.log('TCP connection established with the server.');
 
-    this.host = applicationDeployConfig.host;
+      // The client can also receive data from the server by reading from its socket.
+      // The client can now send data to the server by writing to its socket.
+      let buffer = new SmartBuffer({ size: Buffer.byteLength(DEBUGGER_MAGIC) + 1 }).writeStringNT(DEBUGGER_MAGIC).toBuffer();
+      this.CONTROLLER_CLIENT.write(buffer);
+    });
 
-    await rokuDeploy.deploy(applicationDeployConfig);
+    this.CONTROLLER_CLIENT.on('data', (buffer) => {
+      if (this.unhandledData) {
+        this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
+      } else {
+        this.unhandledData = buffer;
+      }
 
-    (async () => {
-      // Create a new TCP client.`
-      this.CONTROLLER_CLIENT = new Net.Socket();
-      // Send a connection request to the server.
-      console.log('port', CONTROLLER_PORT, 'host', applicationDeployConfig.host);
-      this.CONTROLLER_CLIENT.connect({ port: CONTROLLER_PORT, host: applicationDeployConfig.host }, () => {
-        // If there is no error, the server has accepted the request and created a new
-        // socket dedicated to us.
-        console.log('TCP connection established with the server.');
+      this.parseUnhandledData(this.unhandledData);
+    });
 
-        // The client can also receive data from the server by reading from its socket.
-        // The client can now send data to the server by writing to its socket.
-        let buffer = new SmartBuffer({ size: Buffer.byteLength(DEBUGGER_MAGIC) + 1 }).writeStringNT(DEBUGGER_MAGIC).toBuffer();
-        this.CONTROLLER_CLIENT.write(buffer);
-      });
+    this.CONTROLLER_CLIENT.on('end', () => {
+      console.log('Requested an end to the TCP connection');
+    });
 
-      this.CONTROLLER_CLIENT.on('data', (buffer) => {
-        if (this.unhandledData) {
-          this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
+    // Don't forget to catch error, for your own sake.
+    this.CONTROLLER_CLIENT.on('error', function(err) {
+      console.error(`Error: ${err}`);
+    });
+
+    let connectPromise: Promise<boolean> = new Promise((resolve, reject) => {
+      let disconnect = this.on('connected', (connected) => {
+        disconnect();
+        console.timeEnd(debugSetupEnd);
+        if (connected) {
+          resolve(connected);
         } else {
-          this.unhandledData = buffer;
+          reject(connected);
         }
-
-        this.parseUnhandledData(this.unhandledData);
       });
+    });
 
-      this.CONTROLLER_CLIENT.on('end', () => {
-        console.log('Requested an end to the TCP connection');
-      });
-
-      // Don't forget to catch error, for your own sake.
-      this.CONTROLLER_CLIENT.on('error', function(err) {
-        console.error(`Error: ${err}`);
-      });
-    })();
-
-    console.timeEnd(debugSetupEnd);
+    return connectPromise;
   }
 
   public get isStopped(): boolean {
     return this.stopped;
   }
 
-  public continue(): number {
-    let commandSent = this.stopped ? this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.CONTINUE) : -1;
-    this.stopped = commandSent > -1;
-    return commandSent;
+  public async continue() {
+    let result;
+    if (this.stopped) {
+      this.stopped = false;
+      result = this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.CONTINUE);
+    }
+    return result;
   }
 
-  public pause(): number {
+  public async pause() {
     return !this.stopped ? this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.STOP) : -1;
   }
 
-  public exitChannel(): number {
+  public async exitChannel() {
     return this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.EXIT_CHANNEL);
   }
 
-  public stepIn(): number {
+  public async stepIn() {
     return this.step(STEP_TYPE.STEP_TYPE_LINE);
   }
 
-  public stepOver(): number {
+  public async stepOver() {
     return this.step(STEP_TYPE.STEP_TYPE_OVER);
   }
 
-  public stepOut(): number {
+  public async stepOut() {
     return this.step(STEP_TYPE.STEP_TYPE_OUT);
   }
 
-  private step(stepType: STEP_TYPE) {
+  private async step(stepType: STEP_TYPE) {
     let buffer = new SmartBuffer({ size: 17 });
     buffer.writeUInt32LE(this.primaryThread); // thread_index
     buffer.writeUInt8(stepType); // step_type
     return this.stopped ? this.makeRequest(buffer, COMMANDS.STEP) : -1;
   }
 
-  public threads(): number {
+  public async threads() {
     return this.stopped ? this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.THREADS) : -1;
   }
 
-  public stackTrace(threadIndex: number = this.primaryThread): number {
+  public async stackTrace(threadIndex: number = this.primaryThread) {
     let buffer = new SmartBuffer({ size: 16 });
     buffer.writeUInt32LE(threadIndex); // thread_index
     return this.stopped && threadIndex > -1 ? this.makeRequest(buffer, COMMANDS.STACKTRACE) : -1;
   }
 
-  public getVariables(variablePathEntries: Array<string> = [], getChildKeys: boolean = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread): number {
+  public async getVariables(variablePathEntries: Array<string> = [], getChildKeys: boolean = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
     if (this.stopped && threadIndex > -1) {
       let buffer = new SmartBuffer({ size: 25 });
       buffer.writeUInt8(getChildKeys ? 1 : 0); // variable_request_flags
@@ -145,7 +200,7 @@ export class BrightscriptDebugger {
     return -1;
   }
 
-  private makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?): number {
+  private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
     let requestId = ++this.totalRequests;
     buffer.insertUInt32LE(command, 0); // command_code
     buffer.insertUInt32LE(requestId, 0); // request_id
@@ -156,7 +211,16 @@ export class BrightscriptDebugger {
       commandType: command,
       extraData: extraData
     };
-    return requestId;
+
+    let requestPromise = new Promise((resolve, reject) => {
+        let disconnect = this.on('data', (responseHandler) => {
+            if (responseHandler.requestId === requestId) {
+                disconnect();
+                resolve(responseHandler);
+            }
+        });
+    });
+    return requestPromise;
   }
 
   private parseUnhandledData(unhandledData: Buffer): boolean {
@@ -230,6 +294,8 @@ export class BrightscriptDebugger {
       delete this.activeRequests[responseHandler.requestId];
     }
 
+    this.emit('data', responseHandler);
+
     this.unhandledData = unhandledData.slice(responseHandler.readOffset);
     this.parseUnhandledData(this.unhandledData);
   }
@@ -272,8 +338,8 @@ export class BrightscriptDebugger {
               responseText = lastPartialLine + responseText;
               lastPartialLine = '';
           }
-
-          console.log(responseText.trim());
+          // Emit the completed io string.
+          this.emit('io-output', responseText.trim());
         }
       });
 
@@ -285,24 +351,29 @@ export class BrightscriptDebugger {
       IO_CLIENT.on('error', (err) => {
         console.log(`Error: ${err}`);
       });
+
+      this.emit('connected', true);
     });
   }
 
-  private handleThreadsUpdate(update) {
+  private async handleThreadsUpdate(update) {
     this.stopped = true;
     if (update.updateType === 'ALL_THREADS_STOPPED') {
-      if (!this.firstRunContinueFired) {
+      let stopReason = update.data.stopReason;
+      if (!this.firstRunContinueFired && !this.stopOnEntry) {
         console.log('Sending first run continue command');
-        this.continue();
+        await this.continue();
         this.firstRunContinueFired = true;
-      } else {
+      } else if (stopReason === 'RUNTIME_ERROR' || stopReason === 'BREAK' || stopReason === 'STOP_STATEMENT') {
         this.primaryThread = update.data.primaryThreadIndex;
         this.stackFrameIndex = 0;
 
-        this.threads();
-        this.stackTrace();
-        this.getVariables(['m']);
-        this.stepIn();
+        // this.threads();
+        // this.stackTrace();
+        // this.getVariables(['m']);
+        // this.stepIn();
+        let eventName: 'runtime-error' | 'suspend' = stopReason === 'RUNTIME_ERROR' ? 'runtime-error' : 'suspend';
+        this.emit(eventName, update);
       }
     } else {
     }

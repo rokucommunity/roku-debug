@@ -15,10 +15,10 @@ class DebuggerHandshake {
     if (buffer.byteLength >= 20) {
       try {
         let bufferReader = SmartBuffer.fromBuffer(buffer);
-        this.magic = bufferReader.readStringNT();
-        this.majorVersion = bufferReader.readInt32LE();
-        this.minorVersion = bufferReader.readInt32LE();
-        this.patchVersion = bufferReader.readInt32LE();
+        this.magic = bufferReader.readStringNT(); // magic_number
+        this.majorVersion = bufferReader.readInt32LE(); // protocol_major_version
+        this.minorVersion = bufferReader.readInt32LE(); // protocol_minor_version
+        this.patchVersion = bufferReader.readInt32LE(); // protocol_patch_version
         this.readOffset = bufferReader.readOffset;
         this.success = true;
       } catch (error) {
