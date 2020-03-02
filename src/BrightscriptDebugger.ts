@@ -39,47 +39,47 @@ export class BrightscriptDebugger {
     this.emitter = new EventEmitter();
   }
 
-    /**
-     * Subscribe to various events
-     * @param eventName
-     * @param handler
-     */
-    public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
-    public on(eventName: 'data' | 'suspend' | 'runtime-error', handler: (data: any) => void);
-    public on(eventName: 'connected', handler: (connected: boolean) => void);
-    public on(eventname: 'io-output', handler: (output: string) => void);
-    // public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
-    // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
-    public on(eventName: string, handler: (payload: any) => void) {
-        this.emitter.on(eventName, handler);
-        return () => {
-            if (this.emitter !== undefined) {
-                this.emitter.removeListener(eventName, handler);
-            }
-        };
-    }
+  /**
+   * Subscribe to various events
+   * @param eventName
+   * @param handler
+   */
+  public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
+  public on(eventName: 'data' | 'suspend' | 'runtime-error', handler: (data: any) => void);
+  public on(eventName: 'connected', handler: (connected: boolean) => void);
+  public on(eventname: 'io-output', handler: (output: string) => void);
+  // public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
+  // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
+  public on(eventName: string, handler: (payload: any) => void) {
+      this.emitter.on(eventName, handler);
+      return () => {
+          if (this.emitter !== undefined) {
+              this.emitter.removeListener(eventName, handler);
+          }
+      };
+  }
 
-    private emit(
-        eventName:
-            'app-exit' |
-            'cannot-continue' |
-            'close' |
-            'connected' |
-            'data' |
-            'io-output' |
-            'runtime-error' |
-            'start' |
-            'suspend',
-        data?
-    ) {
-        //emit these events on next tick, otherwise they will be processed immediately which could cause issues
-        setTimeout(() => {
-            //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            if (this.emitter) {
-                this.emitter.emit(eventName, data);
-            }
-        }, 0);
-    }
+  private emit(
+      eventName:
+          'app-exit' |
+          'cannot-continue' |
+          'close' |
+          'connected' |
+          'data' |
+          'io-output' |
+          'runtime-error' |
+          'start' |
+          'suspend',
+      data?
+  ) {
+      //emit these events on next tick, otherwise they will be processed immediately which could cause issues
+      setTimeout(() => {
+          //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
+          if (this.emitter) {
+              this.emitter.emit(eventName, data);
+          }
+      }, 0);
+  }
 
   public async connect(): Promise<boolean> {
     console.log('start - SocketDebugger');
