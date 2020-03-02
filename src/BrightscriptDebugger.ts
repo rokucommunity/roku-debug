@@ -358,8 +358,10 @@ export class BrightscriptDebugger {
 
   private async handleThreadsUpdate(update) {
     this.stopped = true;
+    let stopReason = update.data.stopReason;
+    let eventName: 'runtime-error' | 'suspend' = stopReason === 'RUNTIME_ERROR' ? 'runtime-error' : 'suspend';
+
     if (update.updateType === 'ALL_THREADS_STOPPED') {
-      let stopReason = update.data.stopReason;
       if (!this.firstRunContinueFired && !this.stopOnEntry) {
         console.log('Sending first run continue command');
         await this.continue();
@@ -367,15 +369,10 @@ export class BrightscriptDebugger {
       } else if (stopReason === 'RUNTIME_ERROR' || stopReason === 'BREAK' || stopReason === 'STOP_STATEMENT') {
         this.primaryThread = update.data.primaryThreadIndex;
         this.stackFrameIndex = 0;
-
-        // this.threads();
-        // this.stackTrace();
-        // this.getVariables(['m']);
-        // this.stepIn();
-        let eventName: 'runtime-error' | 'suspend' = stopReason === 'RUNTIME_ERROR' ? 'runtime-error' : 'suspend';
         this.emit(eventName, update);
       }
-    } else {
+    } else if (stopReason === 'RUNTIME_ERROR' || stopReason === 'BREAK' || stopReason === 'STOP_STATEMENT') {
+      this.emit(eventName, update);
     }
   }
 }

@@ -51,8 +51,9 @@ class StackEntry {
 
   constructor(bufferReader: SmartBuffer) {
     this.lineNumber = bufferReader.readUInt32LE();
-    this.functionName = bufferReader.readStringNT();
+    // NOTE: this is documented as being function name then file name but it is being returned by the device backwards.
     this.fileName = bufferReader.readStringNT();
+    this.functionName = bufferReader.readStringNT();
     this.success = true;
   }
 }
