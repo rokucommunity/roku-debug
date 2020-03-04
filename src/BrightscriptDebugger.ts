@@ -20,6 +20,7 @@ const DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
 export class BrightscriptDebugger {
   public scriptTitle: string;
   public handshakeComplete = false;
+  public connectedToIoPort = false;
   public protocolVersion = [];
   public primaryThread: number;
   public stackFrameIndex: number;
@@ -187,7 +188,7 @@ export class BrightscriptDebugger {
 
   public async getVariables(variablePathEntries: Array<string> = [], getChildKeys: boolean = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
     if (this.stopped && threadIndex > -1) {
-      let buffer = new SmartBuffer({ size: 25 });
+      let buffer = new SmartBuffer({ size: 17 });
       buffer.writeUInt8(getChildKeys ? 1 : 0); // variable_request_flags
       buffer.writeUInt32LE(threadIndex); // thread_index
       buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
@@ -201,32 +202,39 @@ export class BrightscriptDebugger {
   }
 
   private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
-    let requestId = ++this.totalRequests;
+    this.totalRequests ++;
+    let requestId = this.totalRequests;
     buffer.insertUInt32LE(command, 0); // command_code
     buffer.insertUInt32LE(requestId, 0); // request_id
     buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length
 
-    this.CONTROLLER_CLIENT.write(buffer.toBuffer());
     this.activeRequests[requestId] = {
       commandType: command,
       extraData: extraData
     };
 
-    let requestPromise = new Promise((resolve, reject) => {
-        let disconnect = this.on('data', (responseHandler) => {
-            if (responseHandler.requestId === requestId) {
-                disconnect();
-                resolve(responseHandler);
-            }
-        });
+    return new Promise((resolve, reject) => {
+      let disconnect = this.on('data', (responseHandler) => {
+        if (responseHandler.requestId === requestId) {
+          disconnect();
+          resolve(responseHandler);
+        }
+      });
+
+      this.CONTROLLER_CLIENT.write(buffer.toBuffer());
     });
-    return requestPromise;
   }
 
   private parseUnhandledData(unhandledData: Buffer): boolean {
     if (this.handshakeComplete) {
       let debuggerRequestResponse = new DebuggerRequestResponse(unhandledData);
       if (debuggerRequestResponse.success) {
+
+        if (debuggerRequestResponse.errorCode !== 'OK') {
+            this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
+            return true;
+        }
+
         let commandType = this.activeRequests[debuggerRequestResponse.requestId].commandType;
         if (commandType === COMMANDS.STOP || commandType === COMMANDS.CONTINUE || commandType === COMMANDS.STEP || commandType === COMMANDS.EXIT_CHANNEL) {
           this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
@@ -271,11 +279,13 @@ export class BrightscriptDebugger {
         return true;
       }
 
-      let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
-      if (debuggerUpdateConnectIoPort.success) {
-        this.connectToIoPort(debuggerUpdateConnectIoPort);
-        this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
-        return true;
+      if (!this.connectedToIoPort) {
+          let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
+          if (debuggerUpdateConnectIoPort.success) {
+            this.connectToIoPort(debuggerUpdateConnectIoPort);
+            this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
+            return true;
+          }
       }
 
     } else {
@@ -325,6 +335,7 @@ export class BrightscriptDebugger {
     IO_CLIENT.connect({ port: connectIoPortResponse.data, host: this.host }, () => {
       // If there is no error, the server has accepted the request
       console.log('TCP connection established with the IO Port.');
+      this.connectedToIoPort = true;
 
       let lastPartialLine = '';
       IO_CLIENT.on('data', (buffer) => {
