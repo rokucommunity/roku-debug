@@ -157,27 +157,51 @@ export class BrightscriptDebugger {
     return this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.EXIT_CHANNEL);
   }
 
-  public async stepIn() {
-    return this.step(STEP_TYPE.STEP_TYPE_LINE);
+  public async stepIn(threadId: number = this.primaryThread) {
+    return this.step(STEP_TYPE.STEP_TYPE_LINE, threadId);
   }
 
-  public async stepOver() {
-    return this.step(STEP_TYPE.STEP_TYPE_OVER);
+  public async stepOver(threadId: number = this.primaryThread) {
+    return this.step(STEP_TYPE.STEP_TYPE_OVER, threadId);
   }
 
-  public async stepOut() {
-    return this.step(STEP_TYPE.STEP_TYPE_OUT);
+  public async stepOut(threadId: number = this.primaryThread) {
+    return this.step(STEP_TYPE.STEP_TYPE_OUT, threadId);
   }
 
-  private async step(stepType: STEP_TYPE) {
+  private async step(stepType: STEP_TYPE, threadId: number) {
+    console.log('set: threadId - ', threadId);
     let buffer = new SmartBuffer({ size: 17 });
-    buffer.writeUInt32LE(this.primaryThread); // thread_index
+    buffer.writeUInt32LE(threadId); // thread_index
     buffer.writeUInt8(stepType); // step_type
-    return this.stopped ? this.makeRequest(buffer, COMMANDS.STEP) : -1;
+    if (this.stopped) {
+      this.stopped = false;
+      let stepResult: any = await this.makeRequest(buffer, COMMANDS.STEP);
+      if (stepResult.errorCode === 'OK') {
+        // this.stopped = true;
+        // this.emit('suspend');
+      } else {
+        this.emit('cannot-continue');
+      }
+      return stepResult;
+    }
   }
 
   public async threads() {
-    return this.stopped ? this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.THREADS) : -1;
+    let result;
+    if (this.stopped) {
+      result = this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
+      if (result.errorCode === 'OK') {
+        for (let i = 0; i < result.threadCount; i ++) {
+          let thread = result.threads[i];
+          if (thread.isPrimary) {
+            this.primaryThread = i;
+            break;
+          }
+        }
+      }
+      return result;
+    }
   }
 
   public async stackTrace(threadIndex: number = this.primaryThread) {
@@ -229,6 +253,10 @@ export class BrightscriptDebugger {
     if (this.handshakeComplete) {
       let debuggerRequestResponse = new DebuggerRequestResponse(unhandledData);
       if (debuggerRequestResponse.success) {
+
+        if (debuggerRequestResponse.requestId > this.totalRequests) {
+          return false;
+        }
 
         if (debuggerRequestResponse.errorCode !== 'OK') {
             this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
