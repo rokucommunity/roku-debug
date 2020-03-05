@@ -170,7 +170,6 @@ export class BrightscriptDebugger {
   }
 
   private async step(stepType: STEP_TYPE, threadId: number) {
-    console.log('set: threadId - ', threadId);
     let buffer = new SmartBuffer({ size: 17 });
     buffer.writeUInt32LE(threadId); // thread_index
     buffer.writeUInt8(stepType); // step_type
@@ -259,6 +258,7 @@ export class BrightscriptDebugger {
         }
 
         if (debuggerRequestResponse.errorCode !== 'OK') {
+            console.error(debuggerRequestResponse.errorCode, debuggerRequestResponse)
             this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
             return true;
         }
@@ -411,6 +411,7 @@ export class BrightscriptDebugger {
         this.emit(eventName, update);
       }
     } else if (stopReason === 'RUNTIME_ERROR' || stopReason === 'BREAK' || stopReason === 'STOP_STATEMENT') {
+      this.primaryThread = update.data.threadIndex;
       this.emit(eventName, update);
     }
   }

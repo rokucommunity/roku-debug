@@ -11,8 +11,8 @@ export const enum COMMANDS {
 export const enum STEP_TYPE {
   STEP_TYPE_NONE,
   STEP_TYPE_LINE,
-  STEP_TYPE_OVER,
-  STEP_TYPE_OUT
+  STEP_TYPE_OUT,
+  STEP_TYPE_OVER
 }
 
 //#region RESPONSE CONSTS
