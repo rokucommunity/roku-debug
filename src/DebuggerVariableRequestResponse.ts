@@ -1,5 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES, VARIABLE_FLAGS, VARIABLE_TYPES } from './Constants';
+import { util } from './util';
 
 class DebuggerVariableRequestResponse {
   public success = false;
@@ -73,7 +74,7 @@ class VariableInfo {
 
       if (this.isNameHere) {
         // YAY we have a name. Pull it out of the buffer.
-        this.name = bufferReader.readStringNT();
+        this.name = util.readStringNT(bufferReader);
       }
 
       if (this.isRefCounted) {
@@ -97,13 +98,13 @@ class VariableInfo {
         case 'String':
         case 'Subroutine':
         case 'Function':
-          this.value = bufferReader.readStringNT();
+          this.value = util.readStringNT(bufferReader);
           this.success = true;
           break;
         case 'Subtyped_Object':
           let names = [];
           for (let i = 0; i < 2; i++) {
-              names.push(bufferReader.readStringNT());
+              names.push(util.readStringNT(bufferReader));
           }
 
           if (names.length === 2) {

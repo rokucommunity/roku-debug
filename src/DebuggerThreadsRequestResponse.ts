@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES, STOP_REASONS } from './Constants';
+import { util } from './util';
 
 class DebuggerThreadsRequestResponse {
   public success = false;
@@ -58,11 +59,11 @@ class ThreadInfo {
     // NOTE: The docs say the flags should be unit8 and uint32. In testing it seems like they are sending uint32 but meant to send unit8.
     this.isPrimary = (bufferReader.readUInt32LE() & 0x01) > 0;
     this.stopReason = STOP_REASONS[bufferReader.readUInt8()];
-    this.stopReasonDetail = bufferReader.readStringNT();
+    this.stopReasonDetail = util.readStringNT(bufferReader);
     this.lineNumber = bufferReader.readUInt32LE();
-    this.functionName = bufferReader.readStringNT();
-    this.fileName = bufferReader.readStringNT();
-    this.codeSnippet = bufferReader.readStringNT();
+    this.functionName = util.readStringNT(bufferReader);
+    this.fileName = util.readStringNT(bufferReader);
+    this.codeSnippet = util.readStringNT(bufferReader);
 
     let fileExtension = path.extname(this.fileName).toLowerCase();
     this.success = (fileExtension === '.brs' || fileExtension === '.xml') && this.codeSnippet.length > 1 ;
