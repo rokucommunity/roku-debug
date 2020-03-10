@@ -131,6 +131,14 @@ class VariableInfo {
           this.value = bufferReader.readBigInt64LE();
           this.success = true;
           break;
+        case 'Uninitialized':
+          this.value = 'Uninitialized';
+          this.success = true;
+          break;
+        case 'Unknown':
+          this.value = 'Unknown';
+          this.success = true;
+          break;
         default:
           this.value = null;
           this.success = true;
