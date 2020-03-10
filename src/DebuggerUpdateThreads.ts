@@ -1,5 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES } from './Constants';
+import { util } from './util';
 
 class DebuggerUpdateThreads {
   public success = false;
@@ -52,7 +53,7 @@ class ThreadsStopped {
     if (bufferReader.length >= bufferReader.readOffset + 6) {
       this.primaryThreadIndex = bufferReader.readInt32LE();
       this.stopReason = STOP_REASONS[bufferReader.readUInt8()];
-      this.stopReasonDetail = bufferReader.readStringNT();
+      this.stopReasonDetail = util.readStringNT(bufferReader);
       this.success = true;
     }
   }
@@ -70,7 +71,7 @@ class ThreadAttached {
     if (bufferReader.length >= bufferReader.readOffset + 6) {
       this.threadIndex = bufferReader.readInt32LE();
       this.stopReason = STOP_REASONS[bufferReader.readUInt8()];
-      this.stopReasonDetail = bufferReader.readStringNT();
+      this.stopReasonDetail = util.readStringNT(bufferReader);
       this.success = true;
     }
   }

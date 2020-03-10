@@ -1,4 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
+import { util } from './util';
 
 class DebuggerHandshake {
   public success = false;
@@ -15,7 +16,7 @@ class DebuggerHandshake {
     if (buffer.byteLength >= 20) {
       try {
         let bufferReader = SmartBuffer.fromBuffer(buffer);
-        this.magic = bufferReader.readStringNT(); // magic_number
+        this.magic = util.readStringNT(bufferReader); // magic_number
         this.majorVersion = bufferReader.readInt32LE(); // protocol_major_version
         this.minorVersion = bufferReader.readInt32LE(); // protocol_minor_version
         this.patchVersion = bufferReader.readInt32LE(); // protocol_patch_version
