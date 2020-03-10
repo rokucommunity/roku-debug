@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES, STOP_REASONS } from './Constants';
 
@@ -62,7 +63,9 @@ class ThreadInfo {
     this.functionName = bufferReader.readStringNT();
     this.fileName = bufferReader.readStringNT();
     this.codeSnippet = bufferReader.readStringNT();
-    this.success = true;
+
+    let fileExtension = path.extname(this.fileName).toLowerCase();
+    this.success = (fileExtension === '.brs' || fileExtension === '.xml') && this.codeSnippet.length > 1 ;
   }
 }
 

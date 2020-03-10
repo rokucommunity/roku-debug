@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES } from './Constants';
 
@@ -54,7 +55,9 @@ class StackEntry {
     // NOTE: this is documented as being function name then file name but it is being returned by the device backwards.
     this.fileName = bufferReader.readStringNT();
     this.functionName = bufferReader.readStringNT();
-    this.success = true;
+
+    let fileExtension = path.extname(this.fileName).toLowerCase();
+    this.success = fileExtension === '.brs' || fileExtension === '.xml';
   }
 }
 
