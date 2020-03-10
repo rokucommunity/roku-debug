@@ -1,9 +1,14 @@
+name: main
 on: [push, pull_request]
-steps:
-- uses: actions/checkout@v2
-- uses: actions/setup-node@v1
-  with:
-    node-version: '10.x'
-- run: npm install
-- run: npm run lint
-- run: npm run test
+
+jobs:
+  main:
+    runs-on: [ubuntu-18.04, windows-2019]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '10.x'
+    - run: npm install
+    - run: npm run lint
+    - run: npm run test
