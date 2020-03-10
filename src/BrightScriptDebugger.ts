@@ -17,7 +17,7 @@ import { util } from './util';
 const CONTROLLER_PORT = 8081;
 const DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
 
-export class BrightscriptDebugger {
+export class BrightScriptDebugger {
   public scriptTitle: string;
   public handshakeComplete = false;
   public connectedToIoPort = false;
@@ -25,7 +25,7 @@ export class BrightscriptDebugger {
   public primaryThread: number;
   public stackFrameIndex: number;
 
-  private emitter: EventEmitter;
+  private emitter = new EventEmitter();
   private CONTROLLER_CLIENT: Net.Socket;
   private unhandledData: Buffer;
   private firstRunContinueFired = false;
@@ -37,7 +37,7 @@ export class BrightscriptDebugger {
     private host: string,
     private stopOnEntry: boolean = false
   ) {
-    this.emitter = new EventEmitter();
+
   }
 
   /**
@@ -52,34 +52,34 @@ export class BrightscriptDebugger {
   // public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
   // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
   public on(eventName: string, handler: (payload: any) => void) {
-      this.emitter.on(eventName, handler);
-      return () => {
-          if (this.emitter !== undefined) {
-              this.emitter.removeListener(eventName, handler);
-          }
-      };
+    this.emitter.on(eventName, handler);
+    return () => {
+      if (this.emitter !== undefined) {
+        this.emitter.removeListener(eventName, handler);
+      }
+    };
   }
 
   private emit(
-      eventName:
-          'app-exit' |
-          'cannot-continue' |
-          'close' |
-          'connected' |
-          'data' |
-          'io-output' |
-          'runtime-error' |
-          'start' |
-          'suspend',
-      data?
+    eventName:
+      'app-exit' |
+      'cannot-continue' |
+      'close' |
+      'connected' |
+      'data' |
+      'io-output' |
+      'runtime-error' |
+      'start' |
+      'suspend',
+    data?
   ) {
-      //emit these events on next tick, otherwise they will be processed immediately which could cause issues
-      setTimeout(() => {
-          //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-          if (this.emitter) {
-              this.emitter.emit(eventName, data);
-          }
-      }, 0);
+    //emit these events on next tick, otherwise they will be processed immediately which could cause issues
+    setTimeout(() => {
+      //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
+      if (this.emitter) {
+        this.emitter.emit(eventName, data);
+      }
+    }, 0);
   }
 
   public async connect(): Promise<boolean> {
@@ -117,7 +117,7 @@ export class BrightscriptDebugger {
     });
 
     // Don't forget to catch error, for your own sake.
-    this.CONTROLLER_CLIENT.on('error', function(err) {
+    this.CONTROLLER_CLIENT.on('error', function (err) {
       console.error(`Error: ${err}`);
     });
 
@@ -191,7 +191,7 @@ export class BrightscriptDebugger {
     if (this.stopped) {
       result = this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
       if (result.errorCode === 'OK') {
-        for (let i = 0; i < result.threadCount; i ++) {
+        for (let i = 0; i < result.threadCount; i++) {
           let thread = result.threads[i];
           if (thread.isPrimary) {
             this.primaryThread = i;
@@ -225,7 +225,7 @@ export class BrightscriptDebugger {
   }
 
   private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
-    this.totalRequests ++;
+    this.totalRequests++;
     let requestId = this.totalRequests;
     buffer.insertUInt32LE(command, 0); // command_code
     buffer.insertUInt32LE(requestId, 0); // request_id
@@ -258,9 +258,9 @@ export class BrightscriptDebugger {
         }
 
         if (debuggerRequestResponse.errorCode !== 'OK') {
-            console.error(debuggerRequestResponse.errorCode, debuggerRequestResponse)
-            this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
-            return true;
+          console.error(debuggerRequestResponse.errorCode, debuggerRequestResponse);
+          this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
+          return true;
         }
 
         let commandType = this.activeRequests[debuggerRequestResponse.requestId].commandType;
@@ -308,12 +308,12 @@ export class BrightscriptDebugger {
       }
 
       if (!this.connectedToIoPort) {
-          let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
-          if (debuggerUpdateConnectIoPort.success) {
-            this.connectToIoPort(debuggerUpdateConnectIoPort);
-            this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
-            return true;
-          }
+        let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
+        if (debuggerUpdateConnectIoPort.success) {
+          this.connectToIoPort(debuggerUpdateConnectIoPort);
+          this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
+          return true;
+        }
       }
 
     } else {
@@ -373,9 +373,9 @@ export class BrightscriptDebugger {
           lastPartialLine += responseText;
         } else {
           if (lastPartialLine) {
-              // there was leftover lines, join the partial lines back together
-              responseText = lastPartialLine + responseText;
-              lastPartialLine = '';
+            // there was leftover lines, join the partial lines back together
+            responseText = lastPartialLine + responseText;
+            lastPartialLine = '';
           }
           // Emit the completed io string.
           this.emit('io-output', responseText.trim());
