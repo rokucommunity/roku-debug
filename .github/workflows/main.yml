@@ -2,15 +2,16 @@ name: main
 on: [push, pull_request]
 
 jobs:
-  firebase-deploy:
+  build-and-test:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-16.04, ubuntu-18.04]
     steps:
-    - uses: actions/checkout@master
-    - uses: actions/setup-node@master
-      with:
-        node-version: '10.19.0'
-    - run: npm install
-    - run: npm run publish
+      - uses: actions/checkout@master
+      - uses: actions/setup-node@master
+        with:
+          node-version: "10.19.0"
+      - run: npm install
+      - run: npm run tslint
+      - run: npm run test
