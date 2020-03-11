@@ -24,7 +24,7 @@ export class BrightScriptDebugger {
   public stackFrameIndex: number;
 
   private emitter = new EventEmitter();
-  private CONTROLLER_CLIENT: Net.Socket;
+  private controllerClient: Net.Socket;
   private unhandledData: Buffer;
   private firstRunContinueFired = false;
   private stopped = false;
@@ -102,10 +102,10 @@ export class BrightScriptDebugger {
     console.time(debugSetupEnd);
 
     // Create a new TCP client.`
-    this.CONTROLLER_CLIENT = new Net.Socket();
+    this.controllerClient = new Net.Socket();
     // Send a connection request to the server.
     console.log('port', this.options.controllerPort, 'host', this.options.host);
-    this.CONTROLLER_CLIENT.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
+    this.controllerClient.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
       // If there is no error, the server has accepted the request and created a new
       // socket dedicated to us.
       console.log('TCP connection established with the server.');
@@ -114,10 +114,10 @@ export class BrightScriptDebugger {
       // The client can now send data to the server by writing to its socket.
       let buffer = new SmartBuffer({ size: Buffer.byteLength(BrightScriptDebugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(BrightScriptDebugger.DEBUGGER_MAGIC).toBuffer();
       console.log('Sending magic to server');
-      this.CONTROLLER_CLIENT.write(buffer);
+      this.controllerClient.write(buffer);
     });
 
-    this.CONTROLLER_CLIENT.on('data', (buffer) => {
+    this.controllerClient.on('data', (buffer) => {
       if (this.unhandledData) {
         this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
       } else {
@@ -127,12 +127,12 @@ export class BrightScriptDebugger {
       this.parseUnhandledData(this.unhandledData);
     });
 
-    this.CONTROLLER_CLIENT.on('end', () => {
+    this.controllerClient.on('end', () => {
       console.log('Requested an end to the TCP connection');
     });
 
     // Don't forget to catch error, for your own sake.
-    this.CONTROLLER_CLIENT.on('error', function (err) {
+    this.controllerClient.on('error', function (err) {
       console.error(`Error: ${err}`);
     });
 
@@ -259,7 +259,7 @@ export class BrightScriptDebugger {
         }
       });
 
-      this.CONTROLLER_CLIENT.write(buffer.toBuffer());
+      this.controllerClient.write(buffer.toBuffer());
     });
   }
 
@@ -368,7 +368,7 @@ export class BrightScriptDebugger {
     } else {
       console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
       this.emit('handshake-verified', false);
-      this.CONTROLLER_CLIENT.end();
+      this.controllerClient.end();
       return false;
     }
   }
@@ -435,7 +435,7 @@ export class BrightScriptDebugger {
   }
 
   public destroy() {
-    this.CONTROLLER_CLIENT.end();
+    this.controllerClient.end();
   }
 }
 
