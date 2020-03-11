@@ -10,7 +10,7 @@
     "tslint": "tslint \"./src/**/*.ts\" --outputAbsolutePaths --project tsconfig.json",
     "test": "nyc mocha \"src/**/*spec.ts\" --full-trace",
     "test:nocover": "ts-mocha \"src/**/*.spec.ts\" --full-trace",
-    "publish-coverage-results": "nyc report --reporter=text-lcov | coveralls"
+    "publish-coverage": "nyc report --reporter=text-lcov | coveralls"
   },
   "typings": "dist/index.d.ts",
   "bin": {
