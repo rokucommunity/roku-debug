@@ -1,4 +1,4 @@
-import { BrightScriptDebugger } from './BrightscriptDebugger';
+import { BrightScriptDebugger } from './BrightScriptDebugger';
 
-//export everything from the BrightscriptDebugger file
-export * from './BrightscriptDebugger';
+//export everything from the BrightScriptDebugger file
+export * from './BrightScriptDebugger';
