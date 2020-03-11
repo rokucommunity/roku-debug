@@ -31,4 +31,4 @@ jobs:
       - uses: actions/setup-node@master
         with:
           node-version: "10.19.0"
-      -run: npm publish
+      - run: npm publish
