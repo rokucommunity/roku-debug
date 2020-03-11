@@ -12,12 +12,10 @@ import { DebuggerUpdateConnectIoPort } from './DebuggerUpdateConnectIoPort';
 import { DebuggerHandshake } from './DebuggerHandshake';
 import { COMMANDS, STEP_TYPE } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
-import { util } from './util';
-
-const CONTROLLER_PORT = 8081;
-const DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
 
 export class BrightScriptDebugger {
+  public static DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
+
   public scriptTitle: string;
   public handshakeComplete = false;
   public connectedToIoPort = false;
@@ -32,31 +30,46 @@ export class BrightScriptDebugger {
   private stopped = false;
   private totalRequests = 0;
   private activeRequests = {};
+  private options: ConstructorOptions;
 
   constructor(
-    private host: string,
-    private stopOnEntry: boolean = false
+    options: ConstructorOptions
   ) {
+    this.options = {
+      controllerPort: 8081,
+      host: undefined,
+      stopOnEntry: false,
+      //override the defaults with the options from parameters
+      ...options ?? {},
+    };
+  }
 
+  /**
+   * Get a promise that resolves after an event occurs exactly once
+   */
+  public once(eventName: string) {
+    return new Promise((resolve) => {
+      var disconnect = this.on(<any>eventName, (...args) => {
+        disconnect();
+        resolve(...args);
+      });
+    });
   }
 
   /**
    * Subscribe to various events
-   * @param eventName
-   * @param handler
    */
   public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
   public on(eventName: 'data' | 'suspend' | 'runtime-error', handler: (data: any) => void);
   public on(eventName: 'connected', handler: (connected: boolean) => void);
-  public on(eventname: 'io-output', handler: (output: string) => void);
+  public on(eventName: 'io-output', handler: (output: string) => void);
+  public on(eventName: 'handshake-verified', handler: (data: DebuggerHandshake) => void);
   // public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
   // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
   public on(eventName: string, handler: (payload: any) => void) {
     this.emitter.on(eventName, handler);
     return () => {
-      if (this.emitter !== undefined) {
-        this.emitter.removeListener(eventName, handler);
-      }
+      this.emitter?.removeListener(eventName, handler);
     };
   }
 
@@ -70,7 +83,8 @@ export class BrightScriptDebugger {
       'io-output' |
       'runtime-error' |
       'start' |
-      'suspend',
+      'suspend' |
+      'handshake-verified',
     data?
   ) {
     //emit these events on next tick, otherwise they will be processed immediately which could cause issues
@@ -90,15 +104,16 @@ export class BrightScriptDebugger {
     // Create a new TCP client.`
     this.CONTROLLER_CLIENT = new Net.Socket();
     // Send a connection request to the server.
-    console.log('port', CONTROLLER_PORT, 'host', this.host);
-    this.CONTROLLER_CLIENT.connect({ port: CONTROLLER_PORT, host: this.host }, () => {
+    console.log('port', this.options.controllerPort, 'host', this.options.host);
+    this.CONTROLLER_CLIENT.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
       // If there is no error, the server has accepted the request and created a new
       // socket dedicated to us.
       console.log('TCP connection established with the server.');
 
       // The client can also receive data from the server by reading from its socket.
       // The client can now send data to the server by writing to its socket.
-      let buffer = new SmartBuffer({ size: Buffer.byteLength(DEBUGGER_MAGIC) + 1 }).writeStringNT(DEBUGGER_MAGIC).toBuffer();
+      let buffer = new SmartBuffer({ size: Buffer.byteLength(BrightScriptDebugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(BrightScriptDebugger.DEBUGGER_MAGIC).toBuffer();
+      console.log('Sending magic to server');
       this.CONTROLLER_CLIENT.write(buffer);
     });
 
@@ -340,7 +355,7 @@ export class BrightScriptDebugger {
   }
 
   private verifyHandshake(debuggerHandshake: DebuggerHandshake, unhandledData: Buffer): boolean {
-    const magicIsValid = (DEBUGGER_MAGIC === debuggerHandshake.magic);
+    const magicIsValid = (BrightScriptDebugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
     if (magicIsValid) {
       console.log('Magic is valid.');
       this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion, ''];
@@ -348,9 +363,11 @@ export class BrightScriptDebugger {
 
       this.handshakeComplete = true;
       this.removedProcessedBytes(debuggerHandshake, unhandledData);
+      this.emit('handshake-verified', true);
       return true;
     } else {
       console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
+      this.emit('handshake-verified', false);
       this.CONTROLLER_CLIENT.end();
       return false;
     }
@@ -360,8 +377,8 @@ export class BrightScriptDebugger {
     // Create a new TCP client.
     const IO_CLIENT = new Net.Socket();
     // Send a connection request to the server.
-    console.log('Connect to IO Port: port', connectIoPortResponse.data, 'host', this.host);
-    IO_CLIENT.connect({ port: connectIoPortResponse.data, host: this.host }, () => {
+    console.log('Connect to IO Port: port', connectIoPortResponse.data, 'host', this.options.host);
+    IO_CLIENT.connect({ port: connectIoPortResponse.data, host: this.options.host }, () => {
       // If there is no error, the server has accepted the request
       console.log('TCP connection established with the IO Port.');
       this.connectedToIoPort = true;
@@ -402,7 +419,7 @@ export class BrightScriptDebugger {
     let eventName: 'runtime-error' | 'suspend' = stopReason === 'RUNTIME_ERROR' ? 'runtime-error' : 'suspend';
 
     if (update.updateType === 'ALL_THREADS_STOPPED') {
-      if (!this.firstRunContinueFired && !this.stopOnEntry) {
+      if (!this.firstRunContinueFired && !this.options.stopOnEntry) {
         console.log('Sending first run continue command');
         await this.continue();
         this.firstRunContinueFired = true;
@@ -416,4 +433,24 @@ export class BrightScriptDebugger {
       this.emit(eventName, update);
     }
   }
+
+  public destroy() {
+    this.CONTROLLER_CLIENT.end();
+  }
+}
+
+export interface ConstructorOptions {
+  /**
+   * The host/ip address of the Roku
+   */
+  host: string;
+  /**
+   * If true, the application being debugged will stop on the first line of the program.
+   */
+  stopOnEntry?: boolean;
+  /**
+   * The port number used to send all debugger commands. This is static/unchanging for Roku devices,
+   * but is configurable here to support unit testing or alternate runtimes (i.e. https://www.npmjs.com/package/brs)
+   */
+  controllerPort?: number;
 }

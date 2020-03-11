@@ -1,0 +1,179 @@
+import * as net from 'net';
+import { Subscription, ReplaySubject } from 'rxjs';
+import { SmartBuffer } from 'smart-buffer';
+import { util } from './util';
+import * as defer from 'p-defer';
+
+export class MockBrightScriptDebugServer {
+    constructor(
+    ) {
+    }
+
+    /**
+     * The net server that will be listening for incoming socket connections from clients
+     */
+    public server: net.Server;
+    /**
+     * The list of server sockets created in response to clients connecting. 
+     * There should be one for every client
+     */
+    public client: Client;
+
+    /**
+     * The port that the client should use to send commands
+     */
+    public controllerPort: number;
+
+    public actions = [] as Action<any>[];
+
+    private clientLoadedPromise: Promise<void>;
+
+    private processActionsSubscription: Subscription;
+
+    public async initialize() {
+        var clientDeferred = defer<void>();
+        this.clientLoadedPromise = clientDeferred.promise;
+        new Promise((resolve) => {
+            this.server = net.createServer((s) => {
+                this.client = new Client(s);
+                clientDeferred.resolve();
+            });
+        });
+        this.server.listen(0);
+        //wait for the server to start listening
+        await new Promise((resolve) => {
+            this.server.on('listening', () => {
+                this.controllerPort = (this.server.address() as net.AddressInfo).port;
+                resolve();
+            });
+        });
+    }
+
+    /**
+     * After queueing up actions, this method starts processing those actions.
+     * If an action cannot be processed yet, it will wait until the client sends the corresponding
+     * request. If that request never comes, this server will wait indefinitely
+     */
+    public async processActions() {
+        //wait for a client to connect
+        await this.clientLoadedPromise;
+
+        //listen to all events sent to the client
+        console.log('subscription being created');
+        this.processActionsSubscription = this.client.subject.subscribe(async () => {
+            console.log('subscription handler fired');
+            //process events until one of them returns false. 
+            //when an event returns false, we will wait for more data to come back and try again
+            while (await this.actions[0]?.process(this.client) === true) {
+                this.actions.splice(0, 1);
+            }
+        });
+    }
+
+    public waitForMagic() {
+        var action = new WaitForMagicAction();
+        this.actions.push(action);
+        return action;
+    }
+
+    public sendHandshakeResponse(magic: string | Promise<string>) {
+        var action = new SendHandshakeResponseAction(magic);
+        this.actions.push(action);
+        return action;
+    }
+
+    public reset() {
+        this.client?.destroy();
+        this.client = undefined;
+        this.processActionsSubscription.unsubscribe();
+        this.actions = [];
+    }
+
+    public destroy() {
+        this.server?.close();
+        this.server = undefined;
+    }
+}
+
+interface ConstructorOptions {
+    controllerPort?: number;
+}
+
+class Client {
+    constructor(
+        public socket: net.Socket
+    ) {
+        var handler = (data) => {
+            this.buffer = Buffer.concat([this.buffer, data]);
+            this.subject.next();
+        };
+        socket.on('data', handler);
+        this.disconnectSocket = () => {
+            this.socket.off('data', handler);
+        };
+    }
+    public subject = new ReplaySubject();
+    public buffer = Buffer.alloc(0);
+    public disconnectSocket: () => void;
+
+    public destroy() {
+        this.disconnectSocket();
+        this.subject.complete();
+        this.socket.destroy();
+    }
+}
+
+abstract class Action<T> {
+    constructor() {
+        this.deferred = defer<T>();
+    }
+    protected deferred: defer.DeferredPromise<T>;
+    public get promise() {
+        return this.deferred.promise;
+    }
+    /**
+     * 
+     * @param ref - an object that has a property named "buffer". This is so that, if new data comes in,
+     * the client can update the reference to the buffer, and the actions can alter that new buffer directly
+     */
+    public abstract process(client: Client): Promise<boolean>;
+}
+
+class WaitForMagicAction extends Action<string> {
+    public async process(client: Client) {
+        var b = SmartBuffer.fromBuffer(client.buffer);
+        try {
+            var str = util.readStringNT(b);
+            this.deferred.resolve(str);
+            client.buffer = client.buffer.slice(b.readOffset);
+            return true;
+        } catch (e) {
+            console.error('WaitForMagicAction failed', e);
+            return false;
+        }
+    }
+}
+
+class SendHandshakeResponseAction extends Action<string> {
+    constructor(
+        private magic: string | Promise<string>
+    ) {
+        super();
+    }
+
+    public async process(client: Client) {
+        console.log('processing handshake response');
+        var magic = await Promise.resolve(this.magic);
+        var b = new SmartBuffer();
+        b.writeStringNT(magic);
+        b.writeInt32LE(2);
+        b.writeInt32LE(0);
+        b.writeInt32LE(0);
+        var buffer = b.toBuffer();
+
+        client.socket.write(buffer);
+        this.deferred.resolve();
+        console.log('sent handshake response');
+        return true;
+    }
+}
