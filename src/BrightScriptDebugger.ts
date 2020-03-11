@@ -296,6 +296,7 @@ export class BrightScriptDebugger {
 
       let debuggerUpdateThreads = new DebuggerUpdateThreads(unhandledData);
       if (debuggerUpdateThreads.success) {
+        //tslint:disable-next-line
         this.handleThreadsUpdate(debuggerUpdateThreads);
         this.removedProcessedBytes(debuggerUpdateThreads, unhandledData);
         return true;
