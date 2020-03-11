@@ -6,6 +6,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     strategy:
       matrix:
         os: [ubuntu-18.04, macos-10.15, windows-2019]
