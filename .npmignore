@@ -11,3 +11,5 @@ rokudeploy.json
 *.pkg
 tsconfig.json
 tslint.json
+bsconfig.json
+.github/**/*
