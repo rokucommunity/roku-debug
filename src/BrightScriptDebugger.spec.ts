@@ -1,3 +1,4 @@
+// tslint:disable: no-floating-promises
 import { BrightScriptDebugger } from './BrightScriptDebugger';
 import * as net from 'net';
 import { expect } from 'chai';
