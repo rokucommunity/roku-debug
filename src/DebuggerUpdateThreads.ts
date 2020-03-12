@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES } from './Constants';
-import { util } from './utils';
+import { util } from './util';
 
 class DebuggerUpdateThreads {
   public success = false;

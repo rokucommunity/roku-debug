@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES } from './Constants';
-import { util } from './utils';
+import { util } from './util';
 
 class DebuggerStacktraceRequestResponse {
   public success = false;

@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import { util } from './utils';
+import { util } from './util';
 
 class DebuggerHandshake {
   public success = false;
