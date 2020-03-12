@@ -1,9 +1,9 @@
-import * as fsExtra from 'fs-extra';
 import { FilesType } from 'roku-deploy';
+import * as fsExtra from 'fs-extra';
 import * as rokuDeploy from 'roku-deploy';
 import { SourceMapConsumer } from 'source-map';
 
-import { util } from '../util';
+import { util } from './util';
 import { fileUtils } from './FileUtils';
 /**
  * Find original source locations based on debugger/staging locations.
