@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES, VARIABLE_FLAGS, VARIABLE_TYPES } from './Constants';
-import { util } from './util';
+import { util } from './utils';
 
 class DebuggerVariableRequestResponse {
   public success = false;

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
 import { ERROR_CODES, STOP_REASONS } from './Constants';
-import { util } from './util';
+import { util } from './utils';
 
 class DebuggerThreadsRequestResponse {
   public success = false;
