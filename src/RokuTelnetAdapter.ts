@@ -197,7 +197,7 @@ export class RokuTelnetAdapter {
             await rokuDeploy.pressHomeButton(this.host);
             let client: Socket = new net.Socket();
 
-            client.connect(8085, this.host, (err, data) => {
+            client.connect(8085, this.host, () => {
                 console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} +++++++++++`);
                 this.connected = true;
                 this.emit('connected', this.connected);

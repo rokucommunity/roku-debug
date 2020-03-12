@@ -1,4 +1,4 @@
-import { BrightScriptDebugger } from 'brightscript-debugger';
+import { BrightScriptDebugger } from './BrightscriptDebugger';
 import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
@@ -191,7 +191,10 @@ export class RokuSocketAdapter {
         let deferred = defer();
         this.isInMicroDebugger = false;
         this.isNextBreakpointSkipped = false;
-        this.socketDebugger = new BrightScriptDebugger(this.host, this.stopOnEntry);
+        this.socketDebugger = new BrightScriptDebugger({
+          host: this.host,
+          stopOnEntry: this.stopOnEntry
+        });
         try {
             // Emit IO output from the debugger.
             this.socketDebugger.on('io-output', async (responseText) => {

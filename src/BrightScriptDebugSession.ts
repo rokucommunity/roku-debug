@@ -847,7 +847,7 @@ export class BrightScriptDebugSession extends DebugSession {
         this.rokuAdapterDeferred.resolve(this.rokuAdapter);
     }
 
-    private log(...args) {
+    private log(...args: [any?, ...any[]]) {
         console.log.apply(console, args);
     }
 
