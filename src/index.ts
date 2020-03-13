@@ -1,4 +1,20 @@
-import { BrightScriptDebugger } from './BrightScriptDebugger';
 
-//export everything from the BrightScriptDebugger file
+//export everything we need
+export * from './BreakpointManager';
+export * from './BrightScriptDebugConfiguration';
 export * from './BrightScriptDebugger';
+export * from './BrightScriptDebugSession';
+export * from './ComponentLibraryServer';
+export * from './Constants';
+export * from './DebuggerHandshake';
+export * from './DebuggerRequestResponse';
+export * from './DebuggerStacktraceRequestResponse';
+export * from './DebuggerThreadsRequestResponse';
+export * from './DebuggerUpdateConnectIoPort';
+export * from './DebuggerUpdateThreads';
+export * from './DebuggerUpdateUndefined';
+export * from './DebuggerVariableRequestResponse';
+export * from './ProjectManager';
+export * from './RendezvousTracker';
+export * from './RokuTelnetAdapter';
+export * from './SourceLocator';
