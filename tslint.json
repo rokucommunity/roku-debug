@@ -14,6 +14,7 @@
       "array-type": false,
       "arrow-parens": false,
       "arrow-return-shorthand": false,
+      "space-before-function-paren": false,
       "class-name": true,
       "variable-name": false,
       "comment-format": false,

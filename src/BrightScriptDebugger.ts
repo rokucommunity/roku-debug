@@ -181,196 +181,196 @@ export class BrightScriptDebugger {
     }
 
     public async stepOut(threadId: number = this.primaryThread) {
-    return this.step(STEP_TYPE.STEP_TYPE_OUT, threadId);
-}
+        return this.step(STEP_TYPE.STEP_TYPE_OUT, threadId);
+    }
 
     private async step(stepType: STEP_TYPE, threadId: number) {
-    let buffer = new SmartBuffer({ size: 17 });
-    buffer.writeUInt32LE(threadId); // thread_index
-    buffer.writeUInt8(stepType); // step_type
-    if (this.stopped) {
-        this.stopped = false;
-        let stepResult: any = await this.makeRequest(buffer, COMMANDS.STEP);
-        if (stepResult.errorCode === 'OK') {
-            // this.stopped = true;
-            // this.emit('suspend');
-        } else {
-            this.emit('cannot-continue');
+        let buffer = new SmartBuffer({ size: 17 });
+        buffer.writeUInt32LE(threadId); // thread_index
+        buffer.writeUInt8(stepType); // step_type
+        if (this.stopped) {
+            this.stopped = false;
+            let stepResult: any = await this.makeRequest(buffer, COMMANDS.STEP);
+            if (stepResult.errorCode === 'OK') {
+                // this.stopped = true;
+                // this.emit('suspend');
+            } else {
+                this.emit('cannot-continue');
+            }
+            return stepResult;
         }
-        return stepResult;
     }
-}
 
     public async threads() {
-    let result;
-    if (this.stopped) {
-        result = this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
-        if (result.errorCode === 'OK') {
-            for (let i = 0; i < result.threadCount; i++) {
-                let thread = result.threads[i];
-                if (thread.isPrimary) {
-                    this.primaryThread = i;
-                    break;
+        let result;
+        if (this.stopped) {
+            result = this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
+            if (result.errorCode === 'OK') {
+                for (let i = 0; i < result.threadCount; i++) {
+                    let thread = result.threads[i];
+                    if (thread.isPrimary) {
+                        this.primaryThread = i;
+                        break;
+                    }
                 }
             }
+            return result;
         }
-        return result;
     }
-}
 
     public async stackTrace(threadIndex: number = this.primaryThread) {
-    let buffer = new SmartBuffer({ size: 16 });
-    buffer.writeUInt32LE(threadIndex); // thread_index
-    return this.stopped && threadIndex > -1 ? this.makeRequest(buffer, COMMANDS.STACKTRACE) : -1;
-}
-
-    public async getVariables(variablePathEntries: Array < string > =[], getChildKeys: boolean = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
-    if (this.stopped && threadIndex > -1) {
-        let buffer = new SmartBuffer({ size: 17 });
-        buffer.writeUInt8(getChildKeys ? 1 : 0); // variable_request_flags
+        let buffer = new SmartBuffer({ size: 16 });
         buffer.writeUInt32LE(threadIndex); // thread_index
-        buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
-        buffer.writeUInt32LE(variablePathEntries.length); // variable_path_len
-        variablePathEntries.forEach(variablePathEntry => {
-            buffer.writeStringNT(variablePathEntry); // variable_path_entries - optional
-        });
-        return this.makeRequest(buffer, COMMANDS.VARIABLES, variablePathEntries);
+        return this.stopped && threadIndex > -1 ? this.makeRequest(buffer, COMMANDS.STACKTRACE) : -1;
     }
-    return -1;
-}
 
-    private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData ?) {
-    this.totalRequests++;
-    let requestId = this.totalRequests;
-    buffer.insertUInt32LE(command, 0); // command_code
-    buffer.insertUInt32LE(requestId, 0); // request_id
-    buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length
+    public async getVariables(variablePathEntries: Array<string> = [], getChildKeys: boolean = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
+        if (this.stopped && threadIndex > -1) {
+            let buffer = new SmartBuffer({ size: 17 });
+            buffer.writeUInt8(getChildKeys ? 1 : 0); // variable_request_flags
+            buffer.writeUInt32LE(threadIndex); // thread_index
+            buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
+            buffer.writeUInt32LE(variablePathEntries.length); // variable_path_len
+            variablePathEntries.forEach(variablePathEntry => {
+                buffer.writeStringNT(variablePathEntry); // variable_path_entries - optional
+            });
+            return this.makeRequest(buffer, COMMANDS.VARIABLES, variablePathEntries);
+        }
+        return -1;
+    }
 
-    this.activeRequests[requestId] = {
-        commandType: command,
-        extraData: extraData
-    };
+    private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
+        this.totalRequests++;
+        let requestId = this.totalRequests;
+        buffer.insertUInt32LE(command, 0); // command_code
+        buffer.insertUInt32LE(requestId, 0); // request_id
+        buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length
 
-    return new Promise((resolve, reject) => {
-        let disconnect = this.on('data', (responseHandler) => {
-            if (responseHandler.requestId === requestId) {
-                disconnect();
-                resolve(responseHandler);
-            }
+        this.activeRequests[requestId] = {
+            commandType: command,
+            extraData: extraData
+        };
+
+        return new Promise((resolve, reject) => {
+            let disconnect = this.on('data', (responseHandler) => {
+                if (responseHandler.requestId === requestId) {
+                    disconnect();
+                    resolve(responseHandler);
+                }
+            });
+
+            this.controllerClient.write(buffer.toBuffer());
         });
-
-        this.controllerClient.write(buffer.toBuffer());
-    });
-}
+    }
 
     private parseUnhandledData(unhandledData: Buffer): boolean {
-    if (this.handshakeComplete) {
-        let debuggerRequestResponse = new DebuggerRequestResponse(unhandledData);
-        if (debuggerRequestResponse.success) {
+        if (this.handshakeComplete) {
+            let debuggerRequestResponse = new DebuggerRequestResponse(unhandledData);
+            if (debuggerRequestResponse.success) {
 
-            if (debuggerRequestResponse.requestId > this.totalRequests) {
-                return false;
+                if (debuggerRequestResponse.requestId > this.totalRequests) {
+                    return false;
+                }
+
+                if (debuggerRequestResponse.errorCode !== 'OK') {
+                    console.error(debuggerRequestResponse.errorCode, debuggerRequestResponse);
+                    this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
+                    return true;
+                }
+
+                let commandType = this.activeRequests[debuggerRequestResponse.requestId].commandType;
+                if (commandType === COMMANDS.STOP || commandType === COMMANDS.CONTINUE || commandType === COMMANDS.STEP || commandType === COMMANDS.EXIT_CHANNEL) {
+                    this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
+                    return true;
+                }
+
+                if (commandType === COMMANDS.VARIABLES) {
+                    let debuggerVariableRequestResponse = new DebuggerVariableRequestResponse(unhandledData);
+                    if (debuggerVariableRequestResponse.success) {
+                        this.removedProcessedBytes(debuggerVariableRequestResponse, unhandledData);
+                        return true;
+                    }
+                }
+
+                if (commandType === COMMANDS.STACKTRACE) {
+                    let debuggerStacktraceRequestResponse = new DebuggerStacktraceRequestResponse(unhandledData);
+                    if (debuggerStacktraceRequestResponse.success) {
+                        this.removedProcessedBytes(debuggerStacktraceRequestResponse, unhandledData);
+                        return true;
+                    }
+                }
+
+                if (commandType === COMMANDS.THREADS) {
+                    let debuggerThreadsRequestResponse = new DebuggerThreadsRequestResponse(unhandledData);
+                    if (debuggerThreadsRequestResponse.success) {
+                        this.removedProcessedBytes(debuggerThreadsRequestResponse, unhandledData);
+                        return true;
+                    }
+                }
             }
 
-            if (debuggerRequestResponse.errorCode !== 'OK') {
-                console.error(debuggerRequestResponse.errorCode, debuggerRequestResponse);
-                this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
+            let debuggerUpdateThreads = new DebuggerUpdateThreads(unhandledData);
+            if (debuggerUpdateThreads.success) {
+                this.handleThreadsUpdate(debuggerUpdateThreads);
+                this.removedProcessedBytes(debuggerUpdateThreads, unhandledData);
                 return true;
             }
 
-            let commandType = this.activeRequests[debuggerRequestResponse.requestId].commandType;
-            if (commandType === COMMANDS.STOP || commandType === COMMANDS.CONTINUE || commandType === COMMANDS.STEP || commandType === COMMANDS.EXIT_CHANNEL) {
-                this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
+            let debuggerUpdateUndefined = new DebuggerUpdateUndefined(unhandledData);
+            if (debuggerUpdateUndefined.success) {
+                this.removedProcessedBytes(debuggerUpdateUndefined, unhandledData);
                 return true;
             }
 
-            if (commandType === COMMANDS.VARIABLES) {
-                let debuggerVariableRequestResponse = new DebuggerVariableRequestResponse(unhandledData);
-                if (debuggerVariableRequestResponse.success) {
-                    this.removedProcessedBytes(debuggerVariableRequestResponse, unhandledData);
+            if (!this.connectedToIoPort) {
+                let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
+                if (debuggerUpdateConnectIoPort.success) {
+                    this.connectToIoPort(debuggerUpdateConnectIoPort);
+                    this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
                     return true;
                 }
             }
 
-            if (commandType === COMMANDS.STACKTRACE) {
-                let debuggerStacktraceRequestResponse = new DebuggerStacktraceRequestResponse(unhandledData);
-                if (debuggerStacktraceRequestResponse.success) {
-                    this.removedProcessedBytes(debuggerStacktraceRequestResponse, unhandledData);
-                    return true;
-                }
-            }
-
-            if (commandType === COMMANDS.THREADS) {
-                let debuggerThreadsRequestResponse = new DebuggerThreadsRequestResponse(unhandledData);
-                if (debuggerThreadsRequestResponse.success) {
-                    this.removedProcessedBytes(debuggerThreadsRequestResponse, unhandledData);
-                    return true;
-                }
+        } else {
+            let debuggerHandshake = new DebuggerHandshake(unhandledData);
+            if (debuggerHandshake.success) {
+                return this.verifyHandshake(debuggerHandshake, unhandledData);
             }
         }
 
-        let debuggerUpdateThreads = new DebuggerUpdateThreads(unhandledData);
-        if (debuggerUpdateThreads.success) {
-            this.handleThreadsUpdate(debuggerUpdateThreads);
-            this.removedProcessedBytes(debuggerUpdateThreads, unhandledData);
-            return true;
-        }
-
-        let debuggerUpdateUndefined = new DebuggerUpdateUndefined(unhandledData);
-        if (debuggerUpdateUndefined.success) {
-            this.removedProcessedBytes(debuggerUpdateUndefined, unhandledData);
-            return true;
-        }
-
-        if (!this.connectedToIoPort) {
-            let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
-            if (debuggerUpdateConnectIoPort.success) {
-                this.connectToIoPort(debuggerUpdateConnectIoPort);
-                this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
-                return true;
-            }
-        }
-
-    } else {
-        let debuggerHandshake = new DebuggerHandshake(unhandledData);
-        if (debuggerHandshake.success) {
-            return this.verifyHandshake(debuggerHandshake, unhandledData);
-        }
-    }
-
-    return false;
-}
-
-    private removedProcessedBytes(responseHandler, unhandledData: Buffer) {
-    console.log(responseHandler);
-    if (this.activeRequests[responseHandler.requestId]) {
-        delete this.activeRequests[responseHandler.requestId];
-    }
-
-    this.emit('data', responseHandler);
-
-    this.unhandledData = unhandledData.slice(responseHandler.readOffset);
-    this.parseUnhandledData(this.unhandledData);
-}
-
-    private verifyHandshake(debuggerHandshake: DebuggerHandshake, unhandledData: Buffer): boolean {
-    const magicIsValid = (BrightScriptDebugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
-    if (magicIsValid) {
-        console.log('Magic is valid.');
-        this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion, ''];
-        console.log('Protocol Version:', this.protocolVersion.join('.'));
-
-        this.handshakeComplete = true;
-        this.removedProcessedBytes(debuggerHandshake, unhandledData);
-        this.emit('handshake-verified', true);
-        return true;
-    } else {
-        console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
-        this.emit('handshake-verified', false);
-        this.controllerClient.end();
         return false;
     }
-}
+
+    private removedProcessedBytes(responseHandler, unhandledData: Buffer) {
+        console.log(responseHandler);
+        if (this.activeRequests[responseHandler.requestId]) {
+            delete this.activeRequests[responseHandler.requestId];
+        }
+
+        this.emit('data', responseHandler);
+
+        this.unhandledData = unhandledData.slice(responseHandler.readOffset);
+        this.parseUnhandledData(this.unhandledData);
+    }
+
+    private verifyHandshake(debuggerHandshake: DebuggerHandshake, unhandledData: Buffer): boolean {
+        const magicIsValid = (BrightScriptDebugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
+        if (magicIsValid) {
+            console.log('Magic is valid.');
+            this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion, ''];
+            console.log('Protocol Version:', this.protocolVersion.join('.'));
+
+            this.handshakeComplete = true;
+            this.removedProcessedBytes(debuggerHandshake, unhandledData);
+            this.emit('handshake-verified', true);
+            return true;
+        } else {
+            console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
+            this.emit('handshake-verified', false);
+            this.controllerClient.end();
+            return false;
+        }
+    }
 
     private connectToIoPort(connectIoPortResponse: DebuggerUpdateConnectIoPort) {
         // Create a new TCP client.
@@ -433,7 +433,7 @@ export class BrightScriptDebugger {
         }
     }
 
-  public destroy() {
+    public destroy() {
         this.controllerClient.end();
     }
 }
