@@ -32,5 +32,6 @@ jobs:
         with:
           node-version: "10.19.0"
       - run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ./.npmrc
+      - run: npm install
       - run: npm run build
       - run: npm publish
