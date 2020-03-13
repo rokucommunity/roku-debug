@@ -23,9 +23,9 @@ jobs:
       - run: npm run publish-coverage
 
       - name: Write npm token to .npmrc
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && matrix.os == 'ubuntu-18.04'
         run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ./.npmrc
 
-      - name: Publish to npm
+      - name: Publish to npm && matrix.os == 'ubuntu-18.04'
         if: startsWith(github.ref, 'refs/tags/v')
         run: npm publish
