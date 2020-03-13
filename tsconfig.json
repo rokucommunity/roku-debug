@@ -7,11 +7,18 @@
     "noUnusedLocals": false,
     "noImplicitThis": true,
     "inlineSourceMap": false,
+    "declaration": true,
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "src",
     "preserveConstEnums": true,
     "strictNullChecks": false,
     "noUnusedParameters": false
-  }
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
 }
