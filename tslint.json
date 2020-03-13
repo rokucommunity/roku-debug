@@ -1,52 +1,109 @@
 {
-    "defaultSeverity": "error",
-    "extends": [
-        "tslint:recommended"
-    ],
-    "jsRules": {},
-    "rules": {
-        "array-type": false,
-        "quotemark": {
-            "options": "single"
-        },
-        "no-bitwise": false,
-        "no-var-keyword": false,
-        "no-var-requires": false,
-        "no-floating-promises": true,
-        "max-classes-per-file": false,
-        "max-line-length": false,
-        "no-trailing-whitespace": false,
-        "comment-format": false,
-        "prefer-const": false,
-        "no-console": false,
-        "object-literal-sort-keys": false,
-        "trailing-comma": false,
-        "forin": false,
-        "no-empty": false,
-        "no-angle-bracket-type-assertion": false,
-        "radix": false,
-        "eofline": false,
-        "interface-name": false,
-        "ordered-imports": false,
-        "member-ordering": false,
-        "whitespace": {
-            "options": [
-                "check-branch",
-                "check-decl",
-                "check-operator",
-                "check-module",
-                "check-separator",
-                "check-rest-spread",
-                "check-type",
-                "check-type-operator",
-                "check-preblock"
-            ]
-        },
-        "object-literal-shorthand": false,
-        "only-arrow-functions": false,
-        "space-before-function-paren": false,
-        "no-unused-expression": false,
-        "arrow-parens": false
-    },
-    "rulesDirectory": []
+  "rulesDirectory": [
+      "./node_modules/tslint-eslint-rules/dist/rules"
+  ],
+  "extends": [
+      "tslint:recommended"
+  ],
+  "rules": {
+      "array-bracket-spacing": [
+          true,
+          "never"
+      ],
+      "ordered-imports": false,
+      "array-type": false,
+      "arrow-parens": false,
+      "arrow-return-shorthand": false,
+      "class-name": true,
+      "variable-name": false,
+      "comment-format": false,
+      "curly": true,
+      "forin": false,
+      "no-console": false,
+      "interface-name": false,
+      "max-classes-per-file": false,
+      "max-line-length": [
+          true,
+          500
+      ],
+      "member-ordering": [
+          true,
+          {
+              "order": [
+                  "constructor",
+                  {
+                      "name": "static non-private",
+                      "kinds": [
+                          "public-static-field",
+                          "public-static-method",
+                          "protected-static-field",
+                          "protected-static-method",
+                          "private-static-field",
+                          "private-static-method",
+                          "public-instance-field",
+                          "protected-instance-field",
+                          "private-instance-field",
+                          "public-instance-method",
+                          "protected-instance-method",
+                          "private-instance-method"
+                      ]
+                  }
+              ]
+          }
+      ],
+      "no-angle-bracket-type-assertion": false,
+      "no-bitwise": true,
+      "no-conditional-assignment": false,
+      "no-duplicate-variable": true,
+      "no-empty": false,
+      "no-shadowed-variable": false,
+      "no-trailing-whitespace": true,
+      "no-unused-expression": false,
+      "no-var-keyword": false,
+      "object-curly-spacing": true,
+      "object-literal-shorthand": [
+          true,
+          "never"
+      ],
+      "object-literal-sort-keys": false,
+      "only-arrow-functions": false,
+      "prefer-const": false,
+      "quotemark": [
+          true,
+          "single"
+      ],
+      "radix": false,
+      "semicolon": [
+          true,
+          "always"
+      ],
+      "ter-arrow-spacing": true,
+      "ter-indent": [
+          true,
+          4,
+          {
+              "SwitchCase": 1
+          }
+      ],
+      "ter-no-irregular-whitespace": true,
+      "ter-no-mixed-spaces-and-tabs": true,
+      "trailing-comma": [
+          true,
+          "never"
+      ],
+      "triple-equals": true,
+      "unified-signatures": false,
+      "whitespace": [
+          true,
+          "check-branch",
+          "check-decl",
+          "check-operator",
+          "check-module",
+          "check-separator",
+          "check-rest-spread",
+          "check-type",
+          "check-type-operator",
+          "check-preblock"
+      ]
+  }
 }

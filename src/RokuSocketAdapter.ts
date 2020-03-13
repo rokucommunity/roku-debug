@@ -192,8 +192,8 @@ export class RokuSocketAdapter {
         this.isInMicroDebugger = false;
         this.isNextBreakpointSkipped = false;
         this.socketDebugger = new BrightScriptDebugger({
-          host: this.host,
-          stopOnEntry: this.stopOnEntry
+            host: this.host,
+            stopOnEntry: this.stopOnEntry
         });
         try {
             // Emit IO output from the debugger.

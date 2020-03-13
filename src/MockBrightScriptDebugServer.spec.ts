@@ -14,7 +14,7 @@ export class MockBrightScriptDebugServer {
      */
     public server: net.Server;
     /**
-     * The list of server sockets created in response to clients connecting. 
+     * The list of server sockets created in response to clients connecting.
      * There should be one for every client
      */
     public client: Client;
@@ -62,7 +62,7 @@ export class MockBrightScriptDebugServer {
         console.log('subscription being created');
         this.processActionsSubscription = this.client.subject.subscribe(async () => {
             console.log('subscription handler fired');
-            //process events until one of them returns false. 
+            //process events until one of them returns false.
             //when an event returns false, we will wait for more data to come back and try again
             while (await this.actions[0]?.process(this.client) === true) {
                 this.actions.splice(0, 1);
@@ -132,7 +132,7 @@ abstract class Action<T> {
         return this.deferred.promise;
     }
     /**
-     * 
+     *
      * @param ref - an object that has a property named "buffer". This is so that, if new data comes in,
      * the client can update the reference to the buffer, and the actions can alter that new buffer directly
      */

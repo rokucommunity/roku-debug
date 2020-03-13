@@ -160,20 +160,20 @@ class Util {
      * @param {SmartBuffer} bufferReader
      */
     public readStringNT(bufferReader: SmartBuffer): string {
-      // Find next null character (if one is not found, throw)
-      let buffer = bufferReader.toBuffer();
-      let foundNullTerminator = false;
-      for (let i = bufferReader.readOffset; i < buffer.length; i++) {
-        if (buffer[i] === 0x00) {
-          foundNullTerminator = true;
-          break;
+        // Find next null character (if one is not found, throw)
+        let buffer = bufferReader.toBuffer();
+        let foundNullTerminator = false;
+        for (let i = bufferReader.readOffset; i < buffer.length; i++) {
+            if (buffer[i] === 0x00) {
+                foundNullTerminator = true;
+                break;
+            }
         }
-      }
 
-      if (!foundNullTerminator) {
-        throw new Error('Could not read buffer string as there is no null terminator.');
-      }
-      return bufferReader.readStringNT();
+        if (!foundNullTerminator) {
+            throw new Error('Could not read buffer string as there is no null terminator.');
+        }
+        return bufferReader.readStringNT();
     }
 
 }
