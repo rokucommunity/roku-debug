@@ -21,11 +21,10 @@ describe('FileUtils', () => {
     describe('getAllRelativePaths', () => {
         //basic test to get code coverage...we don't need to test the glob code too much here...
         it('works', async () => {
+            let paths = await fileUtils.getAllRelativePaths(s`${__dirname}/../src/`);
             expect(
-                await fileUtils.getAllRelativePaths(s`${__dirname}/../images`)
-            ).to.contain(
-                path.join('icon.png')
-            );
+                paths
+            ).to.contain(`index.ts`);
         });
     });
 
@@ -244,6 +243,21 @@ describe('FileUtils', () => {
 
         it('returns the original text when no leading slash is found', () => {
             expect(fileUtils.removeLeadingSlash('a')).to.equal('a');
+        });
+    });
+
+    describe('removeTrailingSlash', () => {
+        it('removes the leading slash', () => {
+            expect(fileUtils.removeTrailingSlash('a/')).to.equal('a');
+        });
+
+        it('removes more than one leading slash', () => {
+            expect(fileUtils.removeTrailingSlash('a//')).to.equal('a');
+            expect(fileUtils.removeTrailingSlash('a///')).to.equal('a');
+        });
+
+        it('returns the original text when no leading slash is found', () => {
+            expect(fileUtils.removeTrailingSlash('a')).to.equal('a');
         });
     });
 });

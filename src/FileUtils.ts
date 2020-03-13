@@ -7,6 +7,7 @@ import { RawSourceMap, SourceMapConsumer, SourceNode } from 'source-map';
 import { promisify } from 'util';
 
 import { SourceLocation } from './SourceLocator';
+import { util } from './util';
 const globp = promisify(glob);
 
 export class FileUtils {
@@ -54,7 +55,10 @@ export class FileUtils {
      */
     public async getAllRelativePaths(directoryPath: string) {
         //normalize the path
-        directoryPath = path.normalize(directoryPath);
+        directoryPath = this.removeTrailingSlash(
+            path.normalize(directoryPath)
+        );
+
         let paths = await globp(path.join(directoryPath, '**/*'));
         for (let i = 0; i < paths.length; i++) {
             //make the path relative (+1 for removing the slash)
@@ -404,6 +408,18 @@ export class FileUtils {
         if (typeof thePath === 'string') {
             while (thePath.startsWith('/') || thePath.startsWith('\\')) {
                 thePath = thePath.substring(1);
+            }
+        }
+        return thePath;
+    }
+
+    /**
+     * If a string has a trailing slash, remove it
+     */
+    public removeTrailingSlash(thePath: string) {
+        if (typeof thePath === 'string') {
+            while (thePath.endsWith('/') || thePath.endsWith('\\')) {
+                thePath = thePath.slice(0, -1);
             }
         }
         return thePath;
