@@ -52,7 +52,8 @@ class StackEntry {
         this.functionName = util.readStringNT(bufferReader);
 
         let fileExtension = path.extname(this.fileName).toLowerCase();
-        this.success = fileExtension === '.brs' || fileExtension === '.xml';
+        // NOTE:Make sure we have a full valid path (?? can be valid because the device might not know the file).
+        this.success = (fileExtension === '.brs' || fileExtension === '.xml' || this.fileName === '??');
     }
     public success = false;
 

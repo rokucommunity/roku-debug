@@ -57,7 +57,8 @@ class ThreadInfo {
         this.codeSnippet = util.readStringNT(bufferReader);
 
         let fileExtension = path.extname(this.fileName).toLowerCase();
-        this.success = (fileExtension === '.brs' || fileExtension === '.xml') && this.codeSnippet.length > 1 ;
+        // NOTE: Make sure we have a full valid path (?? can be valid because the device might not know the file) and that we have a codeSnippet.
+        this.success = (fileExtension === '.brs' || fileExtension === '.xml' || this.fileName === '??' ) && this.codeSnippet.length > 1 ;
     }
     public success = false;
 
