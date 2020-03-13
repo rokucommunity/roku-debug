@@ -79,6 +79,7 @@
     "get-port": "^5.1.1",
     "natural-orderby": "^2.0.3",
     "p-defer": "^3.0.0",
+    "replace-in-file": "^5.0.2",
     "replace-last": "^1.2.6",
     "rmfr": "^2.0.0",
     "roku-deploy": "^2.7.0",

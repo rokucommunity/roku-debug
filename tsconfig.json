@@ -1,19 +1,17 @@
 {
   "compilerOptions": {
-    "noImplicitAny": false,
-    "target": "es5",
     "module": "commonjs",
+    "target": "es2018",
+    "noImplicitAny": false,
+    "removeComments": false,
+    "noUnusedLocals": false,
+    "noImplicitThis": true,
+    "inlineSourceMap": false,
     "sourceMap": true,
-    "rootDir": "src",
     "outDir": "dist",
-    "declaration": true,
-    "strict": true,
+    "rootDir": "src",
+    "preserveConstEnums": true,
     "strictNullChecks": false,
-    "lib": [
-      "es2015"
-    ]
-  },
-  "include": [
-    "src/**/*.ts"
-  ]
+    "noUnusedParameters": false
+  }
 }
