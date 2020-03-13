@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@master
         with:
           node-version: "10.19.0"
-      - run: npm install
+      - run: npm ci
       - run: npm run build
       - run: npm run tslint
       - run: npm run test
@@ -32,5 +32,6 @@ jobs:
         with:
           node-version: "10.19.0"
       - run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ./.npmrc
+      - run: npm ci
       - run: npm run build
       - run: npm publish
