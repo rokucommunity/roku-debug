@@ -22,7 +22,7 @@ describe('FileUtils', () => {
         //basic test to get code coverage...we don't need to test the glob code too much here...
         it('works', async () => {
             expect(
-                await fileUtils.getAllRelativePaths(s`${__dirname}/../../images`)
+                await fileUtils.getAllRelativePaths(s`${__dirname}/../images`)
             ).to.contain(
                 path.join('icon.png')
             );
