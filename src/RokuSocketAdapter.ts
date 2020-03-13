@@ -1,4 +1,4 @@
-import { BrightScriptDebugger } from './BrightscriptDebugger';
+import { BrightScriptDebugger } from './BrightScriptDebugger';
 import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
