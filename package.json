@@ -84,7 +84,7 @@
     "natural-orderby": "^2.0.3",
     "replace-in-file": "^5.0.2",
     "replace-last": "^1.2.6",
-    "roku-deploy": "^2.7.0",
+    "roku-deploy": "^3.0.0-beta.7",
     "serialize-error": "^6.0.0",
     "smart-buffer": "^4.1.0",
     "source-map": "^0.7.3",

@@ -1,4 +1,4 @@
-import { FilesType } from 'roku-deploy';
+import { FileEntry } from 'roku-deploy';
 
 export interface BrightScriptDebugConfiguration {
     // The type of the debug session.
@@ -20,7 +20,7 @@ export interface BrightScriptDebugConfiguration {
     componentLibraries: ComponentLibraryConfig[];
     outDir: string;
     stopOnEntry: boolean;
-    files?: FilesType[];
+    files?: FileEntry[];
     consoleOutput: 'full' | 'normal';
     retainDeploymentArchive: boolean;
     injectRaleTrackerTask: boolean;
@@ -45,7 +45,7 @@ export interface ComponentLibraryConfig {
      * The filename for the package.
      */
     outFile: string;
-    files: FilesType[];
+    files: FileEntry[];
     sourceDirs: string[];
     bsConst?: { [key: string]: boolean };
     injectRaleTrackerTask: boolean;

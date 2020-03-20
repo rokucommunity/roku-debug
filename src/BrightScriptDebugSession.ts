@@ -3,7 +3,7 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as request from 'request';
-import { FilesType, RokuDeploy } from 'roku-deploy';
+import { FileEntry, RokuDeploy } from 'roku-deploy';
 import { serializeError } from 'serialize-error';
 import {
     DebugSession,
@@ -1064,7 +1064,7 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
     /**
      * The list of files that should be bundled during a debug session
      */
-    files?: FilesType[];
+    files?: FileEntry[];
 
     /**
      * If true, then the staging folder is NOT deleted after a debug session has been closed
