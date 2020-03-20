@@ -14,6 +14,7 @@ export * from './DebuggerUpdateConnectIoPort';
 export * from './DebuggerUpdateThreads';
 export * from './DebuggerUpdateUndefined';
 export * from './DebuggerVariableRequestResponse';
+export * from './FileUtils';
 export * from './ProjectManager';
 export * from './RendezvousTracker';
 export * from './RokuTelnetAdapter';

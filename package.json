@@ -77,6 +77,7 @@
     "vscode-debugadapter-testsupport": "1.33.0"
   },
   "dependencies": {
+    "dateformat": "^3.0.3",
     "eol": "^0.9.1",
     "find-in-files": "^0.5.0",
     "fs-extra": "^8.1.0",

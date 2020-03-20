@@ -36,6 +36,7 @@ export interface BrightScriptDebugConfiguration {
     remotePort: number;
     envFile?: string;
     enableSourceMaps?: boolean;
+    logfilePath?: string;
 }
 
 export interface ComponentLibraryConfig {
