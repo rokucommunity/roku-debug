@@ -1,4 +1,5 @@
 {
+  "files.trimTrailingWhitespace": false,
   "files.exclude": {
     "**/.git": true,
     "**/.svn": true,
@@ -15,9 +16,9 @@
     "**/*.code-search": true,
     "**/dist": true
   },
-  "workbench.colorCustomizations": {
-    "activityBar.background": "#531C05",
-    "titleBar.activeBackground": "#742707",
-    "titleBar.activeForeground": "#FFFAF7"
-  }
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.tabSize": 4,
+  "typescript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": false,
+  "tslint.autoFixOnSave": true
 }
