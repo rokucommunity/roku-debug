@@ -179,7 +179,7 @@ export class BrightScriptDebugSession extends DebugSession {
                 this.prepareAndHostComponentLibraries(this.launchArgs.componentLibraries, this.launchArgs.componentLibrariesPort)
             ]);
 
-            this.log(`Connecting to Roku via telnet at ${args.host}`);
+            this.log(`Connecting to Roku via ${this.enableSocketDebugger ? 'the BrightScript debug protocol' : 'telnet'} at ${args.host}`);
 
             this.createRokuAdapter(args.host);
             if (!this.enableSocketDebugger) {
