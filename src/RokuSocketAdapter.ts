@@ -14,7 +14,6 @@ import { SourceLocation } from './SourceLocator';
 export class RokuSocketAdapter {
     constructor(
         private host: string,
-        private enableDebuggerAutoRecovery: boolean = false,
         private stopOnEntry: boolean = false
     ) {
         this.emitter = new EventEmitter();

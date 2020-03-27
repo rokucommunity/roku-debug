@@ -812,16 +812,9 @@ export class BrightScriptDebugSession extends DebugSession {
 
     private createRokuAdapter(host: string) {
         if (this.enableSocketDebugger) {
-            this.rokuAdapter = new RokuSocketAdapter(
-              host,
-              this.launchArgs.enableDebuggerAutoRecovery,
-              this.launchArgs.stopOnEntry
-            );
+            this.rokuAdapter = new RokuSocketAdapter(host, this.launchArgs.stopOnEntry);
         } else {
-            this.rokuAdapter = new RokuTelnetAdapter(
-                host,
-                this.launchArgs.enableDebuggerAutoRecovery
-            );
+            this.rokuAdapter = new RokuTelnetAdapter(host, this.launchArgs.enableDebuggerAutoRecovery);
         }
     }
 
