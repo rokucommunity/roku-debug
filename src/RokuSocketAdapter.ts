@@ -17,8 +17,6 @@ export class RokuSocketAdapter {
         private stopOnEntry: boolean = false
     ) {
         this.emitter = new EventEmitter();
-        this.debugStartRegex = new RegExp('BrightScript Micro Debugger\.', 'ig');
-        this.debugEndRegex = new RegExp('Brightscript Debugger>', 'ig');
         this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
 
@@ -33,16 +31,16 @@ export class RokuSocketAdapter {
     private compileClient: Socket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
-    private isNextBreakpointSkipped: boolean = false;
-    private isInMicroDebugger: boolean;
-    private debugStartRegex: RegExp;
-    private debugEndRegex: RegExp;
     private rendezvousTracker: RendezvousTracker;
     private socketDebugger: BrightScriptDebugger;
     private nextFrameId: number = 1;
 
     private stackFramesCache: { [keys: number]: StackFrame } = {};
     private cache = {};
+
+    public get supportsMultipleRuns() {
+        return false;
+    }
 
     /**
      * Subscribe to various events
@@ -54,7 +52,7 @@ export class RokuSocketAdapter {
     public on(eventName: 'app-exit', handler: () => void);
     public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number; }[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
-    public on(eventname: 'console-output', handler: (output: string) => void);
+    public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
     public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
@@ -151,28 +149,6 @@ export class RokuSocketAdapter {
         });
     }
 
-    public processBreakpoints(text): string | null {
-        // console.log(lines);
-        let newLines = eol.split(text);
-        newLines.forEach((line) => {
-            console.log('Running processing line; ', line);
-            if (line.match(this.debugStartRegex)) {
-                console.log('start MicroDebugger block');
-                this.isInMicroDebugger = true;
-                this.isNextBreakpointSkipped = false;
-            } else if (this.isInMicroDebugger && line.match(this.debugEndRegex)) {
-                console.log('ended MicroDebugger block');
-                this.isInMicroDebugger = false;
-            } else if (this.isInMicroDebugger) {
-                if (this.enableDebuggerAutoRecovery && line.startsWith('Break in ')) {
-                    console.log('this block is a break: skipping it');
-                    this.isNextBreakpointSkipped = true;
-                }
-            }
-        });
-        return text;
-    }
-
     public get isAtDebuggerPrompt() {
         return this.socketDebugger ? this.socketDebugger.isStopped : false;
     }
@@ -182,8 +158,6 @@ export class RokuSocketAdapter {
      */
     public async connect() {
         let deferred = defer();
-        this.isInMicroDebugger = false;
-        this.isNextBreakpointSkipped = false;
         this.socketDebugger = new BrightScriptDebugger({
             host: this.host,
             stopOnEntry: this.stopOnEntry
@@ -214,90 +188,16 @@ export class RokuSocketAdapter {
             });
 
             this.socketDebugger.on('runtime-error', (data) => {
+                console.debug('hasRuntimeError!!', data);
                 this.emit('runtime-error', <BrightScriptRuntimeError>{
                     message: data.data.stopReasonDetail,
                     errorCode: data.data.stopReason
                 });
             });
 
-            // //if the connection fails, reject the connect promise
-            // client.addListener('error', (err) => {
-            //     deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message}`));
-            // });
-
-            // await this.settle(client, 'data');
-
-            // //hook up the pipeline to the socket
-            // this.requestPipeline = new RequestPipeline(client);
-
-            // //forward all raw console output
-            // this.requestPipeline.on('console-output', (output) => {
-            //     this.processBreakpoints(output);
-            //     if (output) {
-            //         this.emit('console-output', output);
-            //     }
-            // });
-
-            // //listen for any console output that was not handled by other methods in the adapter
-            // this.requestPipeline.on('unhandled-console-output', async (responseText: string) => {
-            //     //if there was a runtime error, handle it
-            //     let hasRuntimeError = this.checkForRuntimeError(responseText);
-
-            //     responseText = await this.rendezvousTracker.processLogLine(responseText);
-            //     //forward all unhandled console output
-            //     this.processBreakpoints(responseText);
-            //     if (responseText) {
-            //         this.emit('unhandled-console-output', responseText);
-            //     }
-
-            //     // short circuit after the output has been sent as console output
-            //     if (hasRuntimeError) {
-            //         console.debug('hasRuntimeError!!');
-            //         this.isAtDebuggerPrompt = true;
-            //         return;
-            //     }
-
-            //     this.processUnhandledLines(responseText);
-            //     let match;
-
-            //     if (this.isAtCannotContinue(responseText)) {
-            //         this.isAtDebuggerPrompt = true;
-            //         return;
-            //     }
-
-            //     if (this.isActivated) {
-            //         //watch for the start of the program
-            //         if (match = /\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
-            //             this.isAppRunning = true;
-            //             this.handleStartupIfReady();
-            //         }
-
-            //         //watch for the end of the program
-            //         if (match = /\[beacon.report\] \|AppExitComplete/i.exec(responseText.trim())) {
-            //             this.beginAppExit();
-            //         }
-
-            //         //watch for debugger prompt output
-            //         if (match = /Brightscript\s*Debugger>\s*$/i.exec(responseText.trim())) {
-            //             //if we are activated AND this is the first time seeing the debugger prompt since a continue/step action
-            //             if (this.isNextBreakpointSkipped) {
-            //                 console.log('this breakpoint is flagged to be skipped');
-            //                 this.isInMicroDebugger = false;
-            //                 this.isNextBreakpointSkipped = false;
-            //                 this.requestPipeline.executeCommand('c', false, false, false);
-            //             } else {
-            //                 if (this.isActivated && this.isAtDebuggerPrompt === false) {
-            //                     this.isAtDebuggerPrompt = true;
-            //                     this.emit('suspend');
-            //                 } else {
-            //                     this.isAtDebuggerPrompt = true;
-            //                 }
-            //             }
-            //         } else {
-            //             this.isAtDebuggerPrompt = false;
-            //         }
-            //     }
-            // });
+            this.socketDebugger.on('cannot-continue', () => {
+                this.emit('cannot-continue');
+            });
 
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();
@@ -315,74 +215,50 @@ export class RokuSocketAdapter {
         }, 200);
     }
 
-    /**
-     * Look through response text for the "Can't continue" text
-     * @param responseText
-     */
-    private isAtCannotContinue(responseText: string) {
-        if (/can't continue/gi.exec(responseText.trim())) {
-            this.emit('cannot-continue');
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    /**
-     * Look through the given response text for a runtime error
-     * @param responseText
-     */
-    private checkForRuntimeError(responseText: string) {
-        let match = /(.*)\s\(runtime\s+error\s+(.*)\)\s+in/.exec(responseText);
-        if (match) {
-            let message = match[1].trim();
-            let errorCode = match[2].trim().toLowerCase();
-            //if the codes encountered are the STOP or scriptBreak() calls, skip them
-            if (errorCode === '&hf7' || errorCode === '&hf8') {
-                return false;
-            }
-            this.emit('runtime-error', <BrightScriptRuntimeError>{
-                message: message,
-                errorCode: errorCode
-            });
-            return true;
-        } else {
-            return false;
-        }
-    }
-
     public async watchCompileOutput() {
-        this.compileClient = new Socket();
-        this.compileErrorProcessor.on('compile-errors', (errors) => {
-            this.compileClient.end();
-            this.emit('compile-errors', errors);
-        });
+        let deferred = defer();
+        try {
+            this.compileClient = new Socket();
+            this.compileErrorProcessor.on('compile-errors', (errors) => {
+                this.compileClient.end();
+                this.emit('compile-errors', errors);
+            });
 
-        this.compileClient.connect(8085, this.host, () => {
-            console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} +++++++++++`);
-            this.connected = true;
-            this.emit('connected', this.connected);
-        });
+            //if the connection fails, reject the connect promise
+            this.compileClient.addListener('error', (err) => {
+                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message}`));
+            });
 
-        await this.settle(this.compileClient, 'data');
+            this.compileClient.connect(8085, this.host, () => {
+                console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} VIA TELNET FOR COMPILE INFO +++++++++++`);
+            });
 
-        let lastPartialLine = '';
-        this.compileClient.on('data', (buffer) => {
-            let responseText = buffer.toString();
-            if (!responseText.endsWith('\n')) {
-                // buffer was split, save the partial line
-                lastPartialLine += responseText;
-            } else {
-                if (lastPartialLine) {
-                    // there was leftover lines, join the partial lines back together
-                    responseText = lastPartialLine + responseText;
-                    lastPartialLine = '';
+            await this.settle(this.compileClient, 'data');
+
+            let lastPartialLine = '';
+            this.compileClient.on('data', (buffer) => {
+                let responseText = buffer.toString();
+                if (!responseText.endsWith('\n')) {
+                    // buffer was split, save the partial line
+                    lastPartialLine += responseText;
+                } else {
+                    if (lastPartialLine) {
+                        // there was leftover lines, join the partial lines back together
+                        responseText = lastPartialLine + responseText;
+                        lastPartialLine = '';
+                    }
+                    // Emit the completed io string.
+                    this.compileErrorProcessor.processUnhandledLines(responseText.trim());
+                    this.emit('unhandled-console-output', responseText.trim());
                 }
-                // Emit the completed io string.
-                this.compileErrorProcessor.processUnhandledLines(responseText.trim());
-                this.emit('unhandled-console-output', responseText.trim());
-            }
-        });
+            });
+
+            // connected to telnet. resolve the promise
+            deferred.resolve();
+        } catch (e) {
+            deferred.reject(e);
+        }
+        return await deferred.promise;
     }
 
     /**
@@ -567,7 +443,7 @@ export class RokuSocketAdapter {
         let variablePath = [];
 
         while (match = regexp.exec(expression)) {
-            variablePath.push(match[1] ? match[1] : match[2] ? match[2] : match[3]);
+            variablePath.push(match[1] ?? match[2] ?? match[3]);
         }
         return variablePath;
     }
@@ -722,192 +598,6 @@ export interface Thread {
     functionName: string;
     lineContents: string;
     threadId: number;
-}
-
-export enum PrimativeType {
-    invalid = 'Invalid',
-    boolean = 'Boolean',
-    string = 'String',
-    integer = 'Integer',
-    float = 'Float'
-}
-
-export class RequestPipeline {
-    constructor(
-        private client: Socket
-    ) {
-        this.debuggerLineRegex = /Brightscript\s+Debugger>\s*$/i;
-        this.connect();
-    }
-
-    private requests: RequestPipelineRequest[] = [];
-    private debuggerLineRegex: RegExp;
-    private isAtDebuggerPrompt: boolean = false;
-
-    private get isProcessing() {
-        return this.currentRequest !== undefined;
-    }
-
-    private get hasRequests() {
-        return this.requests.length > 0;
-    }
-
-    private currentRequest: RequestPipelineRequest = undefined;
-
-    private emitter = new EventEmitter();
-
-    public on(eventName: 'unhandled-console-output' | 'console-output', handler: (data: string) => void);
-    public on(eventName: string, handler: (data: string) => void) {
-        this.emitter.on(eventName, handler);
-        return () => {
-            this.emitter.removeListener(eventName, handler);
-        };
-    }
-
-    private emit(eventName: 'unhandled-console-output' | 'console-output', data: string) {
-        this.emitter.emit(eventName, data);
-    }
-
-    private connect() {
-        let allResponseText = '';
-        let lastPartialLine = '';
-
-        this.client.addListener('data', (data) => {
-            let responseText = data.toString();
-            if (!responseText.endsWith('\n') && !this.checkForDebuggerPrompt(responseText)) {
-                // buffer was split and was not the result of a prompt, save the partial line
-                lastPartialLine += responseText;
-            } else {
-                if (lastPartialLine) {
-                    // there was leftover lines, join the partial lines back together
-                    responseText = lastPartialLine + responseText;
-                    lastPartialLine = '';
-                }
-
-                //forward all raw console output
-                this.emit('console-output', responseText);
-                allResponseText += responseText;
-
-                let foundDebuggerPrompt = this.checkForDebuggerPrompt(allResponseText);
-
-                //if we are not processing, immediately broadcast the latest data
-                if (!this.isProcessing) {
-                    this.emit('unhandled-console-output', allResponseText);
-                    allResponseText = '';
-
-                    if (foundDebuggerPrompt) {
-                        this.isAtDebuggerPrompt = true;
-                        if (this.hasRequests) {
-                            // There are requests waiting to be processed
-                            this.process();
-                        }
-                    }
-                } else {
-                    //if responseText produced a prompt, return the responseText
-                    if (foundDebuggerPrompt) {
-                        //resolve the command's promise (if it cares)
-                        this.isAtDebuggerPrompt = true;
-                        this.currentRequest.onComplete(allResponseText);
-                        allResponseText = '';
-                        this.currentRequest = undefined;
-                        //try to run the next request
-                        this.process();
-                    }
-                }
-            }
-        });
-    }
-
-    /**
-     * Checks the supplied string for the debugger input prompt
-     * @param responseText
-     */
-    private checkForDebuggerPrompt(responseText: string) {
-        let match = this.debuggerLineRegex.exec(responseText.trim());
-        return (match);
-    }
-
-    /**
-     * Schedule a command to be run. Resolves with the result once the command finishes
-     * @param commandFunction
-     * @param waitForPrompt - if true, the promise will wait until we find a prompt, and return all output in between. If false, the promise will immediately resolve
-     * @param forceExecute - if true, it is assumed the command can be run at any time and will be executed immediately
-     * @param silent - if true, the command will be hidden from the output
-     */
-    public executeCommand(command: string, waitForPrompt: boolean, forceExecute: boolean = false, silent: boolean = false) {
-        console.debug(`Execute command (and ${waitForPrompt ? 'do' : 'do not'} wait for prompt):`, command);
-        return new Promise<string>((resolve, reject) => {
-            let executeCommand = () => {
-                let commandText = `${command}\r\n`;
-                if (!silent) {
-                    this.emit('console-output', command);
-                }
-                this.client.write(commandText);
-                if (waitForPrompt) {
-                    // The act of executing this command means we are no longer at the debug prompt
-                    this.isAtDebuggerPrompt = false;
-                }
-            };
-
-            let request = {
-                executeCommand: executeCommand,
-                onComplete: (data) => {
-                    console.debug(`Command finished (${waitForPrompt ? 'after waiting for prompt' : 'did not wait for prompt'}`, command);
-                    console.debug('Data:', data);
-                    resolve(data);
-                },
-                waitForPrompt: waitForPrompt,
-            };
-
-            if (!waitForPrompt) {
-                if (!this.isProcessing || forceExecute) {
-                    //fire and forget the command
-                    request.executeCommand();
-                    //the command doesn't care about the output, resolve it immediately
-                    request.onComplete(undefined);
-                } else {
-                    // Skip this request as the device is not ready to accept the command or it can not be run at any time
-                }
-            } else {
-                this.requests.push(request);
-                if (this.isAtDebuggerPrompt) {
-                    //start processing since we are already at a debug prompt (safe to call multiple times)
-                    this.process();
-                } else {
-                    // do not run the command until the device is at a debug prompt.
-                    // this will be detected in the data listener in the connect function
-                }
-            }
-        });
-    }
-
-    /**
-     * Internal request processing function
-     */
-    private async process() {
-        if (this.isProcessing || !this.hasRequests) {
-            return;
-        }
-
-        //get the oldest command
-        let nextRequest = this.requests.shift();
-        this.currentRequest = nextRequest;
-
-        //run the request. the data listener will handle launching the next request once this one has finished processing
-        nextRequest.executeCommand();
-    }
-
-    public destroy() {
-        this.client.removeAllListeners();
-        this.client.destroy();
-        this.client = undefined;
-    }
-}
-
-interface RequestPipelineRequest {
-    executeCommand: () => void;
-    onComplete: (data: string) => void;
-    waitForPrompt: boolean;
 }
 
 interface BrightScriptRuntimeError {

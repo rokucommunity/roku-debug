@@ -195,6 +195,7 @@ export class BrightScriptDebugger {
                 // this.stopped = true;
                 // this.emit('suspend');
             } else {
+                // there is a CANT_CONTINUE error code but we can likely treat all errors like a CANT_CONTINUE
                 this.emit('cannot-continue');
             }
             return stepResult;
