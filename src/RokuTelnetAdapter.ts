@@ -45,6 +45,10 @@ export class RokuTelnetAdapter {
 
     private cache = {};
 
+    public get supportsMultipleRuns() {
+        return true;
+    }
+
     /**
      * Subscribe to various events
      * @param eventName

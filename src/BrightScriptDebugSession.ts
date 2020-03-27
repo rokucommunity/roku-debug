@@ -247,9 +247,13 @@ export class BrightScriptDebugSession extends DebugSession {
                 this.rokuAdapter.destroy();
                 this.rokuDeploy.pressHomeButton(this.launchArgs.host);
             });
+
+            // close disconnect if required when the app is exited
             this.rokuAdapter.on('app-exit', async () => {
-                if (this.launchArgs.stopDebuggerOnAppExit) {
-                    const message = 'App exit event detected and launchArgs.stopDebuggerOnAppExit is true - shutting down debug session';
+                if (this.launchArgs.stopDebuggerOnAppExit || !this.rokuAdapter.supportsMultipleRuns) {
+                    let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchArgs.stopDebuggerOnAppExit is true' : ''}`;
+                    message +=  ' - shutting down debug session';
+
                     console.log(message);
                     this.sendEvent(new LogOutputEvent(message));
                     if (this.rokuAdapter) {

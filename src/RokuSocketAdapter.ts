@@ -171,16 +171,27 @@ export class RokuSocketAdapter {
                 }
             });
 
-            // this.socketDebugger.connect();
             this.connected = await this.socketDebugger.connect();
+
             console.log(`Closing telnet connection used for compile errors`);
-            this.compileClient.end();
+            if (this.compileClient) {
+                this.compileClient.removeAllListeners();
+                this.compileClient.destroy();
+                this.compileClient = undefined;
+            }
+
             console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
             this.emit('connected', this.connected);
 
             // Listen for the close event
             this.socketDebugger.on('close', () => {
                 this.emit('close');
+                this.beginAppExit();
+            });
+
+            // Listen for the app exit event
+            this.socketDebugger.on('app-exit', () => {
+                this.emit('app-exit');
             });
 
             this.socketDebugger.on('suspend', (data) => {

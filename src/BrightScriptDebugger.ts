@@ -41,6 +41,7 @@ export class BrightScriptDebugger {
 
     private emitter = new EventEmitter();
     private controllerClient: Net.Socket;
+    private ioClient: Net.Socket;
     private unhandledData: Buffer;
     private firstRunContinueFired = false;
     private stopped = false;
@@ -133,11 +134,13 @@ export class BrightScriptDebugger {
 
         this.controllerClient.on('end', () => {
             console.log('Requested an end to the TCP connection');
+            this.shutdown('app-exit');
         });
 
         // Don't forget to catch error, for your own sake.
-        this.controllerClient.on('error', function (err) {
+        this.controllerClient.once('error', (err) => {
             console.error(`Error: ${err}`);
+            this.shutdown('close');
         });
 
         let connectPromise: Promise<boolean> = new Promise((resolve, reject) => {
@@ -368,23 +371,23 @@ export class BrightScriptDebugger {
         } else {
             console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
             this.emit('handshake-verified', false);
-            this.controllerClient.end();
+            this.shutdown('close');
             return false;
         }
     }
 
     private connectToIoPort(connectIoPortResponse: DebuggerUpdateConnectIoPort) {
         // Create a new TCP client.
-        const IO_CLIENT = new Net.Socket();
+        this.ioClient = new Net.Socket();
         // Send a connection request to the server.
         console.log('Connect to IO Port: port', connectIoPortResponse.data, 'host', this.options.host);
-        IO_CLIENT.connect({ port: connectIoPortResponse.data, host: this.options.host }, () => {
+        this.ioClient.connect({ port: connectIoPortResponse.data, host: this.options.host }, () => {
             // If there is no error, the server has accepted the request
             console.log('TCP connection established with the IO Port.');
             this.connectedToIoPort = true;
 
             let lastPartialLine = '';
-            IO_CLIENT.on('data', (buffer) => {
+            this.ioClient.on('data', (buffer) => {
                 let responseText = buffer.toString();
                 if (!responseText.endsWith('\n')) {
                     // buffer was split, save the partial line
@@ -400,12 +403,14 @@ export class BrightScriptDebugger {
                 }
             });
 
-            IO_CLIENT.on('end', () => {
+            this.ioClient.on('end', () => {
+                this.ioClient.end();
                 console.log('Requested an end to the IO connection');
             });
 
             // Don't forget to catch error, for your own sake.
-            IO_CLIENT.on('error', (err) => {
+            this.ioClient.once('error', (err) => {
+                this.ioClient.end();
                 console.log(`Error: ${err}`);
             });
 
@@ -435,7 +440,23 @@ export class BrightScriptDebugger {
     }
 
     public destroy() {
-        this.controllerClient.end();
+        this.shutdown('close');
+    }
+
+    private shutdown(eventName: 'app-exit' | 'close') {
+        if (this.controllerClient) {
+            this.controllerClient.removeAllListeners();
+            this.controllerClient.destroy();
+            this.controllerClient = undefined;
+        }
+
+        if (this.ioClient) {
+            this.ioClient.removeAllListeners();
+            this.ioClient.destroy();
+            this.ioClient = undefined;
+        }
+
+        this.emit(eventName);
     }
 }
 
