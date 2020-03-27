@@ -7,6 +7,7 @@ import * as rokuDeploy from 'roku-deploy';
 
 import { defer } from './BrightScriptDebugSession';
 import { PrintedObjectParser } from './PrintedObjectParser';
+import { CompileErrorProcessor } from './CompileErrorProcessor';
 import { RendezvousHistory, RendezvousTracker } from './RendezvousTracker';
 import { SourceLocation } from './SourceLocator';
 import { util } from './util';
@@ -20,13 +21,10 @@ export class RokuTelnetAdapter {
         private enableDebuggerAutoRecovery: boolean = false
     ) {
         this.emitter = new EventEmitter();
-        this.status = RokuAdapterStatus.none;
-        this.startCompilingLine = -1;
-        this.endCompilingLine = -1;
-        this.compilingLines = [];
         this.debugStartRegex = new RegExp('BrightScript Micro Debugger\.', 'ig');
         this.debugEndRegex = new RegExp('Brightscript Debugger>', 'ig');
         this.rendezvousTracker = new RendezvousTracker();
+        this.compileErrorProcessor = new CompileErrorProcessor();
 
         // watch for rendezvous events
         this.rendezvousTracker.on('rendezvous-event', (output) => {
@@ -36,13 +34,9 @@ export class RokuTelnetAdapter {
 
     public connected: boolean;
 
-    private status: RokuAdapterStatus;
+    private compileErrorProcessor: CompileErrorProcessor;
     private requestPipeline: RequestPipeline;
     private emitter: EventEmitter;
-    private startCompilingLine: number;
-    private endCompilingLine: number;
-    private compilingLines: string[];
-    private compileErrorTimer: any;
     private isNextBreakpointSkipped: boolean = false;
     private isInMicroDebugger: boolean;
     private debugStartRegex: RegExp;
@@ -226,6 +220,11 @@ export class RokuTelnetAdapter {
                 }
             });
 
+            //listen for any compile errors
+            this.compileErrorProcessor.on('compile-errors', (errors) => {
+                this.emit('compile-errors', errors);
+            });
+
             //listen for any console output that was not handled by other methods in the adapter
             this.requestPipeline.on('unhandled-console-output', async (responseText: string) => {
                 //if there was a runtime error, handle it
@@ -297,7 +296,7 @@ export class RokuTelnetAdapter {
 
     private beginAppExit() {
         let that = this;
-        this.compileErrorTimer = setTimeout(() => {
+        this.compileErrorProcessor.compileErrorTimer = setTimeout(() => {
             that.isAppRunning = false;
             that.emit('app-exit');
         }, 200);
@@ -340,260 +339,7 @@ export class RokuTelnetAdapter {
     }
 
     private processUnhandledLines(responseText: string) {
-        if (this.status === RokuAdapterStatus.running) {
-            return;
-        }
-
-        let newLines = eol.split(responseText);
-        console.debug('processUnhandledLines: this.status ' + this.status);
-        switch (this.status) {
-            case RokuAdapterStatus.compiling:
-            case RokuAdapterStatus.compileError:
-                this.endCompilingLine = this.getEndCompilingLine(newLines);
-                if (this.endCompilingLine !== -1) {
-                    console.debug('processUnhandledLines: entering state RokuAdapterStatus.running');
-                    this.status = RokuAdapterStatus.running;
-                    this.resetCompileErrorTimer(false);
-                } else {
-                    this.compilingLines = this.compilingLines.concat(newLines);
-                    if (this.status === RokuAdapterStatus.compiling) {
-                        //check to see if we've entered an error scenario
-                        let errors = this.getErrors();
-                        if (errors.length > 0) {
-                            this.status = RokuAdapterStatus.compileError;
-                        }
-                    }
-                    if (this.status === RokuAdapterStatus.compileError) {
-                        //every input line while in error status will reset the stale timer, so we can wait for more errors to roll in.
-                        this.resetCompileErrorTimer(true);
-                    }
-                }
-                break;
-            case RokuAdapterStatus.none:
-                this.startCompilingLine = this.getStartingCompilingLine(newLines);
-                this.compilingLines = this.compilingLines.concat(newLines);
-                if (this.startCompilingLine !== -1) {
-                    console.debug('processUnhandledLines: entering state RokuAdapterStatus.compiling');
-                    newLines.splice(0, this.startCompilingLine);
-                    this.status = RokuAdapterStatus.compiling;
-                    this.resetCompileErrorTimer(true);
-                }
-                break;
-        }
-    }
-
-    public resetCompileErrorTimer(isRunning): any {
-        console.debug('resetCompileErrorTimer isRunning' + isRunning);
-
-        if (this.compileErrorTimer) {
-            clearInterval(this.compileErrorTimer);
-            this.compileErrorTimer = undefined;
-        }
-
-        if (isRunning) {
-            if (this.status === RokuAdapterStatus.compileError) {
-                let that = this;
-                console.debug('resetting resetCompileErrorTimer');
-                this.compileErrorTimer = setTimeout(() => that.onCompileErrorTimer(), 1000);
-            }
-        }
-    }
-
-    public onCompileErrorTimer() {
-        console.debug('onCompileErrorTimer: timer complete. should\'ve caught all errors ');
-
-        this.status = RokuAdapterStatus.compileError;
-        this.resetCompileErrorTimer(false);
-        this.reportErrors();
-    }
-
-    private getStartingCompilingLine(lines: string[]): number {
-        let lastIndex: number = -1;
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            //if this line looks like the compiling line
-            if (/------\s+compiling.*------/i.exec(line)) {
-                lastIndex = i;
-            }
-        }
-        return lastIndex;
-    }
-
-    private getEndCompilingLine(lines: string[]): number {
-        let lastIndex: number = -1;
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            // if this line looks like the compiling line
-            if (/------\s+Running.*------/i.exec(line)) {
-                lastIndex = i;
-            }
-        }
-        return lastIndex;
-
-    }
-
-    private getErrors() {
-        let syntaxErrors = this.getSyntaxErrors(this.compilingLines);
-        let compileErrors = this.getCompileErrors(this.compilingLines);
-        let xmlCompileErrors = this.getSingleFileXmlError(this.compilingLines);
-        let multipleXmlCompileErrors = this.getMultipleFileXmlError(this.compilingLines);
-        return syntaxErrors.concat(compileErrors).concat(multipleXmlCompileErrors).concat(xmlCompileErrors);
-    }
-
-    /**
-     * Look through the given responseText for a compiler error
-     * @param responseText
-     */
-    private reportErrors() {
-        console.debug('reportErrors');
-        //throw out any lines before the last found compiling line
-
-        let errors = this.getErrors();
-
-        errors = errors.filter((e) => e.path.toLowerCase().endsWith('.brs') || e.path.toLowerCase().endsWith('.xml'));
-
-        console.debug('errors.length ' + errors.length);
-        if (errors.length > 0) {
-            this.emit('compile-errors', errors);
-        }
-    }
-
-    public getSyntaxErrors(lines: string[]): BrightScriptDebugCompileError[] {
-        let match;
-        let errors = [];
-        let syntaxRegEx = /(syntax|compile) error.* in (.*)\((\d+)\)/gim;
-        lines.forEach((line) => {
-            match = syntaxRegEx.exec(line);
-            if (match) {
-                let path = match[2];
-                let lineNumber = parseInt(match[3]) - 1;
-
-                //FIXME
-                //if this match is a livecompile error, throw out all prior errors because that means we are re-running
-                if (path.toLowerCase().indexOf('$livecompile') === -1) {
-
-                    errors.push({
-                        path: path,
-                        lineNumber: lineNumber,
-                        line: line,
-                        message: match[0],
-                        charStart: 0,
-                        charEnd: 999 //TODO
-                    });
-                }
-            }
-        });
-        return errors;
-    }
-
-    public getCompileErrors(lines: string[]): BrightScriptDebugCompileError[] {
-        let errors = [];
-        let match;
-        let responseText = lines.join('\n');
-        const filesWithErrors = responseText.split('=================================================================');
-        if (filesWithErrors.length < 2) {
-            return [];
-        }
-        for (let index = 1; index < filesWithErrors.length - 1; index++) {
-            const fileErrorText = filesWithErrors[index];
-            //TODO - for now just a simple parse - later on someone can improve with proper line checks + all parse/compile types
-            //don't have time to do this now; just doing what keeps me productive.
-            let getFileInfoRexEx = /found(?:.*)file (.*)$/gim;
-            match = getFileInfoRexEx.exec(fileErrorText);
-            if (!match) {
-                continue;
-            }
-
-            let path = match[1];
-            let lineNumber = 0; //TODO this should iterate over all line numbers found in a file
-            let errorText = 'ERR_COMPILE:';
-            let message = fileErrorText;
-
-            errors.push({
-                path: path,
-                lineNumber: lineNumber,
-                errorText: errorText,
-                message: message,
-                charStart: 0,
-                charEnd: 999 //TODO
-            });
-
-            //now iterate over the lines, to see if there's any errors we can extract
-            let lineErrors = this.getLineErrors(path, fileErrorText);
-            if (lineErrors.length > 0) {
-                errors = lineErrors;
-            }
-        }
-        return errors;
-    }
-
-    public getLineErrors(path: string, fileErrorText: string): any[] {
-        let errors = [];
-        let getFileInfoRexEx = /^--- Line (\d*): (.*)$/gim;
-        let match;
-        while (match = getFileInfoRexEx.exec(fileErrorText)) {
-            let lineNumber = parseInt(match[1]) - 1;
-            let errorText = 'ERR_COMPILE:';
-            let message = match[2];
-
-            errors.push({
-                path: path,
-                lineNumber: lineNumber,
-                errorText: errorText,
-                message: message,
-                charStart: 0,
-                charEnd: 999 //TODO
-            });
-        }
-
-        return errors;
-    }
-
-    public getSingleFileXmlError(lines): any[] {
-        let errors = [];
-        let getFileInfoRexEx = /^-------> Error parsing XML component (.*).*$/gim;
-        let match;
-        lines.forEach((line) => {
-            while (match = getFileInfoRexEx.exec(line)) {
-                let errorText = 'ERR_COMPILE:';
-                let path = match[1];
-
-                errors.push({
-                    path: path,
-                    lineNumber: 0,
-                    errorText: errorText,
-                    message: 'general compile error in xml file',
-                    charStart: 0,
-                    charEnd: 999 //TODO
-                });
-            }
-        });
-
-        return errors;
-    }
-
-    public getMultipleFileXmlError(lines): any[] {
-        let errors = [];
-        let getFileInfoRexEx = /^-------> Error parsing multiple XML components \((.*)\)/gim;
-        let match;
-        lines.forEach((line) => {
-            while (match = getFileInfoRexEx.exec(line)) {
-                let errorText = 'ERR_COMPILE:';
-                let files = match[1].split(',');
-                files.forEach((path) => {
-                    errors.push({
-                        path: path.trim(),
-                        lineNumber: 0,
-                        errorText: errorText,
-                        message: 'general compile error in xml file',
-                        charStart: 0,
-                        charEnd: 999 //TODO
-                    });
-                });
-            }
-        });
-
-        return errors;
+        this.compileErrorProcessor.processUnhandledLines(responseText);
     }
 
     /**
@@ -1493,20 +1239,4 @@ interface RequestPipelineRequest {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
-}
-
-export interface BrightScriptDebugCompileError {
-    path: string;
-    lineNumber: number;
-    message: string;
-    errorText: string;
-    charStart: number;
-    charEnd: number;
-}
-
-export enum RokuAdapterStatus {
-    none = 'none',
-    compiling = 'compiling',
-    compileError = 'compileError',
-    running = 'running'
 }

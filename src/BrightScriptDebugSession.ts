@@ -21,6 +21,7 @@ import {
 } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 
+import { util } from './util';
 import { ComponentLibraryServer } from './ComponentLibraryServer';
 import { ComponentLibraryConfig } from './BrightScriptDebugConfiguration';
 import { standardizePath as s, fileUtils } from './FileUtils';
@@ -28,9 +29,10 @@ import { RendezvousHistory } from './RendezvousTracker';
 import { ProjectManager, Project, ComponentLibraryProject, componentLibraryPostfix } from './ProjectManager';
 import { EvaluateContainer, RokuSocketAdapter } from './RokuSocketAdapter';
 import { RokuTelnetAdapter } from './RokuTelnetAdapter';
+import { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 
 class CompileFailureEvent implements DebugProtocol.Event {
-    constructor(compileError: any) {
+    constructor(compileError: BrightScriptDebugCompileError[]) {
         this.body = compileError;
     }
 
@@ -183,6 +185,8 @@ export class BrightScriptDebugSession extends DebugSession {
             if (!this.enableSocketDebugger) {
                 //connect to the roku debug via telnet
                 await this.connectRokuAdapter();
+            } else {
+                await (this.rokuAdapter as RokuSocketAdapter).watchCompileOutput();
             }
 
             this.log(`Exiting any active brightscript debugger`);
@@ -227,11 +231,16 @@ export class BrightScriptDebugSession extends DebugSession {
 
             //watch
             // disconnect = this.rokuAdapter.on('compile-errors', (compileErrors) => {
-            this.rokuAdapter.on('compile-errors', async (compileErrors) => {
+            this.rokuAdapter.on('compile-errors', async (compileErrors: BrightScriptDebugCompileError[]) => {
                 for (let compileError of compileErrors) {
                     let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.lineNumber);
-                    compileError.path = sourceLocation.filePath;
-                    compileError.lineNumber = sourceLocation.lineNumber;
+                    if (sourceLocation) {
+                        compileError.path = sourceLocation.filePath;
+                        compileError.lineNumber = sourceLocation.lineNumber;
+                    } else {
+                        // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
+                        compileError.path = util.removeFileScheme(compileError.path).substring(1);
+                    }
                 }
 
                 this.sendEvent(new CompileFailureEvent(compileErrors));

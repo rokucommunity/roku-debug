@@ -5,6 +5,7 @@ export * from './BrightScriptDebugConfiguration';
 export * from './BrightScriptDebugger';
 export * from './BrightScriptDebugSession';
 export * from './ComponentLibraryServer';
+export * from './CompileErrorProcessor';
 export * from './Constants';
 export * from './DebuggerHandshake';
 export * from './DebuggerRequestResponse';
