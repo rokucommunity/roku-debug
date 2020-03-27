@@ -27,6 +27,7 @@ beforeEach(() => {
 describe('ProjectManager', () => {
     var manager: ProjectManager;
     beforeEach(() => {
+        sinon.stub(console, 'log').callsFake((...args ) => {});
         manager = new ProjectManager();
         manager.mainProject = <any>{
             stagingFolderPath: stagingFolderPath
@@ -269,6 +270,8 @@ describe('ProjectManager', () => {
 describe('Project', () => {
     var project: Project;
     beforeEach(() => {
+        sinon.stub(console, 'log').callsFake((...args ) => {});
+        sinon.stub(console, 'error').callsFake((...args ) => {});
         project = new Project({
             rootDir: cwd,
             outDir: s`${cwd}/out`,

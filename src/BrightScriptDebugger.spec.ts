@@ -14,6 +14,7 @@ describe('BrightScriptDebugger', () => {
     var roku: MockBrightScriptDebugServer;
 
     beforeEach(async () => {
+        sinon.stub(console, 'log').callsFake((...args ) => {});
         roku = new MockBrightScriptDebugServer();
         await roku.initialize();
 
