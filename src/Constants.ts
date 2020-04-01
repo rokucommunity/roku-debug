@@ -1,3 +1,9 @@
+export const enum PROTOCOL_ERROR_CODES {
+  NOT_TESTED,
+  SUPPORTED,
+  NOT_SUPPORTED
+}
+
 export const enum COMMANDS {
   STOP = 1,
   CONTINUE,

@@ -1,5 +1,6 @@
 import * as Net from 'net';
 import * as EventEmitter from 'events';
+import * as semver from 'semver';
 
 // The port number and hostname of the server.
 import { DebuggerRequestResponse } from './DebuggerRequestResponse';
@@ -10,13 +11,17 @@ import { DebuggerUpdateThreads } from './DebuggerUpdateThreads';
 import { DebuggerUpdateUndefined } from './DebuggerUpdateUndefined';
 import { DebuggerUpdateConnectIoPort } from './DebuggerUpdateConnectIoPort';
 import { DebuggerHandshake } from './DebuggerHandshake';
-import { COMMANDS, STEP_TYPE } from './Constants';
+import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 
 export class BrightScriptDebugger {
 
     public get isStopped(): boolean {
         return this.stopped;
+    }
+
+    public get supportedVersionRange(): string {
+        return '=2.0.0';
     }
 
     constructor(
@@ -35,7 +40,7 @@ export class BrightScriptDebugger {
     public scriptTitle: string;
     public handshakeComplete = false;
     public connectedToIoPort = false;
-    public protocolVersion = [];
+    public protocolVersion: string;
     public primaryThread: number;
     public stackFrameIndex: number;
 
@@ -68,6 +73,7 @@ export class BrightScriptDebugger {
     public on(eventName: 'data' | 'suspend' | 'runtime-error', handler: (data: any) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
+    public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
     public on(eventName: 'handshake-verified', handler: (data: DebuggerHandshake) => void);
     // public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
     // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
@@ -86,6 +92,7 @@ export class BrightScriptDebugger {
             'connected' |
             'data' |
             'io-output' |
+            'protocol-version' |
             'runtime-error' |
             'start' |
             'suspend' |
@@ -361,13 +368,36 @@ export class BrightScriptDebugger {
         const magicIsValid = (BrightScriptDebugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
         if (magicIsValid) {
             console.log('Magic is valid.');
-            this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion, ''];
-            console.log('Protocol Version:', this.protocolVersion.join('.'));
-
-            this.handshakeComplete = true;
+            this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion].join('.');
+            console.log('Protocol Version:', this.protocolVersion);
             this.removedProcessedBytes(debuggerHandshake, unhandledData);
-            this.emit('handshake-verified', true);
-            return true;
+            let handshakeVerified = true;
+
+            if (semver.satisfies(this.protocolVersion, this.supportedVersionRange)) {
+                console.log('supported');
+                this.emit('protocol-version', {
+                    message: `Protocol Version ${this.protocolVersion} is supported!`,
+                    errorCode: PROTOCOL_ERROR_CODES.SUPPORTED
+                });
+            } else if (semver.gtr(this.protocolVersion, this.supportedVersionRange)) {
+                console.log('not tested');
+                this.emit('protocol-version', {
+                    message: `Protocol Version ${this.protocolVersion} has not been tested and my not work as intended.\nPlease open any issues you have with this version to https://github.com/rokucommunity/roku-debug/issues`,
+                    errorCode: PROTOCOL_ERROR_CODES.NOT_TESTED
+                });
+            } else {
+                console.log('not supported');
+                this.emit('protocol-version', {
+                    message: `Protocol Version ${this.protocolVersion} is not supported.\nIf you believe this is an error please open an issues at https://github.com/rokucommunity/roku-debug/issues`,
+                    errorCode: PROTOCOL_ERROR_CODES.NOT_SUPPORTED
+                });
+                this.shutdown('close');
+                handshakeVerified = false;
+            }
+
+            this.handshakeComplete = handshakeVerified;
+            this.emit('handshake-verified', handshakeVerified);
+            return handshakeVerified;
         } else {
             console.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
             this.emit('handshake-verified', false);
@@ -458,6 +488,11 @@ export class BrightScriptDebugger {
 
         this.emit(eventName);
     }
+}
+
+export interface ProtocolVersionDetails {
+    message: string;
+    errorCode: PROTOCOL_ERROR_CODES;
 }
 
 export interface ConstructorOptions {

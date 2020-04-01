@@ -1,4 +1,4 @@
-import { BrightScriptDebugger } from './BrightScriptDebugger';
+import { BrightScriptDebugger, ProtocolVersionDetails } from './BrightScriptDebugger';
 import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
@@ -7,6 +7,7 @@ import { defer } from './BrightScriptDebugSession';
 import { CompileErrorProcessor } from './CompileErrorProcessor';
 import { RendezvousHistory, RendezvousTracker } from './RendezvousTracker';
 import { SourceLocation } from './SourceLocator';
+import { PROTOCOL_ERROR_CODES } from './Constants';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -53,6 +54,7 @@ export class RokuSocketAdapter {
     public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number; }[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
+    public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
     public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
@@ -75,6 +77,7 @@ export class RokuSocketAdapter {
             'compile-errors' |
             'connected' |
             'console-output' |
+            'protocol-version' |
             'rendezvous-event' |
             'runtime-error' |
             'start' |
@@ -171,6 +174,23 @@ export class RokuSocketAdapter {
                 }
             });
 
+            // Emit IO output from the debugger.
+            this.socketDebugger.on('protocol-version', (data: ProtocolVersionDetails) => {
+                if (data.errorCode === PROTOCOL_ERROR_CODES.SUPPORTED) {
+                    this.emit('console-output', data.message);
+                } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_TESTED) {
+                    this.emit('unhandled-console-output', data.message);
+                } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_SUPPORTED) {
+                    this.emit('unhandled-console-output', data.message);
+                }
+            });
+
+            // Listen for the close event
+            this.socketDebugger.on('close', () => {
+                this.emit('close');
+                this.beginAppExit();
+            });
+
             this.connected = await this.socketDebugger.connect();
 
             console.log(`Closing telnet connection used for compile errors`);
@@ -182,12 +202,6 @@ export class RokuSocketAdapter {
 
             console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
             this.emit('connected', this.connected);
-
-            // Listen for the close event
-            this.socketDebugger.on('close', () => {
-                this.emit('close');
-                this.beginAppExit();
-            });
 
             // Listen for the app exit event
             this.socketDebugger.on('app-exit', () => {
