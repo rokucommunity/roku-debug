@@ -3,9 +3,20 @@
     "tasks": [
         {
             "type": "npm",
-            "script": "test",
+            "label": "test",
+            "script": "test:nocover",
             "group": {
                 "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "type": "npm",
+            "label": "build",
+            "script": "build",
+            "group": {
+                "kind": "build",
                 "isDefault": true
             },
             "problemMatcher": []
