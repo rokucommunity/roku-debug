@@ -11,10 +11,6 @@
     "test:nocover": "ts-mocha \"src/**/*.spec.ts\" --full-trace",
     "publish-coverage": "nyc report --reporter=text-lcov | coveralls"
   },
-  "engines": {
-    "vscode": "^1.30.0",
-    "node": "^7.9.0"
-  },
   "typings": "dist/index.d.ts",
   "repository": {
     "type": "git",
