@@ -127,7 +127,7 @@ export class ProjectManager {
         let entryPoint = await fileUtils.findEntryPoint(stagingFolderPath);
 
         //convert entry point staging location to source location
-        let sourceLocation = await this.getSourceLocation(entryPoint.filePath, entryPoint.lineNumber);
+        let sourceLocation = await this.getSourceLocation(entryPoint.relativePath, entryPoint.lineNumber);
 
         //register the entry breakpoint
         this.breakpointManager.registerBreakpoint(sourceLocation.filePath, {
@@ -152,14 +152,14 @@ export class ProjectManager {
     /**
      * Given a debugger-relative file path, find the path to that file in the staging directory.
      * This supports the standard out dir, as well as component library out dirs
-     * @param debuggerOrStagingPath the path to the file which was provided by the debugger (or an absolute path to a file in the staging directory)
+     * @param debuggerPath the path to the file which was provided by the debugger
      * @param stagingFolderPath - the path to the root of the staging folder (where all of the files were copied before deployment)
      * @return a full path to the file in the staging directory
      */
-    public async getStagingFileInfo(debuggerOrStagingPath: string) {
+    public async getStagingFileInfo(debuggerPath: string) {
         let project: Project;
 
-        let componentLibraryIndex = fileUtils.getComponentLibraryIndexFromFileName(debuggerOrStagingPath, componentLibraryPostfix);
+        let componentLibraryIndex = fileUtils.getComponentLibraryIndexFromFileName(debuggerPath, componentLibraryPostfix);
         //component libraries
         if (componentLibraryIndex !== undefined) {
             let lib = this.componentLibraryProjects.find(x => x.libraryIndex === componentLibraryIndex);
@@ -174,18 +174,12 @@ export class ProjectManager {
         }
 
         let relativePath: string;
-        let fileProtocol = util.getFileScheme(debuggerOrStagingPath);
 
-        //if the path starts with pkg, we have an exact match.
-        if (fileProtocol) {
-            relativePath = util.removeFileScheme(debuggerOrStagingPath);
-
-            //an absolute path to a file in the staging directory
-        } else if (path.isAbsolute(debuggerOrStagingPath)) {
-            project = this.getProjectForStagingFile(debuggerOrStagingPath);
-            relativePath = fileUtils.replaceCaseInsensitive(debuggerOrStagingPath, project.stagingFolderPath, '');
+        //if the path starts with a scheme (i.e. pkg:/ or complib:/, we have an exact match.
+        if (util.getFileScheme(debuggerPath)) {
+            relativePath = util.removeFileScheme(debuggerPath);
         } else {
-            relativePath = await fileUtils.findPartialFileInDirectory(debuggerOrStagingPath, project.stagingFolderPath);
+            relativePath = await fileUtils.findPartialFileInDirectory(debuggerPath, project.stagingFolderPath);
         }
         if (relativePath) {
             relativePath = fileUtils.removeLeadingSlash(

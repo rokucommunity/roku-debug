@@ -5,7 +5,7 @@ import glob = require('glob');
 import * as path from 'path';
 import { RawSourceMap, SourceMapConsumer, SourceNode } from 'source-map';
 import { promisify } from 'util';
-
+import * as rokuDeploy from 'roku-deploy';
 import { SourceLocation } from './SourceLocator';
 import { util } from './util';
 const globp = promisify(glob);
@@ -393,9 +393,13 @@ export class FileUtils {
                 break;
             }
         }
+        let relativePath = fileUtils.removeLeadingSlash(
+            rokuDeploy.util.stringReplaceInsensitive(entryPath, projectPath, '')
+        );
 
         return {
-            filePath: entryPath,
+            relativePath: relativePath,
+            pathAbsolute: entryPath,
             contents: entryLineContents,
             lineNumber: lineNumber
         };
