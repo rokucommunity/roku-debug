@@ -32,7 +32,7 @@ export interface BrightScriptDebugConfiguration {
     enableDebuggerAutoRecovery: boolean;
     stopDebuggerOnAppExit: boolean;
     packagePort: number;
-    enableSocketDebugger: boolean;
+    enableDebugProtocol: boolean;
     remotePort: number;
     envFile?: string;
     enableSourceMaps?: boolean;

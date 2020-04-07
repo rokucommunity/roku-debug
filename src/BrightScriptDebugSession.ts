@@ -112,7 +112,7 @@ export class BrightScriptDebugSession extends DebugSession {
     private variableHandles = new Handles<string>();
 
     private rokuAdapter: RokuSocketAdapter | RokuTelnetAdapter;
-    private enableSocketDebugger: boolean;
+    private enableDebugProtocol: boolean;
 
     private getRokuAdapter() {
         return this.rokuAdapterDeferred.promise;
@@ -161,7 +161,7 @@ export class BrightScriptDebugSession extends DebugSession {
     public async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
         this.launchArgs = args;
 
-        this.enableSocketDebugger = this.launchArgs.enableSocketDebugger;
+        this.enableDebugProtocol = this.launchArgs.enableDebugProtocol;
 
         this.projectManager.launchArgs = this.launchArgs;
         this.breakpointManager.launchArgs = this.launchArgs;
@@ -179,10 +179,10 @@ export class BrightScriptDebugSession extends DebugSession {
                 this.prepareAndHostComponentLibraries(this.launchArgs.componentLibraries, this.launchArgs.componentLibrariesPort)
             ]);
 
-            this.log(`Connecting to Roku via ${this.enableSocketDebugger ? 'the BrightScript debug protocol' : 'telnet'} at ${args.host}`);
+            this.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${args.host}`);
 
             this.createRokuAdapter(args.host);
-            if (!this.enableSocketDebugger) {
+            if (!this.enableDebugProtocol) {
                 //connect to the roku debug via telnet
                 await this.connectRokuAdapter();
             } else {
@@ -274,12 +274,12 @@ export class BrightScriptDebugSession extends DebugSession {
             //ignore the compile error failure from within the publish
             (args as any).failOnCompileError = false;
             // Set the remote debug flag on the args to be passed to roku deploy so the socket debugger can be started if needed.
-            (args as any).remoteDebug = this.enableSocketDebugger;
+            (args as any).remoteDebug = this.enableDebugProtocol;
 
             //publish the package to the target Roku
             await this.rokuDeploy.publish(args as any);
 
-            if (this.enableSocketDebugger) {
+            if (this.enableDebugProtocol) {
                 //connect to the roku debug via sockets
                 await this.connectRokuAdapter();
             }
@@ -594,7 +594,7 @@ export class BrightScriptDebugSession extends DebugSession {
     protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
         const scopes = new Array<Scope>();
 
-        if (this.enableSocketDebugger) {
+        if (this.enableDebugProtocol) {
             let refId = this.getEvaluateRefId('', args.frameId);
             let v: AugmentedVariable;
             //if we already looked this item up, return it
@@ -772,7 +772,7 @@ export class BrightScriptDebugSession extends DebugSession {
                         namedVariables: v.namedVariables || 0,
                         indexedVariables: v.indexedVariables || 0
                     };
-                } else if (args.context === 'repl' && !this.enableSocketDebugger) {
+                } else if (args.context === 'repl' && !this.enableDebugProtocol) {
                     //exclude any of the standard interaction commands so we don't screw up the IDE's debugger state
                     let excludedExpressions = ['cont', 'c', 'down', 'd', 'exit', 'over', 'o', 'out', 'step', 's', 't', 'thread', 'th', 'up', 'u'];
                     if (excludedExpressions.indexOf(args.expression.toLowerCase().trim()) > -1) {
@@ -806,7 +806,7 @@ export class BrightScriptDebugSession extends DebugSession {
             await this.rokuAdapter.destroy();
         }
         //return to the home screen
-        if (!this.enableSocketDebugger) {
+        if (!this.enableDebugProtocol) {
             await this.rokuDeploy.pressHomeButton(this.launchArgs.host);
         }
         this.componentLibraryServer.stop();
@@ -814,7 +814,7 @@ export class BrightScriptDebugSession extends DebugSession {
     }
 
     private createRokuAdapter(host: string) {
-        if (this.enableSocketDebugger) {
+        if (this.enableDebugProtocol) {
             this.rokuAdapter = new RokuSocketAdapter(host, this.launchArgs.stopOnEntry);
         } else {
             this.rokuAdapter = new RokuTelnetAdapter(host, this.launchArgs.enableDebuggerAutoRecovery);
@@ -840,7 +840,7 @@ export class BrightScriptDebugSession extends DebugSession {
             let exceptionText = '';
             const event: StoppedEvent = new StoppedEvent(StoppedEventReason.breakpoint, threadId, exceptionText);
             // Socket debugger will always stop all threads and supports multi thread inspection.
-            (event.body as any).allThreadsStopped = this.enableSocketDebugger;
+            (event.body as any).allThreadsStopped = this.enableDebugProtocol;
             this.sendEvent(event);
         });
 
@@ -886,7 +886,7 @@ export class BrightScriptDebugSession extends DebugSession {
         let v: AugmentedVariable;
 
         if (result) {
-            if (this.enableSocketDebugger) {
+            if (this.enableDebugProtocol) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
                 if (result.keyType) {
                     // check to see if this is an dictionary or a list
@@ -950,7 +950,7 @@ export class BrightScriptDebugSession extends DebugSession {
      * If `stopOnEntry` is enabled, register the entry breakpoint.
      */
     public async handleEntryBreakpoint() {
-        if (this.launchArgs.stopOnEntry && !this.enableSocketDebugger) {
+        if (this.launchArgs.stopOnEntry && !this.enableDebugProtocol) {
             await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
         }
     }
@@ -1048,9 +1048,9 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
      */
     enableDebuggerAutoRecovery: boolean;
     /**
-     * If true, the debugger will use the new beta BrightScript debug protocol. See for more details: https://developer.roku.com/en-ca/docs/developer-program/debugging/socket-based-debugger.md.
+     * If true, the debugger will use the new beta BrightScript debug protocol and disable the telnet debugger. See for more details: https://developer.roku.com/en-ca/docs/developer-program/debugging/socket-based-debugger.md.
      */
-    enableSocketDebugger: boolean;
+    enableDebugProtocol: boolean;
 
     /**
      * If true, will terminate the debug session if app exit is detected. This currently relies on 9.1+ launch beacon notifications, so will not work on a pre 9.1 device.

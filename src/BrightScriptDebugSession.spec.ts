@@ -281,7 +281,7 @@ describe('Debugger', () => {
                 ]
             };
             let entryPoint = await fileUtils.findEntryPoint(folder);
-            expect(entryPoint.filePath).to.equal(filePath);
+            expect(entryPoint.pathAbsolute).to.equal(filePath);
             expect(entryPoint.lineNumber).to.equal(lineNumber);
             expect(entryPoint.contents).to.equal(lineContents);
         }
