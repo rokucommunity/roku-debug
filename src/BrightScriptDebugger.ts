@@ -345,7 +345,10 @@ export class BrightScriptDebugger {
         } else {
             let debuggerHandshake = new DebuggerHandshake(unhandledData);
             if (debuggerHandshake.success) {
-                return this.verifyHandshake(debuggerHandshake, unhandledData);
+                this.handshakeComplete = true;
+                this.verifyHandshake(debuggerHandshake);
+                this.removedProcessedBytes(debuggerHandshake, unhandledData);
+                return true;
             }
         }
 
@@ -364,13 +367,12 @@ export class BrightScriptDebugger {
         this.parseUnhandledData(this.unhandledData);
     }
 
-    private verifyHandshake(debuggerHandshake: DebuggerHandshake, unhandledData: Buffer): boolean {
+    private verifyHandshake(debuggerHandshake: DebuggerHandshake): boolean {
         const magicIsValid = (BrightScriptDebugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
         if (magicIsValid) {
             console.log('Magic is valid.');
             this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion].join('.');
             console.log('Protocol Version:', this.protocolVersion);
-            this.removedProcessedBytes(debuggerHandshake, unhandledData);
             let handshakeVerified = true;
 
             if (semver.satisfies(this.protocolVersion, this.supportedVersionRange)) {
@@ -395,7 +397,6 @@ export class BrightScriptDebugger {
                 handshakeVerified = false;
             }
 
-            this.handshakeComplete = handshakeVerified;
             this.emit('handshake-verified', handshakeVerified);
             return handshakeVerified;
         } else {
