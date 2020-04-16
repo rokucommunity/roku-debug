@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.3.6] - 2020-04-16
+### Fixed
+ - bug in socket debugger that would randomly try and run the `verifyHandshake()` method more than once during startup.
+
+
+
 ## [0.3.5] - 2020-04-10
 ### Changed
  - upgraded to [roku-deploy@3.0.2](https://www.npmjs.com/package/roku-debug/v/0.3.4) which fixed a file copy bug in subdirectories of symlinked folders
@@ -20,5 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[0.3.6:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.5...v0.3.6
 [0.3.5]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.4...v0.3.5
 [0.3.4]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.1.0...v0.3.4
