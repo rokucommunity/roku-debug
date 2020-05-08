@@ -643,18 +643,6 @@ export class BrightScriptDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
-    /**
-     * the vscode hover will occasionally forget to include the closing quotemark for quoted strings,
-     * so this attempts to auto-insert a closing quotemark if an opening one was found but is missing the closing one
-     * @param text
-     */
-    private autoInsertClosingQuote(text: string) {
-        if (text.startsWith('"') && text.trim().endsWith('"') === false) {
-            text = text.trim() + '"';
-        }
-        return text;
-    }
-
     private evaluateRequestPromise = Promise.resolve();
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
@@ -666,7 +654,7 @@ export class BrightScriptDebugSession extends DebugSession {
 
         //fix vscode bug that excludes closing quotemark sometimes.
         if (args.context === 'hover') {
-            args.expression = this.autoInsertClosingQuote(args.expression);
+            args.expression = util.ensureClosingQuote(args.expression);
         }
 
         try {
