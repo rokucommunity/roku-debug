@@ -30,23 +30,7 @@ import { ProjectManager, Project, ComponentLibraryProject, componentLibraryPostf
 import { EvaluateContainer, RokuSocketAdapter } from './RokuSocketAdapter';
 import { RokuTelnetAdapter } from './RokuTelnetAdapter';
 import { BrightScriptDebugCompileError } from './CompileErrorProcessor';
-
-class CompileFailureEvent implements DebugProtocol.Event {
-    constructor(compileError: BrightScriptDebugCompileError[]) {
-        this.body = compileError;
-    }
-
-    public body: any;
-    public event: string;
-    public seq: number;
-    public type: string;
-}
-
-class LogOutputEvent implements DebugProtocol.Event {
-    constructor(lines: string) {
-        this.body = lines;
-        this.event = 'BSLogOutputEvent';
-    }
+import { FileManager } from './managers/FileManager';
 
     public body: any;
     public event: string;
@@ -121,6 +105,8 @@ export class BrightScriptDebugSession extends DebugSession {
     private launchArgs: LaunchRequestArguments;
 
     public projectManager = new ProjectManager();
+
+    public fileManager = new FileManager();
 
     public get breakpointManager() {
         return this.projectManager.breakpointManager;
@@ -519,38 +505,6 @@ export class BrightScriptDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
-    /**
-     * The stacktrace sent by Roku forces all BrightScript function names to lower case.
-     * This function will scan the source file, and attempt to find the exact casing from the function definition.
-     * Also, this function caches results, so it should be faster than the previous implementation
-     * which read the source file from the file system on each call
-     */
-    private async getCorrectFunctionNameCase(sourceFilePath: string, functionName: string) {
-        let lowerSourceFilePath = sourceFilePath.toLowerCase();
-        let lowerFunctionName = functionName.toLowerCase();
-        //create the lookup if it doesn't exist
-        if (!this.functionNameCaseLookup[lowerSourceFilePath]) {
-            this.functionNameCaseLookup[lowerSourceFilePath] = {};
-
-            let fileContents = (await fsExtra.readFile(sourceFilePath)).toString();
-            //read the file contents
-            let regexp = /^\s*(?:sub|function)\s+([a-z0-9_]+)/gim;
-            let match: RegExpMatchArray;
-
-            //create a cache of all function names in this file
-            while (match = regexp.exec(fileContents)) {
-                let correctFunctionName = match[1];
-                this.functionNameCaseLookup[lowerSourceFilePath][correctFunctionName.toLowerCase()] = correctFunctionName;
-            }
-        }
-        return this.functionNameCaseLookup[lowerSourceFilePath][lowerFunctionName];
-    }
-    private functionNameCaseLookup = {} as {
-        [lowerSourceFilePath: string]: {
-            [lowerFunctionName: string]: string
-        }
-    };
-
     protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
         this.logDebug('stackTraceRequest');
         let frames = [];
@@ -564,7 +518,7 @@ export class BrightScriptDebugSession extends DebugSession {
                 //the stacktrace returns function identifiers in all lower case. Try to get the actual case
                 //load the contents of the file and get the correct casing for the function identifier
                 try {
-                    let functionName = await this.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
+                    let functionName = await this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
                     if (functionName) {
                         debugFrame.functionIdentifier = functionName;
                     }
