@@ -290,7 +290,9 @@ export class FileUtils {
                     return consumer.generatedPositionFor({
                         line: sourceLocation.lineNumber,
                         column: sourceLocation.columnIndex,
-                        source: sourceFilePathAbsolute
+                        source: sourceFilePathAbsolute,
+                        //snap to the NEXT item if the current position could not be found
+                        bias: SourceMapConsumer.LEAST_UPPER_BOUND
                     });
                 });
                 locations.push({

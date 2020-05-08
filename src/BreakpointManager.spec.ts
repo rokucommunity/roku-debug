@@ -1,7 +1,7 @@
 // tslint:disable:no-unused-expression
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
-import { SourceMapConsumer } from 'source-map';
+import { SourceMapConsumer, SourceNode } from 'source-map';
 
 import { BreakpointManager } from './BreakpointManager';
 import { fileUtils } from './FileUtils';
@@ -12,10 +12,21 @@ import { standardizePath as s } from './FileUtils';
 describe('BreakpointManager', () => {
     let cwd = fileUtils.standardizePath(process.cwd());
 
+    let tmp = s`${cwd}/.tmp`;
+    let rootDir = s`${tmp}/rootDir`;
+    let stagingDir = s`${tmp}/stagingDir`;
+    let dist = s`${tmp}/dist`;
+
     let bpManager: BreakpointManager;
     //cast the manager as any to simplify some of the tests
     let b: any;
     beforeEach(() => {
+        fsExtra.ensureDirSync(tmp);
+        fsExtra.emptyDirSync(tmp);
+        fsExtra.ensureDirSync(rootDir);
+        fsExtra.ensureDirSync(stagingDir);
+        fsExtra.ensureDirSync(dist);
+
         bpManager = new BreakpointManager();
         b = bpManager;
     });
@@ -399,6 +410,112 @@ describe('BreakpointManager', () => {
             );
 
             expect(fsExtra.readFileSync(`${stagingFolderPath}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
+        });
+    });
+
+    describe('writeBreakpointsToFile', () => {
+        it('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
+            fsExtra.ensureDirSync(s`${tmp}/dist`);
+            let src = s`${rootDir}/main.bs`;
+
+            //create the source file
+            fsExtra.writeFileSync(src,
+                '\n' +
+                '\n' +
+                '\n' +
+                'function main()\n' +
+                '    orig1 = 1\n' +
+                '    orig2 = 2\n' +
+                '    orig3 = 3\n' +
+                'end function'
+            );
+
+            //create the "compiled" dist file
+            let chunks = [
+                new SourceNode(4, 0, src, 'function main()\n'),
+                new SourceNode(5, 0, src, '    orig1 = 1\n'),
+                '    injected1 = 1\n',
+                new SourceNode(6, 0, src, '    orig2 = 2\n'),
+                '    injected2 = 2\n',
+                new SourceNode(7, 0, src, '    orig3 = 3\n'),
+                '    injected3 = 3\n',
+                new SourceNode(8, 0, src, 'end function')
+            ];
+            let result = new SourceNode(null, null, src, chunks).toStringWithSourceMap();
+            fsExtra.writeFileSync(s`${tmp}/dist/main.brs`, result.code);
+            fsExtra.writeFileSync(s`${tmp}/dist/main.brs.map`, result.map.toString());
+
+            fsExtra.writeFileSync(s`${stagingDir}/main.brs`, result.code);
+            fsExtra.writeFileSync(s`${stagingDir}/main.brs.map`, result.map.toString());
+
+            //set a few breakpoints in the source files
+            bpManager.registerBreakpoint(src, {
+                line: 5
+            });
+            bpManager.registerBreakpoint(src, {
+                line: 7
+            });
+
+            await bpManager.writeBreakpointsForProject(new Project({
+                files: [
+                    'main.brs'
+                ],
+                rootDir: s`${tmp}/dist`,
+                outDir: s`${tmp}/out`,
+                stagingFolderPath: stagingDir
+            }));
+
+            //the breakpoints should be placed in the proper locations
+            expect(fsExtra.readFileSync(s`${stagingDir}/main.brs`).toString()).to.eql(
+                'function main()\n' +
+                'STOP\n' +
+                '    orig1 = 1\n' +
+                '    injected1 = 1\n' +
+                '    orig2 = 2\n' +
+                '    injected2 = 2\n' +
+                'STOP\n' +
+                '    orig3 = 3\n' +
+                '    injected3 = 3\n' +
+                'end function'
+            );
+        });
+
+        //this is just a sample test to show how we need to create 
+        it('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
+            var srcPath = 'program.brs';
+            function n(line, col, txt) {
+                return new SourceNode(line, col, srcPath, txt);
+            }
+            let src =
+                'sub main()\n' +
+                '\n' +
+                '    print 1\n' +
+                '\n' +
+                'end function';
+
+            //remove empty newlines
+            let chunks = [
+                n(1, 0, 'sub'), ' ', n(1, 4, 'main'), n(1, 8, '('), n(1, 9, ')'), '\n',
+                '    ', n(3, 4, 'print'), ' ', n(3, 11, '1'), '\n',
+                n(5, 0, 'end'), ' ', n(5, 4, 'function')
+            ];
+            let result = new SourceNode(null, null, srcPath, chunks).toStringWithSourceMap();
+            fsExtra.writeFileSync('C:/users/bronley/desktop/3.bs', src);
+            fsExtra.writeFileSync('C:/users/bronley/desktop/1.brs', result.code);
+            fsExtra.writeFileSync('C:/users/bronley/desktop/2.brs.map', result.map.toString());
+            let position = await SourceMapConsumer.with(result.map.toJSON(), null, (consumer) => {
+                return consumer.generatedPositionFor({
+                    line: 3,
+                    column: 0,
+                    source: srcPath,
+                    //bias is critical. Without this, we would default to the last char of previous line
+                    bias: SourceMapConsumer.LEAST_UPPER_BOUND
+                });
+            });
+            expect({ line: position.line, column: position.column }).to.eql({
+                line: 2,
+                column: 4
+            });
         });
     });
 });
