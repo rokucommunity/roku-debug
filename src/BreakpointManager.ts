@@ -46,6 +46,9 @@ export class BreakpointManager {
 
     public static breakpointIdSequence = 1;
 
+    /**
+     * breakpoint lines are 1-based, and columns are zero-based
+     */
     public registerBreakpoint(sourceFilePath: string, breakpoint: DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint) {
         sourceFilePath = this.sanitizeSourceFilePath(sourceFilePath);
         //get the breakpoints array (and optionally initialize it if not set)
@@ -161,7 +164,8 @@ export class BreakpointManager {
                     breakpoint.line,
                     breakpoint.column,
                     [
-                        project.rootDir, ...project.sourceDirs
+                        project.rootDir, 
+                        ...project.sourceDirs
                     ],
                     project.stagingFolderPath
                 );

@@ -40,7 +40,7 @@ import { FileManager } from './managers/FileManager';
 export class BrightScriptDebugSession extends DebugSession {
     public constructor() {
         super();
-        // this debugger uses zero-based lines and columns
+        // this debugger uses one-based lines and columns
         this.setDebuggerLinesStartAt1(true);
         this.setDebuggerColumnsStartAt1(true);
 

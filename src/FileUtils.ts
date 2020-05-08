@@ -273,20 +273,20 @@ export class FileUtils {
         //search through every source map async
         await Promise.all(sourceMapPaths.map(async (sourceMapPath) => {
             let sourceMapText = fsExtra.readFileSync(sourceMapPath).toString();
-            let rawSourceMap = JSON.parse(sourceMapText) as RawSourceMap;
-            let absoluteSourcePaths = rawSourceMap.sources.map(x =>
+            let parsedSourceMap = JSON.parse(sourceMapText) as RawSourceMap;
+            let absoluteSourcePaths = parsedSourceMap.sources.map(x =>
                 this.standardizePath(
                     path.resolve(
                         //path.resolve throws an exception if passed `undefined`, so use empty string if sourceRoot is null or undefined
                         //the sourcemap should be providing a valid sourceRoot, or using absolute paths for maps
-                        rawSourceMap.sourceRoot || '',
+                        parsedSourceMap.sourceRoot || '',
                         x
                     )
                 )
             );
             //if the source path was found in the sourceMap, convert the source location into a target location
             if (absoluteSourcePaths.indexOf(sourceFilePathAbsolute) > -1) {
-                let position = await SourceMapConsumer.with(rawSourceMap, null, (consumer) => {
+                let position = await SourceMapConsumer.with(parsedSourceMap, null, (consumer) => {
                     return consumer.generatedPositionFor({
                         line: sourceLocation.lineNumber,
                         column: sourceLocation.columnIndex,
