@@ -171,7 +171,7 @@ describe('FileUtils', () => {
                 new SourceNode(4, 0, sourcePath, 'end function\n')
             ]).toStringWithSourceMap();
             await fsExtra.writeFile(outFilePath, result.code);
-            await fsExtra.writeFile(outFileMapPath, result.map);
+            await fsExtra.writeFile(outFileMapPath, result.map.toString());
         }
 
         it('supports absolute paths in source map', async () => {
