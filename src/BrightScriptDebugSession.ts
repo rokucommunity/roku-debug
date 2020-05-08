@@ -252,7 +252,7 @@ export class BrightScriptDebugSession extends DebugSession {
             this.rokuAdapter.on('app-exit', async () => {
                 if (this.launchArgs.stopDebuggerOnAppExit || !this.rokuAdapter.supportsMultipleRuns) {
                     let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchArgs.stopDebuggerOnAppExit is true' : ''}`;
-                    message +=  ' - shutting down debug session';
+                    message += ' - shutting down debug session';
 
                     console.log(message);
                     this.sendEvent(new LogOutputEvent(message));
@@ -773,10 +773,23 @@ export class BrightScriptDebugSession extends DebugSession {
                         indexedVariables: v.indexedVariables || 0
                     };
                 } else if (args.context === 'repl' && !this.enableDebugProtocol) {
-                    //exclude any of the standard interaction commands so we don't screw up the IDE's debugger state
-                    let excludedExpressions = ['cont', 'c', 'down', 'd', 'exit', 'over', 'o', 'out', 'step', 's', 't', 'thread', 'th', 'up', 'u'];
-                    if (excludedExpressions.indexOf(args.expression.toLowerCase().trim()) > -1) {
-                        this.sendEvent(new OutputEvent(`Expression '${args.expression}' not permitted when debugging in VSCode`, 'stdout'));
+                    let lowerExpression = args.expression.toLowerCase().trim();
+
+                    if (['cont', 'c'].includes(lowerExpression)) {
+                        await this.rokuAdapter.continue();
+
+                    } else if (lowerExpression === 'over') {
+                        await this.rokuAdapter.stepOver(-1);
+
+                    } else if (['step', 's', 't'].includes(lowerExpression)) {
+                        await this.rokuAdapter.stepInto(-1);
+
+                    } else if (lowerExpression === 'out') {
+                        await this.rokuAdapter.stepOut(-1);
+
+                    } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
+                        (this.rokuAdapter as RokuTelnetAdapter).requestPipeline.executeCommand(args.expression, false);
+
                     } else {
                         let result = await this.rokuAdapter.evaluate(args.expression);
                         response.body = <any>{

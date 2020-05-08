@@ -35,7 +35,7 @@ export class RokuTelnetAdapter {
     public connected: boolean;
 
     private compileErrorProcessor: CompileErrorProcessor;
-    private requestPipeline: RequestPipeline;
+    public requestPipeline: RequestPipeline;
     private emitter: EventEmitter;
     private isNextBreakpointSkipped: boolean = false;
     private isInMicroDebugger: boolean;

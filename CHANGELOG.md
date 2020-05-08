@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## Unreleased
+### Changed
+ - brightscript debug commands from the debug console in the telnet adapter like `cont` and `step` are now supported.
+
+
+
 ## [0.3.6] - 2020-04-16
 ### Fixed
  - bug in socket debugger that would randomly try and run the `verifyHandshake()` method more than once during startup.
