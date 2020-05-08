@@ -16,7 +16,7 @@ export class BreakpointManager {
 
     }
 
-    public launchArgs: {
+    public launchConfiguration: {
         sourceDirs: string[],
         rootDir: string;
         enableSourceMaps: boolean
@@ -84,10 +84,10 @@ export class BreakpointManager {
 
             //if a breakpoint gets set in rootDir, and we have sourceDirs, convert the rootDir path to sourceDirs path
             //so the breakpoint gets moved into the source file instead of the output file
-            if (this.launchArgs && this.launchArgs.sourceDirs && this.launchArgs.sourceDirs.length > 0) {
+            if (this.launchConfiguration && this.launchConfiguration.sourceDirs && this.launchConfiguration.sourceDirs.length > 0) {
                 let lastWorkingPath = '';
-                for (const sourceDir of this.launchArgs.sourceDirs) {
-                    sourceFilePath = sourceFilePath.replace(this.launchArgs.rootDir, sourceDir);
+                for (const sourceDir of this.launchConfiguration.sourceDirs) {
+                    sourceFilePath = sourceFilePath.replace(this.launchConfiguration.rootDir, sourceDir);
                     if (fsExtra.pathExistsSync(sourceFilePath)) {
                         lastWorkingPath = sourceFilePath;
                     }
@@ -302,7 +302,7 @@ export class BreakpointManager {
         let node = new SourceNode(null, null, originalFilePath, chunks);
 
         //if sourcemaps are disabled, skip sourcemap generation and only generate the code
-        if (this.launchArgs?.enableSourceMaps === false) {
+        if (this.launchConfiguration?.enableSourceMaps === false) {
             return {
                 code: node.toString(),
                 map: undefined

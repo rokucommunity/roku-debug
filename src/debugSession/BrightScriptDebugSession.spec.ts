@@ -275,7 +275,7 @@ describe('Debugger', () => {
             };
 
             fsExtra.writeFileSync(filePath, fileContents);
-            (session as any).launchArgs = {
+            (session as any).launchConfiguration = {
                 files: [
                     folder + '/**/*'
                 ]
@@ -395,7 +395,7 @@ describe('Debugger', () => {
 
     describe('handleEntryBreakpoint', () => {
         it('registers the entry breakpoint when stopOnEntry is enabled', async () => {
-            (session as any).launchArgs = { stopOnEntry: true };
+            (session as any).launchConfiguration = { stopOnEntry: true };
             session.projectManager.mainProject = <any>{
                 stagingFolderPath: stagingFolderPath
             };
@@ -405,7 +405,7 @@ describe('Debugger', () => {
             expect(stub.args[0][0]).to.equal(stagingFolderPath);
         });
         it('does NOT register the entry breakpoint when stopOnEntry is enabled', async () => {
-            (session as any).launchArgs = { stopOnEntry: false };
+            (session as any).launchConfiguration = { stopOnEntry: false };
             let stub = sinon.stub(session.projectManager, 'registerEntryBreakpoint').returns(Promise.resolve());
             await session.handleEntryBreakpoint();
             expect(stub.called).to.be.false;
@@ -421,7 +421,7 @@ describe('Debugger', () => {
             session.projectManager.componentLibraryProjects.push(<any>{
                 stagingFolderPath: 'stagingPathB'
             });
-            (session as any).launchArgs = {
+            (session as any).launchConfiguration = {
                 retainStagingFolder: false
             };
             //stub the super shutdown call so it doesn't kill the test session

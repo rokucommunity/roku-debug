@@ -26,7 +26,7 @@ export class ProjectManager {
      */
     public breakpointManager = new BreakpointManager();
 
-    public launchArgs: {
+    public launchConfiguration: {
         enableSourceMaps: boolean;
     };
 
@@ -107,11 +107,11 @@ export class ProjectManager {
             stagingFilePath: stagingFileInfo.absolutePath,
             stagingFolderPath: project.stagingFolderPath,
             sourceDirs: project.sourceDirs,
-            enableSourceMaps: this.launchArgs?.enableSourceMaps ?? true
+            enableSourceMaps: this.launchConfiguration?.enableSourceMaps ?? true
         });
 
         //if sourcemaps are disabled, account for the breakpoint offsets
-        if (this.launchArgs?.enableSourceMaps === false) {
+        if (this.launchConfiguration?.enableSourceMaps === false) {
             sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
         }
 

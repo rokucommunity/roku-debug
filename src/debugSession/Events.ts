@@ -1,6 +1,6 @@
 import { DebugProtocol } from "vscode-debugprotocol";
 import { BrightScriptDebugCompileError } from "../CompileErrorProcessor";
-import { LaunchRequestArguments } from "../LaunchRequestArguments";
+import { LaunchConfiguration } from "../LaunchConfiguration";
 import { RendezvousHistory } from "../RendezvousTracker";
 
 export class CompileFailureEvent implements DebugProtocol.Event {
@@ -46,7 +46,7 @@ export class RendezvousEvent implements DebugProtocol.Event {
 }
 
 export class LaunchStartEvent implements DebugProtocol.Event {
-    constructor(args: LaunchRequestArguments) {
+    constructor(args: LaunchConfiguration) {
         this.body = args;
         this.event = 'BSLaunchStartEvent';
     }

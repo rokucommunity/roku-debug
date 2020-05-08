@@ -1,7 +1,7 @@
 
 //export everything we need
 export * from './managers/BreakpointManager';
-export * from './BrightScriptDebugConfiguration';
+export * from './LaunchConfiguration';
 export * from './debugProtocol/Debugger';
 export * from './debugSession/BrightScriptDebugSession';
 export * from './ComponentLibraryServer';

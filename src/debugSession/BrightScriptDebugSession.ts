@@ -32,8 +32,7 @@ import {
     CompileFailureEvent,
     StoppedEventReason
 } from './Events';
-import { ComponentLibraryConfig } from '../BrightScriptDebugConfiguration';
-import { LaunchRequestArguments } from '../LaunchRequestArguments';
+import { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
@@ -72,7 +71,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return this.rokuAdapterDeferred.promise;
     }
 
-    private launchArgs: LaunchRequestArguments;
+    private launchConfiguration: LaunchConfiguration;
 
     public projectManager = new ProjectManager();
 
@@ -114,17 +113,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
     }
 
-    public async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
-        this.launchArgs = args;
+    public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
+        this.launchConfiguration = config;
 
-        this.enableDebugProtocol = this.launchArgs.enableDebugProtocol;
+        this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
 
-        this.projectManager.launchArgs = this.launchArgs;
-        this.breakpointManager.launchArgs = this.launchArgs;
+        this.projectManager.launchConfiguration = this.launchConfiguration;
+        this.breakpointManager.launchConfiguration = this.launchConfiguration;
 
         let disconnect = () => {
         };
-        this.sendEvent(new LaunchStartEvent(args));
+        this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
 
         let error: Error;
         util.logDebug('Packaging and deploying to roku');
@@ -132,12 +131,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
-                this.prepareAndHostComponentLibraries(this.launchArgs.componentLibraries, this.launchArgs.componentLibrariesPort)
+                this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
 
-            util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${args.host}`);
+            util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
-            this.createRokuAdapter(args.host);
+            this.createRokuAdapter(this.launchConfiguration.host);
             if (!this.enableDebugProtocol) {
                 //connect to the roku debug via telnet
                 await this.connectRokuAdapter();
@@ -154,10 +153,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             });
 
             //pass the log level down thought the adapter to the RendezvousTracker
-            this.rokuAdapter.setConsoleOutput(this.launchArgs.consoleOutput);
+            this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
 
             //pass along the console output
-            if (this.launchArgs.consoleOutput === 'full') {
+            if (this.launchConfiguration.consoleOutput === 'full') {
                 this.rokuAdapter.on('console-output', (data) => {
                     //forward the console output
                     this.sendEvent(new OutputEvent(data, 'stdout'));
@@ -201,13 +200,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.sendEvent(new CompileFailureEvent(compileErrors));
                 //stop the roku adapter and exit the channel
                 this.rokuAdapter.destroy();
-                this.rokuDeploy.pressHomeButton(this.launchArgs.host);
+                this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
             });
 
             // close disconnect if required when the app is exited
             this.rokuAdapter.on('app-exit', async () => {
-                if (this.launchArgs.stopDebuggerOnAppExit || !this.rokuAdapter.supportsMultipleRuns) {
-                    let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchArgs.stopDebuggerOnAppExit is true' : ''}`;
+                if (this.launchConfiguration.stopDebuggerOnAppExit || !this.rokuAdapter.supportsMultipleRuns) {
+                    let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchConfiguration.stopDebuggerOnAppExit is true' : ''}`;
                     message += ' - shutting down debug session';
 
                     util.logDebug(message);
@@ -216,24 +215,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         this.rokuAdapter.destroy();
                     }
                     //return to the home screen
-                    await this.rokuDeploy.pressHomeButton(this.launchArgs.host);
+                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
                     this.shutdown();
                     disconnect();
                     this.sendEvent(new TerminatedEvent());
                 } else {
-                    const message = 'App exit detected; but launchArgs.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
+                    const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
                     util.logDebug(message);
                     this.sendEvent(new LogOutputEvent(message));
                 }
             });
 
             //ignore the compile error failure from within the publish
-            (args as any).failOnCompileError = false;
+            (this.launchConfiguration as any).failOnCompileError = false;
             // Set the remote debug flag on the args to be passed to roku deploy so the socket debugger can be started if needed.
-            (args as any).remoteDebug = this.enableDebugProtocol;
+            (this.launchConfiguration as any).remoteDebug = this.enableDebugProtocol;
 
             //publish the package to the target Roku
-            await this.rokuDeploy.publish(args as any);
+            await this.rokuDeploy.publish(this.launchConfiguration as any);
 
             if (this.enableDebugProtocol) {
                 //connect to the roku debug via sockets
@@ -246,13 +245,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (!error) {
                 if (this.rokuAdapter.connected) {
                     // Host connection was established before the main public process was completed
-                    util.logDebug(`deployed to Roku@${this.launchArgs.host}`);
+                    util.logDebug(`deployed to Roku@${this.launchConfiguration.host}`);
                     this.sendResponse(response);
                 } else {
                     // Main public process was completed but we are still waiting for a connection to the host
                     this.rokuAdapter.on('connected', (status) => {
                         if (status) {
-                            util.logDebug(`deployed to Roku@${this.launchArgs.host}`);
+                            util.logDebug(`deployed to Roku@${this.launchConfiguration.host}`);
                             this.sendResponse(response);
                         }
                     });
@@ -277,16 +276,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         //at this point, the project has been deployed. If we need to use a deep link, launch it now.
-        if (args.deepLinkUrl) {
+        if (this.launchConfiguration.deepLinkUrl) {
             //wait until the first entry breakpoint has been hit
             await this.firstRunDeferred.promise;
             //if we are at a breakpoint, continue
             await this.rokuAdapter.continue();
             //kill the app on the roku
-            await this.rokuDeploy.pressHomeButton(this.launchArgs.host);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
             //send the deep link http request
             await new Promise((resolve, reject) => {
-                request.post(this.launchArgs.deepLinkUrl, function(err, response) {
+                request.post(this.launchConfiguration.deepLinkUrl, function(err, response) {
                     return err ? reject(err) : resolve(response);
                 });
             });
@@ -299,13 +298,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async prepareMainProject() {
         //add the main project
         this.projectManager.mainProject = new Project({
-            rootDir: this.launchArgs.rootDir,
-            files: this.launchArgs.files,
-            outDir: this.launchArgs.outDir,
-            sourceDirs: this.launchArgs.sourceDirs,
-            bsConst: this.launchArgs.bsConst,
-            injectRaleTrackerTask: this.launchArgs.injectRaleTrackerTask,
-            raleTrackerTaskFileLocation: this.launchArgs.raleTrackerTaskFileLocation
+            rootDir: this.launchConfiguration.rootDir,
+            files: this.launchConfiguration.files,
+            outDir: this.launchConfiguration.outDir,
+            sourceDirs: this.launchConfiguration.sourceDirs,
+            bsConst: this.launchConfiguration.bsConst,
+            injectRaleTrackerTask: this.launchConfiguration.injectRaleTrackerTask,
+            raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation
         });
 
         util.log('Moving selected files to staging area');
@@ -341,9 +340,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Stores the path to the staging folder for each component library
      */
-    protected async prepareAndHostComponentLibraries(componentLibraries: ComponentLibraryConfig[], port: number) {
+    protected async prepareAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
         if (componentLibraries && componentLibraries.length > 0) {
-            let componentLibrariesOutDir = s`${this.launchArgs.outDir}/component-libraries`;
+            let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
             //make sure this folder exists (and is empty)
             await fsExtra.ensureDir(componentLibrariesOutDir);
             await fsExtra.emptyDir(componentLibrariesOutDir);
@@ -604,7 +603,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const reference = this.variableHandles.get(args.variablesReference);
             if (reference) {
                 // NOTE: Legacy telnet support for local vars
-                if (this.launchArgs.enableVariablesPanel) {
+                if (this.launchConfiguration.enableVariablesPanel) {
                     const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
 
                     for (const varName of vars) {
@@ -732,7 +731,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
         //return to the home screen
         if (!this.enableDebugProtocol) {
-            await this.rokuDeploy.pressHomeButton(this.launchArgs.host);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
         }
         this.componentLibraryServer.stop();
         this.sendResponse(response);
@@ -740,9 +739,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private createRokuAdapter(host: string) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new DebugProtocolAdapter(host, this.launchArgs.stopOnEntry);
+            this.rokuAdapter = new DebugProtocolAdapter(host, this.launchConfiguration.stopOnEntry);
         } else {
-            this.rokuAdapter = new TelnetAdapter(host, this.launchArgs.enableDebuggerAutoRecovery);
+            this.rokuAdapter = new TelnetAdapter(host, this.launchConfiguration.enableDebuggerAutoRecovery);
         }
     }
 
@@ -854,7 +853,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * If `stopOnEntry` is enabled, register the entry breakpoint.
      */
     public async handleEntryBreakpoint() {
-        if (this.launchArgs.stopOnEntry && !this.enableDebugProtocol) {
+        if (this.launchConfiguration.stopOnEntry && !this.enableDebugProtocol) {
             await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
         }
     }
@@ -864,7 +863,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     public shutdown() {
         //if configured, delete the staging directory
-        if (!this.launchArgs.retainStagingFolder) {
+        if (!this.launchConfiguration.retainStagingFolder) {
             let stagingFolderPaths = this.projectManager.getStagingFolderPaths();
             for (let stagingFolderPath of stagingFolderPaths) {
                 try {

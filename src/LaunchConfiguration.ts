@@ -1,11 +1,10 @@
 import { FileEntry } from "roku-deploy";
 import { DebugProtocol } from "vscode-debugprotocol";
-import { ComponentLibraryConfig } from "./BrightScriptDebugConfiguration";
 
 /**
  * This interface should always match the schema found in the mock-debug extension manifest.
  */
-export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
+export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArguments {
     /**
      * The host or ip address for the target Roku
      */
@@ -29,6 +28,8 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
      * If you have a build system, rootDir will point to the build output folder, and this path should point to the actual source folders
      * so that breakpoints can be set in the source files when debugging. In order for this to work, your build process cannot change
      * line offsets between source files and built files, otherwise debugger lines will be out of sync.
+     * 
+     * This option is not necessary if your build system generates source maps
      */
     sourceDirs: string[];
     /**
@@ -44,11 +45,9 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
      */
     componentLibrariesOutDir: string;
     /**
-     * An array of file path sets. One for each component library.
-     * Each index is an array of file paths, file globs, or {src:string;dest:string} objects that will be copied into the hosted component library.
-     * This will override the defaults, so if specified, you must provide ALL files. See https://npmjs.com/roku-deploy for examples. You must specify a componentLibrariesOutDir to use this.
+     * An array of component library configurations. A web server will be spun up to serve all of these libraries.
      */
-    componentLibraries: ComponentLibraryConfig[];
+    componentLibraries: ComponentLibraryConfiguration[];
     /**
      * The folder where the output files are places during the packaging process
      */
@@ -108,4 +107,39 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
      * If true, then any source maps found will be used to convert a debug location back to a source location
      */
     enableSourceMaps: boolean;
+}
+
+export interface ComponentLibraryConfiguration {
+    /**
+     * The root directory for the component library project. This path should point to the folder containing the manifest file
+     */
+    rootDir: string;
+    /**
+     * The filename for the package.
+     */
+    outFile: string;
+    /**
+     * The list of files that should be bundled during a debug session
+     */
+    files: FileEntry[];
+    /**
+     * If you have a build system, rootDir will point to the build output folder, and this path should point to the actual source folders
+     * so that breakpoints can be set in the source files when debugging. In order for this to work, your build process cannot change
+     * line offsets between source files and built files, otherwise debugger lines will be out of sync.
+     * 
+     * This option is not necessary if your build system generates source maps
+     */
+    sourceDirs: string[];
+    /**
+     * An object of bs_const values to be updated in the manifest before side loading.
+     */
+    bsConst?: { [key: string]: boolean };
+    /**
+     * Will inject the Roku Advanced Layout Editor(RALE) TrackerTask into the component library if one is defined in your user settings.
+     */
+    injectRaleTrackerTask: boolean;
+    /**
+     * This is an absolute path to the TrackerTask.xml file to be injected into the component library during a debug session.
+     */
+    raleTrackerTaskFileLocation: string;
 }
