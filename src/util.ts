@@ -1,8 +1,11 @@
+import * as dateFormat from 'dateformat';
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as net from 'net';
 import * as url from 'url';
 import { SmartBuffer } from 'smart-buffer';
+import { BrightScriptDebugSession } from './BrightScriptDebugSession';
+import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
 
 class Util {
     public async readDir(dirPath: string) {
@@ -176,6 +179,30 @@ class Util {
         return bufferReader.readStringNT();
     }
 
+    /**
+     * A reference to the current debug session. Used for logging, and set in the debug session constructor
+     */
+    public _debugSession: BrightScriptDebugSession;
+
+    /**
+     * Send debug server messages to the BrightScript Debug Log channel, as well as writing to console.debug
+     */
+    public logDebug(...args) {
+        let timestamp = dateFormat(new Date(), 'HH:mm:ss.l ');
+        let messages = (Array.isArray(args) ? args : []).join(' ');
+        this._debugSession?.sendEvent(new DebugServerLogOutputEvent(`${timestamp}: ${messages}`));
+
+        console.log.apply(console, [timestamp, ...args]);
+    }
+
+    /**
+     * Write to the standard brightscript output log so users can see it. (This also writes to the debug server output channel, and the console)
+     * @param message
+     */
+    public log(message: string) {
+        this.logDebug(message);
+        this._debugSession?.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
+    }
 }
 
 const util = new Util();
