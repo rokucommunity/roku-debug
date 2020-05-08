@@ -2,9 +2,14 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "type": "npm",
+            "type": "shell",
             "label": "test",
-            "script": "test:nocover",
+            "command": "npm",
+            "args": [
+                "run",
+                "test:nocover",
+                "--silent"
+            ],
             "group": {
                 "kind": "test",
                 "isDefault": true
