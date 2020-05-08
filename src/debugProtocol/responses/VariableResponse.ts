@@ -1,8 +1,8 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES, VARIABLE_FLAGS, VARIABLE_TYPES } from './Constants';
-import { util } from './util';
+import { ERROR_CODES, VARIABLE_FLAGS, VARIABLE_TYPES } from '../Constants';
+import { util } from '../../util';
 
-class DebuggerVariableRequestResponse {
+export class VariableResponse {
 
     constructor(buffer: Buffer) {
         // Minimum variable request response size
@@ -43,7 +43,7 @@ class DebuggerVariableRequestResponse {
     public variables = [];
 }
 
-class VariableInfo {
+export class VariableInfo {
 
     constructor(bufferReader: SmartBuffer) {
         if (bufferReader.length >= 13) {
@@ -148,5 +148,3 @@ class VariableInfo {
     public elementCount = -1;
     public value: any;
 }
-
-export { DebuggerVariableRequestResponse };

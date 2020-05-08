@@ -13,12 +13,12 @@ import {
     BrightScriptDebugSession,
     defer
 } from './BrightScriptDebugSession';
-import { fileUtils } from './FileUtils';
+import { fileUtils } from '../FileUtils';
 import {
     EvaluateContainer,
     HighLevelType,
     PrimativeType
-} from './RokuTelnetAdapter';
+} from '../adapters/TelnetAdapter';
 
 let sinon = sinonActual.createSandbox();
 let n = path.normalize;

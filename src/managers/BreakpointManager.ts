@@ -7,7 +7,7 @@ import { SourceNode } from 'source-map';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { stringify } from 'querystring';
 
-import { fileUtils } from './FileUtils';
+import { fileUtils } from '../FileUtils';
 import { Project } from './ProjectManager';
 
 export class BreakpointManager {

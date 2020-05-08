@@ -1,8 +1,7 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES } from './Constants';
+import { ERROR_CODES } from '../Constants';
 
-class DebuggerRequestResponse {
-
+export class Response {
     constructor(buffer: Buffer) {
         // The smallest a request response can be
         if (buffer.byteLength >= 8) {
@@ -29,5 +28,3 @@ class DebuggerRequestResponse {
     public errorCode: string;
     public data = -1;
 }
-
-export { DebuggerRequestResponse };

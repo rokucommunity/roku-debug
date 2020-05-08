@@ -5,7 +5,7 @@ import * as request from 'request';
 import { RokuDeploy } from 'roku-deploy';
 import { serializeError } from 'serialize-error';
 import {
-    DebugSession,
+    DebugSession as BaseDebugSession,
     Handles,
     InitializedEvent,
     OutputEvent,
@@ -18,25 +18,25 @@ import {
     Variable
 } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
-import { util } from './util';
-import { ComponentLibraryServer } from './ComponentLibraryServer';
-import { ProjectManager, Project, ComponentLibraryProject } from './ProjectManager';
-import { standardizePath as s } from './FileUtils';
-import { EvaluateContainer, RokuSocketAdapter } from './RokuSocketAdapter';
-import { RokuTelnetAdapter } from './RokuTelnetAdapter';
-import { BrightScriptDebugCompileError } from './CompileErrorProcessor';
+import { util } from '../util';
+import { ComponentLibraryServer } from '../ComponentLibraryServer';
+import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
+import { standardizePath as s } from '../FileUtils';
+import { EvaluateContainer, DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
+import { TelnetAdapter } from '../adapters/TelnetAdapter';
+import { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
 import {
     LaunchStartEvent,
     LogOutputEvent,
     RendezvousEvent,
     CompileFailureEvent,
     StoppedEventReason
-} from './debugSession/Events';
-import { ComponentLibraryConfig } from './BrightScriptDebugConfiguration';
-import { LaunchRequestArguments } from './LaunchRequestArguments';
-import { FileManager } from './managers/FileManager';
+} from './Events';
+import { ComponentLibraryConfig } from '../BrightScriptDebugConfiguration';
+import { LaunchRequestArguments } from '../LaunchRequestArguments';
+import { FileManager } from '../managers/FileManager';
 
-export class BrightScriptDebugSession extends DebugSession {
+export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
         super();
         // this debugger uses one-based lines and columns
@@ -52,7 +52,7 @@ export class BrightScriptDebugSession extends DebugSession {
 
     private componentLibraryServer = new ComponentLibraryServer();
 
-    private rokuAdapterDeferred = defer<RokuSocketAdapter | RokuTelnetAdapter>();
+    private rokuAdapterDeferred = defer<DebugProtocolAdapter | TelnetAdapter>();
     /**
      * A promise that is resolved whenever the app has started running for the first time
      */
@@ -65,7 +65,7 @@ export class BrightScriptDebugSession extends DebugSession {
 
     private variableHandles = new Handles<string>();
 
-    private rokuAdapter: RokuSocketAdapter | RokuTelnetAdapter;
+    private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
     private enableDebugProtocol: boolean;
 
     private getRokuAdapter() {
@@ -142,7 +142,7 @@ export class BrightScriptDebugSession extends DebugSession {
                 //connect to the roku debug via telnet
                 await this.connectRokuAdapter();
             } else {
-                await (this.rokuAdapter as RokuSocketAdapter).watchCompileOutput();
+                await (this.rokuAdapter as DebugProtocolAdapter).watchCompileOutput();
             }
 
             util.log(`Exiting any active brightscript debugger`);
@@ -605,7 +605,7 @@ export class BrightScriptDebugSession extends DebugSession {
             if (reference) {
                 // NOTE: Legacy telnet support for local vars
                 if (this.launchArgs.enableVariablesPanel) {
-                    const vars = await (this.rokuAdapter as RokuTelnetAdapter).getScopeVariables(reference);
+                    const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
 
                     for (const varName of vars) {
                         let result = await this.rokuAdapter.getVariable(varName, -1);
@@ -700,7 +700,7 @@ export class BrightScriptDebugSession extends DebugSession {
                         await this.rokuAdapter.stepOut(-1);
 
                     } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
-                        (this.rokuAdapter as RokuTelnetAdapter).requestPipeline.executeCommand(args.expression, false);
+                        (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
 
                     } else {
                         let result = await this.rokuAdapter.evaluate(args.expression);
@@ -740,9 +740,9 @@ export class BrightScriptDebugSession extends DebugSession {
 
     private createRokuAdapter(host: string) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new RokuSocketAdapter(host, this.launchArgs.stopOnEntry);
+            this.rokuAdapter = new DebugProtocolAdapter(host, this.launchArgs.stopOnEntry);
         } else {
-            this.rokuAdapter = new RokuTelnetAdapter(host, this.launchArgs.enableDebuggerAutoRecovery);
+            this.rokuAdapter = new TelnetAdapter(host, this.launchArgs.enableDebuggerAutoRecovery);
         }
     }
 

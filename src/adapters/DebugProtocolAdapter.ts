@@ -1,18 +1,18 @@
-import { BrightScriptDebugger, ProtocolVersionDetails } from './BrightScriptDebugger';
+import { Debugger, ProtocolVersionDetails } from '../debugProtocol/Debugger';
 import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
 
-import { defer } from './BrightScriptDebugSession';
-import { CompileErrorProcessor } from './CompileErrorProcessor';
-import { RendezvousHistory, RendezvousTracker } from './RendezvousTracker';
-import { SourceLocation } from './SourceLocator';
-import { PROTOCOL_ERROR_CODES } from './Constants';
+import { defer } from '../debugSession/BrightScriptDebugSession';
+import { CompileErrorProcessor } from '../CompileErrorProcessor';
+import { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
+import { SourceLocation } from '../SourceLocator';
+import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
  */
-export class RokuSocketAdapter {
+export class DebugProtocolAdapter {
     constructor(
         private host: string,
         private stopOnEntry: boolean = false
@@ -33,7 +33,7 @@ export class RokuSocketAdapter {
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
     private rendezvousTracker: RendezvousTracker;
-    private socketDebugger: BrightScriptDebugger;
+    private socketDebugger: Debugger;
     private nextFrameId: number = 1;
 
     private stackFramesCache: { [keys: number]: StackFrame } = {};
@@ -161,7 +161,7 @@ export class RokuSocketAdapter {
      */
     public async connect() {
         let deferred = defer();
-        this.socketDebugger = new BrightScriptDebugger({
+        this.socketDebugger = new Debugger({
             host: this.host,
             stopOnEntry: this.stopOnEntry
         });

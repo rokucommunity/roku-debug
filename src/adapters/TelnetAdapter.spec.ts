@@ -4,39 +4,16 @@ import { assert, expect } from 'chai';
 import * as sinon from 'sinon';
 let Module = require('module');
 
-import { vscode } from './mockVscode.spec';
+import { EvaluateContainer, TelnetAdapter } from './TelnetAdapter';
 
-//override the "require" call to mock certain items
-const { require: oldRequire } = Module.prototype;
-
-Module.prototype.require = function hijacked(file) {
-    if (file === 'vscode') {
-        return vscode;
-    } else {
-        return oldRequire.apply(this, arguments);
-    }
-};
-
-import { EvaluateContainer, RokuTelnetAdapter } from './RokuTelnetAdapter';
-
-describe('RokuAdapter ', () => {
-    let adapter: RokuTelnetAdapter;
-    let adapterMock;
-    let languagesMock;
+describe('TelnetAdapter ', () => {
+    let adapter: TelnetAdapter;
 
     beforeEach(() => {
-        const outputChannel = new vscode.OutputChannel();
-        const debugCollection = new vscode.DebugCollection();
-        languagesMock = sinon.mock(vscode.languages);
-        languagesMock.expects('createDiagnosticCollection').returns(debugCollection);
-
-        adapter = new RokuTelnetAdapter('127.0.0.1');
-        adapterMock = sinon.mock(adapter);
+        adapter = new TelnetAdapter('127.0.0.1');
     });
 
     afterEach(() => {
-        languagesMock.restore();
-        adapterMock.restore();
     });
 
     describe('getExpressionDetails', () => {

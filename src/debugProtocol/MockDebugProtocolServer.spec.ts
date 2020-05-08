@@ -1,10 +1,10 @@
 import * as net from 'net';
 import { Subscription, ReplaySubject } from 'rxjs';
 import { SmartBuffer } from 'smart-buffer';
-import { util } from './util';
+import { util } from '../util';
 import * as defer from 'p-defer';
 
-export class MockBrightScriptDebugServer {
+export class MockDebugProtocolServer {
     constructor(
     ) {
     }

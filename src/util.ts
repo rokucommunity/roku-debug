@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as net from 'net';
 import * as url from 'url';
 import { SmartBuffer } from 'smart-buffer';
-import { BrightScriptDebugSession } from './BrightScriptDebugSession';
+import { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
 
 class Util {

@@ -3,18 +3,20 @@ import * as EventEmitter from 'events';
 import * as semver from 'semver';
 
 // The port number and hostname of the server.
-import { DebuggerRequestResponse } from './DebuggerRequestResponse';
-import { DebuggerVariableRequestResponse } from './DebuggerVariableRequestResponse';
-import { DebuggerStacktraceRequestResponse } from './DebuggerStacktraceRequestResponse';
-import { DebuggerThreadsRequestResponse } from './DebuggerThreadsRequestResponse';
-import { DebuggerUpdateThreads } from './DebuggerUpdateThreads';
-import { DebuggerUpdateUndefined } from './DebuggerUpdateUndefined';
-import { DebuggerUpdateConnectIoPort } from './DebuggerUpdateConnectIoPort';
-import { DebuggerHandshake } from './DebuggerHandshake';
+import {
+    Response,
+    StackTraceResponse,
+    ThreadsResponse,
+    UpdateThreadsResponse,
+    UndefinedResponse,
+    ConnectIOPortResponse,
+    HandshakeResponse,
+    VariableResponse
+} from './responses';
 import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 
-export class BrightScriptDebugger {
+export class Debugger {
 
     public get isStopped(): boolean {
         return this.stopped;
@@ -74,7 +76,7 @@ export class BrightScriptDebugger {
     public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
-    public on(eventName: 'handshake-verified', handler: (data: DebuggerHandshake) => void);
+    public on(eventName: 'handshake-verified', handler: (data: HandshakeResponse) => void);
     // public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
     // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: string, handler: (payload: any) => void) {
@@ -124,7 +126,7 @@ export class BrightScriptDebugger {
 
             // The client can also receive data from the server by reading from its socket.
             // The client can now send data to the server by writing to its socket.
-            let buffer = new SmartBuffer({ size: Buffer.byteLength(BrightScriptDebugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(BrightScriptDebugger.DEBUGGER_MAGIC).toBuffer();
+            let buffer = new SmartBuffer({ size: Buffer.byteLength(Debugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(Debugger.DEBUGGER_MAGIC).toBuffer();
             console.log('Sending magic to server');
             this.controllerClient.write(buffer);
         });
@@ -276,7 +278,7 @@ export class BrightScriptDebugger {
 
     private parseUnhandledData(unhandledData: Buffer): boolean {
         if (this.handshakeComplete) {
-            let debuggerRequestResponse = new DebuggerRequestResponse(unhandledData);
+            let debuggerRequestResponse = new Response(unhandledData);
             if (debuggerRequestResponse.success) {
 
                 if (debuggerRequestResponse.requestId > this.totalRequests) {
@@ -296,7 +298,7 @@ export class BrightScriptDebugger {
                 }
 
                 if (commandType === COMMANDS.VARIABLES) {
-                    let debuggerVariableRequestResponse = new DebuggerVariableRequestResponse(unhandledData);
+                    let debuggerVariableRequestResponse = new VariableResponse(unhandledData);
                     if (debuggerVariableRequestResponse.success) {
                         this.removedProcessedBytes(debuggerVariableRequestResponse, unhandledData);
                         return true;
@@ -304,7 +306,7 @@ export class BrightScriptDebugger {
                 }
 
                 if (commandType === COMMANDS.STACKTRACE) {
-                    let debuggerStacktraceRequestResponse = new DebuggerStacktraceRequestResponse(unhandledData);
+                    let debuggerStacktraceRequestResponse = new StackTraceResponse(unhandledData);
                     if (debuggerStacktraceRequestResponse.success) {
                         this.removedProcessedBytes(debuggerStacktraceRequestResponse, unhandledData);
                         return true;
@@ -312,7 +314,7 @@ export class BrightScriptDebugger {
                 }
 
                 if (commandType === COMMANDS.THREADS) {
-                    let debuggerThreadsRequestResponse = new DebuggerThreadsRequestResponse(unhandledData);
+                    let debuggerThreadsRequestResponse = new ThreadsResponse(unhandledData);
                     if (debuggerThreadsRequestResponse.success) {
                         this.removedProcessedBytes(debuggerThreadsRequestResponse, unhandledData);
                         return true;
@@ -320,21 +322,21 @@ export class BrightScriptDebugger {
                 }
             }
 
-            let debuggerUpdateThreads = new DebuggerUpdateThreads(unhandledData);
+            let debuggerUpdateThreads = new UpdateThreadsResponse(unhandledData);
             if (debuggerUpdateThreads.success) {
                 this.handleThreadsUpdate(debuggerUpdateThreads);
                 this.removedProcessedBytes(debuggerUpdateThreads, unhandledData);
                 return true;
             }
 
-            let debuggerUpdateUndefined = new DebuggerUpdateUndefined(unhandledData);
+            let debuggerUpdateUndefined = new UndefinedResponse(unhandledData);
             if (debuggerUpdateUndefined.success) {
                 this.removedProcessedBytes(debuggerUpdateUndefined, unhandledData);
                 return true;
             }
 
             if (!this.connectedToIoPort) {
-                let debuggerUpdateConnectIoPort = new DebuggerUpdateConnectIoPort(unhandledData);
+                let debuggerUpdateConnectIoPort = new ConnectIOPortResponse(unhandledData);
                 if (debuggerUpdateConnectIoPort.success) {
                     this.connectToIoPort(debuggerUpdateConnectIoPort);
                     this.removedProcessedBytes(debuggerUpdateConnectIoPort, unhandledData);
@@ -343,7 +345,7 @@ export class BrightScriptDebugger {
             }
 
         } else {
-            let debuggerHandshake = new DebuggerHandshake(unhandledData);
+            let debuggerHandshake = new HandshakeResponse(unhandledData);
             if (debuggerHandshake.success) {
                 this.handshakeComplete = true;
                 this.verifyHandshake(debuggerHandshake);
@@ -367,8 +369,8 @@ export class BrightScriptDebugger {
         this.parseUnhandledData(this.unhandledData);
     }
 
-    private verifyHandshake(debuggerHandshake: DebuggerHandshake): boolean {
-        const magicIsValid = (BrightScriptDebugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
+    private verifyHandshake(debuggerHandshake: HandshakeResponse): boolean {
+        const magicIsValid = (Debugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
         if (magicIsValid) {
             console.log('Magic is valid.');
             this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion].join('.');
@@ -407,7 +409,7 @@ export class BrightScriptDebugger {
         }
     }
 
-    private connectToIoPort(connectIoPortResponse: DebuggerUpdateConnectIoPort) {
+    private connectToIoPort(connectIoPortResponse: ConnectIOPortResponse) {
         // Create a new TCP client.
         this.ioClient = new Net.Socket();
         // Send a connection request to the server.

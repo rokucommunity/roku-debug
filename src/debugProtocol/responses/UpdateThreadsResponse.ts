@@ -1,8 +1,8 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES } from './Constants';
-import { util } from './util';
+import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES } from '../Constants';
+import { util } from '../../util';
 
-class DebuggerUpdateThreads {
+export class UpdateThreadsResponse {
 
     constructor(buffer: Buffer) {
         if (buffer.byteLength >= 12) {
@@ -41,7 +41,7 @@ class DebuggerUpdateThreads {
     public data: ThreadsStopped | ThreadAttached;
 }
 
-class ThreadsStopped {
+export class ThreadsStopped {
 
     constructor(bufferReader: SmartBuffer) {
         if (bufferReader.length >= bufferReader.readOffset + 6) {
@@ -59,7 +59,7 @@ class ThreadsStopped {
     public stopReasonDetail: string;
 }
 
-class ThreadAttached {
+export class ThreadAttached {
 
     constructor(bufferReader: SmartBuffer) {
         if (bufferReader.length >= bufferReader.readOffset + 6) {
@@ -76,5 +76,3 @@ class ThreadAttached {
     public stopReason = -1;
     public stopReasonDetail: string;
 }
-
-export { DebuggerUpdateThreads };

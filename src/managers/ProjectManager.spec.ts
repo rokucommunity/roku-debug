@@ -5,9 +5,9 @@ import * as fsExtra from 'fs-extra';
 import * as rokuDeploy from 'roku-deploy';
 import * as sinonActual from 'sinon';
 
-import { fileUtils } from './FileUtils';
+import { fileUtils } from '../FileUtils';
 import { Project, ComponentLibraryProject, ProjectManager, ComponentLibraryConstrutorParams, componentLibraryPostfix } from './ProjectManager';
-import { standardizePath as s } from './FileUtils';
+import { standardizePath as s } from '../FileUtils';
 
 let sinon = sinonActual.createSandbox();
 let n = fileUtils.standardizePath.bind(fileUtils);

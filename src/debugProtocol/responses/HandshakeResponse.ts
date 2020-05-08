@@ -1,7 +1,7 @@
 import { SmartBuffer } from 'smart-buffer';
-import { util } from './util';
+import { util } from '../../util';
 
-class DebuggerHandshake {
+export class HandshakeResponse {
 
     constructor(buffer: Buffer) {
         // Required size of the handshake
@@ -28,5 +28,3 @@ class DebuggerHandshake {
     public minorVersion = -1;
     public patchVersion = -1;
 }
-
-export { DebuggerHandshake };

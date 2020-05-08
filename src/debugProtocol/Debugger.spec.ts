@@ -1,24 +1,24 @@
 // tslint:disable: no-floating-promises
-import { BrightScriptDebugger } from './BrightScriptDebugger';
+import { Debugger } from './Debugger';
 import * as net from 'net';
 import { expect } from 'chai';
 import { EventEmitter } from 'events';
 import { SmartBuffer } from 'smart-buffer';
-import { util } from './util';
-import { MockBrightScriptDebugServer } from './MockBrightScriptDebugServer.spec';
+import { util } from '../util';
+import { MockDebugProtocolServer } from './MockDebugProtocolServer.spec';
 import * as sinonImport from 'sinon';
 var sinon = sinonImport.createSandbox();
 
-describe('BrightScriptDebugger', () => {
-    var bsDebugger: BrightScriptDebugger;
-    var roku: MockBrightScriptDebugServer;
+describe('debugProtocol Debugger', () => {
+    var bsDebugger: Debugger;
+    var roku: MockDebugProtocolServer;
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args ) => {});
-        roku = new MockBrightScriptDebugServer();
+        roku = new MockDebugProtocolServer();
         await roku.initialize();
 
-        bsDebugger = new BrightScriptDebugger({
+        bsDebugger = new Debugger({
             host: 'localhost',
             controllerPort: roku.controllerPort
         });
@@ -37,7 +37,7 @@ describe('BrightScriptDebugger', () => {
             bsDebugger.connect();
             roku.processActions();
             var magic = await action.promise;
-            expect(magic).to.equal(BrightScriptDebugger.DEBUGGER_MAGIC);
+            expect(magic).to.equal(Debugger.DEBUGGER_MAGIC);
             console.log('test finished');
         });
 

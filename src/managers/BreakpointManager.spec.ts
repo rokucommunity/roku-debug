@@ -4,10 +4,10 @@ import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer, SourceNode } from 'source-map';
 
 import { BreakpointManager } from './BreakpointManager';
-import { fileUtils } from './FileUtils';
+import { fileUtils } from '../FileUtils';
 import { Project } from './ProjectManager';
 let n = fileUtils.standardizePath.bind(fileUtils);
-import { standardizePath as s } from './FileUtils';
+import { standardizePath as s } from '../FileUtils';
 
 describe('BreakpointManager', () => {
     let cwd = fileUtils.standardizePath(process.cwd());

@@ -1,9 +1,9 @@
 import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES } from './Constants';
-import { util } from './util';
+import { ERROR_CODES } from '../Constants';
+import { util } from '../../util';
 
-class DebuggerStacktraceRequestResponse {
+export class StackTraceResponse {
 
     constructor(buffer: Buffer) {
         // The smallest a stacktrace request response can be
@@ -17,7 +17,7 @@ class DebuggerStacktraceRequestResponse {
                     this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
                     this.stackSize = bufferReader.readUInt32LE();
 
-                    for (let i = 0; i < this.stackSize; i ++) {
+                    for (let i = 0; i < this.stackSize; i++) {
                         let stackEntry = new StackEntry(bufferReader);
                         if (stackEntry.success) {
                             // All the necessary stack entry data was present. Push to the entries array.
@@ -43,7 +43,7 @@ class DebuggerStacktraceRequestResponse {
     public entries = [];
 }
 
-class StackEntry {
+export class StackEntry {
 
     constructor(bufferReader: SmartBuffer) {
         this.lineNumber = bufferReader.readUInt32LE();
@@ -62,5 +62,3 @@ class StackEntry {
     public functionName: string;
     public fileName: string;
 }
-
-export { DebuggerStacktraceRequestResponse };

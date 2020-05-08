@@ -1,9 +1,9 @@
 import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES, STOP_REASONS } from './Constants';
-import { util } from './util';
+import { ERROR_CODES, STOP_REASONS } from '../Constants';
+import { util } from '../../util';
 
-class DebuggerThreadsRequestResponse {
+export class ThreadsResponse {
 
     constructor(buffer: Buffer) {
         // The smallest a threads request response can be
@@ -43,7 +43,7 @@ class DebuggerThreadsRequestResponse {
     public threads = [];
 }
 
-class ThreadInfo {
+export class ThreadInfo {
 
     constructor(bufferReader: SmartBuffer) {
         // NOTE: The docs say the flags should be unit8 and uint32. In testing it seems like they are sending uint32 but meant to send unit8.
@@ -71,5 +71,3 @@ class ThreadInfo {
     public fileName: string;
     public codeSnippet: string;
 }
-
-export { DebuggerThreadsRequestResponse };

@@ -5,17 +5,17 @@ import { Socket } from 'net';
 import * as net from 'net';
 import * as rokuDeploy from 'roku-deploy';
 
-import { defer } from './BrightScriptDebugSession';
-import { PrintedObjectParser } from './PrintedObjectParser';
-import { CompileErrorProcessor } from './CompileErrorProcessor';
-import { RendezvousHistory, RendezvousTracker } from './RendezvousTracker';
-import { SourceLocation } from './SourceLocator';
-import { util } from './util';
+import { defer } from '../debugSession/BrightScriptDebugSession';
+import { PrintedObjectParser } from '../PrintedObjectParser';
+import { CompileErrorProcessor } from '../CompileErrorProcessor';
+import { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
+import { SourceLocation } from '../SourceLocator';
+import { util } from '../util';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
  */
-export class RokuTelnetAdapter {
+export class TelnetAdapter {
     constructor(
         private host: string,
         private enableDebuggerAutoRecovery: boolean = false
