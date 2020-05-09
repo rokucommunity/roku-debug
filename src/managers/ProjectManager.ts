@@ -27,7 +27,7 @@ export class ProjectManager {
     public breakpointManager = new BreakpointManager();
 
     public launchConfiguration: {
-        enableSourceMaps: boolean;
+        enableSourceMaps?: boolean;
     };
 
     public mainProject: Project;

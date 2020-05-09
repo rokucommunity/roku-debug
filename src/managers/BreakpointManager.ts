@@ -19,7 +19,7 @@ export class BreakpointManager {
     public launchConfiguration: {
         sourceDirs: string[],
         rootDir: string;
-        enableSourceMaps: boolean
+        enableSourceMaps?: boolean
     };
 
     /**

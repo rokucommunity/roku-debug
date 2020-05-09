@@ -100,13 +100,34 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
 
     /**
      * If true, then the staging folder is NOT deleted after a debug session has been closed
+     * @default false
      */
-    retainStagingFolder: boolean;
+    retainStagingFolder?: boolean;
+
+    /**
+     *  If true, then the zip archive is NOT deleted after a debug session has been closed.
+     * @default true
+     */
+    retainDeploymentArchive?: boolean;
 
     /**
      * If true, then any source maps found will be used to convert a debug location back to a source location
      */
-    enableSourceMaps: boolean;
+    enableSourceMaps?: boolean;
+    
+    /**
+     * The port that should be used when installing the package. Defaults to 80.
+     * This is mainly useful for things like emulators that use alternate ports,
+     * or when publishing through some type of port forwarding configuration.
+     */
+    packagePort?: number;
+
+    /**
+     * The port used to send remote control commands (like home press, back, etc.). Defaults to 8060.
+     * This is mainly useful for things like emulators that use alternate ports,
+     * or when sending commands through some type of port forwarding.
+     */
+    remotePort?: number;
 }
 
 export interface ComponentLibraryConfiguration {
