@@ -27,14 +27,26 @@ export class SourceLocator {
                 var originalPosition = await SourceMapConsumer.with(sourceMap, null, (consumer) => {
                     return consumer.originalPositionFor({
                         line: options.lineNumber,
-                        column: options.columnIndex
+                        column: options.columnIndex,
+                        bias: SourceMapConsumer.LEAST_UPPER_BOUND
                     });
                 });
-                return {
+                let result = {
                     lineNumber: originalPosition.line,
                     columnIndex: originalPosition.column,
                     filePath: originalPosition.source
                 };
+                //if a source map exists at the source location, we need to follow the source map trail backwards another level
+                if (fsExtra.pathExistsSync(`${result.filePath}.map`)) {
+                    return await this.getSourceLocation({
+                        ...options,
+                        columnIndex: result.columnIndex,
+                        lineNumber: result.lineNumber,
+                        stagingFilePath: result.filePath
+                    });
+                } else {
+                    return result;
+                }
             }
         }
 

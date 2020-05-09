@@ -53,6 +53,7 @@ describe('BreakpointManager', () => {
                         print "Hello world"
                     end function
                 `,
+                'main.brs',
                 [<any>{
                     line: 3,
                 }]).code
@@ -68,10 +69,12 @@ describe('BreakpointManager', () => {
                 function Main()
                     print "Hello world"
                 end function
-            `, <any>[{
-                line: 3,
-                condition: 'age=1'
-            }]).code).to.equal(`
+            `,
+                'main.brs',
+                <any>[{
+                    line: 3,
+                    condition: 'age=1'
+                }]).code).to.equal(`
                 function Main()\nif age=1 then : STOP : end if
                     print "Hello world"
                 end function
@@ -83,10 +86,12 @@ describe('BreakpointManager', () => {
                 function Main()
                     print "Hello world"
                 end function
-            `, <any>[{
-                line: 3,
-                hitCondition: '1'
-            }]).code).to.equal(`
+            `,
+                'main.brs',
+                <any>[{
+                    line: 3,
+                    hitCondition: '1'
+                }]).code).to.equal(`
                 function Main()\nif Invalid = m.vscode_bp OR Invalid = m.vscode_bp.bp1 then if Invalid = m.vscode_bp then m.vscode_bp = {bp1: 0} else m.vscode_bp.bp1 = 0 else m.vscode_bp.bp1 ++ : if m.vscode_bp.bp1 >= 1 then STOP
                     print "Hello world"
                 end function
@@ -98,10 +103,11 @@ describe('BreakpointManager', () => {
                 function Main()
                     print "Hello world"
                 end function
-            `, <any>[{
-                line: 3,
-                hitCondition: '0'
-            }]).code).to.equal(`
+            `, 'main.brs',
+                <any>[{
+                    line: 3,
+                    hitCondition: '0'
+                }]).code).to.equal(`
                 function Main()\nSTOP
                     print "Hello world"
                 end function
@@ -113,10 +119,11 @@ describe('BreakpointManager', () => {
                 function Main()
                     print "Hello world"
                 end function
-            `, <any>[{
-                line: 3,
-                logMessage: 'test print'
-            }]).code).to.equal(`
+            `, 'main.brs',
+                <any>[{
+                    line: 3,
+                    logMessage: 'test print'
+                }]).code).to.equal(`
                 function Main()\nPRINT "test print"
                     print "Hello world"
                 end function
@@ -128,10 +135,11 @@ describe('BreakpointManager', () => {
                 function Main()
                     print "Hello world"
                 end function
-            `, <any>[{
-                line: 3,
-                logMessage: 'hello {name}, how is {city}'
-            }]).code).to.equal(`
+            `, 'main.brs',
+                <any>[{
+                    line: 3,
+                    logMessage: 'hello {name}, how is {city}'
+                }]).code).to.equal(`
                 function Main()\nPRINT "hello "; name;", how is "; city;""
                     print "Hello world"
                 end function
@@ -143,13 +151,14 @@ describe('BreakpointManager', () => {
                 function Main()
                     print "Hello world"
                 end function
-            `, <any>[{
-                line: 3,
-                column: 5,
-                sourceFilePath: 'rootDir/source/test.brs',
-                stagingFilePath: 'stagingDir/source/test.brs',
-                type: 'sourceDirs'
-            }]);
+            `, 'main.brs',
+                <any>[{
+                    line: 3,
+                    column: 5,
+                    sourceFilePath: 'rootDir/source/test.brs',
+                    stagingFilePath: 'stagingDir/source/test.brs',
+                    type: 'sourceDirs'
+                }]);
             expect(result.map).to.exist;
 
             //validate that the source map is correct
@@ -524,8 +533,8 @@ describe('BreakpointManager', () => {
         });
 
         //this is just a sample test to show how we need to create 
-        it.skip('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
-            var sourceFilePath = s`${srcDir}/source/main.brs`;
+        it('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
+            var sourceFilePath = s`${srcDir}/source/main.bs`;
             function n(line, col, txt) {
                 return new SourceNode(line, col, sourceFilePath, txt);
             }
@@ -538,14 +547,14 @@ describe('BreakpointManager', () => {
             //remove empty newlines
             let chunks = [
                 n(1, 0, 'sub'), ' ', n(1, 4, 'main'), n(1, 8, '('), n(1, 9, ')'), '\n',
-                '    ', n(3, 4, 'print'), ' ', n(3, 11, '1'), '\n',
+                n(3, 0, '    '), n(3, 4, 'print'), ' ', n(3, 11, '1'), '\n',
                 n(5, 0, 'end'), ' ', n(5, 4, 'function')
             ];
             let result = new SourceNode(null, null, sourceFilePath, chunks).toStringWithSourceMap();
 
             //write the files
             fsExtra.writeFileSync(sourceFilePath, sourceFile);
-            
+
             fsExtra.writeFileSync(`${rootDir}/source/main.brs`, result.code);
             fsExtra.writeFileSync(`${rootDir}/source/main.brs.map`, result.map.toString());
 
@@ -556,13 +565,13 @@ describe('BreakpointManager', () => {
             let position = await SourceMapConsumer.with(result.map.toJSON(), null, (consumer) => {
                 return consumer.generatedPositionFor({
                     line: 3,
-                    column: 0,
+                    column: 4,
                     source: sourceFilePath,
                     //bias is critical. Without this, we would default to the last char of previous line
                     bias: SourceMapConsumer.LEAST_UPPER_BOUND
                 });
             });
-            expect({ line: position.line, column: position.column }).to.eql({
+            expect(position).to.include({
                 line: 2,
                 column: 4
             });
@@ -596,7 +605,7 @@ describe('BreakpointManager', () => {
                 enableSourceMaps: true
             });
 
-            expect(location).to.eql({
+            expect(location).to.include({
                 columnIndex: 0,
                 lineNumber: 3,
                 filePath: sourceFilePath

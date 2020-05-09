@@ -1,14 +1,11 @@
 import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
-import * as mergeSourceMap from 'merge-source-map';
 import { orderBy } from 'natural-orderby';
-import * as path from 'path';
 import { SourceNode } from 'source-map';
 import { DebugProtocol } from 'vscode-debugprotocol';
-import { stringify } from 'querystring';
-
 import { fileUtils } from '../FileUtils';
 import { Project } from './ProjectManager';
+import { standardizePath as s } from 'roku-deploy';
 
 export class BreakpointManager {
 
@@ -169,9 +166,18 @@ export class BreakpointManager {
                     ],
                     project.stagingFolderPath
                 );
+
                 for (let stagingLocation of stagingLocationsResult.locations) {
+                    let relativeStagingPath = fileUtils.replaceCaseInsensitive(
+                        stagingLocation.filePath,
+                        fileUtils.standardizePath(
+                            fileUtils.removeTrailingSlash(project.stagingFolderPath) + '/'
+                        ),
+                        ''
+                    );
                     let obj: BreakpointWorkItem = {
                         sourceFilePath: sourceFilePath,
+                        rootDirFilePath: s`${project.rootDir}/${relativeStagingPath}`,
                         line: stagingLocation.lineNumber,
                         column: stagingLocation.columnIndex,
                         stagingFilePath: stagingLocation.filePath,
@@ -225,50 +231,38 @@ export class BreakpointManager {
     }
 
     /**
-     * Add breakpoints to the specified file
-     * @param sourceFilePath - the path to the original source file from its original location
-     * @param basePath - the base path to the folder where the client path file resides
-     * @param stagingFolderPath - the base path to the staging folder where the file should be modified
+     * Write breakpoints to the specified file, and update the sourcemaps to match
      */
     private async writeBreakpointsToFile(stagingFilePath: string, breakpoints: BreakpointWorkItem[]) {
-        let sourceMapPath = `${stagingFilePath}.map`;
-
         //load the file as a string
         let fileContents = (await fsExtra.readFile(stagingFilePath)).toString();
 
-        let sourceAndMap = this.getSourceAndMapWithBreakpoints(fileContents, breakpoints);
+        let originalFilePath = breakpoints[0].type === 'sourceMap' ?
+            //the calling function will merge this sourcemap into the other existing sourcemap, so just use the same name because it doesn't matter
+            breakpoints[0].rootDirFilePath :
+            //the calling function doesn't have a sourcemap for this file, so we need to point it to the sourceDirs found location (probably rootDir...)
+            breakpoints[0].sourceFilePath;
+
+        let sourceAndMap = this.getSourceAndMapWithBreakpoints(fileContents, originalFilePath, breakpoints);
 
         let writeSourceMapPromise: Promise<void>;
 
         //if we got a map file back, write it to the filesystem
         if (sourceAndMap.map) {
             let sourceMap = JSON.stringify(sourceAndMap.map);
-            //if a source map already exists for this file, we need to merge that one with our new one
-            if (await fsExtra.pathExists(sourceMapPath)) {
-                var originalSourceMap = (await fsExtra.readFile(sourceMapPath)).toString();
-                var mergedSourceMapObj = mergeSourceMap(originalSourceMap, sourceMap);
-                sourceMap = JSON.stringify(mergedSourceMapObj);
-            }
-            //write the source map file
-            writeSourceMapPromise = fsExtra.writeFile(sourceMapPath, sourceMap);
+            //It's ok to overwrite the file in staging because if the original code provided a source map,
+            //then our SourceLocator class will walk the sourcemap chain from staging, to rootDir, and then
+            //on to the original location
+            fsExtra.writeFileSync(`${stagingFilePath}.map`, sourceMap);
         }
 
-        await Promise.all([
-            //overwrite the file that now has breakpoints injected
-            fsExtra.writeFile(stagingFilePath, sourceAndMap.code),
-            writeSourceMapPromise
-        ]);
+        //overwrite the file that now has breakpoints injected
+        fsExtra.writeFileSync(stagingFilePath, sourceAndMap.code);
     }
 
     private bpIndex = 1;
-    public getSourceAndMapWithBreakpoints(fileContents: string, breakpoints: BreakpointWorkItem[]) {
+    public getSourceAndMapWithBreakpoints(fileContents: string, originalFilePath: string, breakpoints: BreakpointWorkItem[]) {
         let chunks = [] as Array<SourceNode | string>;
-
-        let originalFilePath = breakpoints[0].type === 'sourceMap' ?
-            //the calling function will merge this sourcemap into the other existing sourcemap, so just use the same name because it doesn't matter
-            breakpoints[0].stagingFilePath :
-            //the calling function doesn't have a sourcemap for this file, so we need to point it to the sourceDirs found location (probably rootDir...)
-            breakpoints[0].sourceFilePath;
 
         //split the file by newline
         let lines = eol.split(fileContents);
@@ -283,7 +277,7 @@ export class BreakpointManager {
             let lineBreakpoints = breakpoints.filter(bp => bp.line - 1 === originalLineIndex);
             //if we have a breakpoint, insert that before the line
             for (let bp of lineBreakpoints) {
-                let linesForBreakpoint = this.getBreakpointLines(bp, bp.sourceFilePath);
+                let linesForBreakpoint = this.getBreakpointLines(bp, originalFilePath);
 
                 //separate each line for this breakpoint with a newline
                 for (let bpLine of linesForBreakpoint) {
@@ -415,6 +409,7 @@ interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoint {
 interface BreakpointWorkItem {
     sourceFilePath: string;
     stagingFilePath: string;
+    rootDirFilePath: string;
     /**
      * The 1-based line number
      */
