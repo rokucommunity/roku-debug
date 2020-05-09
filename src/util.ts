@@ -188,9 +188,23 @@ class Util {
      * Send debug server messages to the BrightScript Debug Log channel, as well as writing to console.debug
      */
     public logDebug(...args) {
+        args = Array.isArray(args) ? args : [];
         let timestamp = dateFormat(new Date(), 'HH:mm:ss.l ');
-        let messages = (Array.isArray(args) ? args : []).join(' ');
-        this._debugSession?.sendEvent(new DebugServerLogOutputEvent(`${timestamp}: ${messages}`));
+        let messages = [];
+
+        for (let arg of args) {
+            if (arg instanceof Error) {
+                messages.push(JSON.stringify({
+                    message: arg.message,
+                    name: arg.name,
+                    stack: arg.stack.toString()
+                }, null, 4));
+            } else {
+                messages.push(arg.toString());
+            }
+        }
+        let text = messages.join(', ');
+        this._debugSession?.sendEvent(new DebugServerLogOutputEvent(`${timestamp}: ${text}`));
 
         console.log.apply(console, [timestamp, ...args]);
     }

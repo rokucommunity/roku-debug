@@ -475,76 +475,84 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
-        util.logDebug('stackTraceRequest');
-        let frames = [];
+        try {
+            util.logDebug('stackTraceRequest');
+            let frames = [];
 
-        if (this.rokuAdapter.isAtDebuggerPrompt) {
-            let stackTrace = await this.rokuAdapter.getStackTrace(args.threadId);
+            if (this.rokuAdapter.isAtDebuggerPrompt) {
+                let stackTrace = await this.rokuAdapter.getStackTrace(args.threadId);
 
-            for (let debugFrame of stackTrace) {
-                let sourceLocation = await this.projectManager.getSourceLocation(debugFrame.filePath, debugFrame.lineNumber);
+                for (let debugFrame of stackTrace) {
+                    let sourceLocation = await this.projectManager.getSourceLocation(debugFrame.filePath, debugFrame.lineNumber);
 
-                //the stacktrace returns function identifiers in all lower case. Try to get the actual case
-                //load the contents of the file and get the correct casing for the function identifier
-                try {
-                    let functionName = await this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
-                    if (functionName) {
-                        debugFrame.functionIdentifier = functionName;
+                    //the stacktrace returns function identifiers in all lower case. Try to get the actual case
+                    //load the contents of the file and get the correct casing for the function identifier
+                    try {
+                        let functionName = await this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
+                        if (functionName) {
+                            debugFrame.functionIdentifier = functionName;
+                        }
+                    } catch (e) {
+                        util.logDebug(e, sourceLocation, debugFrame);
                     }
-                } catch (e) {
-                    console.error(e, sourceLocation, debugFrame);
-                }
 
-                let frame = new StackFrame(
-                    debugFrame.frameId,
-                    `${debugFrame.functionIdentifier}`,
-                    new Source(path.basename(sourceLocation.filePath), sourceLocation.filePath),
-                    sourceLocation.lineNumber,
-                    1
-                );
-                frames.push(frame);
+                    let frame = new StackFrame(
+                        debugFrame.frameId,
+                        `${debugFrame.functionIdentifier}`,
+                        new Source(path.basename(sourceLocation.filePath), sourceLocation.filePath),
+                        sourceLocation.lineNumber,
+                        1
+                    );
+                    frames.push(frame);
+                }
+            } else {
+                util.logDebug('Skipped calculating stacktrace because the RokuAdapter is not accepting input at this time');
             }
-        } else {
-            util.logDebug('Skipped calculating stacktrace because the RokuAdapter is not accepting input at this time');
+            response.body = {
+                stackFrames: frames,
+                totalFrames: frames.length
+            };
+            this.sendResponse(response);
+        } catch (e) {
+            util.logDebug(e);
         }
-        response.body = {
-            stackFrames: frames,
-            totalFrames: frames.length
-        };
-        this.sendResponse(response);
     }
 
     protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
-        const scopes = new Array<Scope>();
+        try {
+            const scopes = new Array<Scope>();
 
-        if (this.enableDebugProtocol) {
-            let refId = this.getEvaluateRefId('', args.frameId);
-            let v: AugmentedVariable;
-            //if we already looked this item up, return it
-            if (this.variables[refId]) {
-                v = this.variables[refId];
-            } else {
-                let result = await this.rokuAdapter.getVariable('', args.frameId, true);
-                if (!result) {
-                    throw new Error(`Could not get scopes`);
+            if (this.enableDebugProtocol) {
+                let refId = this.getEvaluateRefId('', args.frameId);
+                let v: AugmentedVariable;
+                //if we already looked this item up, return it
+                if (this.variables[refId]) {
+                    v = this.variables[refId];
+                } else {
+                    let result = await this.rokuAdapter.getVariable('', args.frameId, true);
+                    if (!result) {
+                        throw new Error(`Could not get scopes`);
+                    }
+                    v = this.getVariableFromResult(result, args.frameId);
+                    //TODO - testing something, remove later
+                    v.request_seq = response.request_seq;
+                    v.frameId = args.frameId;
                 }
-                v = this.getVariableFromResult(result, args.frameId);
-                //TODO - testing something, remove later
-                v.request_seq = response.request_seq;
-                v.frameId = args.frameId;
+
+                let scope = new Scope('Local', refId, true);
+                scopes.push(scope);
+            } else {
+                // NOTE: Legacy telnet support
+                scopes.push(new Scope('Local', this.variableHandles.create('local'), true));
             }
 
-            let scope = new Scope('Local', refId, true);
-            scopes.push(scope);
-        } else {
-            // NOTE: Legacy telnet support
-            scopes.push(new Scope('Local', this.variableHandles.create('local'), true));
+            response.body = {
+                scopes: scopes
+            };
+            this.sendResponse(response);
+        } catch (e) {
+            util.logDebug(e);
         }
-
-        response.body = {
-            scopes: scopes
-        };
-        this.sendResponse(response);
     }
 
     protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {
@@ -594,130 +602,138 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     public async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
-        util.logDebug(`variablesRequest: ${JSON.stringify(args)}`);
+        try {
+            util.logDebug(`variablesRequest: ${JSON.stringify(args)}`);
 
-        let childVariables: AugmentedVariable[] = [];
-        //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
-        await this.evaluateRequestPromise;
-        if (this.rokuAdapter.isAtDebuggerPrompt) {
-            const reference = this.variableHandles.get(args.variablesReference);
-            if (reference) {
-                // NOTE: Legacy telnet support for local vars
-                if (this.launchConfiguration.enableVariablesPanel) {
-                    const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
+            let childVariables: AugmentedVariable[] = [];
+            //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
+            await this.evaluateRequestPromise;
+            if (this.rokuAdapter.isAtDebuggerPrompt) {
+                const reference = this.variableHandles.get(args.variablesReference);
+                if (reference) {
+                    // NOTE: Legacy telnet support for local vars
+                    if (this.launchConfiguration.enableVariablesPanel) {
+                        const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
 
-                    for (const varName of vars) {
-                        let result = await this.rokuAdapter.getVariable(varName, -1);
-                        let tempVar = this.getVariableFromResult(result, -1);
-                        childVariables.push(tempVar);
+                        for (const varName of vars) {
+                            let result = await this.rokuAdapter.getVariable(varName, -1);
+                            let tempVar = this.getVariableFromResult(result, -1);
+                            childVariables.push(tempVar);
+                        }
+                    } else {
+                        childVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
                     }
                 } else {
-                    childVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
+                    //find the variable with this reference
+                    let v = this.variables[args.variablesReference];
+                    //query for child vars if we haven't done it yet.
+                    if (v.childVariables.length === 0) {
+                        let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
+                        let tempVar = this.getVariableFromResult(result, v.frameId);
+                        tempVar.frameId = v.frameId;
+                        v.childVariables = tempVar.childVariables;
+                    }
+                    childVariables = v.childVariables;
                 }
-            } else {
-                //find the variable with this reference
-                let v = this.variables[args.variablesReference];
-                //query for child vars if we haven't done it yet.
-                if (v.childVariables.length === 0) {
-                    let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
-                    let tempVar = this.getVariableFromResult(result, v.frameId);
-                    tempVar.frameId = v.frameId;
-                    v.childVariables = tempVar.childVariables;
-                }
-                childVariables = v.childVariables;
-            }
 
-            //if the variable is an array, send only the requested range
-            if (Array.isArray(childVariables) && args.filter === 'indexed') {
-                //only send the variable range requested by the debugger
-                childVariables = childVariables.slice(args.start, args.start + args.count);
+                //if the variable is an array, send only the requested range
+                if (Array.isArray(childVariables) && args.filter === 'indexed') {
+                    //only send the variable range requested by the debugger
+                    childVariables = childVariables.slice(args.start, args.start + args.count);
+                }
+                response.body = {
+                    variables: childVariables
+                };
+            } else {
+                util.logDebug('Skipped getting variables because the RokuAdapter is not accepting input at this time');
             }
-            response.body = {
-                variables: childVariables
-            };
-        } else {
-            util.logDebug('Skipped getting variables because the RokuAdapter is not accepting input at this time');
+            this.sendResponse(response);
+        } catch (e) {
+            util.logDebug(e);
         }
-        this.sendResponse(response);
     }
 
     private evaluateRequestPromise = Promise.resolve();
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
-        let deferred = defer<any>();
-
-        this.evaluateRequestPromise = this.evaluateRequestPromise.then(() => {
-            return deferred.promise;
-        });
-
-        //fix vscode bug that excludes closing quotemark sometimes.
-        if (args.context === 'hover') {
-            args.expression = util.ensureClosingQuote(args.expression);
-        }
-
         try {
+            let deferred = defer<any>();
 
-            if (this.rokuAdapter.isAtDebuggerPrompt) {
-                if (['hover', 'watch'].indexOf(args.context) > -1 || args.expression.toLowerCase().trim().startsWith('print ')) {
-                    //if this command has the word print in front of it, remove that word
-                    let expression = args.expression.replace(/^print/i, '').trim();
-                    let refId = this.getEvaluateRefId(expression, args.frameId);
-                    let v: AugmentedVariable;
-                    //if we already looked this item up, return it
-                    if (this.variables[refId]) {
-                        v = this.variables[refId];
-                    } else {
-                        let result = await this.rokuAdapter.getVariable(expression.toLowerCase(), args.frameId, true);
-                        if (!result) {
-                            console.error(`bad variable request ${expression}`);
-                            return;
-                        }
-                        v = this.getVariableFromResult(result, args.frameId);
-                        //TODO - testing something, remove later
-                        v.request_seq = response.request_seq;
-                        v.frameId = args.frameId;
-                    }
-                    response.body = {
-                        result: v.value,
-                        variablesReference: v.variablesReference,
-                        namedVariables: v.namedVariables || 0,
-                        indexedVariables: v.indexedVariables || 0
-                    };
-                } else if (args.context === 'repl' && !this.enableDebugProtocol) {
-                    let lowerExpression = args.expression.toLowerCase().trim();
+            this.evaluateRequestPromise = this.evaluateRequestPromise.then(() => {
+                return deferred.promise;
+            });
 
-                    if (['cont', 'c'].includes(lowerExpression)) {
-                        await this.rokuAdapter.continue();
-
-                    } else if (lowerExpression === 'over') {
-                        await this.rokuAdapter.stepOver(-1);
-
-                    } else if (['step', 's', 't'].includes(lowerExpression)) {
-                        await this.rokuAdapter.stepInto(-1);
-
-                    } else if (lowerExpression === 'out') {
-                        await this.rokuAdapter.stepOut(-1);
-
-                    } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
-                        (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
-
-                    } else {
-                        let result = await this.rokuAdapter.evaluate(args.expression);
-                        response.body = <any>{
-                            result: result
-                        };
-                        // //print the output to the screen
-                        // this.sendEvent(new OutputEvent(result, 'stdout'));
-                        // TODO: support var? maybe?
-                    }
-                }
-            } else {
-                util.logDebug('Skipped evaluate request because RokuAdapter is not accepting requests at this time');
+            //fix vscode bug that excludes closing quotemark sometimes.
+            if (args.context === 'hover') {
+                args.expression = util.ensureClosingQuote(args.expression);
             }
-        } finally {
-            deferred.resolve();
+
+            try {
+
+                if (this.rokuAdapter.isAtDebuggerPrompt) {
+                    if (['hover', 'watch'].indexOf(args.context) > -1 || args.expression.toLowerCase().trim().startsWith('print ')) {
+                        //if this command has the word print in front of it, remove that word
+                        let expression = args.expression.replace(/^print/i, '').trim();
+                        let refId = this.getEvaluateRefId(expression, args.frameId);
+                        let v: AugmentedVariable;
+                        //if we already looked this item up, return it
+                        if (this.variables[refId]) {
+                            v = this.variables[refId];
+                        } else {
+                            let result = await this.rokuAdapter.getVariable(expression.toLowerCase(), args.frameId, true);
+                            if (!result) {
+                                console.error(`bad variable request ${expression}`);
+                                return;
+                            }
+                            v = this.getVariableFromResult(result, args.frameId);
+                            //TODO - testing something, remove later
+                            v.request_seq = response.request_seq;
+                            v.frameId = args.frameId;
+                        }
+                        response.body = {
+                            result: v.value,
+                            variablesReference: v.variablesReference,
+                            namedVariables: v.namedVariables || 0,
+                            indexedVariables: v.indexedVariables || 0
+                        };
+                    } else if (args.context === 'repl' && !this.enableDebugProtocol) {
+                        let lowerExpression = args.expression.toLowerCase().trim();
+
+                        if (['cont', 'c'].includes(lowerExpression)) {
+                            await this.rokuAdapter.continue();
+
+                        } else if (lowerExpression === 'over') {
+                            await this.rokuAdapter.stepOver(-1);
+
+                        } else if (['step', 's', 't'].includes(lowerExpression)) {
+                            await this.rokuAdapter.stepInto(-1);
+
+                        } else if (lowerExpression === 'out') {
+                            await this.rokuAdapter.stepOut(-1);
+
+                        } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
+                            (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
+
+                        } else {
+                            let result = await this.rokuAdapter.evaluate(args.expression);
+                            response.body = <any>{
+                                result: result
+                            };
+                            // //print the output to the screen
+                            // this.sendEvent(new OutputEvent(result, 'stdout'));
+                            // TODO: support var? maybe?
+                        }
+                    }
+                } else {
+                    util.logDebug('Skipped evaluate request because RokuAdapter is not accepting requests at this time');
+                }
+            } finally {
+                deferred.resolve();
+            }
+            this.sendResponse(response);
+        } catch (e) {
+            util.logDebug(e);
         }
-        this.sendResponse(response);
     }
 
     /**
