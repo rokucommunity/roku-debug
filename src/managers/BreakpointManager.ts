@@ -164,7 +164,7 @@ export class BreakpointManager {
                     breakpoint.line,
                     breakpoint.column,
                     [
-                        project.rootDir, 
+                        project.rootDir,
                         ...project.sourceDirs
                     ],
                     project.stagingFolderPath

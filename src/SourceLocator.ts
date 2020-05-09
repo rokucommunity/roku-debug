@@ -27,8 +27,7 @@ export class SourceLocator {
                 var originalPosition = await SourceMapConsumer.with(sourceMap, null, (consumer) => {
                     return consumer.originalPositionFor({
                         line: options.lineNumber,
-                        column: options.columnIndex,
-                        bias: SourceMapConsumer.LEAST_UPPER_BOUND
+                        column: options.columnIndex
                     });
                 });
                 return {

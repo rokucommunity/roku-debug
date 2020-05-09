@@ -1,7 +1,7 @@
-import { DebugProtocol } from "vscode-debugprotocol";
-import { BrightScriptDebugCompileError } from "../CompileErrorProcessor";
-import { LaunchConfiguration } from "../LaunchConfiguration";
-import { RendezvousHistory } from "../RendezvousTracker";
+import { DebugProtocol } from 'vscode-debugprotocol';
+import { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
+import { LaunchConfiguration } from '../LaunchConfiguration';
+import { RendezvousHistory } from '../RendezvousTracker';
 
 export class CompileFailureEvent implements DebugProtocol.Event {
     constructor(compileError: BrightScriptDebugCompileError[]) {

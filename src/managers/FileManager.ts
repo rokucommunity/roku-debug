@@ -10,11 +10,11 @@ export class FileManager {
      */
     private cache = {} as {
         /**
-         * since Roku uses a case insensitive file path, 
+         * since Roku uses a case insensitive file path,
          * we store the file path in lower case too
          */
         [lowerFilePath: string]: FileInfo
-    }
+    };
 
     public getFile(filePath: string) {
         let lowerFilePath = filePath.toLowerCase();

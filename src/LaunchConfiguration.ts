@@ -1,5 +1,5 @@
-import { FileEntry } from "roku-deploy";
-import { DebugProtocol } from "vscode-debugprotocol";
+import { FileEntry } from 'roku-deploy';
+import { DebugProtocol } from 'vscode-debugprotocol';
 
 /**
  * This interface should always match the schema found in the mock-debug extension manifest.
@@ -28,7 +28,6 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * If you have a build system, rootDir will point to the build output folder, and this path should point to the actual source folders
      * so that breakpoints can be set in the source files when debugging. In order for this to work, your build process cannot change
      * line offsets between source files and built files, otherwise debugger lines will be out of sync.
-     * 
      * This option is not necessary if your build system generates source maps
      */
     sourceDirs: string[];
@@ -114,7 +113,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * If true, then any source maps found will be used to convert a debug location back to a source location
      */
     enableSourceMaps?: boolean;
-    
+
     /**
      * The port that should be used when installing the package. Defaults to 80.
      * This is mainly useful for things like emulators that use alternate ports,
@@ -147,7 +146,6 @@ export interface ComponentLibraryConfiguration {
      * If you have a build system, rootDir will point to the build output folder, and this path should point to the actual source folders
      * so that breakpoints can be set in the source files when debugging. In order for this to work, your build process cannot change
      * line offsets between source files and built files, otherwise debugger lines will be out of sync.
-     * 
      * This option is not necessary if your build system generates source maps
      */
     sourceDirs: string[];
