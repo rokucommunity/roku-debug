@@ -323,7 +323,8 @@ export class FileUtils {
             let position = await SourceMapConsumer.with(sourceMap, null, (consumer) => {
                 return consumer.originalPositionFor({
                     line: debuggerLineNumber,
-                    column: debuggerColumnIndex
+                    column: debuggerColumnIndex,
+                    bias: SourceMapConsumer.LEAST_UPPER_BOUND
                 });
             });
             //if the sourcemap didn't find a valid mapped location, return undefined and fallback to whatever location the debugger produced
