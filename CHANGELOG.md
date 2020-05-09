@@ -6,9 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## Unreleased
+## [0.3.7] - 2020-05-09
 ### Changed
+ - upgraded to roku-deploy@3.1.1
  - brightscript debug commands from the debug console in the telnet adapter like `cont` and `step` are now supported.
+### Fixed
+ - bugs when debugging files with sourcemaps. This still isn't perfect, as files with injected breakpoints will debug the staging file. However, files with maps that don't have breakpoints will be debuggable in the source file. Fix coming soon for the prior.
 
 
 
@@ -32,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[0.3.6:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.5...v0.3.6
+[0.3.7]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.6...v0.3.7
+[0.3.6]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.5...v0.3.6
 [0.3.5]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.4...v0.3.5
 [0.3.4]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.1.0...v0.3.4
