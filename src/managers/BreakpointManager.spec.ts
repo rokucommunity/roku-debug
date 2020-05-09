@@ -8,6 +8,7 @@ import { fileUtils } from '../FileUtils';
 import { Project } from './ProjectManager';
 let n = fileUtils.standardizePath.bind(fileUtils);
 import { standardizePath as s } from '../FileUtils';
+import { SourceLocator, SourceLocation } from '../SourceLocator';
 
 describe('BreakpointManager', () => {
     let cwd = fileUtils.standardizePath(process.cwd());
@@ -15,7 +16,9 @@ describe('BreakpointManager', () => {
     let tmp = s`${cwd}/.tmp`;
     let rootDir = s`${tmp}/rootDir`;
     let stagingDir = s`${tmp}/stagingDir`;
-    let dist = s`${tmp}/dist`;
+    let distDir = s`${tmp}/dist`;
+    let srcDir = s`${tmp}/src`;
+    let outDir = s`${tmp}/out`;
 
     let bpManager: BreakpointManager;
     //cast the manager as any to simplify some of the tests
@@ -23,9 +26,11 @@ describe('BreakpointManager', () => {
     beforeEach(() => {
         fsExtra.ensureDirSync(tmp);
         fsExtra.emptyDirSync(tmp);
-        fsExtra.ensureDirSync(rootDir);
-        fsExtra.ensureDirSync(stagingDir);
-        fsExtra.ensureDirSync(dist);
+        fsExtra.ensureDirSync(`${rootDir}/source`);
+        fsExtra.ensureDirSync(`${stagingDir}/source`);
+        fsExtra.ensureDirSync(`${distDir}/source`);
+        fsExtra.ensureDirSync(`${srcDir}/source`)
+        fsExtra.ensureDirSync(outDir);
 
         bpManager = new BreakpointManager();
         b = bpManager;
@@ -516,6 +521,86 @@ describe('BreakpointManager', () => {
                 line: 2,
                 column: 4
             });
+        });
+
+        //this is just a sample test to show how we need to create 
+        it.skip('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
+            var sourceFilePath = s`${srcDir}/source/main.brs`;
+            function n(line, col, txt) {
+                return new SourceNode(line, col, sourceFilePath, txt);
+            }
+            let sourceFile =
+                'sub main()\n' +
+                '\n' +
+                '    print 1\n' +
+                '\n' +
+                'end function';
+            //remove empty newlines
+            let chunks = [
+                n(1, 0, 'sub'), ' ', n(1, 4, 'main'), n(1, 8, '('), n(1, 9, ')'), '\n',
+                '    ', n(3, 4, 'print'), ' ', n(3, 11, '1'), '\n',
+                n(5, 0, 'end'), ' ', n(5, 4, 'function')
+            ];
+            let result = new SourceNode(null, null, sourceFilePath, chunks).toStringWithSourceMap();
+
+            //write the files
+            fsExtra.writeFileSync(sourceFilePath, sourceFile);
+            
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, result.code);
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs.map`, result.map.toString());
+
+            fsExtra.writeFileSync(`${stagingDir}/source/main.brs`, result.code);
+            fsExtra.writeFileSync(`${stagingDir}/source/main.brs.map`, result.map.toString());
+
+            //sanity check: verify the original source map is useable
+            let position = await SourceMapConsumer.with(result.map.toJSON(), null, (consumer) => {
+                return consumer.generatedPositionFor({
+                    line: 3,
+                    column: 0,
+                    source: sourceFilePath,
+                    //bias is critical. Without this, we would default to the last char of previous line
+                    bias: SourceMapConsumer.LEAST_UPPER_BOUND
+                });
+            });
+            expect({ line: position.line, column: position.column }).to.eql({
+                line: 2,
+                column: 4
+            });
+
+            bpManager.registerBreakpoint(sourceFilePath, {
+                line: 3,
+                column: 0
+            });
+
+            await bpManager.writeBreakpointsForProject(new Project({
+                files: [
+                    'source/main.brs'
+                ],
+                stagingFolderPath: stagingDir,
+                outDir: outDir,
+                rootDir: rootDir
+            }));
+
+            fsExtra.copyFileSync(sourceFilePath, 'C:/users/bronley/desktop/3.bs');
+            fsExtra.copyFileSync(s`${stagingDir}/source/main.brs`, s`C:/users/bronley/desktop/1.brs`);
+            fsExtra.copyFileSync(s`${stagingDir}/source/main.brs.map`, s`C:/users/bronley/desktop/2.brs.map`);
+
+            //use sourcemap to look up original location
+            let location = await new SourceLocator().getSourceLocation({
+                stagingFilePath: s`${stagingDir}/source/main.brs`,
+                columnIndex: 0,
+                lineNumber: 2,
+                fileMappings: [],
+                rootDir: rootDir,
+                stagingFolderPath: stagingDir,
+                enableSourceMaps: true
+            });
+
+            expect(location).to.eql({
+                columnIndex: 0,
+                lineNumber: 3,
+                filePath: sourceFilePath
+            } as SourceLocation);
         });
     });
 });
