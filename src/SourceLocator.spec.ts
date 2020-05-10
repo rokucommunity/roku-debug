@@ -119,9 +119,6 @@ describe('SouceLocator', () => {
                 fsExtra.writeFileSync(stagingFilePath, out.code);
                 fsExtra.writeFileSync(stagingMapPath, out.map.toString());
 
-                fsExtra.copyFileSync(sourceFilePath, 'C:/users/bronley/desktop/main.bs');
-                fsExtra.copyFileSync(stagingFilePath, 'C:/users/bronley/desktop/main.brs');
-                fsExtra.copyFileSync(stagingMapPath, 'C:/users/bronley/desktop/main.brs.map');
 
                 let location = await sourceLocator.getSourceLocation({
                     stagingFilePath: stagingFilePath,

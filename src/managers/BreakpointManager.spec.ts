@@ -520,9 +520,6 @@ describe('BreakpointManager', () => {
                 n(5, 0, 'end'), ' ', n(5, 4, 'function')
             ];
             let result = new SourceNode(null, null, srcPath, chunks).toStringWithSourceMap();
-            fsExtra.writeFileSync('C:/users/bronley/desktop/3.bs', src);
-            fsExtra.writeFileSync('C:/users/bronley/desktop/1.brs', result.code);
-            fsExtra.writeFileSync('C:/users/bronley/desktop/2.brs.map', result.map.toString());
             let position = await SourceMapConsumer.with(result.map.toJSON(), null, (consumer) => {
                 return consumer.generatedPositionFor({
                     line: 3,
@@ -595,10 +592,6 @@ describe('BreakpointManager', () => {
                 outDir: outDir,
                 rootDir: rootDir
             }));
-
-            fsExtra.copyFileSync(sourceFilePath, 'C:/users/bronley/desktop/3.bs');
-            fsExtra.copyFileSync(s`${stagingDir}/source/main.brs`, s`C:/users/bronley/desktop/1.brs`);
-            fsExtra.copyFileSync(s`${stagingDir}/source/main.brs.map`, s`C:/users/bronley/desktop/2.brs.map`);
 
             //use sourcemap to look up original location
             let location = await new SourceLocator().getSourceLocation({
