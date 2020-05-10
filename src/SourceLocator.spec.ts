@@ -37,6 +37,43 @@ describe('SouceLocator', () => {
     });
     describe('getSourceLocation', () => {
 
+        it('prevents infinite loop with circular dependency', async () => {
+            let sourceFilePath = s`${rootDir}/source/main.brs`;
+            let stagingFilePath = s`${stagingDir}/source/main.brs`
+
+            //create sourcemap that points to same file (i.e. circular dependency)
+            let codeAndMap = new SourceNode(null, null, sourceFilePath, [
+                new SourceNode(1, 0, sourceFilePath, 'sub main()'), '\n',
+                new SourceNode(2, 0, sourceFilePath, 'end sub')
+            ]).toStringWithSourceMap();
+
+            //create source files
+            fsExtra.writeFileSync(sourceFilePath, `sub main()\nend sub`);
+            fsExtra.writeFileSync(`${sourceFilePath}.map`, codeAndMap.map.toString());
+
+            //create staging files
+            fsExtra.writeFileSync(stagingFilePath, `sub main()\nend sub`);
+            fsExtra.writeFileSync(`${stagingFilePath}.map`, codeAndMap.map.toString());
+
+            let location = await sourceLocator.getSourceLocation({
+                stagingFilePath: stagingFilePath,
+                stagingFolderPath: stagingDir,
+                fileMappings: [],
+                rootDir: rootDir,
+                lineNumber: 1,
+                columnIndex: 0,
+                enableSourceMaps: true
+            });
+
+            //the fact that we got here means we averted an infinite loop. Make sure it at least gives us the right location too
+            expect(location).to.eql({
+                filePath: sourceFilePath,
+                lineNumber: 1,
+                columnIndex: 0
+            });
+
+        });
+
         describe('standard', () => {
             it('simple case, no maps, no breakpoints, no sourceDirs', async () => {
                 fsExtra.writeFileSync(`${stagingDir}/lib1.brs`, '');

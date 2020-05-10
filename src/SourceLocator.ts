@@ -14,7 +14,7 @@ export class SourceLocator {
     public async getSourceLocation(options: SourceLocatorOptions): Promise<SourceLocation> {
         let rootDir = fileUtils.standardizePath(options.rootDir);
         let stagingFolderPath = fileUtils.standardizePath(options.stagingFolderPath);
-        let filePathInStaging = fileUtils.standardizePath(options.stagingFilePath);
+        let currentFilePath = fileUtils.standardizePath(options.stagingFilePath);
         let sourceDirs = options.sourceDirs ? options.sourceDirs.map(x => fileUtils.standardizePath(x)) : [];
         //throw out any sourceDirs pointing the rootDir
         sourceDirs = sourceDirs.filter(x => x !== rootDir);
@@ -22,7 +22,7 @@ export class SourceLocator {
         //look for a sourcemap for this file (if source maps are enabled)
         if (options?.enableSourceMaps !== false) {
             let sourceLocation = await sourceMapManager.getOriginalLocation(
-                filePathInStaging,
+                currentFilePath,
                 options.lineNumber,
                 options.columnIndex
             );
@@ -30,11 +30,18 @@ export class SourceLocator {
             if (
                 //if the sourcemap points to a new location on disk
                 sourceLocation?.filePath &&
+                //prevent circular dependencies by stopping if we have already seen this path before
+                !options._sourceChain?.includes(sourceLocation.filePath) &&
                 //there is a source map for that new location
                 sourceMapManager.sourceMapExists(`${sourceLocation.filePath}.map`)
             ) {
                 let nextLevelSourceLocation = await this.getSourceLocation({
                     ...options,
+                    //push current file to the source chain to prevent circular dependencies
+                    _sourceChain: [
+                        ...options._sourceChain ?? [],
+                        currentFilePath
+                    ],
                     columnIndex: sourceLocation.columnIndex,
                     lineNumber: sourceLocation.lineNumber,
                     stagingFilePath: sourceLocation.filePath
@@ -50,7 +57,7 @@ export class SourceLocator {
         //if we have sourceDirs, rootDir is the project's OUTPUT folder, so skip looking for files there, and
         //instead walk backwards through sourceDirs until we find the file we want
         if (sourceDirs.length > 0) {
-            let relativeFilePath = fileUtils.getRelativePath(stagingFolderPath, filePathInStaging);
+            let relativeFilePath = fileUtils.getRelativePath(stagingFolderPath, currentFilePath);
             let sourceDirsFilePath = await fileUtils.findFirstRelativeFile(relativeFilePath, sourceDirs);
             //if we found a file in one of the sourceDirs, use that
             if (sourceDirsFilePath) {
@@ -66,7 +73,7 @@ export class SourceLocator {
         if (!options.fileMappings) {
             throw new Error('fileMappings cannot be undefined');
         }
-        let lowerFilePathInStaging = filePathInStaging.toLowerCase();
+        let lowerFilePathInStaging = currentFilePath.toLowerCase();
         let fileEntry = options.fileMappings.find(x => {
             return fileUtils.standardizePath(x.dest.toLowerCase()) === lowerFilePathInStaging;
         });
@@ -118,6 +125,10 @@ export interface SourceLocatorOptions {
      * If true, then use source maps as part of the process
      */
     enableSourceMaps: boolean;
+    /**
+     * Used to prevent circular references. This is set by the function so do not set this value yourself
+     */
+    _sourceChain?: string[];
 }
 
 export interface SourceLocation {
