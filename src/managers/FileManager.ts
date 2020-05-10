@@ -1,5 +1,8 @@
 import * as fsExtra from 'fs-extra';
 import { util } from '../util';
+import { RawSourceMap } from 'source-map';
+import { fileUtils } from '../FileUtils';
+import * as path from 'path';
 
 /**
  * Unifies access to source files across the whole project
@@ -10,19 +13,25 @@ export class FileManager {
      */
     private cache = {} as {
         /**
-         * since Roku uses a case insensitive file path,
-         * we store the file path in lower case too
+         * Store all paths in lower case since Roku is case-insensitive
          */
-        [lowerFilePath: string]: FileInfo
+        [lowerFilePath: string]: CodeFile;
     };
 
-    public getFile(filePath: string) {
+    /**
+     * Clears the in-memory file cache
+     */
+    public reset() {
+        this.cache = {};
+    }
+
+    public getCodeFile(filePath: string) {
         let lowerFilePath = filePath.toLowerCase();
         if (!this.cache[lowerFilePath]) {
             let fileInfo = {
                 lines: [],
                 functionNameMap: {}
-            } as FileInfo;
+            } as CodeFile;
 
             try {
                 let fileContents = fsExtra.readFileSync(filePath).toString();
@@ -33,7 +42,7 @@ export class FileManager {
             }
             this.cache[lowerFilePath] = fileInfo;
         }
-        return this.cache[lowerFilePath];
+        return this.cache[lowerFilePath] as CodeFile;
     }
 
     /**
@@ -54,42 +63,21 @@ export class FileManager {
     }
 
     /**
-     * Get a line in a file.
-     * @param filePath the absolute path to the file
-     * @param lineIndex the zero-indexed line index
-     * @return undefined if the file or the line doesn't exist.
-     */
-    public async getLine(filePath: string, lineIndex: number) {
-        let file = this.getFile(filePath);
-
-        return this.cache[filePath][lineIndex];
-    }
-
-    /**
-     * Get the first non-whitespace token in the file starting at the given position
-     * @param filePath the absolute path to the file
-     * @param lineIndex the zero-indexed line position
-     * @param columnIndex the zero-indexed column position
-     */
-    public getFirstNonWhitespaceToken(filePath: string, lineIndex: number, columnIndex?: number) {
-        let line = this.getLine(filePath, lineIndex);
-    }
-
-    /**
      * The stacktrace sent by Roku forces all BrightScript function names to lower case.
      * This function will scan the source file, and attempt to find the exact casing from the function definition.
      * Also, this function caches results, so it should be faster than the previous implementation
      * which read the source file from the file system on each call
      */
     public getCorrectFunctionNameCase(sourceFilePath: string, functionName: string) {
-        let fileInfo = this.getFile(sourceFilePath);
+        let fileInfo = this.getCodeFile(sourceFilePath);
         return fileInfo?.functionNameMap[functionName.toLowerCase()] ?? functionName;
     }
-
 }
 
-interface FileInfo {
+export interface CodeFile {
     lines: string[];
     //map of lower case function name to its actual case in the source file
     functionNameMap: { [lowerFunctionName: string]: string };
 }
+
+export const fileManager = new FileManager();

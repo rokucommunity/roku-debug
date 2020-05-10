@@ -27,7 +27,9 @@
         "ts-node/register",
         "-r",
         "source-map-support/register",
-        "./src/**/*.spec.ts"
+        "./src/**/*.spec.ts",
+        "--timeout",
+        "500000"
       ],
       "cwd": "${workspaceRoot}",
       "protocol": "inspector",

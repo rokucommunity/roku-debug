@@ -1,19 +1,20 @@
 import { expect } from 'chai';
-import * as mock from 'mock-fs';
-import * as mockFs from 'mock-fs';
 import * as path from 'path';
+import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer, SourceNode } from 'source-map';
 
 import { fileUtils, standardizePath as s } from './FileUtils';
 import { SourceLocator } from './SourceLocator';
+import { sourceMapManager } from './managers/SourceMapManager';
 
 let cwd = s`${path.dirname(__dirname)}`;
-const rootDir = s`${cwd}/rootDir`;
-const stagingFolderPath = s`${rootDir}/stagingDir`;
+let tmpDir = s`${cwd}/.tmp`;
+const rootDir = s`${tmpDir}/rootDir`;
+const stagingDir = s`${tmpDir}/stagingDir`;
 const sourceDirs = [
-    s`${cwd}/sourceDir0`,
-    s`${cwd}/sourceDir1`,
-    s`${cwd}/sourceDir2`
+    s`${tmpDir}/sourceDir0`,
+    s`${tmpDir}/sourceDir1`,
+    s`${tmpDir}/sourceDir2`
 ];
 
 describe('SouceLocator', () => {
@@ -22,25 +23,31 @@ describe('SouceLocator', () => {
     beforeEach(() => {
         sourceLocator = new SourceLocator();
         files = {};
-        mockFs.restore();
+        fsExtra.ensureDirSync(tmpDir);
+        fsExtra.removeSync(tmpDir);
+        fsExtra.ensureDirSync(`${rootDir}/source`);
+        fsExtra.ensureDirSync(`${stagingDir}/source`);
+        for (let sourceDir of sourceDirs) {
+            fsExtra.ensureDirSync(`${sourceDir}/source`);
+        }
+        sourceMapManager.reset();
     });
     afterEach(() => {
-        mockFs.restore();
+        fsExtra.removeSync(tmpDir);
     });
     describe('getSourceLocation', () => {
 
         describe('standard', () => {
             it('simple case, no maps, no breakpoints, no sourceDirs', async () => {
-                files[s`${stagingFolderPath}/lib1.brs`] = '';
-                files[s`${rootDir}/lib1.brs`] = '';
-                mock(files);
+                fsExtra.writeFileSync(`${stagingDir}/lib1.brs`, '');
+                fsExtra.writeFileSync(`${rootDir}/lib1.brs`, '');
 
                 let location = await sourceLocator.getSourceLocation({
-                    stagingFilePath: s`${stagingFolderPath}/lib1.brs`,
-                    stagingFolderPath: stagingFolderPath,
+                    stagingFilePath: s`${stagingDir}/lib1.brs`,
+                    stagingFolderPath: stagingDir,
                     fileMappings: [{
                         src: s`${rootDir}/lib1.brs`,
-                        dest: s`${stagingFolderPath}/lib1.brs`
+                        dest: s`${stagingDir}/lib1.brs`
                     }],
                     rootDir: rootDir,
                     lineNumber: 1,
@@ -56,34 +63,40 @@ describe('SouceLocator', () => {
 
             it('follows sourcemap when present', async () => {
                 await preloadWasm();
-                let rootFilePath = s`${rootDir}/main.brs`;
-                files[rootFilePath] = `sub main()\n    print "hello ";print "world"\nend sub`;
+                let sourceFilePath = s`${rootDir}/source/main.brs`;
+                let stagingFilePath = s`${stagingDir}/source/main.brs`;
+                let stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+                function n(line, col, txt) {
+                    return new SourceNode(line, col, sourceFilePath, txt);
+                }
 
-                var node = new SourceNode(null, null, rootFilePath, [
-                    new SourceNode(1, 0, rootFilePath, 'sub main()\n'),
-                    new SourceNode(2, 4, rootFilePath, '    print "hello "\n'),
-                    new SourceNode(2, 19, rootFilePath, '    print "world"\n'),
-                    new SourceNode(3, 4, rootFilePath, 'end sub')
+                var node = new SourceNode(null, null, sourceFilePath, [
+                    n(1, 0, 'sub'), ' ', n(1, 4, 'main'), n(1, 8, '('), n(1, 9, ')'), '\n',
+                    n(2, 0, '    print'), ' ', n(2, 10, '"hello ")'), '\n',
+                    n(2, 19, '    print'), ' ', n(2, 30, '"world")'), '\n',
+                    n(3, 0, 'end'), ' ', n(3, 4, 'sub')
                 ]);
                 var out = node.toStringWithSourceMap();
-                files[s`${stagingFolderPath}/main.brs`] = out.code;
-                files[s`${stagingFolderPath}/main.brs.map`] = out.map.toString();
-                mock(files);
+
+                fsExtra.writeFileSync(sourceFilePath, `sub main()\n    print "hello ":print "world"\nend sub`);
+                fsExtra.writeFileSync(stagingFilePath, out.code);
+                fsExtra.writeFileSync(stagingMapPath, out.map.toString());
+
+                fsExtra.copyFileSync(sourceFilePath, 'C:/users/bronley/desktop/main.bs');
+                fsExtra.copyFileSync(stagingFilePath, 'C:/users/bronley/desktop/main.brs');
+                fsExtra.copyFileSync(stagingMapPath, 'C:/users/bronley/desktop/main.brs.map');
 
                 let location = await sourceLocator.getSourceLocation({
-                    stagingFilePath: s`${stagingFolderPath}/main.brs`,
-                    stagingFolderPath: stagingFolderPath,
-                    fileMappings: [{
-                        src: s`${rootDir}/main.brs`,
-                        dest: s`${stagingFolderPath}/main.brs`
-                    }],
+                    stagingFilePath: stagingFilePath,
+                    stagingFolderPath: stagingDir,
+                    fileMappings: [],
                     rootDir: rootDir,
                     lineNumber: 3,
-                    columnIndex: 8,
+                    columnIndex: 0,
                     enableSourceMaps: true
                 });
                 expect(location).to.eql({
-                    filePath: s`${rootDir}/main.brs`,
+                    filePath: sourceFilePath,
                     lineNumber: 2,
                     columnIndex: 19
                 });
@@ -93,16 +106,15 @@ describe('SouceLocator', () => {
         describe('sourceDirs', () => {
             //no maps, sourceDirs[0]
             it('maps staging file to sourceDirs[0]', async () => {
-                files[s`${stagingFolderPath}/lib1.brs`] = '';
-                files[s`${rootDir}/lib1.brs`] = '';
-                files[s`${sourceDirs[0]}/lib1.brs`] = '';
-                files[s`${sourceDirs[1]}/lib1.brs`] = '';
-                files[s`${sourceDirs[2]}/lib1.brs`] = '';
-                mock(files);
+                fsExtra.writeFileSync(`${stagingDir}/lib1.brs`, '');
+                fsExtra.writeFileSync(`${rootDir}/lib1.brs`, '');
+                fsExtra.writeFileSync(`${sourceDirs[0]}/lib1.brs`, '');
+                fsExtra.writeFileSync(`${sourceDirs[1]}/lib1.brs`, '');
+                fsExtra.writeFileSync(`${sourceDirs[2]}/lib1.brs`, '');
 
                 let location = await sourceLocator.getSourceLocation({
-                    stagingFilePath: s`${stagingFolderPath}/lib1.brs`,
-                    stagingFolderPath: stagingFolderPath,
+                    stagingFilePath: s`${stagingDir}/lib1.brs`,
+                    stagingFolderPath: stagingDir,
                     fileMappings: [{
                         src: s`${sourceDirs[0]}/lib1.brs`,
                         dest: '/lib1.brs'
@@ -122,15 +134,14 @@ describe('SouceLocator', () => {
 
             //no maps, sourceDirs[1]
             it('maps staging file to sourceDirs[1]', async () => {
-                files[s`${stagingFolderPath}/lib1.brs`] = '';
-                files[s`${rootDir}/lib1.brs`] = '';
-                files[s`${sourceDirs[1]}/lib1.brs`] = '';
-                files[s`${sourceDirs[2]}/lib1.brs`] = '';
-                mock(files);
+                fsExtra.writeFileSync(`${stagingDir}/lib1.brs`, '');
+                fsExtra.writeFileSync(`${rootDir}/lib1.brs`, '');
+                fsExtra.writeFileSync(`${sourceDirs[1]}/lib1.brs`, '');
+                fsExtra.writeFileSync(`${sourceDirs[2]}/lib1.brs`, '');
 
                 let location = await sourceLocator.getSourceLocation({
-                    stagingFilePath: s`${stagingFolderPath}/lib1.brs`,
-                    stagingFolderPath: stagingFolderPath,
+                    stagingFilePath: s`${stagingDir}/lib1.brs`,
+                    stagingFolderPath: stagingDir,
                     fileMappings: [{
                         src: s`${sourceDirs[1]}/lib1.brs`,
                         dest: '/lib1.brs'
@@ -150,14 +161,13 @@ describe('SouceLocator', () => {
 
             //no maps, sourceDirs[2]
             it('maps staging file to sourceDirs[2]', async () => {
-                files[s`${stagingFolderPath}/lib1.brs`] = '';
-                files[s`${rootDir}/lib1.brs`] = '';
-                files[s`${sourceDirs[2]}/lib1.brs`] = '';
-                mock(files);
+                fsExtra.writeFileSync(s`${stagingDir}/lib1.brs`, '');
+                fsExtra.writeFileSync(s`${rootDir}/lib1.brs`, '');
+                fsExtra.writeFileSync(s`${sourceDirs[2]}/lib1.brs`, '');
 
                 let location = await sourceLocator.getSourceLocation({
-                    stagingFilePath: s`${stagingFolderPath}/lib1.brs`,
-                    stagingFolderPath: stagingFolderPath,
+                    stagingFilePath: s`${stagingDir}/lib1.brs`,
+                    stagingFolderPath: stagingDir,
                     fileMappings: [{
                         src: s`${sourceDirs[2]}/lib1.brs`,
                         dest: '/lib1.brs'

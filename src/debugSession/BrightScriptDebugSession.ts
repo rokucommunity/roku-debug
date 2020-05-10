@@ -33,7 +33,7 @@ import {
     StoppedEventReason
 } from './Events';
 import { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
-import { FileManager } from '../managers/FileManager';
+import { fileManager } from '../managers/FileManager';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -74,8 +74,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private launchConfiguration: LaunchConfiguration;
 
     public projectManager = new ProjectManager();
-
-    public fileManager = new FileManager();
 
     public get breakpointManager() {
         return this.projectManager.breakpointManager;
@@ -488,7 +486,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //the stacktrace returns function identifiers in all lower case. Try to get the actual case
                     //load the contents of the file and get the correct casing for the function identifier
                     try {
-                        let functionName = await this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
+                        let functionName = await fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
                         if (functionName) {
                             debugFrame.functionIdentifier = functionName;
                         }

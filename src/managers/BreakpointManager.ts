@@ -245,19 +245,17 @@ export class BreakpointManager {
 
         let sourceAndMap = this.getSourceAndMapWithBreakpoints(fileContents, originalFilePath, breakpoints);
 
-        let writeSourceMapPromise: Promise<void>;
-
         //if we got a map file back, write it to the filesystem
         if (sourceAndMap.map) {
             let sourceMap = JSON.stringify(sourceAndMap.map);
             //It's ok to overwrite the file in staging because if the original code provided a source map,
             //then our SourceLocator class will walk the sourcemap chain from staging, to rootDir, and then
             //on to the original location
-            fsExtra.writeFileSync(`${stagingFilePath}.map`, sourceMap);
+            await fsExtra.writeFile(`${stagingFilePath}.map`, sourceMap);
         }
 
         //overwrite the file that now has breakpoints injected
-        fsExtra.writeFileSync(stagingFilePath, sourceAndMap.code);
+        await fsExtra.writeFile(stagingFilePath, sourceAndMap.code);
     }
 
     private bpIndex = 1;

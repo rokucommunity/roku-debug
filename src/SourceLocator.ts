@@ -1,7 +1,9 @@
 import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer } from 'source-map';
-
+import * as path from 'path';
 import { fileUtils } from './FileUtils';
+import { fileManager } from './managers/FileManager';
+import { sourceMapManager } from './managers/SourceMapManager';
 /**
  * Find original source locations based on debugger/staging locations.
  */
@@ -19,34 +21,29 @@ export class SourceLocator {
 
         //look for a sourcemap for this file (if source maps are enabled)
         if (options?.enableSourceMaps !== false) {
-            let sourceMapPath = `${filePathInStaging}.map`;
-            if (fsExtra.existsSync(sourceMapPath)) {
-                //load sourceMap into memory
-                var sourceMap = fsExtra.readFileSync(sourceMapPath).toString();
-                //parse sourcemap and get original position for the staging location
-                var originalPosition = await SourceMapConsumer.with(sourceMap, null, (consumer) => {
-                    return consumer.originalPositionFor({
-                        line: options.lineNumber,
-                        column: options.columnIndex,
-                        bias: SourceMapConsumer.LEAST_UPPER_BOUND
-                    });
+            let sourceLocation = await sourceMapManager.getOriginalLocation(
+                filePathInStaging,
+                options.lineNumber,
+                options.columnIndex
+            );
+            //follow the source map trail backwards another level
+            if (
+                //if the sourcemap points to a new location on disk
+                sourceLocation?.filePath &&
+                //there is a source map for that new location
+                sourceMapManager.sourceMapExists(`${sourceLocation.filePath}.map`)
+            ) {
+                let nextLevelSourceLocation = await this.getSourceLocation({
+                    ...options,
+                    columnIndex: sourceLocation.columnIndex,
+                    lineNumber: sourceLocation.lineNumber,
+                    stagingFilePath: sourceLocation.filePath
                 });
-                let result = {
-                    lineNumber: originalPosition.line,
-                    columnIndex: originalPosition.column,
-                    filePath: originalPosition.source
-                };
-                //if a source map exists at the source location, we need to follow the source map trail backwards another level
-                if (fsExtra.pathExistsSync(`${result.filePath}.map`)) {
-                    return await this.getSourceLocation({
-                        ...options,
-                        columnIndex: result.columnIndex,
-                        lineNumber: result.lineNumber,
-                        stagingFilePath: result.filePath
-                    });
-                } else {
-                    return result;
-                }
+                sourceLocation = nextLevelSourceLocation ?? sourceLocation;
+            }
+
+            if (sourceLocation) {
+                return sourceLocation;
             }
         }
 

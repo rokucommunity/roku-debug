@@ -2,18 +2,14 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import * as rimraf from 'rimraf';
 import * as sinonActual from 'sinon';
-import * as util from 'util';
 
 import { SourceNode } from 'source-map';
 import { fileUtils, standardizePath } from './FileUtils';
 import { standardizePath as s } from './FileUtils';
-
-const rimrafp = util.promisify(rimraf);
+import { sourceMapManager } from './managers/SourceMapManager';
 
 let sinon = sinonActual.createSandbox();
-let n = path.normalize;
 const rootDir = path.normalize(path.dirname(__dirname));
 
 describe('FileUtils', () => {
@@ -104,9 +100,9 @@ describe('FileUtils', () => {
 
     describe('findFirstRelativeFile', () => {
         let paths = [] as string[];
-        let rootA = n(`${rootDir}/compLibA`);
-        let rootB = n(`${rootDir}/compLibB`);
-        let rootC = n(`${rootDir}/compLibC`);
+        let rootA = s`${rootDir}/compLibA`;
+        let rootB = s`${rootDir}/compLibB`;
+        let rootC = s`${rootDir}/compLibC`;
         let pathA = path.join(rootA, 'main.brs');
         let pathB = path.join(rootB, 'main.brs');
         let pathC = path.join(rootC, 'main.brs');
@@ -134,15 +130,15 @@ describe('FileUtils', () => {
     });
 
     describe('getSourceLocationFromSourceMap', () => {
-        let tempDirPath = n(`${rootDir}/.test_temp`);
-        let sourceDirPath = n(`${tempDirPath}/source`);
-        let outDirPath = n(`${tempDirPath}/out`);
-        let sourceFilePath = n(`${sourceDirPath}/file.brs`);
-        let outFilePath = n(`${outDirPath}/file.brs`);
-        let outFileMapPath = n(`${outFilePath}.map`);
+        let tempDirPath = s`${rootDir}/.test_temp`;
+        let sourceDirPath = s`${tempDirPath}/source`;
+        let outDirPath = s`${tempDirPath}/out`;
+        let sourceFilePath = s`${sourceDirPath}/file.brs`;
+        let outFilePath = s`${outDirPath}/file.brs`;
+        let outFileMapPath = s`${outFilePath}.map`;
 
         beforeEach(async () => {
-            await rimrafp(tempDirPath);
+            fsExtra.removeSync(tempDirPath);
 
             await fsExtra.mkdir(tempDirPath);
             await fsExtra.mkdir(sourceDirPath);
@@ -156,7 +152,7 @@ describe('FileUtils', () => {
         });
 
         afterEach(async () => {
-            await rimrafp(tempDirPath);
+            await fsExtra.removeSync(tempDirPath);
         });
 
         async function createOutFiles(sourcePath) {
@@ -176,7 +172,7 @@ describe('FileUtils', () => {
 
         it('supports absolute paths in source map', async () => {
             await createOutFiles(sourceFilePath);
-            let location = await fileUtils.getSourceLocationFromSourceMap(outFilePath, 3);
+            let location = await sourceMapManager.getOriginalLocation(outFilePath, 3);
             expect(location).to.eql({
                 filePath: sourceFilePath,
                 lineNumber: 2,
@@ -186,7 +182,7 @@ describe('FileUtils', () => {
 
         it('supports relative paths in source map', async () => {
             await createOutFiles('../source/file.brs');
-            let location = await fileUtils.getSourceLocationFromSourceMap(outFilePath, 3);
+            let location = await sourceMapManager.getOriginalLocation(outFilePath, 3);
             expect(location).to.eql({
                 filePath: sourceFilePath,
                 lineNumber: 2,

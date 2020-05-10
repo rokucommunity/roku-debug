@@ -3,11 +3,12 @@ import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
 import glob = require('glob');
 import * as path from 'path';
-import { RawSourceMap, SourceMapConsumer, SourceNode } from 'source-map';
+import { SourceMapConsumer, SourceNode } from 'source-map';
 import { promisify } from 'util';
 import * as rokuDeploy from 'roku-deploy';
 import { SourceLocation } from './SourceLocator';
-import { util } from './util';
+import { fileManager } from './managers/FileManager';
+import { sourceMapManager } from './managers/SourceMapManager';
 const globp = promisify(glob);
 
 export class FileUtils {
@@ -190,11 +191,27 @@ export class FileUtils {
             thePath.replace(/[\/\\]+/g, path.sep)
         );
         //force the drive letter to lower case
-        let match = /^[a-zA-Z]:/.exec(normalizedPath);
-        if (match) {
-            normalizedPath = match[0].toLowerCase() + normalizedPath.substring(2);
-        }
+        normalizedPath = this.driveLetterToLower(normalizedPath);
         return normalizedPath;
+    }
+
+    /**
+     * Force the drive letter to lower case
+     * @param fullPath
+     */
+    public driveLetterToLower(fullPath: string) {
+        if (fullPath) {
+            let firstCharCode = fullPath.charCodeAt(0);
+            if (
+                //is upper case A-Z
+                firstCharCode >= 65 && firstCharCode <= 90 &&
+                //next char is colon
+                fullPath[1] === ':'
+            ) {
+                fullPath = fullPath[0].toLowerCase() + fullPath.substring(1);
+            }
+        }
+        return fullPath;
     }
 
     /**
@@ -214,11 +231,17 @@ export class FileUtils {
         stagingFolderPath = fileUtils.standardizePath(stagingFolderPath);
 
         //look through the sourcemaps in the staging folder for any instances of this source location
-        let locations = await this.findSourceLocationInStagingSourceMaps({
-            filePath: sourceFilePath,
-            lineNumber: sourceLineNumber,
-            columnIndex: sourceColumnIndex
-        }, stagingFolderPath);
+        let locations = await sourceMapManager.getGeneratedLocations(
+            glob.sync('**/*.map', {
+                cwd: stagingFolderPath,
+                absolute: true
+            }),
+            {
+                filePath: sourceFilePath,
+                lineNumber: sourceLineNumber,
+                columnIndex: sourceColumnIndex
+            }
+        );
 
         if (locations.length > 0) {
             return {
@@ -252,98 +275,6 @@ export class FileUtils {
                     locations: []
                 };
             }
-        }
-    }
-
-    /**
-     * Get the location in the out/dist/generated file for a source location
-     * @param sourceLocation - the source location that sound be converted to staging locations
-     * @param stagingFolderPath - the path to the staging folder.
-     */
-    public async findSourceLocationInStagingSourceMaps(sourceLocation: SourceLocation, stagingFolderPath: string) {
-        let sourceFilePathAbsolute = this.standardizePath(sourceLocation.filePath);
-        //find every *.map file in the staging folder
-        let sourceMapPaths = glob.sync('**/*.map', {
-            cwd: stagingFolderPath,
-            absolute: true
-        });
-
-        let locations = [] as SourceLocation[];
-
-        //search through every source map async
-        await Promise.all(sourceMapPaths.map(async (sourceMapPath) => {
-            let sourceMapText = fsExtra.readFileSync(sourceMapPath).toString();
-            let parsedSourceMap = JSON.parse(sourceMapText) as RawSourceMap;
-            let absoluteSourcePaths = parsedSourceMap.sources.map(x =>
-                this.standardizePath(
-                    path.resolve(
-                        //path.resolve throws an exception if passed `undefined`, so use empty string if sourceRoot is null or undefined
-                        //the sourcemap should be providing a valid sourceRoot, or using absolute paths for maps
-                        parsedSourceMap.sourceRoot || '',
-                        x
-                    )
-                )
-            );
-            //if the source path was found in the sourceMap, convert the source location into a target location
-            if (absoluteSourcePaths.indexOf(sourceFilePathAbsolute) > -1) {
-                let position = await SourceMapConsumer.with(parsedSourceMap, null, (consumer) => {
-                    return consumer.generatedPositionFor({
-                        line: sourceLocation.lineNumber,
-                        column: sourceLocation.columnIndex,
-                        source: this.standardizePath(
-                            sourceFilePathAbsolute
-                        ),
-                        //snap to the NEXT item if the current position could not be found
-                        bias: SourceMapConsumer.LEAST_UPPER_BOUND
-                    });
-                });
-                locations.push({
-                    columnIndex: position.column,
-                    lineNumber: position.line,
-                    //remove the .map extension
-                    filePath: this.standardizePath(
-                        sourceMapPath.replace(/\.map$/g, '')
-                    )
-                });
-            }
-        }));
-        return locations;
-    }
-
-    /**
-     * Get the source location of a position using a source map. If no source map is found, undefined is returned
-     * @param filePathAbsolute - the absolute path to the file
-     * @param debuggerLineNumber - the line number provided by the debugger
-     * @param debuggerColumnIndex - the column number provided by the debugger. This is zero based.
-     */
-    public async getSourceLocationFromSourceMap(filePathAbsolute: string, debuggerLineNumber: number, debuggerColumnIndex: number = 0): Promise<SourceLocation> {
-        //look for a source map for this file
-        let sourceMapPath = `${filePathAbsolute}.map`;
-
-        //if we have a source map, use it
-        if (await fsExtra.pathExists(sourceMapPath)) {
-            let sourceMapText = (await fsExtra.readFile(sourceMapPath)).toString();
-            let sourceMap = JSON.parse(sourceMapText);
-            let position = await SourceMapConsumer.with(sourceMap, null, (consumer) => {
-                return consumer.originalPositionFor({
-                    line: debuggerLineNumber,
-                    column: debuggerColumnIndex,
-                    bias: SourceMapConsumer.LEAST_UPPER_BOUND
-                });
-            });
-            //if the sourcemap didn't find a valid mapped location, return undefined and fallback to whatever location the debugger produced
-            if (!position || !position.source) {
-                return undefined;
-            }
-            //get the path to the folder this source map lives in
-            let folderPathForStagingFile = path.dirname(sourceMapPath);
-            //get the absolute path to the source file
-            let sourcePathAbsolute = path.resolve(folderPathForStagingFile, position.source);
-            return {
-                columnIndex: position.column,
-                lineNumber: position.line,
-                filePath: sourcePathAbsolute
-            };
         }
     }
 
@@ -434,34 +365,6 @@ export class FileUtils {
             }
         }
         return thePath;
-    }
-
-    /**
-     * Create a sourceMap file that contains the contents of the `destPath` file,
-     * but points to the `srcPath` for its location in the sourceMap.
-     * This is mainly used to support sourceDirs where the line numbers should be the same.
-     * @param srcPath
-     * @param destPath
-     */
-    public async createSourcemap(srcPath: string, destPath: string) {
-        var fileContents = await fsExtra.readFile(destPath);
-        var lines = eol.split(fileContents.toString());
-        var chunks = [];
-        let newline = '\n';
-        for (let i = 0; i < lines.length; i++) {
-            //is final line
-            if (i === lines.length - 1) {
-                newline = '';
-            }
-            chunks.push(
-                new SourceNode(i + 1, 0, srcPath, `${lines[i]}${newline}`)
-            );
-        }
-        let node = new SourceNode(null, null, srcPath, chunks);
-        var result = node.toStringWithSourceMap();
-        var mapText = JSON.stringify(result.map);
-        //write the file
-        await fsExtra.writeFile(`${destPath}.map`, mapText);
     }
 }
 

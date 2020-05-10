@@ -1,0 +1,146 @@
+import * as fsExtra from 'fs-extra';
+import { util } from '../util';
+import { RawSourceMap, SourceMapConsumer } from 'source-map';
+import { fileUtils } from '../FileUtils';
+import * as path from 'path';
+import { SourceLocation } from '../SourceLocator';
+
+/**
+ * Unifies access to source files across the whole project
+ */
+export class SourceMapManager {
+    private cache = {} as {
+        /**
+         * Store all paths in lower case since Roku is case-insensitive.
+         * If the file existed, but something failed during parsing, this will be set to null. So you 
+         */
+        [lowerFilePath: string]: RawSourceMap | null;
+    };
+
+    /**
+     * Clears the in-memory file cache
+     */
+    public reset() {
+        this.cache = {};
+    }
+
+    /**
+     * Does a source map exist at the specified path?
+     * Checks the local cache first to prevent hitting the file system,
+     * then falls back to the file system if not in the cache
+     */
+    public async sourceMapExists(sourceMapPath: string) {
+        let map = this.cache[sourceMapPath?.toLowerCase()];
+        if (map !== undefined && map !== null) {
+            return true;
+        }
+        let existsOnDisk = await fsExtra.pathExistsSync(sourceMapPath);
+        return existsOnDisk;
+    }
+
+    /**
+     * Get a parsed source map, with all of its paths already resolved
+     */
+    public async getSourceMap(sourceMapPath: string) {
+        let lowerFilePath = sourceMapPath.toLowerCase();
+        if (this.cache[lowerFilePath] === undefined) {
+            let parsedSourceMap: RawSourceMap;
+            if (await fsExtra.pathExists(sourceMapPath)) {
+                try {
+                    let contents = (await fsExtra.readFile(sourceMapPath)).toString();
+                    parsedSourceMap = JSON.parse(contents) as RawSourceMap;
+                    //standardize the source map paths
+                    parsedSourceMap.sources = parsedSourceMap.sources.map(source =>
+                        fileUtils.standardizePath(
+                            path.resolve(
+                                //use the map's sourceRoot, or the map's folder path (to support relative paths)
+                                parsedSourceMap.sourceRoot || path.dirname(sourceMapPath),
+                                source
+                            )
+                        )
+                    );
+                } catch (e) {
+                    util.logDebug(`Error loading or parsing source map for '${sourceMapPath}'`, e);
+                }
+            }
+            this.cache[lowerFilePath] = parsedSourceMap;
+        }
+        return this.cache[lowerFilePath] as RawSourceMap;
+    }
+
+    /**
+     * Get the source location of a position using a source map. If no source map is found, undefined is returned
+     * @param filePath - the absolute path to the file
+     * @param currentLineNumber - the 1-based line number of the current location.
+     * @param currentColumnIndex - the 0-based column number of the current location.
+     */
+    public async getOriginalLocation(filePath: string, currentLineNumber: number, currentColumnIndex: number = 0): Promise<SourceLocation> {
+        //look for a source map for this file
+        let sourceMapPath = `${filePath}.map`;
+
+        //if we have a source map, use it
+        if (await fsExtra.pathExists(sourceMapPath)) {
+            let parsedSourceMap = await this.getSourceMap(sourceMapPath);
+            if (parsedSourceMap) {
+                let position = await SourceMapConsumer.with(parsedSourceMap, null, (consumer) => {
+                    return consumer.originalPositionFor({
+                        line: currentLineNumber,
+                        column: currentColumnIndex,
+                        bias: SourceMapConsumer.LEAST_UPPER_BOUND
+                    });
+                });
+                //if the sourcemap didn't find a valid mapped location, return undefined and fallback to whatever location the debugger produced
+                if (!position || !position.source) {
+                    return undefined;
+                }
+                return {
+                    columnIndex: position.column,
+                    lineNumber: position.line,
+                    filePath: position.source
+                };
+            }
+        }
+    }
+
+    /**
+     * Given a source location, find the generated location using source maps
+     */
+    public async getGeneratedLocations(sourceMapPaths: string[], sourceLocation: SourceLocation) {
+        let sourcePath = fileUtils.standardizePath(sourceLocation.filePath);
+        let locations = [] as SourceLocation[];
+
+        //search through every source map async
+        await Promise.all(sourceMapPaths.map(async (sourceMapPath) => {
+            try {
+                sourceMapPath = fileUtils.standardizePath(sourceMapPath);
+                let parsedSourceMap = await this.getSourceMap(sourceMapPath);
+
+                //if the source path was found in the sourceMap, convert the source location into a target location
+                if (parsedSourceMap?.sources.indexOf(sourcePath) > -1) {
+                    let position = await SourceMapConsumer.with(parsedSourceMap, null, (consumer) => {
+                        return consumer.generatedPositionFor({
+                            line: sourceLocation.lineNumber,
+                            column: sourceLocation.columnIndex,
+                            source: fileUtils.standardizePath(sourceLocation.filePath),
+                            //snap to the NEXT item if the current position could not be found
+                            bias: SourceMapConsumer.LEAST_UPPER_BOUND
+                        });
+                    });
+
+                    if (position) {
+                        locations.push({
+                            lineNumber: position.line,
+                            columnIndex: position.column,
+                            filePath: sourceMapPath.replace(/\.map$/g, '')
+                        });
+                    }
+                }
+            } catch (e) {
+                util.logDebug(new Error('Error converting source location to staging location'), e);
+            }
+        }));
+        return locations;
+    }
+}
+
+export const sourceMapManager = new SourceMapManager();

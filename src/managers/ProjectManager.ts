@@ -400,28 +400,6 @@ export class Project {
     }
 
     /**
-     * For every referenced file, ensure there is a sourcemap. If an external build tool
-     * created the map, then that map is left intact. If no map is found, we walk backwards through
-     * the sourceDirs to find the file.
-     */
-    public async ensureSourceMaps() {
-        return Promise.all([
-            this.fileMappings.map(async x => {
-                //skip non brightscript-enabled files
-                if (fileUtils.hasAnyExtension(x.src.toLowerCase(), ['.xml', '.brs']) === false) {
-                    return;
-                }
-
-                let mapFilePath = s`${x.src}.map`;
-                //if this file doesn't have a sourcemap, make one
-                if (await fsExtra.pathExists(mapFilePath) === false) {
-                    await fileUtils.createSourcemap(x.src, x.dest);
-                }
-            })
-        ]);
-    }
-
-    /**
      * Get the file paths from roku-deploy, and ensure the dest paths are absolute
      * (`dest` paths are relative in later versions of roku-deploy)
      */
