@@ -610,5 +610,56 @@ describe('BreakpointManager', () => {
                 filePath: sourceFilePath
             } as SourceLocation);
         });
+
+        it('replaces in-memory cache when creating breakpoint source map', async () => {
+            let sourceFilePath = s`${srcDir}/source/main.brs`;
+            function n(line, col, txt) {
+                return new SourceNode(line, col, sourceFilePath, txt);
+            };
+            //the original file had spaces between each print line
+            let codeAndMap = new SourceNode(null, null, sourceFilePath, [
+                n(1, 0, 'sub Main(inputARguments as object)\n'),
+                n(2, 0, '    print "first"\n'),
+                n(3, 0, '    print "second"\n'),
+                n(7, 0, 'end sub')
+            ]).toStringWithSourceMap();
+
+            //copy to rootDir
+            await fsExtra.writeFileSync(`${rootDir}/source/main.brs`, codeAndMap.code);
+            await fsExtra.writeFileSync(`${rootDir}/source/main.brs.map`, codeAndMap.map.toString());
+
+            //copy to staging
+            await fsExtra.writeFileSync(`${stagingDir}/source/main.brs`, codeAndMap.code);
+            await fsExtra.writeFileSync(`${stagingDir}/source/main.brs.map`, codeAndMap.map.toString());
+
+            //the sourcemap in staging should point to src
+            expect(
+                (await sourceMapManager.getSourceMap(`${stagingDir}/source/main.brs.map`)).sources
+            ).to.eql([
+                sourceFilePath
+            ]);
+
+            //write breakpoints 
+            bpManager.registerBreakpoint(sourceFilePath, {
+                line: 4,
+                column: 0
+            });
+
+            await bpManager.writeBreakpointsForProject(new Project({
+                files: [
+                    'source/main.brs'
+                ],
+                stagingFolderPath: stagingDir,
+                outDir: outDir,
+                rootDir: rootDir
+            }));
+
+            //the in-memory cached source map should have been updated to point to rootDir
+            expect(
+                (await sourceMapManager.getSourceMap(`${stagingDir}/source/main.brs.map`)).sources
+            ).to.eql([
+                s`${rootDir}/source/main.brs`
+            ]);
+        });
     });
 });

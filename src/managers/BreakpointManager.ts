@@ -6,6 +6,7 @@ import { DebugProtocol } from 'vscode-debugprotocol';
 import { fileUtils } from '../FileUtils';
 import { Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
+import { sourceMapManager } from './SourceMapManager';
 
 export class BreakpointManager {
 
@@ -252,6 +253,8 @@ export class BreakpointManager {
             //then our SourceLocator class will walk the sourcemap chain from staging, to rootDir, and then
             //on to the original location
             await fsExtra.writeFile(`${stagingFilePath}.map`, sourceMap);
+            //update the in-memory version of this source map
+            sourceMapManager.set(`${stagingFilePath}.map`, sourceMap);
         }
 
         //overwrite the file that now has breakpoints injected

@@ -1,10 +1,9 @@
 import * as fsExtra from 'fs-extra';
 import { util } from '../util';
 import { RawSourceMap, SourceMapConsumer } from 'source-map';
-import { fileUtils } from '../FileUtils';
+import { standardizePath as s, fileUtils } from '../FileUtils';
 import * as path from 'path';
 import { SourceLocation } from '../SourceLocator';
-
 /**
  * Unifies access to source files across the whole project
  */
@@ -30,7 +29,8 @@ export class SourceMapManager {
      * then falls back to the file system if not in the cache
      */
     public async sourceMapExists(sourceMapPath: string) {
-        let map = this.cache[sourceMapPath?.toLowerCase()];
+        let key = s`${sourceMapPath.toLowerCase()}`;
+        let map = this.cache[key];
         if (map !== undefined && map !== null) {
             return true;
         }
@@ -42,30 +42,46 @@ export class SourceMapManager {
      * Get a parsed source map, with all of its paths already resolved
      */
     public async getSourceMap(sourceMapPath: string) {
-        let lowerFilePath = sourceMapPath.toLowerCase();
-        if (this.cache[lowerFilePath] === undefined) {
+        let key = s`${sourceMapPath.toLowerCase()}`;
+        if (this.cache[key] === undefined) {
             let parsedSourceMap: RawSourceMap;
             if (await fsExtra.pathExists(sourceMapPath)) {
                 try {
                     let contents = (await fsExtra.readFile(sourceMapPath)).toString();
-                    parsedSourceMap = JSON.parse(contents) as RawSourceMap;
-                    //standardize the source map paths
-                    parsedSourceMap.sources = parsedSourceMap.sources.map(source =>
-                        fileUtils.standardizePath(
-                            path.resolve(
-                                //use the map's sourceRoot, or the map's folder path (to support relative paths)
-                                parsedSourceMap.sourceRoot || path.dirname(sourceMapPath),
-                                source
-                            )
-                        )
-                    );
+                    this.set(sourceMapPath, contents);
                 } catch (e) {
                     util.logDebug(`Error loading or parsing source map for '${sourceMapPath}'`, e);
                 }
             }
-            this.cache[lowerFilePath] = parsedSourceMap;
         }
-        return this.cache[lowerFilePath] as RawSourceMap;
+        return this.cache[key] as RawSourceMap;
+    }
+
+    /**
+     * Update the in-memory cache for a specific source map,
+     * and resolve the sources list to absolute paths
+     */
+    public set(sourceMapPath: string, sourceMap: string) {
+        let key = s`${sourceMapPath.toLowerCase()}`;
+        try {
+            let parsedSourceMap = JSON.parse(sourceMap) as RawSourceMap;
+            //remove the file from cache
+            delete this.cache[key];
+            //standardize the source map paths
+            parsedSourceMap.sources = parsedSourceMap.sources.map(source =>
+                fileUtils.standardizePath(
+                    path.resolve(
+                        //use the map's sourceRoot, or the map's folder path (to support relative paths)
+                        parsedSourceMap.sourceRoot || path.dirname(sourceMapPath),
+                        source
+                    )
+                )
+            );
+            this.cache[key] = parsedSourceMap;
+        } catch (e) {
+            this.cache[key] = null;
+            throw e;
+        }
     }
 
     /**
