@@ -1,7 +1,7 @@
 import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer } from 'source-map';
 import * as path from 'path';
-import { fileUtils } from '../FileUtils';
+import { standardizePath as s, fileUtils } from '../FileUtils';
 import { SourceMapManager } from './SourceMapManager';
 import * as glob from 'glob';
 
@@ -18,10 +18,10 @@ export class LocationManager {
      * Given a debugger/staging location, convert that to a source location
      */
     public async getSourceLocation(options: GetSourceLocationOptions): Promise<SourceLocation> {
-        let rootDir = fileUtils.standardizePath(options.rootDir);
-        let stagingFolderPath = fileUtils.standardizePath(options.stagingFolderPath);
-        let currentFilePath = fileUtils.standardizePath(options.stagingFilePath);
-        let sourceDirs = options.sourceDirs ? options.sourceDirs.map(x => fileUtils.standardizePath(x)) : [];
+        let rootDir = s`${options.rootDir}`;
+        let stagingFolderPath = s`${options.stagingFolderPath}`;
+        let currentFilePath = s`${options.stagingFilePath}`;
+        let sourceDirs = options.sourceDirs ? options.sourceDirs.map(x => s`${x}`) : [];
         //throw out any sourceDirs pointing the rootDir
         sourceDirs = sourceDirs.filter(x => x !== rootDir);
 
@@ -94,23 +94,24 @@ export class LocationManager {
         return undefined;
     }
 
-     /**
-     * Given a source location, compute its locations in staging. You should call this for the main app (rootDir, rootDir+sourceDirs),
-     * and also once for each component library.
-     * There is a possibility of a single source location mapping to multiple staging locations (i.e. merging a function into two different files),
-     * So this will return an array of locations.
-     */
+    /**
+    * Given a source location, compute its locations in staging. You should call this for the main app (rootDir, rootDir+sourceDirs),
+    * and also once for each component library.
+    * There is a possibility of a single source location mapping to multiple staging locations (i.e. merging a function into two different files),
+    * So this will return an array of locations.
+    */
     public async getStagingLocations(
         sourceFilePath: string,
         sourceLineNumber: number,
         sourceColumnIndex: number,
         sourceDirs: string[],
-        stagingFolderPath: string
-    ): Promise<{ type: 'sourceMap' | 'sourceDirs', locations: SourceLocation[] }> {
+        stagingFolderPath: string,
+        fileMappings: Array<{ src: string; dest: string; }>
+    ): Promise<{ type: 'sourceMap' | 'fileMap' | 'sourceDirs', locations: SourceLocation[] }> {
 
-        sourceFilePath = fileUtils.standardizePath(sourceFilePath);
-        sourceDirs = sourceDirs.map(x => fileUtils.standardizePath(x));
-        stagingFolderPath = fileUtils.standardizePath(stagingFolderPath);
+        sourceFilePath = s`${sourceFilePath}`;
+        sourceDirs = sourceDirs.map(x => s`${x}`);
+        stagingFolderPath = s`${stagingFolderPath}`;
 
         //look through the sourcemaps in the staging folder for any instances of this source location
         let locations = await this.sourceMapManager.getGeneratedLocations(
@@ -130,34 +131,48 @@ export class LocationManager {
                 type: 'sourceMap',
                 locations: locations
             };
+        }
 
-            //no sourcemaps were found that reference this file.
-            //walk look through each sourceDir in order, computing the relative path for the file, and
-            //comparing that relative path to the relative path in the staging directory
-            //so look for a file with the same relative location in the staging folder
-        } else {
+        //no sourcemaps were found that reference this file.
+        //walk look through each sourceDir in order, computing the relative path for the file, and
+        //comparing that relative path to the relative path in the staging directory
+        //so look for a file with the same relative location in the staging folder
 
-            //compute the relative path for this file
-            let parentFolderPath = fileUtils.findFirstParent(sourceFilePath, sourceDirs);
-            if (parentFolderPath) {
-                let relativeFilePath = fileUtils.replaceCaseInsensitive(sourceFilePath, parentFolderPath, '');
-                let stagingFilePathAbsolute = path.join(stagingFolderPath, relativeFilePath);
+        //compute the relative path for this file
+        let parentFolderPath = fileUtils.findFirstParent(sourceFilePath, sourceDirs);
+        if (parentFolderPath) {
+            let relativeFilePath = fileUtils.replaceCaseInsensitive(sourceFilePath, parentFolderPath, '');
+            let stagingFilePathAbsolute = path.join(stagingFolderPath, relativeFilePath);
+            return {
+                type: 'sourceDirs',
+                locations: [{
+                    filePath: stagingFilePathAbsolute,
+                    columnIndex: sourceColumnIndex,
+                    lineNumber: sourceLineNumber
+                }]
+            };
+        }
+
+        //look through the files array to see if there are any mappings that reference this file.
+        //both `src` and `dest` are assumed to already be standardized
+        for (let fileMapping of fileMappings) {
+            if (fileMapping.src === sourceFilePath) {
                 return {
-                    type: 'sourceDirs',
+                    type: 'fileMap',
                     locations: [{
-                        filePath: stagingFilePathAbsolute,
+                        filePath: fileMapping.dest,
                         columnIndex: sourceColumnIndex,
                         lineNumber: sourceLineNumber
                     }]
                 };
-            } else {
-                //return an empty array so the result is still iterable
-                return {
-                    type: 'sourceDirs',
-                    locations: []
-                };
             }
         }
+
+        //return an empty array so the result is still iterable
+        return {
+            type: 'fileMap',
+            locations: []
+        };
     }
 
 }

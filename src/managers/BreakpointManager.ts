@@ -169,7 +169,8 @@ export class BreakpointManager {
                         project.rootDir,
                         ...project.sourceDirs
                     ],
-                    project.stagingFolderPath
+                    project.stagingFolderPath,
+                    project.fileMappings
                 );
 
                 for (let stagingLocation of stagingLocationsResult.locations) {
@@ -426,5 +427,10 @@ interface BreakpointWorkItem {
     condition?: string;
     hitCondition?: string;
     logMessage?: string;
-    type: 'sourceMap' | 'sourceDirs';
+    /**
+     * `sourceMap` means derived from a source map.
+     * `fileMap` means derived from the {src;dest} entry used by roku-deploy
+     * `sourceDirs` means derived by walking up the `sourceDirs` list until a relative file was found
+     */
+    type: 'sourceMap' | 'fileMap' | 'sourceDirs';
 }

@@ -14,12 +14,12 @@ import { SourceMapManager } from './SourceMapManager';
 describe('BreakpointManager', () => {
     let cwd = fileUtils.standardizePath(process.cwd());
 
-    let tmp = s`${cwd}/.tmp`;
-    let rootDir = s`${tmp}/rootDir`;
-    let stagingDir = s`${tmp}/stagingDir`;
-    let distDir = s`${tmp}/dist`;
-    let srcDir = s`${tmp}/src`;
-    let outDir = s`${tmp}/out`;
+    let tmpDir = s`${cwd}/.tmp`;
+    let rootDir = s`${tmpDir}/rootDir`;
+    let stagingDir = s`${tmpDir}/stagingDir`;
+    let distDir = s`${tmpDir}/dist`;
+    let srcDir = s`${tmpDir}/src`;
+    let outDir = s`${tmpDir}/out`;
 
     let bpManager: BreakpointManager;
     let locationManager: LocationManager;
@@ -27,8 +27,8 @@ describe('BreakpointManager', () => {
     //cast the manager as any to simplify some of the tests
     let b: any;
     beforeEach(() => {
-        fsExtra.ensureDirSync(tmp);
-        fsExtra.emptyDirSync(tmp);
+        fsExtra.ensureDirSync(tmpDir);
+        fsExtra.emptyDirSync(tmpDir);
         fsExtra.ensureDirSync(`${rootDir}/source`);
         fsExtra.ensureDirSync(`${stagingDir}/source`);
         fsExtra.ensureDirSync(`${distDir}/source`);
@@ -42,7 +42,7 @@ describe('BreakpointManager', () => {
     });
 
     afterEach(() => {
-        fsExtra.removeSync(tmp);
+        fsExtra.removeSync(tmpDir);
     });
 
     describe('sanitizeSourceFilePath', () => {
@@ -438,7 +438,7 @@ describe('BreakpointManager', () => {
 
     describe('writeBreakpointsToFile', () => {
         it('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
-            fsExtra.ensureDirSync(s`${tmp}/dist`);
+            fsExtra.ensureDirSync(s`${tmpDir}/dist`);
             let src = s`${rootDir}/main.bs`;
 
             //create the source file
@@ -465,8 +465,8 @@ describe('BreakpointManager', () => {
                 new SourceNode(8, 0, src, 'end function')
             ];
             let result = new SourceNode(null, null, src, chunks).toStringWithSourceMap();
-            fsExtra.writeFileSync(s`${tmp}/dist/main.brs`, result.code);
-            fsExtra.writeFileSync(s`${tmp}/dist/main.brs.map`, result.map.toString());
+            fsExtra.writeFileSync(s`${tmpDir}/dist/main.brs`, result.code);
+            fsExtra.writeFileSync(s`${tmpDir}/dist/main.brs.map`, result.map.toString());
 
             fsExtra.writeFileSync(s`${stagingDir}/main.brs`, result.code);
             fsExtra.writeFileSync(s`${stagingDir}/main.brs.map`, result.map.toString());
@@ -483,8 +483,8 @@ describe('BreakpointManager', () => {
                 files: [
                     'main.brs'
                 ],
-                rootDir: s`${tmp}/dist`,
-                outDir: s`${tmp}/out`,
+                rootDir: s`${tmpDir}/dist`,
+                outDir: s`${tmpDir}/out`,
                 stagingFolderPath: stagingDir
             }));
 
@@ -664,5 +664,43 @@ describe('BreakpointManager', () => {
                 s`${rootDir}/source/main.brs`
             ]);
         });
+    });
+
+    it('properly handles roku-deploy file overriding', async () => {
+        let baseDir = s`${tmpDir}/base`
+        let baseFilePath = s`${baseDir}/source/environment.brs`;
+        fsExtra.ensureDirSync(s`${baseDir}/source`);
+        fsExtra.writeFileSync(baseFilePath, `
+            sub GetEnvironmentName()
+                return "base"
+            end sub
+        `);
+
+        //write breakpoints 
+        bpManager.registerBreakpoint(baseFilePath, {
+            line: 2,
+            column: 0
+        });
+        let project = new Project({
+            files: [
+                'source/**/*',
+                //override the source file with the one from base
+                {
+                    src: '../base/**/*',
+                    dest: ''
+                }
+            ],
+            stagingFolderPath: stagingDir,
+            outDir: outDir,
+            rootDir: rootDir
+        });
+        await project.stage();
+        await bpManager.writeBreakpointsForProject(project);
+
+        //the source map for version.brs should point to base, not main
+        let source = await sourceMapManager.getSourceMap(s`${stagingDir}/source/environment.brs.map`);
+        expect(source.sources).to.eql([
+            baseFilePath
+        ]);
     });
 });
