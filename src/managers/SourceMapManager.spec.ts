@@ -1,5 +1,5 @@
 import * as fsExtra from 'fs-extra';
-import { standardizePath as s } from '../fileUtils';
+import { standardizePath as s } from '../FileUtils';
 import { SourceNode, SourceMapConsumer } from 'source-map';
 import { expect } from 'chai';
 import { SourceMapManager } from './SourceMapManager';
