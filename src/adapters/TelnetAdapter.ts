@@ -9,7 +9,7 @@ import { defer } from '../debugSession/BrightScriptDebugSession';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
-import { SourceLocation } from '../SourceLocator';
+import { SourceLocation } from '../managers/LocationManager';
 import { util } from '../util';
 
 /**

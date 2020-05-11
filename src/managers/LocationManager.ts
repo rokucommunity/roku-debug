@@ -1,17 +1,23 @@
 import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer } from 'source-map';
 import * as path from 'path';
-import { fileUtils } from './FileUtils';
-import { fileManager } from './managers/FileManager';
-import { sourceMapManager } from './managers/SourceMapManager';
+import { fileUtils } from '../FileUtils';
+import { SourceMapManager } from './SourceMapManager';
+import * as glob from 'glob';
+
 /**
  * Find original source locations based on debugger/staging locations.
  */
-export class SourceLocator {
+export class LocationManager {
+    constructor(
+        private sourceMapManager: SourceMapManager
+    ) {
+
+    }
     /**
      * Given a debugger/staging location, convert that to a source location
      */
-    public async getSourceLocation(options: SourceLocatorOptions): Promise<SourceLocation> {
+    public async getSourceLocation(options: GetSourceLocationOptions): Promise<SourceLocation> {
         let rootDir = fileUtils.standardizePath(options.rootDir);
         let stagingFolderPath = fileUtils.standardizePath(options.stagingFolderPath);
         let currentFilePath = fileUtils.standardizePath(options.stagingFilePath);
@@ -21,7 +27,7 @@ export class SourceLocator {
 
         //look for a sourcemap for this file (if source maps are enabled)
         if (options?.enableSourceMaps !== false) {
-            let sourceLocation = await sourceMapManager.getOriginalLocation(
+            let sourceLocation = await this.sourceMapManager.getOriginalLocation(
                 currentFilePath,
                 options.lineNumber,
                 options.columnIndex
@@ -33,7 +39,7 @@ export class SourceLocator {
                 //prevent circular dependencies by stopping if we have already seen this path before
                 !options._sourceChain?.includes(sourceLocation.filePath) &&
                 //there is a source map for that new location
-                sourceMapManager.sourceMapExists(`${sourceLocation.filePath}.map`)
+                this.sourceMapManager.sourceMapExists(`${sourceLocation.filePath}.map`)
             ) {
                 let nextLevelSourceLocation = await this.getSourceLocation({
                     ...options,
@@ -88,9 +94,75 @@ export class SourceLocator {
         return undefined;
     }
 
+     /**
+     * Given a source location, compute its locations in staging. You should call this for the main app (rootDir, rootDir+sourceDirs),
+     * and also once for each component library.
+     * There is a possibility of a single source location mapping to multiple staging locations (i.e. merging a function into two different files),
+     * So this will return an array of locations.
+     */
+    public async getStagingLocations(
+        sourceFilePath: string,
+        sourceLineNumber: number,
+        sourceColumnIndex: number,
+        sourceDirs: string[],
+        stagingFolderPath: string
+    ): Promise<{ type: 'sourceMap' | 'sourceDirs', locations: SourceLocation[] }> {
+
+        sourceFilePath = fileUtils.standardizePath(sourceFilePath);
+        sourceDirs = sourceDirs.map(x => fileUtils.standardizePath(x));
+        stagingFolderPath = fileUtils.standardizePath(stagingFolderPath);
+
+        //look through the sourcemaps in the staging folder for any instances of this source location
+        let locations = await this.sourceMapManager.getGeneratedLocations(
+            glob.sync('**/*.map', {
+                cwd: stagingFolderPath,
+                absolute: true
+            }),
+            {
+                filePath: sourceFilePath,
+                lineNumber: sourceLineNumber,
+                columnIndex: sourceColumnIndex
+            }
+        );
+
+        if (locations.length > 0) {
+            return {
+                type: 'sourceMap',
+                locations: locations
+            };
+
+            //no sourcemaps were found that reference this file.
+            //walk look through each sourceDir in order, computing the relative path for the file, and
+            //comparing that relative path to the relative path in the staging directory
+            //so look for a file with the same relative location in the staging folder
+        } else {
+
+            //compute the relative path for this file
+            let parentFolderPath = fileUtils.findFirstParent(sourceFilePath, sourceDirs);
+            if (parentFolderPath) {
+                let relativeFilePath = fileUtils.replaceCaseInsensitive(sourceFilePath, parentFolderPath, '');
+                let stagingFilePathAbsolute = path.join(stagingFolderPath, relativeFilePath);
+                return {
+                    type: 'sourceDirs',
+                    locations: [{
+                        filePath: stagingFilePathAbsolute,
+                        columnIndex: sourceColumnIndex,
+                        lineNumber: sourceLineNumber
+                    }]
+                };
+            } else {
+                //return an empty array so the result is still iterable
+                return {
+                    type: 'sourceDirs',
+                    locations: []
+                };
+            }
+        }
+    }
+
 }
 
-export interface SourceLocatorOptions {
+export interface GetSourceLocationOptions {
     /**
      * The absolute path to the staging folder
      */

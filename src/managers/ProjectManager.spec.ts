@@ -8,6 +8,9 @@ import * as sinonActual from 'sinon';
 import { fileUtils } from '../FileUtils';
 import { Project, ComponentLibraryProject, ProjectManager, ComponentLibraryConstrutorParams, componentLibraryPostfix } from './ProjectManager';
 import { standardizePath as s } from '../FileUtils';
+import { BreakpointManager } from './BreakpointManager';
+import { SourceMapManager } from './SourceMapManager';
+import { LocationManager } from './LocationManager';
 
 let sinon = sinonActual.createSandbox();
 let n = fileUtils.standardizePath.bind(fileUtils);
@@ -27,8 +30,13 @@ beforeEach(() => {
 describe('ProjectManager', () => {
     var manager: ProjectManager;
     beforeEach(() => {
-        sinon.stub(console, 'log').callsFake((...args ) => {});
-        manager = new ProjectManager();
+        sinon.stub(console, 'log').callsFake((...args) => { });
+        let sourceMapManager = new SourceMapManager();
+        let locationManager = new LocationManager(sourceMapManager);
+        let breakpointManager = new BreakpointManager(sourceMapManager, locationManager);
+        
+        manager = new ProjectManager(breakpointManager, locationManager);
+
         manager.mainProject = <any>{
             stagingFolderPath: stagingFolderPath
         };
@@ -270,8 +278,8 @@ describe('ProjectManager', () => {
 describe('Project', () => {
     var project: Project;
     beforeEach(() => {
-        sinon.stub(console, 'log').callsFake((...args ) => {});
-        sinon.stub(console, 'error').callsFake((...args ) => {});
+        sinon.stub(console, 'log').callsFake((...args) => { });
+        sinon.stub(console, 'error').callsFake((...args) => { });
         project = new Project({
             rootDir: cwd,
             outDir: s`${cwd}/out`,

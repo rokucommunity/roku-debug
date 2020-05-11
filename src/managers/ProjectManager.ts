@@ -7,7 +7,7 @@ import { FileEntry, RokuDeploy } from 'roku-deploy';
 
 import { BreakpointManager } from './BreakpointManager';
 import { fileUtils } from '../FileUtils';
-import { SourceLocator, SourceLocation } from '../SourceLocator';
+import { LocationManager, SourceLocation } from './LocationManager';
 import { standardizePath as s } from '../FileUtils';
 import { util } from '../util';
 // tslint:disable-next-line:no-var-requires Had to add the import as a require do to issues using this module with normal imports
@@ -20,11 +20,16 @@ export const componentLibraryPostfix: string = '__lib';
  * Will contain the main project (in rootDir), as well as component libraries.
  */
 export class ProjectManager {
-    /**
-     * A class that keeps track of all the breakpoints for a debug session.
-     * It needs to be notified of any changes in breakpoints
-     */
-    public breakpointManager = new BreakpointManager();
+    public constructor(
+        /**
+        * A class that keeps track of all the breakpoints for a debug session.
+        * It needs to be notified of any changes in breakpoints
+        */
+        public breakpointManager: BreakpointManager,
+        public locationManager: LocationManager
+    ) {
+        this.breakpointManager = breakpointManager;
+    }
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;
@@ -98,8 +103,7 @@ export class ProjectManager {
             stagingFileInfo.relativePath = project.removeFileNamePostfix(stagingFileInfo.relativePath);
         }
 
-        var locator = new SourceLocator();
-        var sourceLocation = await locator.getSourceLocation({
+        var sourceLocation = await this.locationManager.getSourceLocation({
             lineNumber: debuggerLineNumber,
             columnIndex: 0,
             fileMappings: project.fileMappings,

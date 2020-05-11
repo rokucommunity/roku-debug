@@ -3,7 +3,7 @@ import { util } from '../util';
 import { RawSourceMap, SourceMapConsumer } from 'source-map';
 import { standardizePath as s, fileUtils } from '../FileUtils';
 import * as path from 'path';
-import { SourceLocation } from '../SourceLocator';
+import { SourceLocation } from './LocationManager';
 /**
  * Unifies access to source files across the whole project
  */
@@ -15,13 +15,6 @@ export class SourceMapManager {
          */
         [lowerFilePath: string]: RawSourceMap | null;
     };
-
-    /**
-     * Clears the in-memory file cache
-     */
-    public reset() {
-        this.cache = {};
-    }
 
     /**
      * Does a source map exist at the specified path?
@@ -158,5 +151,3 @@ export class SourceMapManager {
         return locations;
     }
 }
-
-export const sourceMapManager = new SourceMapManager();

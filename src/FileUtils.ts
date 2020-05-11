@@ -6,9 +6,7 @@ import * as path from 'path';
 import { SourceMapConsumer, SourceNode } from 'source-map';
 import { promisify } from 'util';
 import * as rokuDeploy from 'roku-deploy';
-import { SourceLocation } from './SourceLocator';
-import { fileManager } from './managers/FileManager';
-import { sourceMapManager } from './managers/SourceMapManager';
+import { SourceLocation } from './managers/LocationManager';
 const globp = promisify(glob);
 
 export class FileUtils {
@@ -214,69 +212,7 @@ export class FileUtils {
         return fullPath;
     }
 
-    /**
-     * Given a source location, compute its location in staging. You should call this for the main app (rootDir, rootDir+sourceDirs),
-     * and also once for each component library
-     */
-    public async getStagingLocationsFromSourceLocation(
-        sourceFilePath: string,
-        sourceLineNumber: number,
-        sourceColumnIndex: number,
-        sourceDirs: string[],
-        stagingFolderPath: string
-    ): Promise<{ type: 'sourceMap' | 'sourceDirs', locations: SourceLocation[] }> {
-
-        sourceFilePath = fileUtils.standardizePath(sourceFilePath);
-        sourceDirs = sourceDirs.map(x => fileUtils.standardizePath(x));
-        stagingFolderPath = fileUtils.standardizePath(stagingFolderPath);
-
-        //look through the sourcemaps in the staging folder for any instances of this source location
-        let locations = await sourceMapManager.getGeneratedLocations(
-            glob.sync('**/*.map', {
-                cwd: stagingFolderPath,
-                absolute: true
-            }),
-            {
-                filePath: sourceFilePath,
-                lineNumber: sourceLineNumber,
-                columnIndex: sourceColumnIndex
-            }
-        );
-
-        if (locations.length > 0) {
-            return {
-                type: 'sourceMap',
-                locations: locations
-            };
-
-            //no sourcemaps were found that reference this file.
-            //walk look through each sourceDir in order, computing the relative path for the file, and
-            //comparing that relative path to the relative path in the staging directory
-            //so look for a file with the same relative location in the staging folder
-        } else {
-
-            //compute the relative path for this file
-            let parentFolderPath = fileUtils.findFirstParent(sourceFilePath, sourceDirs);
-            if (parentFolderPath) {
-                let relativeFilePath = fileUtils.replaceCaseInsensitive(sourceFilePath, parentFolderPath, '');
-                let stagingFilePathAbsolute = path.join(stagingFolderPath, relativeFilePath);
-                return {
-                    type: 'sourceDirs',
-                    locations: [{
-                        filePath: stagingFilePathAbsolute,
-                        columnIndex: sourceColumnIndex,
-                        lineNumber: sourceLineNumber
-                    }]
-                };
-            } else {
-                //return an empty array so the result is still iterable
-                return {
-                    type: 'sourceDirs',
-                    locations: []
-                };
-            }
-        }
-    }
+   
 
     /**
      * Get a file url for a file path (i.e. file:///C:/projects/Something or file:///projects/something

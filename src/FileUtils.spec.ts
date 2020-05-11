@@ -7,12 +7,16 @@ import * as sinonActual from 'sinon';
 import { SourceNode } from 'source-map';
 import { fileUtils, standardizePath } from './FileUtils';
 import { standardizePath as s } from './FileUtils';
-import { sourceMapManager } from './managers/SourceMapManager';
+import { SourceMapManager } from './managers/SourceMapManager';
 
 let sinon = sinonActual.createSandbox();
 const rootDir = path.normalize(path.dirname(__dirname));
 
 describe('FileUtils', () => {
+    let sourceMapManager: SourceMapManager;
+    beforeEach(() => {
+        sourceMapManager = new SourceMapManager();
+    });
     afterEach(() => {
         sinon.restore();
     });

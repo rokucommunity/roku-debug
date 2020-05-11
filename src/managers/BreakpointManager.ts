@@ -6,11 +6,15 @@ import { DebugProtocol } from 'vscode-debugprotocol';
 import { fileUtils } from '../FileUtils';
 import { Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
-import { sourceMapManager } from './SourceMapManager';
+import { SourceMapManager } from './SourceMapManager';
+import { LocationManager } from './LocationManager';
 
 export class BreakpointManager {
 
-    public constructor() {
+    public constructor(
+        private sourceMapManager: SourceMapManager,
+        private locationManager: LocationManager
+    ) {
 
     }
 
@@ -157,7 +161,7 @@ export class BreakpointManager {
             for (let breakpoint of breakpoints) {
                 //get the list of locations in staging that this breakpoint should be written to.
                 //if none are found, then this breakpoint is ignored
-                let stagingLocationsResult = await fileUtils.getStagingLocationsFromSourceLocation(
+                let stagingLocationsResult = await this.locationManager.getStagingLocations(
                     sourceFilePath,
                     breakpoint.line,
                     breakpoint.column,
@@ -250,11 +254,11 @@ export class BreakpointManager {
         if (sourceAndMap.map) {
             let sourceMap = JSON.stringify(sourceAndMap.map);
             //It's ok to overwrite the file in staging because if the original code provided a source map,
-            //then our SourceLocator class will walk the sourcemap chain from staging, to rootDir, and then
+            //then our LocationManager class will walk the sourcemap chain from staging, to rootDir, and then
             //on to the original location
             await fsExtra.writeFile(`${stagingFilePath}.map`, sourceMap);
             //update the in-memory version of this source map
-            sourceMapManager.set(`${stagingFilePath}.map`, sourceMap);
+            this.sourceMapManager.set(`${stagingFilePath}.map`, sourceMap);
         }
 
         //overwrite the file that now has breakpoints injected

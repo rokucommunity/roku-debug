@@ -18,13 +18,6 @@ export class FileManager {
         [lowerFilePath: string]: CodeFile;
     };
 
-    /**
-     * Clears the in-memory file cache
-     */
-    public reset() {
-        this.cache = {};
-    }
-
     public getCodeFile(filePath: string) {
         let lowerFilePath = filePath.toLowerCase();
         if (!this.cache[lowerFilePath]) {
@@ -79,5 +72,3 @@ export interface CodeFile {
     //map of lower case function name to its actual case in the source file
     functionNameMap: { [lowerFunctionName: string]: string };
 }
-
-export const fileManager = new FileManager();

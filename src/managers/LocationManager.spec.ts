@@ -3,9 +3,9 @@ import * as path from 'path';
 import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer, SourceNode } from 'source-map';
 
-import { fileUtils, standardizePath as s } from './FileUtils';
-import { SourceLocator } from './SourceLocator';
-import { sourceMapManager } from './managers/SourceMapManager';
+import { standardizePath as s } from '../FileUtils';
+import { LocationManager } from './LocationManager';
+import { SourceMapManager } from './SourceMapManager';
 
 let cwd = s`${path.dirname(__dirname)}`;
 let tmpDir = s`${cwd}/.tmp`;
@@ -17,11 +17,13 @@ const sourceDirs = [
     s`${tmpDir}/sourceDir2`
 ];
 
-describe('SouceLocator', () => {
+describe('LocationManager', () => {
     let files: { [filePath: string]: string };
-    var sourceLocator: SourceLocator;
+    let locationManager: LocationManager;
+    let sourceMapManager: SourceMapManager;
     beforeEach(() => {
-        sourceLocator = new SourceLocator();
+        sourceMapManager = new SourceMapManager();
+        locationManager = new LocationManager(sourceMapManager);
         files = {};
         fsExtra.ensureDirSync(tmpDir);
         fsExtra.removeSync(tmpDir);
@@ -30,7 +32,6 @@ describe('SouceLocator', () => {
         for (let sourceDir of sourceDirs) {
             fsExtra.ensureDirSync(`${sourceDir}/source`);
         }
-        sourceMapManager.reset();
     });
     afterEach(() => {
         fsExtra.removeSync(tmpDir);
@@ -55,7 +56,7 @@ describe('SouceLocator', () => {
             fsExtra.writeFileSync(stagingFilePath, `sub main()\nend sub`);
             fsExtra.writeFileSync(`${stagingFilePath}.map`, codeAndMap.map.toString());
 
-            let location = await sourceLocator.getSourceLocation({
+            let location = await locationManager.getSourceLocation({
                 stagingFilePath: stagingFilePath,
                 stagingFolderPath: stagingDir,
                 fileMappings: [],
@@ -79,7 +80,7 @@ describe('SouceLocator', () => {
                 fsExtra.writeFileSync(`${stagingDir}/lib1.brs`, '');
                 fsExtra.writeFileSync(`${rootDir}/lib1.brs`, '');
 
-                let location = await sourceLocator.getSourceLocation({
+                let location = await locationManager.getSourceLocation({
                     stagingFilePath: s`${stagingDir}/lib1.brs`,
                     stagingFolderPath: stagingDir,
                     fileMappings: [{
@@ -120,7 +121,7 @@ describe('SouceLocator', () => {
                 fsExtra.writeFileSync(stagingMapPath, out.map.toString());
 
 
-                let location = await sourceLocator.getSourceLocation({
+                let location = await locationManager.getSourceLocation({
                     stagingFilePath: stagingFilePath,
                     stagingFolderPath: stagingDir,
                     fileMappings: [],
@@ -146,7 +147,7 @@ describe('SouceLocator', () => {
                 fsExtra.writeFileSync(`${sourceDirs[1]}/lib1.brs`, '');
                 fsExtra.writeFileSync(`${sourceDirs[2]}/lib1.brs`, '');
 
-                let location = await sourceLocator.getSourceLocation({
+                let location = await locationManager.getSourceLocation({
                     stagingFilePath: s`${stagingDir}/lib1.brs`,
                     stagingFolderPath: stagingDir,
                     fileMappings: [{
@@ -173,7 +174,7 @@ describe('SouceLocator', () => {
                 fsExtra.writeFileSync(`${sourceDirs[1]}/lib1.brs`, '');
                 fsExtra.writeFileSync(`${sourceDirs[2]}/lib1.brs`, '');
 
-                let location = await sourceLocator.getSourceLocation({
+                let location = await locationManager.getSourceLocation({
                     stagingFilePath: s`${stagingDir}/lib1.brs`,
                     stagingFolderPath: stagingDir,
                     fileMappings: [{
@@ -199,7 +200,7 @@ describe('SouceLocator', () => {
                 fsExtra.writeFileSync(s`${rootDir}/lib1.brs`, '');
                 fsExtra.writeFileSync(s`${sourceDirs[2]}/lib1.brs`, '');
 
-                let location = await sourceLocator.getSourceLocation({
+                let location = await locationManager.getSourceLocation({
                     stagingFilePath: s`${stagingDir}/lib1.brs`,
                     stagingFolderPath: stagingDir,
                     fileMappings: [{

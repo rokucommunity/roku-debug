@@ -8,8 +8,8 @@ import { fileUtils } from '../FileUtils';
 import { Project } from './ProjectManager';
 let n = fileUtils.standardizePath.bind(fileUtils);
 import { standardizePath as s } from '../FileUtils';
-import { SourceLocator, SourceLocation } from '../SourceLocator';
-import { sourceMapManager } from './SourceMapManager';
+import { LocationManager, SourceLocation } from '../managers/LocationManager';
+import { SourceMapManager } from './SourceMapManager';
 
 describe('BreakpointManager', () => {
     let cwd = fileUtils.standardizePath(process.cwd());
@@ -22,6 +22,8 @@ describe('BreakpointManager', () => {
     let outDir = s`${tmp}/out`;
 
     let bpManager: BreakpointManager;
+    let locationManager: LocationManager;
+    let sourceMapManager: SourceMapManager;
     //cast the manager as any to simplify some of the tests
     let b: any;
     beforeEach(() => {
@@ -33,9 +35,10 @@ describe('BreakpointManager', () => {
         fsExtra.ensureDirSync(`${srcDir}/source`)
         fsExtra.ensureDirSync(outDir);
 
-        bpManager = new BreakpointManager();
+        sourceMapManager = new SourceMapManager();
+        locationManager = new LocationManager(sourceMapManager);
+        bpManager = new BreakpointManager(sourceMapManager, locationManager);
         b = bpManager;
-        sourceMapManager.reset();
     });
 
     afterEach(() => {
@@ -594,7 +597,7 @@ describe('BreakpointManager', () => {
             }));
 
             //use sourcemap to look up original location
-            let location = await new SourceLocator().getSourceLocation({
+            let location = await locationManager.getSourceLocation({
                 stagingFilePath: s`${stagingDir}/source/main.brs`,
                 columnIndex: 0,
                 lineNumber: 2,

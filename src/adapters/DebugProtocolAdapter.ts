@@ -6,7 +6,7 @@ import { Socket } from 'net';
 import { defer } from '../debugSession/BrightScriptDebugSession';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
-import { SourceLocation } from '../SourceLocator';
+import { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 
 /**

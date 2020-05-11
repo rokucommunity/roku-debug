@@ -33,7 +33,10 @@ import {
     StoppedEventReason
 } from './Events';
 import { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
-import { fileManager } from '../managers/FileManager';
+import { FileManager } from '../managers/FileManager';
+import { SourceMapManager } from '../managers/SourceMapManager';
+import { LocationManager } from '../managers/LocationManager';
+import { BreakpointManager } from '../managers/BreakpointManager';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -44,7 +47,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //give util a reference to this session to assist in logging across the entire module
         util._debugSession = this;
+        this.fileManager = new FileManager();
+        this.sourceMapManager = new SourceMapManager();
+        this.locationManager = new LocationManager(this.sourceMapManager);
+        this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
+        this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
     }
+
+    public fileManager: FileManager;
+
+    public projectManager: ProjectManager;
+
+    public breakpointManager: BreakpointManager;
+
+    public locationManager: LocationManager;
+
+    public sourceMapManager: SourceMapManager;
 
     //set imports as class properties so they can be spied upon during testing
     public rokuDeploy = require('roku-deploy') as RokuDeploy;
@@ -72,12 +90,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private launchConfiguration: LaunchConfiguration;
-
-    public projectManager = new ProjectManager();
-
-    public get breakpointManager() {
-        return this.projectManager.breakpointManager;
-    }
 
     /**
      * The 'initialize' request is the first request called by the frontend
@@ -486,7 +498,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //the stacktrace returns function identifiers in all lower case. Try to get the actual case
                     //load the contents of the file and get the correct casing for the function identifier
                     try {
-                        let functionName = await fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
+                        let functionName = await this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
                         if (functionName) {
                             debugFrame.functionIdentifier = functionName;
                         }

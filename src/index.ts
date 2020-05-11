@@ -13,4 +13,4 @@ export * from './FileUtils';
 export * from './managers/ProjectManager';
 export * from './RendezvousTracker';
 export * from './adapters/TelnetAdapter';
-export * from './SourceLocator';
+export * from './managers/LocationManager';
