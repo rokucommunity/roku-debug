@@ -11,7 +11,8 @@ export class SourceMapManager {
     private cache = {} as {
         /**
          * Store all paths in lower case since Roku is case-insensitive.
-         * If the file existed, but something failed during parsing, this will be set to null. So you 
+         * If the file existed, but something failed during parsing, this will be set to null.
+         * So take that into consideration when deciding to use falsey checking
          */
         [lowerFilePath: string]: RawSourceMap | null;
     };

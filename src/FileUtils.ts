@@ -212,8 +212,6 @@ export class FileUtils {
         return fullPath;
     }
 
-   
-
     /**
      * Get a file url for a file path (i.e. file:///C:/projects/Something or file:///projects/something
      * @param fullPath

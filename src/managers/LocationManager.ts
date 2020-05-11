@@ -95,11 +95,11 @@ export class LocationManager {
     }
 
     /**
-    * Given a source location, compute its locations in staging. You should call this for the main app (rootDir, rootDir+sourceDirs),
-    * and also once for each component library.
-    * There is a possibility of a single source location mapping to multiple staging locations (i.e. merging a function into two different files),
-    * So this will return an array of locations.
-    */
+     * Given a source location, compute its locations in staging. You should call this for the main app (rootDir, rootDir+sourceDirs),
+     * and also once for each component library.
+     * There is a possibility of a single source location mapping to multiple staging locations (i.e. merging a function into two different files),
+     * So this will return an array of locations.
+     */
     public async getStagingLocations(
         sourceFilePath: string,
         sourceLineNumber: number,

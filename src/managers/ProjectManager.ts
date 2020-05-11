@@ -22,9 +22,9 @@ export const componentLibraryPostfix: string = '__lib';
 export class ProjectManager {
     public constructor(
         /**
-        * A class that keeps track of all the breakpoints for a debug session.
-        * It needs to be notified of any changes in breakpoints
-        */
+         * A class that keeps track of all the breakpoints for a debug session.
+         * It needs to be notified of any changes in breakpoints
+         */
         public breakpointManager: BreakpointManager,
         public locationManager: LocationManager
     ) {
