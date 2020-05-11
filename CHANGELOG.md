@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - brightscript debug commands from the debug console in the telnet adapter like `cont` and `step` are now supported (but use at your own risk as there are synchronization issues between the adapter and vscode sometimes)
  - source maps are now cached on launch to improve step speed.
 ### Fixed
+ - issue that was treating logpoints like regular breakpoints
  - bugs when debugging files with sourcemaps. This still isn't perfect, as files with injected breakpoints will debug the staging file. However, files with maps that don't have breakpoints will be debuggable in the source file. Fix coming soon for the prior.
  - several bugs where the source locations and staging locations were not being computed properly, causing a poor debugging experience.
  - bugs related to sourcemaps not loading from the proper locations.

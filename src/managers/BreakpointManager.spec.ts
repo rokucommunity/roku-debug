@@ -397,6 +397,59 @@ describe('BreakpointManager', () => {
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
         });
 
+        it('properly writes all types of breakpoints', async () => {
+            //create file
+            fsExtra.writeFileSync(`${sourceDir2}/source/main.brs`, `
+                sub main()
+                    firstName="john"
+                    print lastName="smith"
+                    print firstName + " " + lastName
+                end sub
+            `);
+
+            //mimic custom build by copying the file from sourceDir into rootDir
+            fsExtra.copyFileSync(`${sourceDir2}/source/main.brs`, `${rootDir}/source/main.brs`);
+
+            //copy the file to staging (this is what the extension would normally do automatically
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+            //set the breakpoint before launch
+            bpManager.replaceBreakpoints(n(`${sourceDir2}/source/main.brs`), [{
+                line: 3,
+                column: 0,
+                condition: 'true = true'
+            }, {
+                line: 4,
+                column: 0,
+                logMessage: 'Hello {lastName}'
+            }, {
+                line: 5,
+                column: 0,
+                hitCondition: '3'
+            }]);
+
+            //launch
+            bpManager.lockBreakpoints();
+
+            await bpManager.writeBreakpointsForProject(
+                new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: s`${cwd}/out`,
+                    sourceDirs: [sourceDir1, sourceDir2],
+                    stagingFolderPath: stagingDir
+                })
+            );
+
+            expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`
+                sub main()\nif true = true then : STOP : end if
+                    firstName="john"\nPRINT "Hello "; lastName;""
+                    print lastName="smith"\nif Invalid = m.vscode_bp OR Invalid = m.vscode_bp.bp1 then if Invalid = m.vscode_bp then m.vscode_bp = {bp1: 0} else m.vscode_bp.bp1 = 0 else m.vscode_bp.bp1 ++ : if m.vscode_bp.bp1 >= 3 then STOP
+                    print firstName + " " + lastName
+                end sub
+            `);
+
+        });
+
         it('does not duplicate breakpoints with breakpoint set in both sourceDir files', async () => {
             //create file
             fsExtra.writeFileSync(`${sourceDir1}/source/main.brs`, `sub main()\n    print 1\n    print 2\nend sub`);

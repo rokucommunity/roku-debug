@@ -182,13 +182,14 @@ export class BreakpointManager {
                         ''
                     );
                     let obj: BreakpointWorkItem = {
+                        //add the breakpoint info
+                        ...breakpoint,
+                        //add additional info
                         sourceFilePath: sourceFilePath,
                         rootDirFilePath: s`${project.rootDir}/${relativeStagingPath}`,
                         line: stagingLocation.lineNumber,
                         column: stagingLocation.columnIndex,
                         stagingFilePath: stagingLocation.filePath,
-                        condition: breakpoint.condition,
-                        hitCondition: breakpoint.hitCondition,
                         type: stagingLocationsResult.type
                     };
                     if (!result[stagingLocation.filePath]) {
