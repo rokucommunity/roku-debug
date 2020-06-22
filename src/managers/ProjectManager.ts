@@ -248,7 +248,7 @@ export class Project {
     public injectRaleTrackerTask: boolean;
     public raleTrackerTaskFileLocation: string;
 
-    public async stage() {
+    public async stage(onlyMakeMappings: boolean = false) {
         var rokuDeploy = new RokuDeploy();
         if (!this.fileMappings) {
             this.fileMappings = await this.getFileMappings();
@@ -265,21 +265,23 @@ export class Project {
             }
             return Promise.resolve(relativeFileMappings);
         };
+        if (!onlyMakeMappings) {
 
-        //copy all project files to the staging folder
-        await rokuDeploy.prepublishToStaging({
-            rootDir: this.rootDir,
-            stagingFolderPath: this.stagingFolderPath,
-            files: this.files,
-            outDir: this.outDir,
-        });
+            //copy all project files to the staging folder
+            await rokuDeploy.prepublishToStaging({
+                rootDir: this.rootDir,
+                stagingFolderPath: this.stagingFolderPath,
+                files: this.files,
+                outDir: this.outDir,
+            });
 
-        //preload the original location of every file
-        await this.resolveFileMappingsForSourceDirs();
+            //preload the original location of every file
+            await this.resolveFileMappingsForSourceDirs();
 
-        await this.transformManifestWithBsConst();
+            await this.transformManifestWithBsConst();
 
-        await this.copyAndTransformRaleTrackerTask();
+            await this.copyAndTransformRaleTrackerTask();
+        }
     }
 
     /**
