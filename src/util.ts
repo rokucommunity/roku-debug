@@ -8,32 +8,12 @@ import { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSessio
 import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
 
 class Util {
-    public async readDir(dirPath: string) {
-        return await new Promise<string[]>((resolve, reject) => {
-            fs.readdir(dirPath, (err, result) => {
-                if (err) { reject(err); }
-                resolve(result);
-            });
-        });
-    }
-
     /**
      * If the path does not have a trailing slash, one is appended to it
      * @param dirPath
      */
     public ensureTrailingSlash(dirPath: string) {
         return dirPath.substr(dirPath.length - 1) !== '/' ? dirPath + '/' : dirPath;
-    }
-
-    public async stat(filePath: string) {
-        return await new Promise((resolve, reject) => {
-            fs.stat(filePath, (err, result) => {
-                if (err) {
-                    reject(err);
-                }
-                resolve(result);
-            });
-        });
     }
 
     /**
@@ -65,14 +45,6 @@ class Util {
      */
     public getFileScheme(filePath: string): string | null {
         return url.parse(filePath).protocol;
-    }
-
-    /**
-     * Creates a delay in execution
-     * @param ms time to delay in milliseconds
-     */
-    public delay(ms: number) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     /**
