@@ -34,7 +34,7 @@ describe('ProjectManager', () => {
         let sourceMapManager = new SourceMapManager();
         let locationManager = new LocationManager(sourceMapManager);
         let breakpointManager = new BreakpointManager(sourceMapManager, locationManager);
-        
+
         manager = new ProjectManager(breakpointManager, locationManager);
 
         manager.mainProject = <any>{

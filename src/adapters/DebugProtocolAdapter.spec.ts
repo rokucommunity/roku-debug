@@ -1,4 +1,4 @@
-import { DebugProtocolAdapter } from "./DebugProtocolAdapter";
+import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 
 describe('DebugProtocolAdapter', () => {
     it('constructs', () => {

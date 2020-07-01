@@ -40,7 +40,7 @@ describe('LocationManager', () => {
 
         it('prevents infinite loop with circular dependency', async () => {
             let sourceFilePath = s`${rootDir}/source/main.brs`;
-            let stagingFilePath = s`${stagingDir}/source/main.brs`
+            let stagingFilePath = s`${stagingDir}/source/main.brs`;
 
             //create sourcemap that points to same file (i.e. circular dependency)
             let codeAndMap = new SourceNode(null, null, sourceFilePath, [
@@ -119,7 +119,6 @@ describe('LocationManager', () => {
                 fsExtra.writeFileSync(sourceFilePath, `sub main()\n    print "hello ":print "world"\nend sub`);
                 fsExtra.writeFileSync(stagingFilePath, out.code);
                 fsExtra.writeFileSync(stagingMapPath, out.map.toString());
-
 
                 let location = await locationManager.getSourceLocation({
                     stagingFilePath: stagingFilePath,
