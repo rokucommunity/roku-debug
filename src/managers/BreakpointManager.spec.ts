@@ -32,7 +32,7 @@ describe('BreakpointManager', () => {
         fsExtra.ensureDirSync(`${rootDir}/source`);
         fsExtra.ensureDirSync(`${stagingDir}/source`);
         fsExtra.ensureDirSync(`${distDir}/source`);
-        fsExtra.ensureDirSync(`${srcDir}/source`)
+        fsExtra.ensureDirSync(`${srcDir}/source`);
         fsExtra.ensureDirSync(outDir);
 
         sourceMapManager = new SourceMapManager();
@@ -556,7 +556,7 @@ describe('BreakpointManager', () => {
             );
         });
 
-        //this is just a sample test to show how we need to create 
+        //this is just a sample test to show how we need to create
         it('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
             var srcPath = 'program.brs';
             function n(line, col, txt) {
@@ -591,7 +591,7 @@ describe('BreakpointManager', () => {
             });
         });
 
-        //this is just a sample test to show how we need to create 
+        //this is just a sample test to show how we need to create
         it('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
             var sourceFilePath = s`${srcDir}/source/main.bs`;
             function n(line, col, txt) {
@@ -671,7 +671,7 @@ describe('BreakpointManager', () => {
             let sourceFilePath = s`${srcDir}/source/main.brs`;
             function n(line, col, txt) {
                 return new SourceNode(line, col, sourceFilePath, txt);
-            };
+            }
             //the original file had spaces between each print line
             let codeAndMap = new SourceNode(null, null, sourceFilePath, [
                 n(1, 0, 'sub Main(inputARguments as object)\n'),
@@ -695,7 +695,7 @@ describe('BreakpointManager', () => {
                 sourceFilePath
             ]);
 
-            //write breakpoints 
+            //write breakpoints
             bpManager.registerBreakpoint(sourceFilePath, {
                 line: 4,
                 column: 0
@@ -720,7 +720,7 @@ describe('BreakpointManager', () => {
     });
 
     it('properly handles roku-deploy file overriding', async () => {
-        let baseDir = s`${tmpDir}/base`
+        let baseDir = s`${tmpDir}/base`;
         let baseFilePath = s`${baseDir}/source/environment.brs`;
         fsExtra.ensureDirSync(s`${baseDir}/source`);
         fsExtra.writeFileSync(baseFilePath, `
@@ -729,7 +729,7 @@ describe('BreakpointManager', () => {
             end sub
         `);
 
-        //write breakpoints 
+        //write breakpoints
         bpManager.registerBreakpoint(baseFilePath, {
             line: 2,
             column: 0
