@@ -501,8 +501,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         let functionName = await this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
                         if (functionName) {
 
-                            //search for original function name if this is an anonymous function
-                            if (functionName.startsWith('$anon')) {
+                            //search for original function name if this is an anonymous function.
+                            //anonymous function names are prefixed with $ in the stack trace (i.e. $anon_1 or $functionname_40002)
+                            if (functionName.startsWith('$')) {
                                 functionName = this.fileManager.getFunctionNameAtPosition(
                                     sourceLocation.filePath,
                                     debugFrame.lineNumber - 1,
