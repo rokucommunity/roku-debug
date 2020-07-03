@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.4.0] - 2020-07-02
+### Changed
+ - Try to look up original function names for anonymous functions in call stack [#6](https://github.com/rokucommunity/roku-debug/issues/6)
+
+
+
 ## [0.3.7] - 2020-05-11
 ### Changed
  - upgraded to roku-deploy@3.1.1
@@ -40,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[0.4.0]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.4.0...v0.4.0
 [0.3.7]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.6...v0.3.7
 [0.3.6]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.5...v0.3.6
 [0.3.5]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.4...v0.3.5
