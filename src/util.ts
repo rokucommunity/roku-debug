@@ -6,6 +6,7 @@ import * as url from 'url';
 import { SmartBuffer } from 'smart-buffer';
 import { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
+import { Position, Range } from 'vscode-languageserver';
 
 class Util {
     /**
@@ -202,6 +203,24 @@ class Util {
         return text;
     }
 
+    /**
+     * Test if `position` is in `range`. If the position is at the edges, will return true.
+     * Adapted from core vscode
+     * @param range
+     * @param position
+     */
+    public rangeContains(range: Range, position: Position) {
+        if (position.line < range.start.line || position.line > range.end.line) {
+            return false;
+        }
+        if (position.line === range.start.line && position.character < range.start.character) {
+            return false;
+        }
+        if (position.line === range.end.line && position.character > range.end.character) {
+            return false;
+        }
+        return true;
+    }
 }
 
 const util = new Util();
