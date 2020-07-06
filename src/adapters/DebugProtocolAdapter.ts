@@ -461,7 +461,7 @@ export class DebugProtocolAdapter {
         });
     }
 
-    private getVariablePath(expression: string): string[] {
+    public getVariablePath(expression: string): string[] {
         // Regex 101 link for match examples: https://regex101.com/r/KNKfHP/8
         let regexp = /(?:\[\"(.*?)\"\]|([a-z_][a-z0-9_\$%!#]*)|\[([0-9]*)\]|\.([0-9]+))/gi;
         let match: RegExpMatchArray;
