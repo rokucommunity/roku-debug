@@ -462,13 +462,17 @@ export class DebugProtocolAdapter {
     }
 
     private getVariablePath(expression: string): string[] {
-        // Regex 101 link for match examples: https://regex101.com/r/KNKfHP/7
-        let regexp = /(?:\"(.*?)\"|([a-z_][a-z0-9_\$%!#]*)|\[([0-9]*)\])/gi;
+        // Regex 101 link for match examples: https://regex101.com/r/KNKfHP/8
+        let regexp = /(?:\[\"(.*?)\"\]|([a-z_][a-z0-9_\$%!#]*)|\[([0-9]*)\]|\.([0-9]+))/gi;
         let match: RegExpMatchArray;
         let variablePath = [];
 
         while (match = regexp.exec(expression)) {
-            variablePath.push(match[1] ?? match[2] ?? match[3]);
+            // match 1: strings between quotes - this["that"]
+            // match 2: any valid brightscript viable format
+            // match 3: array/list access via index - this[0]
+            // match 3: array/list access via dot notation (not valid in code but returned as part of the VS Code flow) - this.0
+            variablePath.push(match[1] ?? match[2] ?? match[3] ?? match[4]);
         }
         return variablePath;
     }
