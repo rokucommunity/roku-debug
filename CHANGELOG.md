@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.0] - 2020-07-06
+### Added
+ - support for inline values during a debug session. [#8](https://github.com/rokucommunity/roku-debug/pull/8)
+### Fixed
+ - Fixed bug when inspecting indexed variables that would always show the list or array itself when using the BrightScript debug protocol [#8](https://github.com/rokucommunity/roku-debug/pull/8)
+
+
+
 ## [0.4.0] - 2020-07-02
 ### Changed
  - Try to look up original function names for anonymous functions in call stack [#6](https://github.com/rokucommunity/roku-debug/issues/6)
@@ -46,7 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[0.4.0]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.4.0...v0.4.0
+[0.5.0]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.4.0...v0.5.0
+[0.4.0]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.7...v0.4.0
 [0.3.7]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.6...v0.3.7
 [0.3.6]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.5...v0.3.6
 [0.3.5]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.4...v0.3.5
