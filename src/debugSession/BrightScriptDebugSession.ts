@@ -559,11 +559,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v.frameId = args.frameId;
                 }
 
-                let scope = new Scope('Local', refId, true);
+                let scope = new Scope('Local', refId, false);
                 scopes.push(scope);
             } else {
                 // NOTE: Legacy telnet support
-                scopes.push(new Scope('Local', this.variableHandles.create('local'), true));
+                scopes.push(new Scope('Local', this.variableHandles.create('local'), false));
             }
 
             response.body = {
