@@ -8,6 +8,7 @@ import { Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
+import { util } from '../util';
 
 export class BreakpointManager {
 
@@ -158,6 +159,7 @@ export class BreakpointManager {
         //iterate over every file that contains breakpoints
         for (let sourceFilePath in this.breakpointsByFilePath) {
             let breakpoints = this.breakpointsByFilePath[sourceFilePath];
+
             for (let breakpoint of breakpoints) {
                 //get the list of locations in staging that this breakpoint should be written to.
                 //if none are found, then this breakpoint is ignored
@@ -166,8 +168,8 @@ export class BreakpointManager {
                     breakpoint.line,
                     breakpoint.column,
                     [
-                        project.rootDir,
-                        ...project.sourceDirs
+                        ...project.sourceDirs,
+                        project.rootDir
                     ],
                     project.stagingFolderPath,
                     project.fileMappings
@@ -234,6 +236,7 @@ export class BreakpointManager {
         for (let stagingFilePath in breakpointsByStagingFilePath) {
             promises.push(this.writeBreakpointsToFile(stagingFilePath, breakpointsByStagingFilePath[stagingFilePath]));
         }
+
         await Promise.all(promises);
     }
 
@@ -241,6 +244,13 @@ export class BreakpointManager {
      * Write breakpoints to the specified file, and update the sourcemaps to match
      */
     private async writeBreakpointsToFile(stagingFilePath: string, breakpoints: BreakpointWorkItem[]) {
+
+        //do not crash if the file doesn't exist
+        if (!await fsExtra.pathExists(stagingFilePath)) {
+            util.log(`Path not found ${stagingFilePath}`);
+            return;
+        }
+
         //load the file as a string
         let fileContents = (await fsExtra.readFile(stagingFilePath)).toString();
 
