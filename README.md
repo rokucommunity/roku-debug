@@ -1,5 +1,5 @@
 # roku-debug
-A language server and socket adapter for Roku's [BrightScript Debug Protocol](https://developer.roku.com/en-ca/docs/developer-program/debugging/socket-based-debugger.md)
+A [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/) server (for editors like VSCode) and a socket adapter for Roku's [BrightScript Debug Protocol](https://developer.roku.com/en-ca/docs/developer-program/debugging/socket-based-debugger.md)
 
 
 [![build](https://img.shields.io/github/workflow/status/rokucommunity/roku-debug/build.svg?logo=github)](https://github.com/rokucommunity/roku-debug/actions?query=workflow%3Abuild)
