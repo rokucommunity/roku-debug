@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.1] - 2020-07-11
+### Fixed
+ - Prevent debug session crash if target breakpoint file doesn't exist. [#10](https://github.com/rokucommunity/roku-debug/pull/10)
+  -Bug when converting source location to staging locations that incorrectly checked rootDir before sourceDirs. [#10](https://github.com/rokucommunity/roku-debug/pull/10)
+
+
+
 ## [0.5.0] - 2020-07-06
 ### Added
  - support for inline values during a debug session. [#8](https://github.com/rokucommunity/roku-debug/pull/8)
