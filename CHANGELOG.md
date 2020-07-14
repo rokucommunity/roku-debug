@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.2] - 2020-07-14
+### Changed
+ - upgraded to [roku-deploy@3.2.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#322---2020-07-14)
+### Fixed
+ - bug when loading stagingFolderPath from `rokudeploy.json` or `bsconfig.json` that would cause an exception.
+
+
+
 ## [0.5.1] - 2020-07-11
 ### Fixed
  - Prevent debug session crash if target breakpoint file doesn't exist. [#10](https://github.com/rokucommunity/roku-debug/pull/10)
@@ -61,6 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[0.5.2]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.5.1...v0.5.2
+[0.5.1]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.5.0...v0.5.1
 [0.5.0]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.4.0...v0.5.0
 [0.4.0]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.7...v0.4.0
 [0.3.7]:  https://github.com/RokuCommunity/vscode-brightscript-language/compare/v0.3.6...v0.3.7
