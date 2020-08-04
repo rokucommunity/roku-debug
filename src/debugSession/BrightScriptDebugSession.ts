@@ -25,6 +25,7 @@ import { standardizePath as s } from '../FileUtils';
 import { EvaluateContainer, DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
+import { fileUtils } from '../FileUtils';
 import {
     LaunchStartEvent,
     LogOutputEvent,
@@ -37,6 +38,7 @@ import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
+import { BreakpointRequestObject } from '../debugProtocol/Debugger';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -425,17 +427,29 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Called every time a breakpoint is created, modified, or deleted, for each file. This receives the entire list of breakpoints every time.
      */
-    public setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
-        let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
-        //sort the breakpoints
-        var sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
-            //filter out the inactive breakpoints
-            .filter(x => x.isHidden === false);
+    public async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
+        if (!this.rokuAdapter.connected) {
+            let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
+            //sort the breakpoints
+            var sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
+                //filter out the inactive breakpoints
+                .filter(x => x.isHidden === false);
 
-        response.body = {
-            breakpoints: sortedAndFilteredBreakpoints
-        };
-        this.sendResponse(response);
+            response.body = {
+                breakpoints: sortedAndFilteredBreakpoints
+            };
+            this.sendResponse(response);
+        } else {
+            for (let breakpoint of args.breakpoints) {
+                let breakpoints = await this.getBreakpointRequests(args.source.path, breakpoint, this.projectManager.mainProject, 'pkg:');
+
+                for (let project of this.projectManager.componentLibraryProjects) {
+                    breakpoints = breakpoints.concat(await this.getBreakpointRequests(args.source.path, breakpoint, project, 'libpkg:'));
+                }
+                console.log(breakpoints);
+                let result = await (this.rokuAdapter as DebugProtocolAdapter).addBreakpoints(breakpoints);
+            }
+        }
 
         //set a small timeout so the user sees the breakpoints disappear before reappearing
         //This is disabled because I'm not sure anyone actually wants this functionality, but I didn't want to lose it.
@@ -451,6 +465,40 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //         }));
         //     }
         // }, 100);
+    }
+
+    private async getBreakpointRequests(path: string, breakpoint: DebugProtocol.SourceBreakpoint,  project: ComponentLibraryProject | Project, fileProtocol: string) {
+        let breakpoints = [];
+        console.log(project);
+        let stagingLocationsResult = await this.locationManager.getStagingLocations(
+            path,
+            breakpoint.line,
+            breakpoint.column,
+            [
+                ...project.sourceDirs,
+                project.rootDir
+            ],
+            project.stagingFolderPath,
+            project.fileMappings
+        );
+
+        for (let stagingLocation of stagingLocationsResult.locations) {
+            let relativeStagingPath = fileUtils.replaceCaseInsensitive(
+                stagingLocation.filePath,
+                fileUtils.standardizePath(
+                    fileUtils.removeTrailingSlash(project.stagingFolderPath) + '/'
+                ),
+                ''
+            );
+
+            let breakpointRequest: BreakpointRequestObject = {
+                filePath: fileProtocol + '/' + relativeStagingPath,
+                lineNumber: breakpoint.line,
+                hitCount: breakpoint.hitCondition ? parseInt(breakpoint.hitCondition) : 0
+            };
+            breakpoints.push(breakpointRequest);
+        }
+        return breakpoints;
     }
 
     protected async exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {

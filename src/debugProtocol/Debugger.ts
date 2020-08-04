@@ -15,6 +15,7 @@ import {
 } from './responses';
 import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
+import { ListOrAddBreakpointsResponse } from './responses/ListOrAddBreakpointsResponse';
 
 export class Debugger {
 
@@ -252,12 +253,31 @@ export class Debugger {
         return -1;
     }
 
+    public async getBreakpointsList() {
+        return this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.LIST_BREAKPOINTS);
+    }
+
+    public async addBreakpoints(breakpoints: Array<BreakpointRequestObject> = []) {
+        const numBreakpoints = breakpoints.length;
+        if (numBreakpoints > 0) {
+            let buffer = new SmartBuffer();
+            buffer.writeUInt32LE(numBreakpoints); // num_breakpoints - The number of breakpoints in the breakpoints array.
+            breakpoints.forEach((breakpoint) => {
+                buffer.writeStringNT(breakpoint.filePath); // file_path - The path of the source file where the breakpoint is to be inserted.
+                buffer.writeUInt32LE(breakpoint.lineNumber); // line_number - The line number in the channel application code where the breakpoint is to be executed.
+                buffer.writeUInt32LE(breakpoint.hitCount); // ignore_count - The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
+            });
+            return this.makeRequest(buffer, COMMANDS.ADD_BREAKPOINTS);
+        }
+        return -1;
+    }
+
     private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
         this.totalRequests++;
         let requestId = this.totalRequests;
-        buffer.insertUInt32LE(command, 0); // command_code
-        buffer.insertUInt32LE(requestId, 0); // request_id
-        buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length
+        buffer.insertUInt32LE(command, 0); // command_code - An enum representing the debugging command being sent. See the COMMANDS enum
+        buffer.insertUInt32LE(requestId, 0); // request_id - The ID of the debugger request (must be >=1). This ID is included in the debugger response.
+        buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length - The size of the packet to be sent.
 
         this.activeRequests[requestId] = {
             commandType: command,
@@ -295,6 +315,14 @@ export class Debugger {
                 if (commandType === COMMANDS.STOP || commandType === COMMANDS.CONTINUE || commandType === COMMANDS.STEP || commandType === COMMANDS.EXIT_CHANNEL) {
                     this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
                     return true;
+                }
+
+                if (commandType === COMMANDS.LIST_BREAKPOINTS || commandType === COMMANDS.ADD_BREAKPOINTS) {
+                    let debuggerListOrAddBreakpointsResponse = new ListOrAddBreakpointsResponse(unhandledData);
+                    if (debuggerListOrAddBreakpointsResponse.success) {
+                        this.removedProcessedBytes(debuggerListOrAddBreakpointsResponse, unhandledData);
+                        return true;
+                    }
                 }
 
                 if (commandType === COMMANDS.VARIABLES) {
@@ -496,6 +524,12 @@ export class Debugger {
 export interface ProtocolVersionDetails {
     message: string;
     errorCode: PROTOCOL_ERROR_CODES;
+}
+
+export interface BreakpointRequestObject {
+    filePath: string;
+    lineNumber: number;
+    hitCount: number;
 }
 
 export interface ConstructorOptions {
