@@ -1,4 +1,4 @@
-import type { ProtocolVersionDetails } from '../debugProtocol/Debugger';
+import type { ProtocolVersionDetails, BreakpointRequestObject } from '../debugProtocol/Debugger';
 import { Debugger } from '../debugProtocol/Debugger';
 import * as eol from 'eol';
 import * as EventEmitter from 'events';
@@ -555,6 +555,9 @@ export class DebugProtocolAdapter {
         }
     }
 
+    public addBreakpoints(breakpoints: Array<BreakpointRequestObject> = []) {
+        return this.socketDebugger.addBreakpoints(breakpoints);
+    }
     /**
      * Disconnect from the telnet session and unset all objects
      */
