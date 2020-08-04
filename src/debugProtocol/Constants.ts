@@ -11,6 +11,9 @@ export const enum COMMANDS {
     STACKTRACE = 4,
     VARIABLES = 5,
     STEP = 6,
+    ADD_BREAKPOINTS = 7,
+    LIST_BREAKPOINTS = 8,
+    REMOVE_BREAKPOINTS = 9,
     EXIT_CHANNEL = 122
 }
 
