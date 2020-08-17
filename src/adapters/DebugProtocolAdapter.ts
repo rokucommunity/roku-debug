@@ -357,7 +357,7 @@ export class DebugProtocolAdapter {
                     frameIndex: stackTraceData.stackSize - i - 1, // frame index is the reverse of the returned order.
                     threadIndex: threadId,
                     filePath: i === 0 ? (frameData.fileName) ? frameData.fileName : thread.filePath : frameData.fileName,
-                    lineNumber: i === 0 ? thread.lineNumber : frameData.lineNumber,
+                    lineNumber: frameData.lineNumber,
                     functionIdentifier: this.cleanUpFunctionName(i === 0 ? (frameData.functionName) ? frameData.functionName : thread.functionName : frameData.functionName)
                 };
                 this.stackFramesCache[frame.frameId] = frame;
