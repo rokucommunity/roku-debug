@@ -716,6 +716,30 @@ describe('ComponentLibraryProject', () => {
         });
     });
 
+    describe('addFileNamePostfix', () => {
+        let project: ComponentLibraryProject;
+        beforeEach(() => {
+            project = new ComponentLibraryProject(params);
+        });
+
+        it('adds postfix to the path if missing', () => {
+            expect(project.addFileNamePostfix(`source/main.brs`)).to.equal('source/main__lib0.brs');
+            expect(project.addFileNamePostfix(`components/component1.brs`)).to.equal('components/component1__lib0.brs');
+        });
+
+        it('does nothing to files that already have the correct postfix', () => {
+            expect(project.addFileNamePostfix(`source/main__lib0.brs`)).to.equal('source/main__lib0.brs');
+        });
+
+        it('only adds the postfix to the end of the file', () => {
+            expect(project.addFileNamePostfix(`source/__lib1.brs/main.brs`)).to.equal('source/__lib1.brs/main__lib0.brs');
+        });
+
+        it('only adds the postfix to paths to a file with an extension', () => {
+            expect(project.addFileNamePostfix(`source/__lib1.brs/main`)).to.equal('source/__lib1.brs/main');
+        });
+    });
+
     describe('removeFileNamePostfix', () => {
         let project: ComponentLibraryProject;
         beforeEach(() => {

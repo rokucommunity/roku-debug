@@ -515,7 +515,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 let breakpoints = await this.getBreakpointRequests(args.source.path, breakpoint, this.projectManager.mainProject, 'pkg:');
 
                 for (let project of this.projectManager.componentLibraryProjects) {
-                    breakpoints = breakpoints.concat(await this.getBreakpointRequests(args.source.path, breakpoint, project, 'libpkg:'));
+                    breakpoints = breakpoints.concat(await this.getBreakpointRequests(args.source.path, breakpoint, project, 'pkg:'));
                 }
                 console.log(breakpoints);
                 let result = await (this.rokuAdapter as DebugProtocolAdapter).addBreakpoints(breakpoints);
@@ -561,6 +561,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 ),
                 ''
             );
+
+            if (project instanceof ComponentLibraryProject) {
+                // If this is a Component Library project me need tp make sure we add the post fix to the path
+                relativeStagingPath = project.addFileNamePostfix(relativeStagingPath);
+            }
 
             let breakpointRequest: BreakpointRequestObject = {
                 filePath: fileProtocol + '/' + relativeStagingPath,

@@ -587,10 +587,9 @@ export class ComponentLibraryProject extends Project {
 
                 if (parsedPath.ext === '.brs') {
                     // Create the new file name to be used
-                    let newFileName = `${parsedPath.name}${this.postfix}${parsedPath.ext}`;
-                    relativePath = path.join(parsedPath.dir, newFileName);
+                    relativePath = this.addFileNamePostfix(relativePath);
 
-                    // Rename the brs files to include the postfix namespacing tag
+                    // Rename the brs files to include the postfix name spacing tag
                     await fsExtra.move(fileMapping.dest, path.join(this.stagingFolderPath, relativePath));
                 }
 
@@ -610,6 +609,21 @@ export class ComponentLibraryProject extends Project {
                 return match.replace('.brs', this.postfix + '.brs');
             }
         });
+    }
+
+    /**
+     * Takes a file path and adds the component library post fix to the file name
+     * @param {string} uri
+     * @returns {string}
+     */
+    public addFileNamePostfix(filePath: string): string {
+        // let idx = filePath.toLowerCase().indexOf(this.postfix.toLowerCase());
+        let parts = path.parse(filePath);
+        let postfix = `${this.postfix}${parts.ext}`;
+        if (!filePath.toLowerCase().endsWith(postfix.toLowerCase()) && parts.ext) {
+            return path.join(parts.dir, `${parts.name}${postfix}`);
+        }
+        return filePath;
     }
 
     /**
