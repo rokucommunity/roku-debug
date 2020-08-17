@@ -3,13 +3,14 @@ import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
-import { FileEntry, RokuDeploy } from 'roku-deploy';
+import { RokuDeploy } from 'roku-deploy';
 
 import { BreakpointManager } from './BreakpointManager';
 import { fileUtils } from '../FileUtils';
 import { LocationManager, SourceLocation } from './LocationManager';
 import { standardizePath as s } from '../FileUtils';
 import { util } from '../util';
+import { FileEntry } from 'roku-deploy/dist/RokuDeployOptions';
 // tslint:disable-next-line:no-var-requires Had to add the import as a require do to issues using this module with normal imports
 let replaceInFile = require('replace-in-file');
 
@@ -520,10 +521,9 @@ export class ComponentLibraryProject extends Project {
 
                 if (parsedPath.ext === '.brs') {
                     // Create the new file name to be used
-                    let newFileName: string = `${parsedPath.name}${this.postfix}${parsedPath.ext}`;
-                    relativePath = path.join(parsedPath.dir, newFileName);
+                    relativePath = this.addFileNamePostfix(relativePath);
 
-                    // Rename the brs files to include the postfix namespacing tag
+                    // Rename the brs files to include the postfix name spacing tag
                     await fsExtra.move(fileMapping.dest, path.join(this.stagingFolderPath, relativePath));
                 }
 
@@ -543,6 +543,21 @@ export class ComponentLibraryProject extends Project {
                 return match.replace('.brs', this.postfix + '.brs');
             }
         });
+    }
+
+    /**
+     * Takes a file path and adds the component library post fix to the file name
+     * @param {string} uri
+     * @returns {string}
+     */
+    public addFileNamePostfix(filePath: string): string {
+        // let idx = filePath.toLowerCase().indexOf(this.postfix.toLowerCase());
+        let parts = path.parse(filePath);
+        let postfix = `${this.postfix}${parts.ext}`;
+        if (!filePath.toLowerCase().endsWith(postfix.toLowerCase()) && parts.ext) {
+            return path.join(parts.dir, `${parts.name}${postfix}`);
+        }
+        return filePath;
     }
 
     /**
