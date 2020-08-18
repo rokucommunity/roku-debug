@@ -1,4 +1,4 @@
-import { Debugger, ProtocolVersionDetails, BreakpointRequestObject } from '../debugProtocol/Debugger';
+import { Debugger, ProtocolVersionDetails, AddBreakpointRequestObject, RemoveBreakpointRequestObject } from '../debugProtocol/Debugger';
 import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
@@ -533,9 +533,14 @@ export class DebugProtocolAdapter {
         }
     }
 
-    public async addBreakpoints(breakpoints: Array<BreakpointRequestObject> = []) {
+    public async addBreakpoints(breakpoints: Array<AddBreakpointRequestObject> = []): Promise<any> {
         return await this.socketDebugger.addBreakpoints(breakpoints);
     }
+
+    public async removeBreakpoints(breakpoints: RemoveBreakpointRequestObject = []): Promise<any> {
+        return await this.socketDebugger.removeBreakpoints(breakpoints);
+    }
+
     /**
      * Disconnect from the telnet session and unset all objects
      */
