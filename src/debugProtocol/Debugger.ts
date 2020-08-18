@@ -257,7 +257,7 @@ export class Debugger {
         return this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.LIST_BREAKPOINTS);
     }
 
-    public async addBreakpoints(breakpoints: Array<BreakpointRequestObject> = []) {
+    public async addBreakpoints(breakpoints: Array<AddBreakpointRequestObject> = []) {
         const numBreakpoints = breakpoints.length;
         if (numBreakpoints > 0) {
             let buffer = new SmartBuffer();
@@ -269,7 +269,20 @@ export class Debugger {
             });
             return this.makeRequest(buffer, COMMANDS.ADD_BREAKPOINTS);
         }
-        return -1;
+        return [];
+    }
+
+    public async removeBreakpoints(breakpointIds: RemoveBreakpointRequestObject = []) {
+        const numBreakpoints = breakpointIds.length;
+        if (numBreakpoints > 0) {
+            let buffer = new SmartBuffer();
+            buffer.writeUInt32LE(numBreakpoints); // num_breakpoints - The number of breakpoints in the breakpoints array.
+            breakpointIds.forEach((breakpointId) => {
+                buffer.writeUInt32LE(breakpointId); // breakpoint_ids - An array of breakpoint IDs representing the breakpoints to be removed.
+            });
+            return this.makeRequest(buffer, COMMANDS.REMOVE_BREAKPOINTS);
+        }
+        return [];
     }
 
     private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
@@ -317,7 +330,7 @@ export class Debugger {
                     return true;
                 }
 
-                if (commandType === COMMANDS.LIST_BREAKPOINTS || commandType === COMMANDS.ADD_BREAKPOINTS) {
+                if (commandType === COMMANDS.LIST_BREAKPOINTS || commandType === COMMANDS.ADD_BREAKPOINTS || commandType === COMMANDS.REMOVE_BREAKPOINTS) {
                     let debuggerListOrAddBreakpointsResponse = new ListOrAddBreakpointsResponse(unhandledData);
                     if (debuggerListOrAddBreakpointsResponse.success) {
                         this.removedProcessedBytes(debuggerListOrAddBreakpointsResponse, unhandledData);
@@ -526,11 +539,13 @@ export interface ProtocolVersionDetails {
     errorCode: PROTOCOL_ERROR_CODES;
 }
 
-export interface BreakpointRequestObject {
+export interface AddBreakpointRequestObject {
     filePath: string;
     lineNumber: number;
     hitCount: number;
 }
+
+export interface RemoveBreakpointRequestObject extends Array<number> {}
 
 export interface ConstructorOptions {
     /**

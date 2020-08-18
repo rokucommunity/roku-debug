@@ -42,7 +42,7 @@ import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
-import type { BreakpointRequestObject } from '../debugProtocol/Debugger';
+import type { AddBreakpointRequestObject } from '../debugProtocol/Debugger';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -85,6 +85,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private evaluateRefIdCounter = 1;
 
     private variables: Record<number, AugmentedVariable> = {};
+    private breakpoints: Record<string, any> = {};
 
     private variableHandles = new Handles<string>();
 
@@ -511,14 +512,63 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             };
             this.sendResponse(response);
         } else {
-            for (let breakpoint of args.breakpoints) {
-                let breakpoints = await this.getBreakpointRequests(args.source.path, breakpoint, this.projectManager.mainProject, 'pkg:');
+            if (!args.sourceModified) {
+                let cachedBreakpoints = this.breakpoints[args.source.path];
+                if (cachedBreakpoints) {
+                    let breakpointsToRemove = cachedBreakpoints.filter(a => {
+                        return !args.breakpoints.find(b => b.line === a.line);
+                    });
 
-                for (let project of this.projectManager.componentLibraryProjects) {
-                    breakpoints = breakpoints.concat(await this.getBreakpointRequests(args.source.path, breakpoint, project, 'pkg:'));
+                    if (breakpointsToRemove) {
+                        let breakpointIdsToRemove = [];
+                        for (let breakpoint of breakpointsToRemove) {
+                            cachedBreakpoints.splice(cachedBreakpoints.indexOf(breakpoint), 1);
+                            breakpointIdsToRemove = breakpointIdsToRemove.concat(breakpoint.breakpointIds);
+                        }
+
+                        await (this.rokuAdapter as DebugProtocolAdapter).removeBreakpoints(breakpointIdsToRemove);
+                    }
+                } else {
+                    cachedBreakpoints = [];
                 }
-                console.log(breakpoints);
-                let result = await (this.rokuAdapter as DebugProtocolAdapter).addBreakpoints(breakpoints);
+
+                for (let breakpoint of args.breakpoints) {
+                    console.log(breakpoint);
+
+                    if (!cachedBreakpoints.find(obj => obj.line === breakpoint.line)) {
+                        let breakpoints = await this.getBreakpointRequests(args.source.path, breakpoint, this.projectManager.mainProject, 'pkg:');
+
+                        for (let project of this.projectManager.componentLibraryProjects) {
+                            breakpoints = breakpoints.concat(await this.getBreakpointRequests(args.source.path, breakpoint, project, 'pkg:'));
+                        }
+                        console.log(breakpoints);
+                        let result = await (this.rokuAdapter as DebugProtocolAdapter).addBreakpoints(breakpoints);
+                        console.log(result);
+
+                        let breakpointIds = result.breakpoints.map((item) => item.breakpointId);
+
+                        if (result?.breakpoints) {
+                            // for (let deviceBP of result) {
+                            cachedBreakpoints.push({
+                                /** An optional identifier for the breakpoint. It is needed if breakpoint events are used to update or remove breakpoints. */
+                                id: result.breakpoints[0].breakpointId,
+                                /** If true breakpoint could be set (but not necessarily at the desired location). */
+                                verified: result.breakpoints[0].errorCode === 'OK' && result.breakpoints[0].breakpointId > 0,
+                                /** The source where the breakpoint is located. */
+                                source: args.source,
+                                /** The start line of the actual range covered by the breakpoint. */
+                                line: breakpoint.line,
+                                breakpointIds: breakpointIds
+                            });
+                        }
+                    }
+                }
+
+                this.breakpoints[args.source.path] = cachedBreakpoints;
+                response.body = {
+                    breakpoints: cachedBreakpoints
+                };
+                this.sendResponse(response);
             }
         }
 
@@ -567,9 +617,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 relativeStagingPath = project.addFileNamePostfix(relativeStagingPath);
             }
 
-            let breakpointRequest: BreakpointRequestObject = {
+            let breakpointRequest: AddBreakpointRequestObject = {
                 filePath: fileProtocol + '/' + relativeStagingPath,
-                lineNumber: breakpoint.line,
+                lineNumber: stagingLocation.lineNumber,
                 hitCount: breakpoint.hitCondition ? parseInt(breakpoint.hitCondition) : 0
             };
             breakpoints.push(breakpointRequest);
