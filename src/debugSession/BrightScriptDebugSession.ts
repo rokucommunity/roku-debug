@@ -86,6 +86,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private variables: Record<number, AugmentedVariable> = {};
     private breakpoints: Record<string, any> = {};
+    private breakpointRefIds: Record<string, number> = {};
+    private breakpointsQueue: Record<string, {
+        response: DebugProtocol.SetBreakpointsResponse;
+        args: DebugProtocol.SetBreakpointsArguments;
+    }> = {};
 
     private variableHandles = new Handles<string>();
 
@@ -500,7 +505,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Called every time a breakpoint is created, modified, or deleted, for each file. This receives the entire list of breakpoints every time.
      */
     public async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
-        if (!this.rokuAdapter.connected) {
+        if (!this.enableDebugProtocol) {
             let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
             //sort the breakpoints
             let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
@@ -512,61 +517,83 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             };
             this.sendResponse(response);
         } else {
-            if (!args.sourceModified) {
-                let cachedBreakpoints = this.breakpoints[args.source.path];
-                if (cachedBreakpoints) {
-                    let breakpointsToRemove = cachedBreakpoints.filter(a => {
-                        return !args.breakpoints.find(b => b.line === a.line);
-                    });
+            if (this.rokuAdapter.connected && this.rokuAdapter.isAtDebuggerPrompt) {
+                if (!args.sourceModified) {
+                    let cachedBreakpoints = this.breakpoints[args.source.path];
+                    if (cachedBreakpoints) {
+                        let breakpointsToRemove = cachedBreakpoints.filter(a => {
+                            return !args.breakpoints.find(b => b.line === a.line);
+                        });
 
-                    if (breakpointsToRemove) {
-                        let breakpointIdsToRemove = [];
-                        for (let breakpoint of breakpointsToRemove) {
-                            cachedBreakpoints.splice(cachedBreakpoints.indexOf(breakpoint), 1);
-                            breakpointIdsToRemove = breakpointIdsToRemove.concat(breakpoint.breakpointIds);
+                        if (breakpointsToRemove) {
+                            let breakpointIdsToRemove = [];
+                            for (let breakpoint of breakpointsToRemove) {
+                                cachedBreakpoints.splice(cachedBreakpoints.indexOf(breakpoint), 1);
+                                breakpointIdsToRemove = breakpointIdsToRemove.concat(breakpoint.breakpointIds);
+                            }
+
+                            await (this.rokuAdapter as DebugProtocolAdapter).removeBreakpoints(breakpointIdsToRemove);
                         }
-
-                        await (this.rokuAdapter as DebugProtocolAdapter).removeBreakpoints(breakpointIdsToRemove);
+                    } else {
+                        cachedBreakpoints = [];
                     }
-                } else {
-                    cachedBreakpoints = [];
-                }
 
+                    for (let breakpoint of args.breakpoints) {
+                        console.log(breakpoint);
+
+                        if (!cachedBreakpoints.find(obj => obj.line === breakpoint.line)) {
+                            let breakpoints = await this.getBreakpointRequests(args.source.path, breakpoint, this.projectManager.mainProject, 'pkg:');
+
+                            for (let project of this.projectManager.componentLibraryProjects) {
+                                breakpoints = breakpoints.concat(await this.getBreakpointRequests(args.source.path, breakpoint, project, 'pkg:'));
+                            }
+                            console.log(breakpoints);
+                            let result = await (this.rokuAdapter as DebugProtocolAdapter).addBreakpoints(breakpoints);
+                            console.log(result);
+
+                            let breakpointIds = result.breakpoints.map((item) => item.breakpointId);
+
+                            if (result?.breakpoints) {
+                                // for (let deviceBP of result) {
+                                cachedBreakpoints.push({
+                                    /** An optional identifier for the breakpoint. It is needed if breakpoint events are used to update or remove breakpoints. */
+                                    id: this.getBreakpointRefId(args.source.path, breakpoint.line),
+                                    /** If true breakpoint could be set (but not necessarily at the desired location). */
+                                    verified: result.breakpoints[0].errorCode === 'OK' && result.breakpoints[0].breakpointId > 0,
+                                    /** The source where the breakpoint is located. */
+                                    source: args.source,
+                                    /** The start line of the actual range covered by the breakpoint. */
+                                    line: breakpoint.line,
+                                    breakpointIds: breakpointIds
+                                });
+                            }
+                        }
+                    }
+
+                    this.breakpoints[args.source.path] = cachedBreakpoints;
+                    response.body = {
+                        breakpoints: cachedBreakpoints
+                    };
+                    this.sendResponse(response);
+                }
+            } else {
+                this.breakpointsQueue[args.source.path] = { response: response, args: args };
+                let breakpoints = [];
                 for (let breakpoint of args.breakpoints) {
-                    console.log(breakpoint);
-
-                    if (!cachedBreakpoints.find(obj => obj.line === breakpoint.line)) {
-                        let breakpoints = await this.getBreakpointRequests(args.source.path, breakpoint, this.projectManager.mainProject, 'pkg:');
-
-                        for (let project of this.projectManager.componentLibraryProjects) {
-                            breakpoints = breakpoints.concat(await this.getBreakpointRequests(args.source.path, breakpoint, project, 'pkg:'));
-                        }
-                        console.log(breakpoints);
-                        let result = await (this.rokuAdapter as DebugProtocolAdapter).addBreakpoints(breakpoints);
-                        console.log(result);
-
-                        let breakpointIds = result.breakpoints.map((item) => item.breakpointId);
-
-                        if (result?.breakpoints) {
-                            // for (let deviceBP of result) {
-                            cachedBreakpoints.push({
-                                /** An optional identifier for the breakpoint. It is needed if breakpoint events are used to update or remove breakpoints. */
-                                id: result.breakpoints[0].breakpointId,
-                                /** If true breakpoint could be set (but not necessarily at the desired location). */
-                                verified: result.breakpoints[0].errorCode === 'OK' && result.breakpoints[0].breakpointId > 0,
-                                /** The source where the breakpoint is located. */
-                                source: args.source,
-                                /** The start line of the actual range covered by the breakpoint. */
-                                line: breakpoint.line,
-                                breakpointIds: breakpointIds
-                            });
-                        }
-                    }
+                    breakpoints.push({
+                        /** If true breakpoint could be set (but not necessarily at the desired location). */
+                        verified: false,
+                        id: this.getBreakpointRefId(args.source.path, breakpoint.line),
+                        /** The source where the breakpoint is located. */
+                        source: args.source,
+                        message: 'device is not in a stopped state',
+                        /** The start line of the actual range covered by the breakpoint. */
+                        line: breakpoint.line
+                    });
                 }
 
-                this.breakpoints[args.source.path] = cachedBreakpoints;
                 response.body = {
-                    breakpoints: cachedBreakpoints
+                    breakpoints: breakpoints
                 };
                 this.sendResponse(response);
             }
@@ -586,6 +613,42 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //         }));
         //     }
         // }, 100);
+    }
+
+    private getBreakpointRefId(sourcePath: string, line: number) {
+        let key = `${sourcePath}:${line}`;
+        if (!this.breakpointRefIds[key]) {
+            let id = Object.keys(this.breakpointRefIds).length + 1;
+            this.breakpointRefIds[key] = id;
+        }
+        return this.breakpointRefIds[key];
+    }
+
+    private async sendQueuedBreakpointsToDevice() {
+        if (this.enableDebugProtocol) {
+            for (const queuedBreakpoint of Object.values(this.breakpointsQueue)) {
+                queuedBreakpoint.response.seq = 0;
+                await this.setBreakPointsRequest(queuedBreakpoint.response, queuedBreakpoint.args);
+                let cachedBreakpoints = this.breakpoints[queuedBreakpoint.args.source.path];
+
+                let breakpointsToUpdate = cachedBreakpoints.filter(a => {
+                    return queuedBreakpoint.args.breakpoints.find(b => b.line === a.line);
+                });
+
+                for (let breakpoint of breakpointsToUpdate) {
+                    this.sendEvent({
+                        seq: 0,
+                        type: 'event',
+                        event: 'breakpoint',
+                        body: {
+                            reason: 'changed',
+                            breakpoint: breakpoint
+                        }
+                    });
+                }
+            }
+            this.breakpointsQueue = {};
+        }
     }
 
     private async getBreakpointRequests(path: string, breakpoint: DebugProtocol.SourceBreakpoint, project: ComponentLibraryProject | Project, fileProtocol: string) {
@@ -979,6 +1042,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // Socket debugger will always stop all threads and supports multi thread inspection.
             (event.body as any).allThreadsStopped = this.enableDebugProtocol;
             this.sendEvent(event);
+            await this.sendQueuedBreakpointsToDevice();
         });
 
         //anytime the adapter encounters an exception on the roku,
