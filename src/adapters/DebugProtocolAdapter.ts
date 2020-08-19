@@ -8,6 +8,9 @@ import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { BreakpointManager } from '../managers/BreakpointManager';
+import { ProjectManager } from '../managers/ProjectManager';
+import { BreakpointEvent, Breakpoint } from 'vscode-debugadapter';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -54,6 +57,7 @@ export class DebugProtocolAdapter {
     public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number; }[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
+    public on(eventname: 'breakpoint-change', handler: (output: BreakpointEvent) => void);
     public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
     public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
@@ -72,6 +76,7 @@ export class DebugProtocolAdapter {
     private emit(
         eventName:
             'app-exit' |
+            'breakpoint-change' |
             'cannot-continue' |
             'close' |
             'compile-errors' |
@@ -531,6 +536,90 @@ export class DebugProtocolAdapter {
                 return thread;
             }
         }
+    }
+
+    public async workOnBreakpoints(breakpointManager: BreakpointManager, projectManager: ProjectManager) {
+        if (this.connected && this.isAtDebuggerPrompt) {
+            let breakpointQueue = breakpointManager.getBreakpointQueue();
+
+            Object.entries(breakpointQueue).forEach( async ([key, args]) => {
+
+                if (!args.sourceModified) {
+                    let cachedBreakpoints = breakpointManager.getBreakpointsForFile(args.source.path);
+                    if (cachedBreakpoints) {
+                        let breakpointsToRemove = cachedBreakpoints.filter(a => {
+                            return !args.breakpoints.find(b => b.line === a.line);
+                        });
+
+                        if (breakpointsToRemove) {
+                            let protocolBreakpointIdsToRemove = [];
+                            for (let breakpoint of breakpointsToRemove) {
+                                cachedBreakpoints.splice(cachedBreakpoints.indexOf(breakpoint), 1);
+                                protocolBreakpointIdsToRemove = protocolBreakpointIdsToRemove.concat(breakpoint.protocolBreakpointIds);
+                                this.sendBreakpointChangeEvent('removed', breakpoint);
+                            }
+
+                            await this.removeBreakpoints(protocolBreakpointIdsToRemove);
+                        }
+                    } else {
+                        cachedBreakpoints = [];
+                    }
+
+                    for (let breakpoint of args.breakpoints) {
+                        console.log(breakpoint);
+
+                        if (!cachedBreakpoints.find(obj => obj.line === breakpoint.line)) {
+                            if (!breakpoint.logMessage && !breakpoint.condition) {
+                                let breakpoints = await breakpointManager.getBreakpointRequests(args.source.path, breakpoint, projectManager.mainProject, 'pkg:');
+
+                                for (let project of projectManager.componentLibraryProjects) {
+                                    breakpoints = breakpoints.concat(await breakpointManager.getBreakpointRequests(args.source.path, breakpoint, project, 'pkg:'));
+                                }
+                                console.log(breakpoints);
+                                let result = await this.addBreakpoints(breakpoints);
+                                console.log(result);
+
+                                let protocolBreakpointIds = result.breakpoints.map((item) => item.breakpointId);
+
+                                if (result?.breakpoints) {
+                                    let bp = breakpointManager.updateBreakpoint(args.source.path, {
+                                        /** If true breakpoint could be set (but not necessarily at the desired location). */
+                                        verified: result.breakpoints[0].errorCode === 'OK' && result.breakpoints[0].breakpointId > 0,
+                                        /** The start line of the actual range covered by the breakpoint. */
+                                        line: breakpoint.line,
+                                        protocolBreakpointIds: protocolBreakpointIds
+                                    });
+                                    console.log(bp);
+                                }
+                            } else {
+                                let bp = breakpointManager.updateBreakpoint(args.source.path, {
+                                    /** If true breakpoint could be set (but not necessarily at the desired location). */
+                                    verified: false,
+                                    /** The start line of the actual range covered by the breakpoint. */
+                                    line: breakpoint.line,
+                                });
+                            }
+                        }
+                    }
+
+                    breakpointManager.removeQueuedBreakpointsForFile(args.source.path);
+                    let savedBreakpoints = breakpointManager.getBreakpointsForFile(args.source.path);
+
+                    let breakpointsToUpdate = savedBreakpoints.filter(a => {
+                        return args.breakpoints.find(b => b.line === a.line);
+                    });
+
+                    for (let breakpoint of breakpointsToUpdate) {
+                        this.sendBreakpointChangeEvent('changed', breakpoint);
+                    }
+                }
+
+            });
+        }
+    }
+
+    private sendBreakpointChangeEvent(reason: 'changed' | 'new' | 'removed', breakpoint: Breakpoint) {
+        this.emit('breakpoint-change', new BreakpointEvent(reason, breakpoint));
     }
 
     public async addBreakpoints(breakpoints: Array<AddBreakpointRequestObject> = []): Promise<any> {

@@ -1,5 +1,6 @@
 
 //export everything we need
+export * from './managers/BreakpointWriter';
 export * from './managers/BreakpointManager';
 export * from './LaunchConfiguration';
 export * from './debugProtocol/Debugger';

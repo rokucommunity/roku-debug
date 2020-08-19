@@ -37,8 +37,8 @@ import { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchCon
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
+import { BreakpointWriter } from '../managers/BreakpointWriter';
 import { BreakpointManager } from '../managers/BreakpointManager';
-import { AddBreakpointRequestObject } from '../debugProtocol/Debugger';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -52,6 +52,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.fileManager = new FileManager();
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
+        this.breakpointWriter = new BreakpointWriter(this.sourceMapManager, this.locationManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
     }
@@ -60,6 +61,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public projectManager: ProjectManager;
 
+    public breakpointWriter: BreakpointWriter;
     public breakpointManager: BreakpointManager;
 
     public locationManager: LocationManager;
@@ -139,7 +141,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
-        this.breakpointManager.launchConfiguration = this.launchConfiguration;
+
+        this.breakpointWriter.supportNormalBreakpoints = !this.enableDebugProtocol;
+        this.breakpointWriter.supportConditionalBreakpoints = true;
+        this.breakpointWriter.supportHitConditionalBreakpoints = !this.enableDebugProtocol;
+        this.breakpointWriter.supportLogPoints = true;
+        this.breakpointWriter.launchConfiguration = this.launchConfiguration;
 
         let disconnect = () => {
         };
@@ -153,6 +160,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.prepareMainProject(),
                 this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
+
+            this.breakpointManager.on('changed', async (data) => {
+                await this.rokuAdapter.workOnBreakpoints(this.breakpointManager, this.projectManager);
+            });
 
             util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
@@ -193,6 +204,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // Send rendezvous events to the extension
             this.rokuAdapter.on('rendezvous-event', (output) => {
                 this.sendEvent(new RendezvousEvent(output));
+            });
+
+            // Send breakpoint change events to the extension
+            this.rokuAdapter.on('breakpoint-change', (output) => {
+                this.sendEvent(output);
             });
 
             //listen for a closed connection (shut down when received)
@@ -259,7 +275,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await this.connectRokuAdapter();
             }
 
-            //tell the adapter adapter that the channel has been launched.
+            //tell the adapter that the channel has been launched.
             await this.rokuAdapter.activate();
 
             if (!error) {
@@ -337,10 +353,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         util.log('Adding stop statements for active breakpoints');
 
         //prevent new breakpoints from being verified
-        this.breakpointManager.lockBreakpoints();
+        this.breakpointWriter.lockBreakpoints();
 
         //write all `stop` statements to the files in the staging folder
-        await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
+        await this.breakpointWriter.writeBreakpointsForProject(this.projectManager.mainProject);
 
         //create zip package from staging folder
         util.log('Creating zip archive from project sources');
@@ -395,7 +411,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 util.log('Adding stop statements for active breakpoints in Component Libraries');
 
                 //write the `stop` statements to every file that has breakpoints
-                await this.breakpointManager.writeBreakpointsForProject(compLibProject);
+                await this.breakpointWriter.writeBreakpointsForProject(compLibProject);
 
                 await compLibProject.postfixFiles();
 
@@ -436,99 +452,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Called every time a breakpoint is created, modified, or deleted, for each file. This receives the entire list of breakpoints every time.
      */
     public async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
-        if (!this.enableDebugProtocol) {
-            let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
-            //sort the breakpoints
-            var sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
-                //filter out the inactive breakpoints
-                .filter(x => x.isHidden === false);
+        let breakpoints = this.breakpointManager.queueBreakpointsForFile(args);
 
-            response.body = {
-                breakpoints: sortedAndFilteredBreakpoints
-            };
-            this.sendResponse(response);
-        } else {
-            if (this.rokuAdapter.connected && this.rokuAdapter.isAtDebuggerPrompt) {
-                if (!args.sourceModified) {
-                    let cachedBreakpoints = this.breakpoints[args.source.path];
-                    if (cachedBreakpoints) {
-                        let breakpointsToRemove = cachedBreakpoints.filter(a => {
-                            return !args.breakpoints.find(b => b.line === a.line);
-                        });
+        response.body = {
+            breakpoints: breakpoints
+        };
+        this.sendResponse(response);
 
-                        if (breakpointsToRemove) {
-                            let breakpointIdsToRemove = [];
-                            for (let breakpoint of breakpointsToRemove) {
-                                cachedBreakpoints.splice(cachedBreakpoints.indexOf(breakpoint), 1);
-                                breakpointIdsToRemove = breakpointIdsToRemove.concat(breakpoint.breakpointIds);
-                            }
+        // let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
+        // //sort the breakpoints
+        // var sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
+        //     //filter out the inactive breakpoints
+        //     .filter(x => x.isHidden === false);
 
-                            await (this.rokuAdapter as DebugProtocolAdapter).removeBreakpoints(breakpointIdsToRemove);
-                        }
-                    } else {
-                        cachedBreakpoints = [];
-                    }
-
-                    for (let breakpoint of args.breakpoints) {
-                        console.log(breakpoint);
-
-                        if (!cachedBreakpoints.find(obj => obj.line === breakpoint.line)) {
-                            let breakpoints = await this.getBreakpointRequests(args.source.path, breakpoint, this.projectManager.mainProject, 'pkg:');
-
-                            for (let project of this.projectManager.componentLibraryProjects) {
-                                breakpoints = breakpoints.concat(await this.getBreakpointRequests(args.source.path, breakpoint, project, 'pkg:'));
-                            }
-                            console.log(breakpoints);
-                            let result = await (this.rokuAdapter as DebugProtocolAdapter).addBreakpoints(breakpoints);
-                            console.log(result);
-
-                            let breakpointIds = result.breakpoints.map((item) => item.breakpointId);
-
-                            if (result?.breakpoints) {
-                                // for (let deviceBP of result) {
-                                cachedBreakpoints.push({
-                                    /** An optional identifier for the breakpoint. It is needed if breakpoint events are used to update or remove breakpoints. */
-                                    id: this.getBreakpointRefId(args.source.path, breakpoint.line),
-                                    /** If true breakpoint could be set (but not necessarily at the desired location). */
-                                    verified: result.breakpoints[0].errorCode === 'OK' && result.breakpoints[0].breakpointId > 0,
-                                    /** The source where the breakpoint is located. */
-                                    source: args.source,
-                                    /** The start line of the actual range covered by the breakpoint. */
-                                    line: breakpoint.line,
-                                    breakpointIds: breakpointIds
-                                });
-                            }
-                        }
-                    }
-
-                    this.breakpoints[args.source.path] = cachedBreakpoints;
-                    response.body = {
-                        breakpoints: cachedBreakpoints
-                    };
-                    this.sendResponse(response);
-                }
-            } else {
-                this.breakpointsQueue[args.source.path] = { response: response, args: args };
-                let breakpoints = [];
-                for (let breakpoint of args.breakpoints) {
-                    breakpoints.push({
-                        /** If true breakpoint could be set (but not necessarily at the desired location). */
-                        verified: false,
-                        id: this.getBreakpointRefId(args.source.path, breakpoint.line),
-                        /** The source where the breakpoint is located. */
-                        source: args.source,
-                        message: 'device is not in a stopped state',
-                        /** The start line of the actual range covered by the breakpoint. */
-                        line: breakpoint.line
-                    });
-                }
-
-                response.body = {
-                    breakpoints: breakpoints
-                };
-                this.sendResponse(response);
-            }
-        }
+        // response.body = {
+        //     breakpoints: sortedAndFilteredBreakpoints
+        // };
+        // this.sendResponse(response);
 
         //set a small timeout so the user sees the breakpoints disappear before reappearing
         //This is disabled because I'm not sure anyone actually wants this functionality, but I didn't want to lose it.
@@ -546,79 +486,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // }, 100);
     }
 
-    private getBreakpointRefId(sourcePath: string, line: number) {
-        let key = `${sourcePath}:${line}`;
-        if (!this.breakpointRefIds[key]) {
-            let id = Object.keys(this.breakpointRefIds).length + 1;
-            this.breakpointRefIds[key] = id;
-        }
-        return this.breakpointRefIds[key];
-    }
-
     private async sendQueuedBreakpointsToDevice() {
-        if (this.enableDebugProtocol) {
-            Object.entries(this.breakpointsQueue).forEach( async ([key, queuedBreakpoint]) => {
-                queuedBreakpoint.response.seq = 0;
-                await this.setBreakPointsRequest(queuedBreakpoint.response, queuedBreakpoint.args);
-                let cachedBreakpoints = this.breakpoints[queuedBreakpoint.args.source.path];
-
-                let breakpointsToUpdate = cachedBreakpoints.filter(a => {
-                    return queuedBreakpoint.args.breakpoints.find(b => b.line === a.line);
-                });
-
-                for (let breakpoint of breakpointsToUpdate) {
-                    this.sendEvent({
-                        seq: 0,
-                        type: 'event',
-                        event: 'breakpoint',
-                        body: {
-                            reason: 'changed',
-                            breakpoint: breakpoint
-                        }
-                    });
-                }
-            });
-            this.breakpointsQueue = {};
-        }
-    }
-
-    private async getBreakpointRequests(path: string, breakpoint: DebugProtocol.SourceBreakpoint,  project: ComponentLibraryProject | Project, fileProtocol: string) {
-        let breakpoints = [];
-        console.log(project);
-        let stagingLocationsResult = await this.locationManager.getStagingLocations(
-            path,
-            breakpoint.line,
-            breakpoint.column,
-            [
-                ...project.sourceDirs,
-                project.rootDir
-            ],
-            project.stagingFolderPath,
-            project.fileMappings
-        );
-
-        for (let stagingLocation of stagingLocationsResult.locations) {
-            let relativeStagingPath = fileUtils.replaceCaseInsensitive(
-                stagingLocation.filePath,
-                fileUtils.standardizePath(
-                    fileUtils.removeTrailingSlash(project.stagingFolderPath) + '/'
-                ),
-                ''
-            );
-
-            if (project instanceof ComponentLibraryProject) {
-                // If this is a Component Library project me need tp make sure we add the post fix to the path
-                relativeStagingPath = project.addFileNamePostfix(relativeStagingPath);
-            }
-
-            let breakpointRequest: AddBreakpointRequestObject = {
-                filePath: fileProtocol + '/' + relativeStagingPath,
-                lineNumber: stagingLocation.lineNumber,
-                hitCount: breakpoint.hitCondition ? parseInt(breakpoint.hitCondition) : 0
-            };
-            breakpoints.push(breakpointRequest);
-        }
-        return breakpoints;
+        await this.rokuAdapter.workOnBreakpoints(this.breakpointManager, this.projectManager);
     }
 
     protected async exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {

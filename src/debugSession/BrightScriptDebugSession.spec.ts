@@ -354,7 +354,7 @@ describe('Debugger', () => {
             });
 
             //mark debugger as 'launched' which should change the behavior of breakpoints.
-            session.breakpointManager.lockBreakpoints();
+            session.breakpointWriter.lockBreakpoints();
 
             //remove the breakpoint breakpoint (it should not remove the breakpoint because it was already verified)
             args.breakpoints = [];

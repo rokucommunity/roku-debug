@@ -11,6 +11,9 @@ import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import { SourceLocation } from '../managers/LocationManager';
 import { util } from '../util';
+import { BreakpointEvent } from 'vscode-debugadapter';
+import { BreakpointManager } from '../managers/BreakpointManager';
+import { ProjectManager } from '../managers/ProjectManager';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -57,6 +60,7 @@ export class TelnetAdapter {
     public on(eventName: 'cannot-continue', handler: () => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
+    public on(eventname: 'breakpoint-change', handler: (output: BreakpointEvent) => void);
     public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number; }[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void);
@@ -77,6 +81,7 @@ export class TelnetAdapter {
     private emit(
         eventName:
             'app-exit' |
+            'breakpoint-change' |
             'cannot-continue' |
             'close' |
             'compile-errors' |
@@ -950,6 +955,10 @@ export class TelnetAdapter {
             }
             return threads;
         });
+    }
+
+    public async workOnBreakpoints(breakpointManager: BreakpointManager, projectManager: ProjectManager) {
+
     }
 
     /**
