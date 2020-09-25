@@ -311,7 +311,7 @@ export class TelnetAdapter {
      * @param responseText
      */
     private isAtCannotContinue(responseText: string) {
-        if (/can't continue/gi.exec(responseText.trim())) {
+        if (/^can't continue$/gim.exec(responseText.trim())) {
             this.emit('cannot-continue');
             return true;
         } else {
