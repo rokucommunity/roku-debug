@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.5.4] - 2020-09-24
+## [0.5.4] - 2020-09-25
 ### Changed
  - fixed some false positive detections of `Can't continue` in the TelnetAddapter
  - fixed version comparision links in the changelogs
