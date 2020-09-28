@@ -474,9 +474,9 @@ export class ComponentLibraryProject extends Project {
         this.fileMappings = await this.getFileMappings();
 
         let manifestPathRelative = fileUtils.standardizePath('/manifest');
-        var manifestFileEntry = this.fileMappings.find(x => x.src.endsWith(manifestPathRelative));
+        var manifestFileEntry = this.fileMappings.find(x => x.dest.endsWith(manifestPathRelative));
         if (manifestFileEntry) {
-            await this.computeOutFileName(manifestFileEntry.src);
+            await this.computeOutFileName(manifestFileEntry.dest);
         } else {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
