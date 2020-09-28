@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.5] - 2020-09-28
+### Fixed
+ - bug in the component library bundling that was using the `src` instead of `dest` for finding the manifest path ([#15](https://github.com/rokucommunity/roku-debug/pull/15))
+
+
+
 ## [0.5.4] - 2020-09-25
 ### Changed
  - fixed some false positive detections of `Can't continue` in the TelnetAdapter
@@ -94,3 +100,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.2]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.1...v0.5.2
 [0.5.3]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.2...v0.5.3
 [0.5.4]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.3...v0.5.4
+[0.5.5]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.4...v0.5.5
