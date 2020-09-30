@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.6] - 2020-09-30
+### Fixed
+ - bug that prevented component library debug sessions from launching.
+
+
+
 ## [0.5.5] - 2020-09-28
 ### Fixed
  - bug in the component library bundling that was using the `src` instead of `dest` for finding the manifest path ([#15](https://github.com/rokucommunity/roku-debug/pull/15))
@@ -101,3 +107,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.3]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.2...v0.5.3
 [0.5.4]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.3...v0.5.4
 [0.5.5]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.4...v0.5.5
+[0.5.6]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.5...v0.5.6
