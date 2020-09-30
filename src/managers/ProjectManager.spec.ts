@@ -24,7 +24,13 @@ let compLibOutDir = s`${outDir}/component-libraries`;
 let compLibStagingFolderPath = s`${rootDir}/component-libraries/CompLibA`;
 
 beforeEach(() => {
+    fsExtra.ensureDirSync(tempPath);
+    fsExtra.emptyDirSync(tempPath);
     sinon.restore();
+});
+afterEach(() => {
+    fsExtra.ensureDirSync(tempPath);
+    fsExtra.emptyDirSync(tempPath);
 });
 
 describe('ProjectManager', () => {
@@ -550,6 +556,36 @@ describe('ComponentLibraryProject', () => {
             expect(project.fileMappings[1]).to.eql({
                 src: s`${rootDir}/source/main.brs`,
                 dest: s`${outDir}/component-libraries/PrettyComponent/source/main.brs`
+            });
+        });
+
+        describe('stage() manifest handling', () => {
+            async function testManifestRead(src: string) {
+                fsExtra.outputFileSync(`${rootDir}/${src}`, `title=CompLibTest`);
+                params.bsConst = undefined;
+                const project = new ComponentLibraryProject({
+                    rootDir: rootDir,
+                    outDir: `${outDir}/component-libraries`,
+                    files: [
+                        { src: src, dest: 'manifest' }
+                    ],
+                    stagingFolderPath: s`${outDir}/complib1-staging`,
+                    libraryIndex: 0,
+                    outFile: '${title}.zip'
+                });
+                await project.stage();
+                expect(project.outFile).to.eql('CompLibTest.zip');
+            }
+
+            it('handles src entries with exactly the name "manifest"', async () => {
+                await testManifestRead('manifest');
+                await testManifestRead('configs/manifest');
+            });
+
+            it('handles non-standard manifest file names', async () => {
+                await testManifestRead('manifest.test');
+                await testManifestRead('test.manifest');
+                await testManifestRead('not_even_close');
             });
         });
     });

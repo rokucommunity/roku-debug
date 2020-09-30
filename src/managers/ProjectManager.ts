@@ -436,8 +436,7 @@ export class ComponentLibraryProject extends Project {
 
     /**
      * Takes a component Library and checks the outFile for replaceable values pulled from the libraries manifest
-     * @param componentLibrary The library to check
-     * @param stagingFolder staging folder of the component library to search for the manifest file
+     * @param manifestPath the path to the manifest file to check
      */
     private async computeOutFileName(manifestPath: string) {
         let regexp = /\$\{([\w\d_]*)\}/;
@@ -473,10 +472,12 @@ export class ComponentLibraryProject extends Project {
          */
         this.fileMappings = await this.getFileMappings();
 
-        let manifestPathRelative = fileUtils.standardizePath('/manifest');
-        var manifestFileEntry = this.fileMappings.find(x => x.dest.endsWith(manifestPathRelative));
+        let expectedManifestDestPath = fileUtils.standardizePath(`${this.stagingFolderPath}/manifest`).toLowerCase();
+        //find the file entry with the `dest` value of `${stagingFolderPath}/manifest` (case insensitive)
+        var manifestFileEntry = this.fileMappings.find(x => x.dest.toLowerCase() === expectedManifestDestPath);
         if (manifestFileEntry) {
-            await this.computeOutFileName(manifestFileEntry.dest);
+            //read the manifest from `src` since nothing has been copied to staging yet
+            await this.computeOutFileName(manifestFileEntry.src);
         } else {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
