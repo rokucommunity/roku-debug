@@ -473,10 +473,14 @@ export class ComponentLibraryProject extends Project {
          */
         this.fileMappings = await this.getFileMappings();
 
+        /**
+         * NOTE: For the file mappings below, we're intentionally using `src` because the manifest must be read PRIOR to the staging process.
+         * This means that `dest` will not actually exist yet. 
+         */
         let manifestPathRelative = fileUtils.standardizePath('/manifest');
-        var manifestFileEntry = this.fileMappings.find(x => x.dest.endsWith(manifestPathRelative));
+        var manifestFileEntry = this.fileMappings.find(x => x.src.endsWith(manifestPathRelative));
         if (manifestFileEntry) {
-            await this.computeOutFileName(manifestFileEntry.dest);
+            await this.computeOutFileName(manifestFileEntry.src);
         } else {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
