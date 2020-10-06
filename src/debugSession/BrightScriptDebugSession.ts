@@ -314,7 +314,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             sourceDirs: this.launchConfiguration.sourceDirs,
             bsConst: this.launchConfiguration.bsConst,
             injectRaleTrackerTask: this.launchConfiguration.injectRaleTrackerTask,
-            raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation
+            raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation,
+            stagingFolderPath: this.launchConfiguration.stagingFolderPath
         });
 
         util.log('Moving selected files to staging area');
