@@ -127,6 +127,12 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * or when sending commands through some type of port forwarding.
      */
     remotePort?: number;
+
+    /**
+     * The path used for the staging folder of roku-deploy
+     * This should explicitly be set to <outDir>/.roku-deploy-staging
+     */
+    stagingFolderPath?: string;
 }
 
 export interface ComponentLibraryConfiguration {
