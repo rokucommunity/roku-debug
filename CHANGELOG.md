@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.7] - 2020-10-06
+### Fixed
+ - bug that was not passing in the `stagingFolderPath` property for the root project, and therefore incorrectly loading that value from `bsconfig.json` if it existed. ([#18](https://github.com/rokucommunity/roku-debug/pull/18))
+
+
+
 ## [0.5.6] - 2020-09-30
 ### Fixed
  - bug that prevented component library debug sessions from launching.
@@ -108,3 +114,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.4]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.3...v0.5.4
 [0.5.5]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.4...v0.5.5
 [0.5.6]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.5...v0.5.6
+[0.5.7]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.6...v0.5.7
