@@ -130,7 +130,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
 
     /**
      * The path used for the staging folder of roku-deploy
-     * This should explicitly be set to <outDir>/.roku-deploy-staging
+     * This should generally be set to "${cwd}/.roku-deploy-staging", but that's ultimately up to the debug client.
      */
     stagingFolderPath?: string;
 }
