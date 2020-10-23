@@ -507,7 +507,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             if (functionName.startsWith('$')) {
                                 functionName = this.fileManager.getFunctionNameAtPosition(
                                     sourceLocation.filePath,
-                                    debugFrame.lineNumber - 1,
+                                    sourceLocation.lineNumber - 1,
                                     functionName
                                 );
                             }
