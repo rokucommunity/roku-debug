@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.8] - 2020-10-23
+### Fixed
+ - bug when converting `$anon_###` function names into original function names that was using the wrong line number to look up the name. ([#21](https://github.com/rokucommunity/roku-debug/pull/21))
+
+
+
 ## [0.5.7] - 2020-10-06
 ### Fixed
  - bug that was not passing in the `stagingFolderPath` property for the root project, and therefore incorrectly loading that value from `bsconfig.json` if it existed. ([#18](https://github.com/rokucommunity/roku-debug/pull/18))
@@ -115,3 +121,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.5]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.4...v0.5.5
 [0.5.6]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.5...v0.5.6
 [0.5.7]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.6...v0.5.7
+[0.5.8]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.7...v0.5.8
