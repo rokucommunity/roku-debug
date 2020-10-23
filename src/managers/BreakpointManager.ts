@@ -1,7 +1,7 @@
 import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
-import { SourceNode } from 'source-map';
+import { CodeWithSourceMap, SourceNode } from 'source-map';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { fileUtils } from '../FileUtils';
 import { Project } from './ProjectManager';
@@ -317,7 +317,7 @@ export class BreakpointManager {
             return {
                 code: node.toString(),
                 map: undefined
-            };
+            } as CodeWithSourceMap;
         } else {
             return node.toStringWithSourceMap();
         }
