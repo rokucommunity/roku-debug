@@ -220,7 +220,7 @@ describe('BrightScriptDebugger', () => {
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
                     lineNumber: 1,
-                    message: 'general compile error in xml file',
+                    message: 'General XML compilation error',
                     path: 'SampleScreen.xml'
                 }
             ];
@@ -339,14 +339,14 @@ describe('BrightScriptDebugger', () => {
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
                     lineNumber: 1,
-                    message: 'general compile error in xml file',
+                    message: 'General XML compilation error',
                     path: 'SampleScreen.xml'
                 }, {
                     charEnd: 999,
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
                     lineNumber: 1,
-                    message: 'general compile error in xml file',
+                    message: 'General XML compilation error',
                     path: 'ChannelItemComponent.xml'
                 }, {
                     charEnd: 999,

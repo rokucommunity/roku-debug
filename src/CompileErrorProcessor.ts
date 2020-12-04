@@ -219,7 +219,7 @@ export class CompileErrorProcessor {
                     path: path,
                     lineNumber: 1,
                     errorText: errorText,
-                    message: 'general compile error in xml file',
+                    message: 'General XML compilation error',
                     charStart: 0,
                     charEnd: 999 //TODO
                 });
@@ -263,7 +263,7 @@ export class CompileErrorProcessor {
                         path: this.sanitizeCompilePath(file.trim()),
                         lineNumber: 1,
                         errorText: errorText,
-                        message: 'general compile error in xml file',
+                        message: 'General XML compilation error',
                         charStart: 0,
                         charEnd: 999 //TODO
                     });
@@ -306,7 +306,6 @@ export class CompileErrorProcessor {
 
     public resetCompileErrorTimer(isRunning): any {
         // console.debug('resetCompileErrorTimer isRunning' + isRunning);
-        util.log('## ROKU DEBUG resetTimer: ' + isRunning);
 
         if (this.compileErrorTimer) {
             clearInterval(this.compileErrorTimer);
@@ -322,7 +321,6 @@ export class CompileErrorProcessor {
     }
 
     public onCompileErrorTimer() {
-        util.log('## ROKU DEBUG onTimer');
         console.debug('onCompileErrorTimer: timer complete. should\'ve caught all errors ');
 
         this.status = CompileStatus.compileError;
@@ -364,9 +362,6 @@ export class CompileErrorProcessor {
         //throw out any lines before the last found compiling line
 
         let errors = this.getErrors();
-
-        util.log('## ROKU DEBUG reportErrors: ' + errors.map(e => e.path).join(' '));
-
         errors = errors.filter((e) => {
             return e.path.toLowerCase().endsWith('.brs') || e.path.toLowerCase().endsWith('.xml') || e.path === 'manifest';
         });
