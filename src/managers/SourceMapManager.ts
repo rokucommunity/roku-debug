@@ -99,15 +99,24 @@ export class SourceMapManager {
                         bias: SourceMapConsumer.LEAST_UPPER_BOUND
                     });
                 });
-                //if the sourcemap didn't find a valid mapped location, return undefined and fallback to whatever location the debugger produced
-                if (!position || !position.source) {
+                if (position?.source) {
+                    return {
+                        columnIndex: position.column,
+                        lineNumber: position.line,
+                        filePath: position.source
+                    };
+                }
+                //if the sourcemap didn't find a valid mapped location,
+                //try to fallback to the first source referenced in the map
+                if (parsedSourceMap.sources?.[0] ) {
+                    return {
+                        columnIndex: currentColumnIndex,
+                        lineNumber: currentLineNumber,
+                        filePath: parsedSourceMap.sources[0]
+                    };
+                } else {
                     return undefined;
                 }
-                return {
-                    columnIndex: position.column,
-                    lineNumber: position.line,
-                    filePath: position.source
-                };
             }
         }
     }

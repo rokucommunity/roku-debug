@@ -119,6 +119,10 @@ export class TelnetAdapter {
         this.handleStartupIfReady();
     }
 
+    public async shutdown() {
+        await this.compileErrorProcessor.shutdown();
+    }
+
     private async handleStartupIfReady() {
         if (this.isActivated && this.isAppRunning) {
             this.emit('start');
@@ -299,10 +303,9 @@ export class TelnetAdapter {
     }
 
     private beginAppExit() {
-        let that = this;
         this.compileErrorProcessor.compileErrorTimer = setTimeout(() => {
-            that.isAppRunning = false;
-            that.emit('app-exit');
+            this.isAppRunning = false;
+            this.emit('app-exit');
         }, 200);
     }
 

@@ -19,6 +19,7 @@ import {
 } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { util } from '../util';
+import { fileUtils } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
 import { standardizePath as s } from '../FileUtils';
@@ -200,10 +201,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.lineNumber);
                     if (sourceLocation) {
                         compileError.path = sourceLocation.filePath;
-                        compileError.lineNumber = sourceLocation.lineNumber;
+                        compileError.lineNumber = sourceLocation.lineNumber - 1; //0-based
                     } else {
                         // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
-                        compileError.path = util.removeFileScheme(compileError.path).substring(1);
+                        compileError.path = fileUtils.removeLeadingSlash(util.removeFileScheme(compileError.path));
                     }
                 }
 
@@ -270,6 +271,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 throw error;
             }
         } catch (e) {
+            //allow adapter to process the logs and send errors
+            await this.rokuAdapter.shutdown();
+
             //if the message is anything other than compile errors, we want to display the error
             //TODO: look into the reason why we are getting the 'Invalid response code: 400' on compile errors
             if (e.message !== 'compileErrors' && e.message !== 'Invalid response code: 400') {

@@ -110,6 +110,10 @@ export class DebugProtocolAdapter {
         this.handleStartupIfReady();
     }
 
+    public async shutdown() {
+        await this.compileErrorProcessor.shutdown();
+    }
+
     private async handleStartupIfReady() {
         if (this.isActivated && this.isAppRunning) {
             this.emit('start');
@@ -233,10 +237,9 @@ export class DebugProtocolAdapter {
     }
 
     private beginAppExit() {
-        let that = this;
         this.compileErrorProcessor.compileErrorTimer = setTimeout(() => {
-            that.isAppRunning = false;
-            that.emit('app-exit');
+            this.isAppRunning = false;
+            this.emit('app-exit');
         }, 200);
     }
 
@@ -509,7 +512,7 @@ export class DebugProtocolAdapter {
                     // isSelected: threadInfo.isPrimary,
                     filePath: threadInfo.fileName,
                     functionName: threadInfo.functionName,
-                    lineNumber: threadInfo.lineNumber,
+                    lineNumber: threadInfo.lineNumber + 1, //protocol is 0-based
                     lineContents: threadInfo.codeSnippet,
                     threadId: i
                 };
