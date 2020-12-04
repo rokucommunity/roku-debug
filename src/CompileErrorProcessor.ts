@@ -75,17 +75,14 @@ export class CompileErrorProcessor {
         }
     }
 
-    public shutdown(): Promise<void> {
+    public sendErrors(): Promise<void> {
         //session is shuttind down, process logs immediately
-        if (this.compileErrorTimer && this.status === CompileStatus.compileError) {
-            //HACK: leave time for events and errors resolvers to run,
-            //otherwise the staging folder will have been deleted
-            return new Promise(resolve => {
-                this.onCompileErrorTimer();
-                setTimeout(() => resolve(), 100);
-            });
-        }
-        return Promise.resolve();
+        //HACK: leave time for events and errors resolvers to run,
+        //otherwise the staging folder will have been deleted
+        return new Promise(resolve => {
+            this.onCompileErrorTimer();
+            setTimeout(() => resolve(), 500);
+        });
     }
 
     private getErrors() {
@@ -367,6 +364,7 @@ export class CompileErrorProcessor {
         });
 
         console.debug('errors.length ' + errors.length);
+
         if (errors.length > 0) {
             this.emit('compile-errors', errors);
         }

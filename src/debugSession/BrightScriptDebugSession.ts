@@ -132,8 +132,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
 
-        let disconnect = () => {
-        };
         this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
 
         let error: Error;
@@ -228,7 +226,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //return to the home screen
                     await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
                     this.shutdown();
-                    disconnect();
                     this.sendEvent(new TerminatedEvent());
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
@@ -271,9 +268,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 throw error;
             }
         } catch (e) {
-            //allow adapter to process the logs and send errors
-            await this.rokuAdapter.shutdown();
-
             //if the message is anything other than compile errors, we want to display the error
             //TODO: look into the reason why we are getting the 'Invalid response code: 400' on compile errors
             if (e.message !== 'compileErrors' && e.message !== 'Invalid response code: 400') {
@@ -281,12 +275,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 util.log('Encountered an issue during the publish process');
                 util.log(e.message);
                 this.sendErrorResponse(response, -1, e.message);
+            } else {
+                //request adapter to send errors (even empty) before ending the session
+                await this.rokuAdapter.sendErrors();
             }
             this.shutdown();
             return;
-        } finally {
-            //disconnect the compile error watcher
-            disconnect();
         }
 
         //at this point, the project has been deployed. If we need to use a deep link, launch it now.

@@ -119,8 +119,8 @@ export class TelnetAdapter {
         this.handleStartupIfReady();
     }
 
-    public async shutdown() {
-        await this.compileErrorProcessor.shutdown();
+    public async sendErrors() {
+        await this.compileErrorProcessor.sendErrors();
     }
 
     private async handleStartupIfReady() {
