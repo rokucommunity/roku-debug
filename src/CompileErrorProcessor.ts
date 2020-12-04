@@ -1,6 +1,7 @@
 import * as eol from 'eol';
 import { EventEmitter } from 'events';
-import { util } from './util';
+
+export const GENERAL_XML_ERROR = 'General XML compilation error';
 
 export class CompileErrorProcessor {
 
@@ -216,7 +217,7 @@ export class CompileErrorProcessor {
                     path: path,
                     lineNumber: 1,
                     errorText: errorText,
-                    message: 'General XML compilation error',
+                    message: GENERAL_XML_ERROR,
                     charStart: 0,
                     charEnd: 999 //TODO
                 });
@@ -260,7 +261,7 @@ export class CompileErrorProcessor {
                         path: this.sanitizeCompilePath(file.trim()),
                         lineNumber: 1,
                         errorText: errorText,
-                        message: 'General XML compilation error',
+                        message: GENERAL_XML_ERROR,
                         charStart: 0,
                         charEnd: 999 //TODO
                     });
@@ -356,14 +357,11 @@ export class CompileErrorProcessor {
      */
     private reportErrors() {
         console.debug('reportErrors');
-        //throw out any lines before the last found compiling line
 
-        let errors = this.getErrors();
-        errors = errors.filter((e) => {
-            return e.path.toLowerCase().endsWith('.brs') || e.path.toLowerCase().endsWith('.xml') || e.path === 'manifest';
+        const errors = this.getErrors().filter((e) => {
+            const path = e.path.toLowerCase();
+            return path.endsWith('.brs') || path.endsWith('.xml') || path === 'manifest';
         });
-
-        console.debug('errors.length ' + errors.length);
 
         if (errors.length > 0) {
             this.emit('compile-errors', errors);

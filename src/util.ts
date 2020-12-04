@@ -7,6 +7,7 @@ import { SmartBuffer } from 'smart-buffer';
 import { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
 import { Position, Range } from 'vscode-languageserver';
+import { BrightScriptDebugCompileError, GENERAL_XML_ERROR } from './CompileErrorProcessor';
 
 class Util {
     /**
@@ -220,6 +221,23 @@ class Util {
             return false;
         }
         return true;
+    }
+
+    public filterGenericErrors(errors: BrightScriptDebugCompileError[]) {
+        const specificErrors: Record<string, BrightScriptDebugCompileError> = {};
+
+        //ignore generic errors when a specific error exists
+        return errors.filter(e => {
+            const path = e.path.toLowerCase();
+            if (e.message === GENERAL_XML_ERROR) {
+                if (specificErrors[path]) {
+                    return false;
+                }
+            } else {
+                specificErrors[path] = e;
+            }
+            return true;
+        });
     }
 }
 

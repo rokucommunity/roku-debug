@@ -194,7 +194,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             });
 
             // handle any compile errors
-            this.rokuAdapter.on('compile-errors', async (compileErrors: BrightScriptDebugCompileError[]) => {
+            this.rokuAdapter.on('compile-errors', async (errors: BrightScriptDebugCompileError[]) => {
+                const compileErrors = util.filterGenericErrors(errors);
                 for (let compileError of compileErrors) {
                     let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.lineNumber);
                     if (sourceLocation) {
