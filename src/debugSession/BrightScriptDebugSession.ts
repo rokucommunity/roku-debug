@@ -195,6 +195,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // handle any compile errors
             this.rokuAdapter.on('compile-errors', async (errors: BrightScriptDebugCompileError[]) => {
+                // collect errors and adjust the line number:
+                // - Roku device and sourcemap work with 1-based line numbers,
+                // - VS expects 0-based lines.
                 const compileErrors = util.filterGenericErrors(errors);
                 for (let compileError of compileErrors) {
                     let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.lineNumber);
@@ -204,6 +207,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     } else {
                         // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
                         compileError.path = fileUtils.removeLeadingSlash(util.removeFileScheme(compileError.path));
+                        compileError.lineNumber = (compileError.lineNumber || 1) - 1; //0-based
                     }
                 }
 

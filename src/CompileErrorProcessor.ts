@@ -77,7 +77,7 @@ export class CompileErrorProcessor {
     }
 
     public sendErrors(): Promise<void> {
-        //session is shuttind down, process logs immediately
+        //session is shutting down, process logs immediately
         //HACK: leave time for events and errors resolvers to run,
         //otherwise the staging folder will have been deleted
         return new Promise(resolve => {
@@ -87,19 +87,13 @@ export class CompileErrorProcessor {
     }
 
     private getErrors() {
-        let syntaxErrors = this.getSyntaxErrors(this.compilingLines);
-        let compileErrors = this.getCompileErrors(this.compilingLines);
-        let xmlCompileErrors = this.getSingleFileXmlError(this.compilingLines);
-        let xmlComponentErrors = this.getSingleFileXmlComponentError(this.compilingLines);
-        let multipleXmlCompileErrors = this.getMultipleFileXmlError(this.compilingLines);
-        let missingManifestError = this.getMissingManifestError(this.compilingLines);
         return [
-            ...syntaxErrors,
-            ...compileErrors,
-            ...multipleXmlCompileErrors,
-            ...xmlCompileErrors,
-            ...xmlComponentErrors,
-            ...missingManifestError
+            ...this.getSyntaxErrors(this.compilingLines),
+            ...this.getCompileErrors(this.compilingLines),
+            ...this.getMultipleFileXmlError(this.compilingLines),
+            ...this.getSingleFileXmlError(this.compilingLines),
+            ...this.getSingleFileXmlComponentError(this.compilingLines),
+            ...this.getMissingManifestError(this.compilingLines)
         ];
     }
 
@@ -147,12 +141,12 @@ export class CompileErrorProcessor {
             return [];
         }
 
-        let getFileInfoRexEx = /Found(?:.*)file (.*)$/im;
+        let getFileInfoRegEx = /Found(?:.*)file (.*)$/im;
         for (let index = 1; index < filesWithErrors.length - 1; index++) {
             const fileErrorText = filesWithErrors[index];
             //TODO - for now just a simple parse - later on someone can improve with proper line checks + all parse/compile types
             //don't have time to do this now; just doing what keeps me productive.
-            let match = getFileInfoRexEx.exec(fileErrorText);
+            let match = getFileInfoRegEx.exec(fileErrorText);
             if (!match) {
                 continue;
             }
@@ -184,9 +178,9 @@ export class CompileErrorProcessor {
 
     public getLineErrors(path: string, fileErrorText: string): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let getFileInfoRexEx = /^--- Line (\d*): (.*)$/gim;
+        let getFileInfoRegEx = /^--- Line (\d*): (.*)$/gim;
         let match: RegExpExecArray;
-        while (match = getFileInfoRexEx.exec(fileErrorText)) {
+        while (match = getFileInfoRegEx.exec(fileErrorText)) {
             let lineNumber = parseInt(match[1]);
             let errorText = 'ERR_COMPILE:';
             let message = this.sanitizeCompilePath(match[2]);
@@ -206,9 +200,9 @@ export class CompileErrorProcessor {
 
     public getSingleFileXmlError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let getFileInfoRexEx = /^-------> Error parsing XML component (.*).*$/i;
+        let getFileInfoRegEx = /^-------> Error parsing XML component (.*).*$/i;
         lines.forEach((line) => {
-            let match = getFileInfoRexEx.exec(line);
+            let match = getFileInfoRegEx.exec(line);
             if (match) {
                 let errorText = 'ERR_COMPILE:';
                 let path = this.sanitizeCompilePath(match[1]);
@@ -229,9 +223,9 @@ export class CompileErrorProcessor {
 
     public getSingleFileXmlComponentError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let getFileInfoRexEx = /Error in XML component [a-z0-9_-]+ defined in file (.*)/i;
+        let getFileInfoRegEx = /Error in XML component [a-z0-9_-]+ defined in file (.*)/i;
         lines.forEach((line, index) => {
-            let match = getFileInfoRexEx.exec(line);
+            let match = getFileInfoRegEx.exec(line);
             if (match) {
                 let errorText = 'ERR_COMPILE:';
                 let path = match[1];
@@ -250,9 +244,9 @@ export class CompileErrorProcessor {
 
     public getMultipleFileXmlError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let getFileInfoRexEx = /^-------> Error parsing multiple XML components \((.*)\)/i;
+        let getFileInfoRegEx = /^-------> Error parsing multiple XML components \((.*)\)/i;
         lines.forEach((line) => {
-            let match = getFileInfoRexEx.exec(line);
+            let match = getFileInfoRegEx.exec(line);
             if (match) {
                 let errorText = 'ERR_COMPILE:';
                 let files = match[1].split(',');
