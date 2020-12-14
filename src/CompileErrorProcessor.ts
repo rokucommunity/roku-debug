@@ -250,9 +250,9 @@ export class CompileErrorProcessor {
             if (match) {
                 let errorText = 'ERR_COMPILE:';
                 let files = match[1].split(',');
-                files.forEach((file) => {
+                files.forEach((path) => {
                     errors.push({
-                        path: this.sanitizeCompilePath(file.trim()),
+                        path: this.sanitizeCompilePath(path.trim()),
                         lineNumber: 1,
                         errorText: errorText,
                         message: GENERAL_XML_ERROR,
