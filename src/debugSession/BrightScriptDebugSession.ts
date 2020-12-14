@@ -195,7 +195,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // handle any compile errors
             this.rokuAdapter.on('compile-errors', async (errors: BrightScriptDebugCompileError[]) => {
-                // collect errors and adjust the line number:
+                // remove redundant errors and adjust the line number:
                 // - Roku device and sourcemap work with 1-based line numbers,
                 // - VS expects 0-based lines.
                 const compileErrors = util.filterGenericErrors(errors);
