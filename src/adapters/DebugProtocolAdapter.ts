@@ -512,7 +512,7 @@ export class DebugProtocolAdapter {
                     // isSelected: threadInfo.isPrimary,
                     filePath: threadInfo.fileName,
                     functionName: threadInfo.functionName,
-                    lineNumber: threadInfo.lineNumber + 1, //protocol is 0-based
+                    lineNumber: threadInfo.lineNumber + 1, //protocol is 0-based but 1-based is expected
                     lineContents: threadInfo.codeSnippet,
                     threadId: i
                 };
