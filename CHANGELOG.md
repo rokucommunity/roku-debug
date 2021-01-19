@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.5.9] - 2021-01-19
+### Fixed
+ - timing issue when shutting down debug session before the log processor has finish its job
+ - off-by-one location of "compile errors" when device validates XML components
+ - off-by-one code stepping with debug protocol
+ - XML sourcemap resolution; follow mapped source even if we don't have a resolved mapping
+ - errors being dropped when a "line" error is found
+ - added extra XML error matching
+ - filter out "generic XML error" on a file if a specific one was captured as well
+
+
+
 ## [0.5.8] - 2020-10-23
 ### Fixed
  - bug when converting `$anon_###` function names into original function names that was using the wrong line number to look up the name. ([#21](https://github.com/rokucommunity/roku-debug/pull/21))
@@ -122,3 +134,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.6]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.5...v0.5.6
 [0.5.7]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.6...v0.5.7
 [0.5.8]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.7...v0.5.8
+[0.5.9]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.8...v0.5.9
