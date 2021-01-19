@@ -1,6 +1,8 @@
 import * as eol from 'eol';
 import { EventEmitter } from 'events';
 
+export const GENERAL_XML_ERROR = 'General XML compilation error';
+
 export class CompileErrorProcessor {
 
     public status: CompileStatus = CompileStatus.none;
@@ -13,7 +15,6 @@ export class CompileErrorProcessor {
 
     public on(eventName: 'compile-errors', handler: (params: BrightScriptDebugCompileError[]) => void);
     public on(eventName: string, handler: (payload: any) => void) {
-        console.log(eventName);
         this.emitter.on(eventName, handler);
         return () => {
             if (this.emitter !== undefined) {
@@ -22,11 +23,7 @@ export class CompileErrorProcessor {
         };
     }
 
-    private emit(
-      eventName:
-          'compile-errors',
-      data?
-    ) {
+    private emit(eventName: 'compile-errors', data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
@@ -55,8 +52,8 @@ export class CompileErrorProcessor {
                     this.compilingLines = this.compilingLines.concat(newLines);
                     if (this.status === CompileStatus.compiling) {
                         //check to see if we've entered an error scenario
-                        let errors = this.getErrors();
-                        if (errors.length > 0) {
+                        let hasError = /\berror\b/gi.test(responseText);
+                        if (hasError) {
                             this.status = CompileStatus.compileError;
                         }
                     }
@@ -79,13 +76,25 @@ export class CompileErrorProcessor {
         }
     }
 
+    public sendErrors(): Promise<void> {
+        //session is shutting down, process logs immediately
+        //HACK: leave time for events and errors resolvers to run,
+        //otherwise the staging folder will have been deleted
+        return new Promise(resolve => {
+            this.onCompileErrorTimer();
+            setTimeout(() => resolve(), 500);
+        });
+    }
+
     private getErrors() {
-        let syntaxErrors = this.getSyntaxErrors(this.compilingLines);
-        let compileErrors = this.getCompileErrors(this.compilingLines);
-        let xmlCompileErrors = this.getSingleFileXmlError(this.compilingLines);
-        let multipleXmlCompileErrors = this.getMultipleFileXmlError(this.compilingLines);
-        let missingManifestError = this.getMissingManifestError(this.compilingLines);
-        return syntaxErrors.concat(compileErrors).concat(multipleXmlCompileErrors).concat(xmlCompileErrors).concat(missingManifestError);
+        return [
+            ...this.getSyntaxErrors(this.compilingLines),
+            ...this.getCompileErrors(this.compilingLines),
+            ...this.getMultipleFileXmlError(this.compilingLines),
+            ...this.getSingleFileXmlError(this.compilingLines),
+            ...this.getSingleFileXmlComponentError(this.compilingLines),
+            ...this.getMissingManifestError(this.compilingLines)
+        ];
     }
 
     /**
@@ -98,13 +107,13 @@ export class CompileErrorProcessor {
 
     public getSyntaxErrors(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let match;
+        let match: RegExpExecArray;
         // let syntaxRegEx = /(syntax|compile) error.* in (.*)\((\d+)\)/gim;
         lines.forEach((line) => {
             match = this.getSyntaxErrorDetails(line);
             if (match) {
                 let path = this.sanitizeCompilePath(match[2]);
-                let lineNumber = parseInt(match[3]) - 1;
+                let lineNumber = parseInt(match[3]); //1-based
 
                 //FIXME
                 //if this match is a livecompile error, throw out all prior errors because that means we are re-running
@@ -126,40 +135,42 @@ export class CompileErrorProcessor {
 
     public getCompileErrors(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let match;
         let responseText = lines.join('\n');
         const filesWithErrors = responseText.split('=================================================================');
         if (filesWithErrors.length < 2) {
             return [];
         }
+
+        let getFileInfoRegEx = /Found(?:.*)file (.*)$/im;
         for (let index = 1; index < filesWithErrors.length - 1; index++) {
             const fileErrorText = filesWithErrors[index];
-          //TODO - for now just a simple parse - later on someone can improve with proper line checks + all parse/compile types
-          //don't have time to do this now; just doing what keeps me productive.
-            let getFileInfoRexEx = /found(?:.*)file (.*)$/gim;
-            match = getFileInfoRexEx.exec(fileErrorText);
+            //TODO - for now just a simple parse - later on someone can improve with proper line checks + all parse/compile types
+            //don't have time to do this now; just doing what keeps me productive.
+            let match = getFileInfoRegEx.exec(fileErrorText);
             if (!match) {
                 continue;
             }
 
             let path = this.sanitizeCompilePath(match[1]);
-            let lineNumber = 0; //TODO this should iterate over all line numbers found in a file
+            let lineNumber = 1; //TODO this should iterate over all line numbers found in a file
             let errorText = 'ERR_COMPILE:';
             let message = fileErrorText.trim();
 
-            errors.push({
+            let error = {
                 path: path,
                 lineNumber: lineNumber,
                 errorText: errorText,
                 message: message,
                 charStart: 0,
                 charEnd: 999 //TODO
-            });
+            };
 
-          //now iterate over the lines, to see if there's any errors we can extract
+            //now iterate over the lines, to see if there's any errors we can extract
             let lineErrors = this.getLineErrors(path, fileErrorText);
             if (lineErrors.length > 0) {
-                errors = lineErrors;
+                errors.push(...lineErrors);
+            } else {
+                errors.push(error);
             }
         }
         return errors;
@@ -167,10 +178,10 @@ export class CompileErrorProcessor {
 
     public getLineErrors(path: string, fileErrorText: string): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let getFileInfoRexEx = /^--- Line (\d*): (.*)$/gim;
-        let match;
-        while (match = getFileInfoRexEx.exec(fileErrorText)) {
-            let lineNumber = parseInt(match[1]) - 1;
+        let getFileInfoRegEx = /^--- Line (\d*): (.*)$/gim;
+        let match: RegExpExecArray;
+        while (match = getFileInfoRegEx.exec(fileErrorText)) {
+            let lineNumber = parseInt(match[1]); // 1-based
             let errorText = 'ERR_COMPILE:';
             let message = this.sanitizeCompilePath(match[2]);
 
@@ -189,18 +200,18 @@ export class CompileErrorProcessor {
 
     public getSingleFileXmlError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let getFileInfoRexEx = /^-------> Error parsing XML component (.*).*$/gim;
-        let match;
+        let getFileInfoRegEx = /^-------> Error parsing XML component (.*).*$/i;
         lines.forEach((line) => {
-            while (match = getFileInfoRexEx.exec(line)) {
+            let match = getFileInfoRegEx.exec(line);
+            if (match) {
                 let errorText = 'ERR_COMPILE:';
                 let path = this.sanitizeCompilePath(match[1]);
 
                 errors.push({
                     path: path,
-                    lineNumber: 0,
+                    lineNumber: 1,
                     errorText: errorText,
-                    message: 'general compile error in xml file',
+                    message: GENERAL_XML_ERROR,
                     charStart: 0,
                     charEnd: 999 //TODO
                 });
@@ -210,20 +221,41 @@ export class CompileErrorProcessor {
         return errors;
     }
 
+    public getSingleFileXmlComponentError(lines: string[]): BrightScriptDebugCompileError[] {
+        let errors: BrightScriptDebugCompileError[] = [];
+        let getFileInfoRegEx = /Error in XML component [a-z0-9_-]+ defined in file (.*)/i;
+        lines.forEach((line, index) => {
+            let match = getFileInfoRegEx.exec(line);
+            if (match) {
+                let errorText = 'ERR_COMPILE:';
+                let path = match[1];
+                errors.push({
+                    path: path,
+                    lineNumber: 1,
+                    errorText: errorText,
+                    message: `${line}\n${lines[index + 1] ?? ''}`,
+                    charStart: 0,
+                    charEnd: 999 //TODO
+                });
+            }
+        });
+        return errors;
+    }
+
     public getMultipleFileXmlError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let getFileInfoRexEx = /^-------> Error parsing multiple XML components \((.*)\)/gim;
-        let match;
+        let getFileInfoRegEx = /^-------> Error parsing multiple XML components \((.*)\)/i;
         lines.forEach((line) => {
-            while (match = getFileInfoRexEx.exec(line)) {
+            let match = getFileInfoRegEx.exec(line);
+            if (match) {
                 let errorText = 'ERR_COMPILE:';
                 let files = match[1].split(',');
                 files.forEach((path) => {
                     errors.push({
                         path: this.sanitizeCompilePath(path.trim()),
-                        lineNumber: 0,
+                        lineNumber: 1,
                         errorText: errorText,
-                        message: 'general compile error in xml file',
+                        message: GENERAL_XML_ERROR,
                         charStart: 0,
                         charEnd: 999 //TODO
                     });
@@ -236,14 +268,13 @@ export class CompileErrorProcessor {
 
     public getMissingManifestError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
-        let match;
         let getMissingManifestErrorRegEx = /^(?:-+)>(No manifest\. Invalid package\.)/i;
         lines.forEach((line) => {
-            match = getMissingManifestErrorRegEx.exec(line);
+            let match = getMissingManifestErrorRegEx.exec(line);
             if (match) {
                 errors.push({
                     path: 'manifest',
-                    lineNumber: 0,
+                    lineNumber: 1,
                     errorText: 'ERR_COMPILE:',
                     message: match[1],
                     charStart: 0,
@@ -275,9 +306,8 @@ export class CompileErrorProcessor {
 
         if (isRunning) {
             if (this.status === CompileStatus.compileError) {
-                let that = this;
                 // console.debug('resetting resetCompileErrorTimer');
-                this.compileErrorTimer = setTimeout(() => that.onCompileErrorTimer(), this.compileErrorTimeoutMs);
+                this.compileErrorTimer = setTimeout(() => this.onCompileErrorTimer(), this.compileErrorTimeoutMs);
             }
         }
     }
@@ -321,15 +351,12 @@ export class CompileErrorProcessor {
      */
     private reportErrors() {
         console.debug('reportErrors');
-        //throw out any lines before the last found compiling line
 
-        let errors = this.getErrors();
-
-        errors = errors.filter((e) => {
-            return e.path.toLowerCase().endsWith('.brs') || e.path.toLowerCase().endsWith('.xml') || e.path === 'manifest';
+        const errors = this.getErrors().filter((e) => {
+            const path = e.path.toLowerCase();
+            return path.endsWith('.brs') || path.endsWith('.xml') || path === 'manifest';
         });
 
-        console.debug('errors.length ' + errors.length);
         if (errors.length > 0) {
             this.emit('compile-errors', errors);
         }

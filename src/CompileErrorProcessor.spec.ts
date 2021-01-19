@@ -174,7 +174,7 @@ describe('BrightScriptDebugger', () => {
                 charEnd: 999,
                 charStart: 0,
                 errorText: 'ERR_COMPILE:',
-                lineNumber: 0,
+                lineNumber: 1,
                 message: 'Found 1 compile error in file tmp/plugin/IJBAAAfijvb8/pkg:/components/Scene/MainScene.GetConfigurationw.brs\n--- Error loading file. (compile error &hb9) in pkg:/components/Scene/MainScene.GetConfigurationw.brs',
                 path: 'pkg:/components/Scene/MainScene.GetConfigurationw.brs'
             }];
@@ -212,15 +212,15 @@ describe('BrightScriptDebugger', () => {
                     charEnd: 999,
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
-                    lineNumber: 2,
+                    lineNumber: 3,
                     message: 'XML syntax error found ---> not well-formed (invalid token)',
                     path: 'SampleScreen.xml'
                 }, {
                     charEnd: 999,
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
-                    lineNumber: 0,
-                    message: 'general compile error in xml file',
+                    lineNumber: 1,
+                    message: 'General XML compilation error',
                     path: 'SampleScreen.xml'
                 }
             ];
@@ -251,35 +251,35 @@ describe('BrightScriptDebugger', () => {
                 {
                     charEnd: 999,
                     charStart: 0,
-                    lineNumber: 594,
+                    lineNumber: 595,
                     errorText: '--- Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(595)',
                     message: 'Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(595)',
                     path: 'pkg:/components/Services/Network/Parsers.brs'
                 }, {
                     charEnd: 999,
                     charStart: 0,
-                    lineNumber: 597,
+                    lineNumber: 598,
                     errorText: '--- Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(598)',
                     message: 'Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(598)',
                     path: 'pkg:/components/Services/Network/Parsers.brs'
                 }, {
                     charEnd: 999,
                     charStart: 0,
-                    lineNumber: 731,
+                    lineNumber: 732,
                     errorText: '--- Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(732)',
                     message: 'Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(732)',
                     path: 'pkg:/components/Services/Network/Parsers.brs'
                 }, {
                     charEnd: 999,
                     charStart: 0,
-                    lineNumber: 732,
+                    lineNumber: 733,
                     errorText: '--- Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(733)',
                     message: 'Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(733)',
                     path: 'pkg:/components/Services/Network/Parsers.brs'
                 }, {
                     charEnd: 999,
                     charStart: 0,
-                    lineNumber: 733,
+                    lineNumber: 734,
                     errorText: '--- Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(734)',
                     message: 'Syntax Error. (compile error &h02) in pkg:/components/Services/Network/Parsers.brs(734)',
                     path: 'pkg:/components/Services/Network/Parsers.brs'
@@ -302,6 +302,10 @@ describe('BrightScriptDebugger', () => {
                 `--- Line 3: XML syntax error found ---> not well-formed (invalid token)`,
                 ``,
                 `=================================================================`,
+                `Error in XML component Oops defined in file pkg:/components/Oops.xml`,
+                `-- Extends type does not exist: "BaseOops"`,
+                ``,
+                `=================================================================`,
                 `Found 1 parse error in XML file ChannelItemComponent.xml`,
                 `--- Line 9: XML syntax error found ---> not well-formed (invalid token)`,
                 `03-26 23:14:06.499 [scrpt.parse.mkup.time] Parsed markup dev 'sampleApp' in 108 milliseconds`,
@@ -310,10 +314,9 @@ describe('BrightScriptDebugger', () => {
                 `03-26 23:14:08.133 [scrpt.ctx.cmpl.time] Compiled 'sampleApp', id 'dev' in 1633 milliseconds`,
                 `03-26 23:14:08.152 [scrpt.unload.mkup] Unloading markup dev 'sampleApp'`,
                 ``,
-                ``,
                 `=================================================================`,
                 `An error occurred while attempting to compile the application's components:`,
-                `-------> Error parsing multiple XML components (SampleScreen.xml, ChannelItemComponent.xml)`
+                `-------> Error parsing multiple XML components (SampleScreen.xml, ChannelItemComponent.xml, Ooops)`
             ];
 
             let expectedErrors = [
@@ -321,23 +324,37 @@ describe('BrightScriptDebugger', () => {
                     charEnd: 999,
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
-                    lineNumber: 8,
+                    lineNumber: 3,
+                    message: 'XML syntax error found ---> not well-formed (invalid token)',
+                    path: 'SampleScreen.xml'
+                }, {
+                    charEnd: 999,
+                    charStart: 0,
+                    errorText: 'ERR_COMPILE:',
+                    lineNumber: 9,
                     message: 'XML syntax error found ---> not well-formed (invalid token)',
                     path: 'ChannelItemComponent.xml'
                 }, {
                     charEnd: 999,
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
-                    lineNumber: 0,
-                    message: 'general compile error in xml file',
+                    lineNumber: 1,
+                    message: 'General XML compilation error',
                     path: 'SampleScreen.xml'
                 }, {
                     charEnd: 999,
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
-                    lineNumber: 0,
-                    message: 'general compile error in xml file',
+                    lineNumber: 1,
+                    message: 'General XML compilation error',
                     path: 'ChannelItemComponent.xml'
+                }, {
+                    charEnd: 999,
+                    charStart: 0,
+                    errorText: 'ERR_COMPILE:',
+                    lineNumber: 1,
+                    message: 'Error in XML component Oops defined in file pkg:/components/Oops.xml\n-- Extends type does not exist: "BaseOops"',
+                    path: 'pkg:/components/Oops.xml'
                 }
             ];
 
@@ -365,7 +382,7 @@ describe('BrightScriptDebugger', () => {
                     charEnd: 999,
                     charStart: 0,
                     errorText: '--- Invalid #If/#ElseIf expression (<CONST-NAME> not defined) (compile error &h92) in Parsers.brs(19) \'BAD_BS_CONST\'',
-                    lineNumber: 18,
+                    lineNumber: 19,
                     message: 'compile error &h92) in Parsers.brs(19) \'BAD_BS_CONST\'',
                     path: 'Parsers.brs'
                 }
@@ -396,7 +413,7 @@ describe('BrightScriptDebugger', () => {
                     charEnd: 999,
                     charStart: 0,
                     errorText: 'ERR_COMPILE:',
-                    lineNumber: 0,
+                    lineNumber: 1,
                     message: 'No manifest. Invalid package.',
                     path: 'manifest'
                 }

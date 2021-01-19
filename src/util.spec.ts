@@ -6,6 +6,7 @@ import * as getPort from 'get-port';
 import * as net from 'net';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
+import { BrightScriptDebugCompileError, GENERAL_XML_ERROR } from './CompileErrorProcessor';
 
 import { util } from './util';
 let sinon = sinonActual.createSandbox();
@@ -275,6 +276,50 @@ describe('Util', () => {
                     y: 3
                 }
             });
+        });
+    });
+
+    describe('filterGenericErrors', () => {
+        it('should remove generic errors IF a more specific exists', () => {
+            const err1: BrightScriptDebugCompileError = {
+                path: 'file1.xml',
+                lineNumber: 0,
+                charStart: 0,
+                charEnd: 0,
+                message: 'Some other error',
+                errorText: 'err1'
+            };
+            const err2: BrightScriptDebugCompileError = {
+                path: 'file1.xml',
+                lineNumber: 0,
+                charStart: 0,
+                charEnd: 0,
+                message: GENERAL_XML_ERROR,
+                errorText: 'err2'
+            };
+            const err3: BrightScriptDebugCompileError = {
+                path: 'file2.xml',
+                lineNumber: 0,
+                charStart: 0,
+                charEnd: 0,
+                message: GENERAL_XML_ERROR,
+                errorText: 'err3'
+            };
+            const err4: BrightScriptDebugCompileError = {
+                path: 'file3.xml',
+                lineNumber: 0,
+                charStart: 0,
+                charEnd: 0,
+                message: 'Some other error',
+                errorText: 'err4'
+            };
+            const expected = [
+                err1,
+                err3,
+                err4
+            ];
+            const actual = util.filterGenericErrors([err1, err2, err3, err4]);
+            expect(actual).to.deep.equal(expected);
         });
     });
 });

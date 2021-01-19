@@ -3,10 +3,9 @@ import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
 import glob = require('glob');
 import * as path from 'path';
-import { SourceMapConsumer, SourceNode } from 'source-map';
 import { promisify } from 'util';
+import { util } from './util';
 import * as rokuDeploy from 'roku-deploy';
-import { SourceLocation } from './managers/LocationManager';
 const globp = promisify(glob);
 
 export class FileUtils {
@@ -82,7 +81,6 @@ export class FileUtils {
 
         //find any files from the outDir that end the same as this file
         let results: string[] = [];
-
         let relativePaths = await this.getAllRelativePaths(directoryPath);
         for (let relativePath of relativePaths) {
             //if the staging path looks like the debugger path, keep it for now

@@ -106,7 +106,7 @@ export class FileManager {
      */
     private getFunctionNameMap(fileContents: string) {
         let regexp = /^\s*(?:sub|function)\s+([a-z0-9_]+)/gim;
-        let match: RegExpMatchArray;
+        let match: RegExpExecArray;
 
         let result = {};
 

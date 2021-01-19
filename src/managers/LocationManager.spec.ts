@@ -104,7 +104,7 @@ describe('LocationManager', () => {
                 let sourceFilePath = s`${rootDir}/source/main.brs`;
                 let stagingFilePath = s`${stagingDir}/source/main.brs`;
                 let stagingMapPath = s`${stagingDir}/source/main.brs.map`;
-                function n(line, col, txt) {
+                function n(line: number, col: number, txt: string) {
                     return new SourceNode(line, col, sourceFilePath, txt);
                 }
 

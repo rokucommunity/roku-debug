@@ -19,6 +19,7 @@ import {
 } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { util } from '../util';
+import { fileUtils } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
 import { standardizePath as s } from '../FileUtils';
@@ -131,8 +132,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
 
-        let disconnect = () => {
-        };
         this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
 
         let error: Error;
@@ -195,15 +194,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             });
 
             // handle any compile errors
-            this.rokuAdapter.on('compile-errors', async (compileErrors: BrightScriptDebugCompileError[]) => {
+            this.rokuAdapter.on('compile-errors', async (errors: BrightScriptDebugCompileError[]) => {
+                // remove redundant errors and adjust the line number:
+                // - Roku device and sourcemap work with 1-based line numbers,
+                // - VS expects 0-based lines.
+                const compileErrors = util.filterGenericErrors(errors);
                 for (let compileError of compileErrors) {
                     let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.lineNumber);
                     if (sourceLocation) {
                         compileError.path = sourceLocation.filePath;
-                        compileError.lineNumber = sourceLocation.lineNumber;
+                        compileError.lineNumber = sourceLocation.lineNumber - 1; //0-based
                     } else {
                         // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
-                        compileError.path = util.removeFileScheme(compileError.path).substring(1);
+                        compileError.path = fileUtils.removeLeadingSlash(util.removeFileScheme(compileError.path));
+                        compileError.lineNumber = (compileError.lineNumber || 1) - 1; //0-based
                     }
                 }
 
@@ -227,7 +231,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //return to the home screen
                     await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
                     this.shutdown();
-                    disconnect();
                     this.sendEvent(new TerminatedEvent());
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
@@ -277,12 +280,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 util.log('Encountered an issue during the publish process');
                 util.log(e.message);
                 this.sendErrorResponse(response, -1, e.message);
+            } else {
+                //request adapter to send errors (even empty) before ending the session
+                await this.rokuAdapter.sendErrors();
             }
             this.shutdown();
             return;
-        } finally {
-            //disconnect the compile error watcher
-            disconnect();
         }
 
         //at this point, the project has been deployed. If we need to use a deep link, launch it now.

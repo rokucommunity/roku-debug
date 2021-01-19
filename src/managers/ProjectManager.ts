@@ -119,11 +119,11 @@ export class ProjectManager {
             sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
         }
 
-        if (!sourceLocation.filePath || !sourceLocation.lineNumber) {
+        if (!sourceLocation.filePath) {
             //couldn't find a source location. At least send back the staging file information so the user can still debug
             return {
                 filePath: stagingFileInfo.absolutePath,
-                lineNumber: debuggerLineNumber,
+                lineNumber: sourceLocation.lineNumber || debuggerLineNumber,
                 columnIndex: 0
             } as SourceLocation;
         } else {
