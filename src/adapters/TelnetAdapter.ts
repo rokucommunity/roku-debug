@@ -394,9 +394,8 @@ export class TelnetAdapter {
     }
 
     /**
-     * Execute a command directly on the roku. Returns the output of the command. 
+     * Execute a command directly on the roku. Returns the output of the command.
      * @param command the command to execute. If the command does not start with `print` the command will be prefixed with `print ` because
-     * 
      */
     public async evaluate(command: string) {
         if (!this.isAtDebuggerPrompt) {
@@ -581,7 +580,7 @@ export class TelnetAdapter {
                         children: []
                     } as EvaluateContainer);
 
-                     children.push({
+                    children.push({
                         name: '[[attributes]]',
                         type: 'roArray',
                         highLevelType: HighLevelType.array,
@@ -590,7 +589,7 @@ export class TelnetAdapter {
                     } as EvaluateContainer);
 
                     //look up the element name right now
-                    const container = await this.getVariable(`${expression}.GetName()`)
+                    const container = await this.getVariable(`${expression}.GetName()`);
                     container.name = '[[name]]';
                     children.push(container);
                 }

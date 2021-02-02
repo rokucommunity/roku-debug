@@ -739,7 +739,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
 
                         } else {
-                            debugger;
                             const promise = this.rokuAdapter.evaluate(args.expression);
                             response.body = <any>{
                                 result: await promise
