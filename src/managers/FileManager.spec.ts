@@ -82,6 +82,88 @@ describe('FileManager', () => {
             }]);
         });
 
+        it('finds class functions', () => {
+            expect(
+                m.getFunctionInfo(
+                    `
+                        class person()
+                            function doSomething()
+                            end function
+                            private function doSomething_private()
+                            end function
+                            public function doSomething_public()
+                            end function
+                            public override function doSomething_public_override()
+                            end function
+                            override function doSomething_override()
+                            end function
+                            sub doSomething_sub()
+                            end sub
+                            private sub doSomething_private_sub()
+                            end sub
+                            public sub doSomething_public_sub()
+                            end sub
+                            public override sub doSomething_public_override_sub()
+                            end sub
+                            override sub doSomething_override_sub()
+                            end sub
+                        end class
+                    `.split(/\r?\n/)
+                )
+            ).to.eql([
+                {
+                    name: 'doSomething',
+                    children: [],
+                    range: Range.create(2, 0, 3, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                    name: 'doSomething_private',
+                    children: [],
+                    range: Range.create(4, 0, 5, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                    name: 'doSomething_public',
+                    children: [],
+                    range: Range.create(6, 0, 7, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                    name: 'doSomething_public_override',
+                    children: [],
+                    range: Range.create(8, 0, 9, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                    name: 'doSomething_override',
+                    children: [],
+                    range: Range.create(10, 0, 11, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                    name: 'doSomething_sub',
+                    children: [],
+                    range: Range.create(12, 0, 13, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                    name: 'doSomething_private_sub',
+                    children: [],
+                    range: Range.create(14, 0, 15, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                    name: 'doSomething_public_sub',
+                    children: [],
+                    range: Range.create(16, 0, 17, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                    name: 'doSomething_public_override_sub',
+                    children: [],
+                    range: Range.create(18, 0, 19, Number.MAX_SAFE_INTEGER)
+                },
+                {
+                        name: 'doSomething_override_sub',
+                    children: [],
+                    range: Range.create(20, 0, 21, Number.MAX_SAFE_INTEGER)
+                }
+            ]);
+        });
+
         it('does not pick up properties with the function/sub keyword', () => {
             expect(
                 m.getFunctionInfo(
