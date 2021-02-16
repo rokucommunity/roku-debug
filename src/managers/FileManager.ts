@@ -46,7 +46,7 @@ export class FileManager {
             let functionName: string;
             let openers = [
                 //function declaration
-                /^\s*(?:sub|function)\s+([a-z0-9_]+)/gim,
+                /^\s*(?:public|private|protected)?\s*(?:override)?\s*(?:sub|function)\s+([a-z0-9_]+)/gim,
                 //function in object
                 /"?([a-z0-9_]+)"?:\s*(?:sub|function)/gim,
                 //function in basic assignment
