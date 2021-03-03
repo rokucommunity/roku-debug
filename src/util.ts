@@ -29,6 +29,22 @@ class Util {
     }
 
     /**
+     * Determines if the given path is a file
+     * @param filePathAbsolute
+     */
+    public async isFile(filePathAbsolute: string) {
+        try {
+            //get the full path to the file. This should be the same path for files, and the actual path for any symlinks
+            let realPathAbsolute = fs.realpathSync(filePathAbsolute);
+            let stat = await fsExtra.lstat(realPathAbsolute);
+            return stat.isFile();
+        } catch (e) {
+            // lstatSync throws an error if path doesn't exist
+            return false;
+        }
+    }
+
+    /**
      * Removes any leading scheme in the file path
      * @param filePath
      */
