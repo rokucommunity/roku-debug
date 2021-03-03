@@ -112,7 +112,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * Will inject the Roku Advanced Layout Editor(RALE) TrackerTask into your channel if one is defined in your user settings.
      */
     injectRaleTrackerTask: boolean;
-    
+
     /**
      * This is an absolute path to the TrackerTask.xml file to be injected into your Roku channel during a debug session.
      */
