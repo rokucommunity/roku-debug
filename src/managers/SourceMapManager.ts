@@ -1,34 +1,33 @@
 import * as fsExtra from 'fs-extra';
 import { util } from '../util';
-import { RawSourceMap, SourceMapConsumer } from 'source-map';
+import type { RawSourceMap } from 'source-map';
+import { SourceMapConsumer } from 'source-map';
 import { standardizePath as s, fileUtils } from '../FileUtils';
 import * as path from 'path';
-import { SourceLocation } from './LocationManager';
+import type { SourceLocation } from './LocationManager';
 /**
  * Unifies access to source files across the whole project
  */
 export class SourceMapManager {
-    private cache = {} as {
-        /**
-         * Store all paths in lower case since Roku is case-insensitive.
-         * If the file existed, but something failed during parsing, this will be set to null.
-         * So take that into consideration when deciding to use falsey checking
-         */
-        [lowerFilePath: string]: RawSourceMap | null;
-    };
+    /**
+    * Store all paths in lower case since Roku is case-insensitive.
+    * If the file existed, but something failed during parsing, this will be set to null.
+    * So take that into consideration when deciding to use falsey checking
+    */
+    private cache = {} as Record<string, RawSourceMap | null>;
 
     /**
      * Does a source map exist at the specified path?
      * Checks the local cache first to prevent hitting the file system,
      * then falls back to the file system if not in the cache
      */
-    public async sourceMapExists(sourceMapPath: string) {
+    public sourceMapExists(sourceMapPath: string) {
         let key = s`${sourceMapPath.toLowerCase()}`;
         let map = this.cache[key];
         if (map !== undefined && map !== null) {
             return true;
         }
-        let existsOnDisk = await fsExtra.pathExistsSync(sourceMapPath);
+        let existsOnDisk = fsExtra.pathExistsSync(sourceMapPath);
         return existsOnDisk;
     }
 
@@ -48,7 +47,7 @@ export class SourceMapManager {
                 }
             }
         }
-        return this.cache[key] as RawSourceMap;
+        return this.cache[key];
     }
 
     /**
@@ -62,15 +61,13 @@ export class SourceMapManager {
             //remove the file from cache
             delete this.cache[key];
             //standardize the source map paths
-            parsedSourceMap.sources = parsedSourceMap.sources.map(source =>
-                fileUtils.standardizePath(
-                    path.resolve(
-                        //use the map's sourceRoot, or the map's folder path (to support relative paths)
-                        parsedSourceMap.sourceRoot || path.dirname(sourceMapPath),
-                        source
-                    )
+            parsedSourceMap.sources = parsedSourceMap.sources.map(source => fileUtils.standardizePath(
+                path.resolve(
+                    //use the map's sourceRoot, or the map's folder path (to support relative paths)
+                    parsedSourceMap.sourceRoot || path.dirname(sourceMapPath),
+                    source
                 )
-            );
+            ));
             this.cache[key] = parsedSourceMap;
         } catch (e) {
             this.cache[key] = null;
@@ -84,7 +81,7 @@ export class SourceMapManager {
      * @param currentLineNumber - the 1-based line number of the current location.
      * @param currentColumnIndex - the 0-based column number of the current location.
      */
-    public async getOriginalLocation(filePath: string, currentLineNumber: number, currentColumnIndex: number = 0): Promise<SourceLocation> {
+    public async getOriginalLocation(filePath: string, currentLineNumber: number, currentColumnIndex = 0): Promise<SourceLocation> {
         //look for a source map for this file
         let sourceMapPath = `${filePath}.map`;
 
@@ -108,7 +105,7 @@ export class SourceMapManager {
                 }
                 //if the sourcemap didn't find a valid mapped location,
                 //try to fallback to the first source referenced in the map
-                if (parsedSourceMap.sources?.[0] ) {
+                if (parsedSourceMap.sources?.[0]) {
                     return {
                         columnIndex: currentColumnIndex,
                         lineNumber: currentLineNumber,
@@ -135,7 +132,7 @@ export class SourceMapManager {
                 let parsedSourceMap = await this.getSourceMap(sourceMapPath);
 
                 //if the source path was found in the sourceMap, convert the source location into a target location
-                if (parsedSourceMap?.sources.indexOf(sourcePath) > -1) {
+                if (parsedSourceMap?.sources.includes(sourcePath)) {
                     let position = await SourceMapConsumer.with(parsedSourceMap, null, (consumer) => {
                         return consumer.generatedPositionFor({
                             line: sourceLocation.lineNumber,

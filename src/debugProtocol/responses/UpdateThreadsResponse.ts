@@ -13,14 +13,14 @@ export class UpdateThreadsResponse {
                     this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
                     this.updateType = UPDATE_TYPES[bufferReader.readUInt32LE()];
 
-                    let threadsUpdate: ThreadsStopped | ThreadAttached;
+                    let threadsUpdate: ThreadAttached | ThreadsStopped;
                     if (this.updateType === 'ALL_THREADS_STOPPED') {
                         threadsUpdate = new ThreadsStopped(bufferReader);
                     } else if (this.updateType === 'THREAD_ATTACHED') {
                         threadsUpdate = new ThreadAttached(bufferReader);
                     }
 
-                    if (threadsUpdate && threadsUpdate.success) {
+                    if (threadsUpdate?.success) {
                         this.data = threadsUpdate;
                         this.readOffset = bufferReader.readOffset;
                         this.success = true;
@@ -38,7 +38,7 @@ export class UpdateThreadsResponse {
     public requestId = -1;
     public errorCode: string;
     public updateType: string;
-    public data: ThreadsStopped | ThreadAttached;
+    public data: ThreadAttached | ThreadsStopped;
 }
 
 export class ThreadsStopped {

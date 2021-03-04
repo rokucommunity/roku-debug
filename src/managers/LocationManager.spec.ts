@@ -18,7 +18,7 @@ const sourceDirs = [
 ];
 
 describe('LocationManager', () => {
-    let files: { [filePath: string]: string };
+    let files: Record<string, string>;
     let locationManager: LocationManager;
     let sourceMapManager: SourceMapManager;
     beforeEach(() => {
@@ -108,13 +108,13 @@ describe('LocationManager', () => {
                     return new SourceNode(line, col, sourceFilePath, txt);
                 }
 
-                var node = new SourceNode(null, null, sourceFilePath, [
+                const node = new SourceNode(null, null, sourceFilePath, [
                     n(1, 0, 'sub'), ' ', n(1, 4, 'main'), n(1, 8, '('), n(1, 9, ')'), '\n',
                     n(2, 0, '    print'), ' ', n(2, 10, '"hello ")'), '\n',
                     n(2, 19, '    print'), ' ', n(2, 30, '"world")'), '\n',
                     n(3, 0, 'end'), ' ', n(3, 4, 'sub')
                 ]);
-                var out = node.toStringWithSourceMap();
+                const out = node.toStringWithSourceMap();
 
                 fsExtra.writeFileSync(sourceFilePath, `sub main()\n    print "hello ":print "world"\nend sub`);
                 fsExtra.writeFileSync(stagingFilePath, out.code);

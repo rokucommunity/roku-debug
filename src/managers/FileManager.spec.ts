@@ -157,7 +157,7 @@ describe('FileManager', () => {
                     range: Range.create(18, 0, 19, Number.MAX_SAFE_INTEGER)
                 },
                 {
-                        name: 'doSomething_override_sub',
+                    name: 'doSomething_override_sub',
                     children: [],
                     range: Range.create(20, 0, 21, Number.MAX_SAFE_INTEGER)
                 }

@@ -1,9 +1,7 @@
-/* tslint:disable:no-unused-expression */
-/* tslint:disable:no-var-requires */
 import * as sinon from 'sinon';
-let Module = require('module');
 import { assert, expect } from 'chai';
-import { RendezvousHistory, RendezvousTracker } from './RendezvousTracker';
+import type { RendezvousHistory } from './RendezvousTracker';
+import { RendezvousTracker } from './RendezvousTracker';
 
 describe('BrightScriptFileUtils ', () => {
     let rendezvousTracker: RendezvousTracker;
@@ -15,7 +13,7 @@ describe('BrightScriptFileUtils ', () => {
         rendezvousTracker = new RendezvousTracker();
         rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
             //remove preceding pkg:
-            if (debuggerPath.toLowerCase().indexOf('pkg:') === 0) {
+            if (debuggerPath.toLowerCase().startsWith('pkg:')) {
                 debuggerPath = debuggerPath.substring(4);
             }
 
@@ -23,11 +21,11 @@ describe('BrightScriptFileUtils ', () => {
                 // test checking for xml file if brs was not found
                 debuggerPath = '';
             }
-            return {
+            return Promise.resolve({
                 filePath: debuggerPath,
                 lineNumber: lineNumber,
                 columnIndex: 0
-            };
+            });
         });
         rendezvousTrackerMock = sinon.mock(rendezvousTracker);
 
@@ -73,7 +71,7 @@ describe('BrightScriptFileUtils ', () => {
             06-19 21:13:28.414 [sg.node.UNBLOCK] Rendezvous[31] completed
             07-04 13:23:15.284 [sg.node.BLOCK] Rendezvous[31233] at pkg:/components/Tasks/TrackerTask/TrackerTask.xml(621)
             06-18 19:06:20.206 [sg.node.UNBLOCK] Rendezvous[31233] completed in 0.008 s
-        `.replace(/    /g, '');
+        `.replace(/ {4}/g, '');
 
         expectedHistory = {
             hitCount: 19,

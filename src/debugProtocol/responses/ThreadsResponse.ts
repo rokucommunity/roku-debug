@@ -17,7 +17,7 @@ export class ThreadsResponse {
                     this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
                     this.threadsCount = bufferReader.readUInt32LE();
 
-                    for (let i = 0; i < this.threadsCount; i ++) {
+                    for (let i = 0; i < this.threadsCount; i++) {
                         let stackEntry = new ThreadInfo(bufferReader);
                         if (stackEntry.success) {
                             // All the necessary stack entry data was present. Push to the entries array.
@@ -47,7 +47,7 @@ export class ThreadInfo {
 
     constructor(bufferReader: SmartBuffer) {
         // NOTE: The docs say the flags should be unit8 and uint32. In testing it seems like they are sending uint32 but meant to send unit8.
-        // tslint:disable-next-line:no-bitwise
+        // eslint-disable-next-line no-bitwise
         this.isPrimary = (bufferReader.readUInt32LE() & 0x01) > 0;
         this.stopReason = STOP_REASONS[bufferReader.readUInt8()];
         this.stopReasonDetail = util.readStringNT(bufferReader);
@@ -58,7 +58,7 @@ export class ThreadInfo {
 
         let fileExtension = path.extname(this.fileName).toLowerCase();
         // NOTE: Make sure we have a full valid path (?? can be valid because the device might not know the file) and that we have a codeSnippet.
-        this.success = (fileExtension === '.brs' || fileExtension === '.xml' || this.fileName === '??' ) && this.codeSnippet.length > 1 ;
+        this.success = (fileExtension === '.brs' || fileExtension === '.xml' || this.fileName === '??') && this.codeSnippet.length > 1;
     }
     public success = false;
 

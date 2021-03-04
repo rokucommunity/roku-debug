@@ -1,4 +1,3 @@
-// tslint:disable: no-floating-promises
 import { Debugger } from './Debugger';
 import * as net from 'net';
 import { expect } from 'chai';
@@ -6,15 +5,15 @@ import { EventEmitter } from 'events';
 import { SmartBuffer } from 'smart-buffer';
 import { util } from '../util';
 import { MockDebugProtocolServer } from './MockDebugProtocolServer.spec';
-import * as sinonImport from 'sinon';
-var sinon = sinonImport.createSandbox();
+import { createSandbox } from 'sinon';
+const sinon = createSandbox();
 
 describe('debugProtocol Debugger', () => {
-    var bsDebugger: Debugger;
-    var roku: MockDebugProtocolServer;
+    let bsDebugger: Debugger;
+    let roku: MockDebugProtocolServer;
 
     beforeEach(async () => {
-        sinon.stub(console, 'log').callsFake((...args ) => {});
+        sinon.stub(console, 'log').callsFake((...args) => { });
         roku = new MockDebugProtocolServer();
         await roku.initialize();
 
@@ -33,21 +32,21 @@ describe('debugProtocol Debugger', () => {
 
     describe('connect', () => {
         it('sends magic to server on connect', async () => {
-            var action = roku.waitForMagic();
-            bsDebugger.connect();
-            roku.processActions();
-            var magic = await action.promise;
+            let action = roku.waitForMagic();
+            void bsDebugger.connect();
+            void roku.processActions();
+            let magic = await action.promise;
             expect(magic).to.equal(Debugger.DEBUGGER_MAGIC);
             console.log('test finished');
         });
 
         it('validates magic from server on connect', async () => {
-            var magicAction = roku.waitForMagic();
-            var action = roku.sendHandshakeResponse(magicAction.promise);
+            const magicAction = roku.waitForMagic();
+            const action = roku.sendHandshakeResponse(magicAction.promise);
 
-            bsDebugger.connect();
+            void bsDebugger.connect();
 
-            roku.processActions();
+            void roku.processActions();
 
             //wait for the debugger to finish verifying the handshake
             expect(
@@ -56,12 +55,12 @@ describe('debugProtocol Debugger', () => {
         });
 
         it('throws on magic mismatch', async () => {
-            var magicAction = roku.waitForMagic();
-            var action = roku.sendHandshakeResponse('not correct magic');
+            const magicAction = roku.waitForMagic();
+            const action = roku.sendHandshakeResponse('not correct magic');
 
-            bsDebugger.connect();
+            void bsDebugger.connect();
 
-            roku.processActions();
+            void roku.processActions();
 
             //wait for the debugger to finish verifying the handshake
             expect(

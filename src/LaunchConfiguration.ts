@@ -1,5 +1,5 @@
-import { FileEntry } from 'roku-deploy';
-import { DebugProtocol } from 'vscode-debugprotocol';
+import type { FileEntry } from 'roku-deploy';
+import type { DebugProtocol } from 'vscode-debugprotocol';
 
 /**
  * This interface should always match the schema found in the mock-debug extension manifest.
@@ -34,7 +34,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     /**
      * An object of bs_const values to be updated in the manifest before side loading.
      */
-    bsConst?: { [key: string]: boolean };
+    bsConst?: Record<string, boolean>;
     /**
      * Port to access component libraries.
      */
@@ -158,7 +158,7 @@ export interface ComponentLibraryConfiguration {
     /**
      * An object of bs_const values to be updated in the manifest before side loading.
      */
-    bsConst?: { [key: string]: boolean };
+    bsConst?: Record<string, boolean>;
     /**
      * Will inject the Roku Advanced Layout Editor(RALE) TrackerTask into the component library if one is defined in your user settings.
      */

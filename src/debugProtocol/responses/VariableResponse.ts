@@ -50,7 +50,7 @@ export class VariableInfo {
             // Determine the different variable properties
             let bitwiseMask = bufferReader.readUInt8();
             for (const property in VARIABLE_FLAGS) {
-                // tslint:disable-next-line:no-bitwise
+                // eslint-disable-next-line no-bitwise
                 this[property] = (bitwiseMask & VARIABLE_FLAGS[property]) > 0;
             }
 
