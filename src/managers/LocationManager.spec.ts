@@ -7,26 +7,23 @@ import { standardizePath as s } from '../FileUtils';
 import { LocationManager } from './LocationManager';
 import { SourceMapManager } from './SourceMapManager';
 
-let cwd = s`${path.dirname(__dirname)}`;
-let tmpDir = s`${cwd}/.tmp`;
-const rootDir = s`${tmpDir}/rootDir`;
-const stagingDir = s`${tmpDir}/stagingDir`;
+let tempDir = s`${process.cwd()}/.tmp`;
+const rootDir = s`${tempDir}/rootDir`;
+const stagingDir = s`${tempDir}/stagingDir`;
 const sourceDirs = [
-    s`${tmpDir}/sourceDir0`,
-    s`${tmpDir}/sourceDir1`,
-    s`${tmpDir}/sourceDir2`
+    s`${tempDir}/sourceDir0`,
+    s`${tempDir}/sourceDir1`,
+    s`${tempDir}/sourceDir2`
 ];
 
 describe('LocationManager', () => {
-    let files: Record<string, string>;
     let locationManager: LocationManager;
     let sourceMapManager: SourceMapManager;
-    beforeEach(() => {
+    // eslint-disable-next-line prefer-arrow-callback
+    beforeEach(function beforeEach() {
         sourceMapManager = new SourceMapManager();
         locationManager = new LocationManager(sourceMapManager);
-        files = {};
-        fsExtra.ensureDirSync(tmpDir);
-        fsExtra.removeSync(tmpDir);
+        fsExtra.removeSync(tempDir);
         fsExtra.ensureDirSync(`${rootDir}/source`);
         fsExtra.ensureDirSync(`${stagingDir}/source`);
         for (let sourceDir of sourceDirs) {
@@ -34,7 +31,7 @@ describe('LocationManager', () => {
         }
     });
     afterEach(() => {
-        fsExtra.removeSync(tmpDir);
+        fsExtra.removeSync(tempDir);
     });
     describe('getSourceLocation', () => {
 

@@ -19,20 +19,19 @@ import {
 } from '../adapters/TelnetAdapter';
 
 let sinon = sinonActual.createSandbox();
-let n = path.normalize;
 let cwd = fileUtils.standardizePath(process.cwd());
 let outDir = fileUtils.standardizePath(`${cwd}/outDir`);
 let stagingFolderPath = fileUtils.standardizePath(`${outDir}/stagingDir`);
 const rootDir = path.normalize(path.dirname(__dirname));
 
-describe('Debugger', () => {
+describe('BrightScriptDebugSession', () => {
     beforeEach(() => {
         sinon.restore();
     });
 
     afterEach(() => {
-        fsExtra.ensureDirSync(outDir);
         fsExtra.removeSync(outDir);
+        sinon.restore();
     });
 
     let session: BrightScriptDebugSession;
