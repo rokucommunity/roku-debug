@@ -1,12 +1,14 @@
-import { Debugger, ProtocolVersionDetails } from '../debugProtocol/Debugger';
+import type { ProtocolVersionDetails } from '../debugProtocol/Debugger';
+import { Debugger } from '../debugProtocol/Debugger';
 import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
 
 import { defer } from '../debugSession/BrightScriptDebugSession';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
-import { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
-import { SourceLocation } from '../managers/LocationManager';
+import type { RendezvousHistory } from '../RendezvousTracker';
+import { RendezvousTracker } from '../RendezvousTracker';
+import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 
 /**
@@ -34,14 +36,12 @@ export class DebugProtocolAdapter {
     private emitter: EventEmitter;
     private rendezvousTracker: RendezvousTracker;
     private socketDebugger: Debugger;
-    private nextFrameId: number = 1;
+    private nextFrameId = 1;
 
-    private stackFramesCache: { [keys: number]: StackFrame } = {};
+    private stackFramesCache: Record<number, StackFrame> = {};
     private cache = {};
 
-    public get supportsMultipleRuns() {
-        return false;
-    }
+    public readonly supportsMultipleRuns = false;
 
     /**
      * Subscribe to various events
@@ -51,7 +51,7 @@ export class DebugProtocolAdapter {
     public on(eventName: 'cannot-continue', handler: () => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number; }[]) => void);
+    public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
     public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
@@ -70,6 +70,7 @@ export class DebugProtocolAdapter {
     }
 
     private emit(
+        /* eslint-disable */
         eventName:
             'app-exit' |
             'cannot-continue' |
@@ -83,6 +84,7 @@ export class DebugProtocolAdapter {
             'start' |
             'suspend' |
             'unhandled-console-output',
+        /* eslint-enable */
         data?
     ) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
@@ -107,7 +109,7 @@ export class DebugProtocolAdapter {
 
     public async activate() {
         this.isActivated = true;
-        this.handleStartupIfReady();
+        await this.handleStartupIfReady();
     }
 
     public async sendErrors() {
@@ -171,6 +173,7 @@ export class DebugProtocolAdapter {
         });
         try {
             // Emit IO output from the debugger.
+            // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.socketDebugger.on('io-output', async (responseText) => {
                 if (responseText) {
                     responseText = await this.rendezvousTracker.processLogLine(responseText);
@@ -294,17 +297,17 @@ export class DebugProtocolAdapter {
      */
     public async stepOver(threadId: number) {
         this.clearCache();
-        return await this.socketDebugger.stepOver(threadId);
+        return this.socketDebugger.stepOver(threadId);
     }
 
     public async stepInto(threadId: number) {
         this.clearCache();
-        return await this.socketDebugger.stepIn(threadId);
+        return this.socketDebugger.stepIn(threadId);
     }
 
     public async stepOut(threadId: number) {
         this.clearCache();
-        return await this.socketDebugger.stepOut(threadId);
+        return this.socketDebugger.stepOut(threadId);
     }
 
     /**
@@ -312,7 +315,7 @@ export class DebugProtocolAdapter {
      */
     public async continue() {
         this.clearCache();
-        return await this.socketDebugger.continue();
+        return this.socketDebugger.continue();
     }
 
     /**
@@ -321,7 +324,7 @@ export class DebugProtocolAdapter {
     public async pause() {
         this.clearCache();
         //send the kill signal, which breaks into debugger mode
-        return await this.socketDebugger.pause();
+        return this.socketDebugger.pause();
     }
 
     /**
@@ -342,25 +345,27 @@ export class DebugProtocolAdapter {
         }
 
         // Pipe all evaluate requests though as a variable request as evaluate is not available at the moment.
-        return await this.getVariable(command, frameId);
+        return this.getVariable(command, frameId);
     }
 
     public async getStackTrace(threadId: number = this.socketDebugger.primaryThread) {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get stack trace: debugger is not paused');
         }
-        return await this.resolve(`stack trace for thread ${threadId}`, async () => {
+        return this.resolve(`stack trace for thread ${threadId}`, async () => {
             let thread = await this.getThreadByThreadId(threadId);
             let frames: StackFrame[] = [];
             let stackTraceData: any = await this.socketDebugger.stackTrace(threadId);
             for (let i = 0; i < stackTraceData.stackSize; i++) {
                 let frameData = stackTraceData.entries[i];
                 let frame: StackFrame = {
-                    frameId: this.nextFrameId ++,
+                    frameId: this.nextFrameId++,
                     frameIndex: stackTraceData.stackSize - i - 1, // frame index is the reverse of the returned order.
                     threadIndex: threadId,
+                    // eslint-disable-next-line no-nested-ternary
                     filePath: i === 0 ? (frameData.fileName) ? frameData.fileName : thread.filePath : frameData.fileName,
                     lineNumber: i === 0 ? thread.lineNumber : frameData.lineNumber,
+                    // eslint-disable-next-line no-nested-ternary
                     functionIdentifier: this.cleanUpFunctionName(i === 0 ? (frameData.functionName) ? frameData.functionName : thread.functionName : frameData.functionName)
                 };
                 this.stackFramesCache[frame.frameId] = frame;
@@ -383,7 +388,7 @@ export class DebugProtocolAdapter {
      * Given an expression, evaluate that statement ON the roku
      * @param expression
      */
-    public async getVariable(expression: string, frameId: number, withChildren: boolean = true) {
+    public async getVariable(expression: string, frameId: number, withChildren = true) {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
@@ -393,7 +398,7 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot request variable without a corresponding frame');
         }
 
-        return await this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
+        return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
             let variablePath = this.getVariablePath(expression);
             let variableInfo: any = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
@@ -470,6 +475,7 @@ export class DebugProtocolAdapter {
         let match: RegExpMatchArray;
         let variablePath = [];
 
+        // eslint-disable-next-line no-cond-assign
         while (match = regexp.exec(expression)) {
             // match 1: strings between quotes - this["that"]
             // match 2: any valid brightscript viable format
@@ -489,7 +495,8 @@ export class DebugProtocolAdapter {
         if (this.cache[key]) {
             return this.cache[key];
         }
-        return this.cache[key] = Promise.resolve<T>(factory());
+        this.cache[key] = Promise.resolve<T>(factory());
+        return this.cache[key];
     }
 
     /**
@@ -499,13 +506,13 @@ export class DebugProtocolAdapter {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get threads: debugger is not paused');
         }
-        return await this.resolve('threads', async () => {
+        return this.resolve('threads', async () => {
             let threads: Thread[] = [];
             let threadsData: any = await this.socketDebugger.threads();
 
-            for (let i = 0; i < threadsData.threadsCount; i ++) {
+            for (let i = 0; i < threadsData.threadsCount; i++) {
                 let threadInfo = threadsData.threads[i];
-                let thread = <Thread> {
+                let thread = <Thread>{
                     // NOTE: On THREAD_ATTACHED events the threads request is marking the wrong thread as primary.
                     // NOTE: Rely on the thead index from the threads update event.
                     isSelected: this.socketDebugger.primaryThread === i,
@@ -556,7 +563,7 @@ export class DebugProtocolAdapter {
      * Make sure any active Brightscript Debugger threads are exited
      */
     public async exitActiveBrightscriptDebugger() {
-      // Legacy function called by the debug section
+        // Legacy function called by the debug section
     }
 
     // #region Rendezvous Tracker pass though functions

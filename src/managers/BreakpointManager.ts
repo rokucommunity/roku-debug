@@ -1,13 +1,14 @@
 import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
-import { CodeWithSourceMap, SourceNode } from 'source-map';
-import { DebugProtocol } from 'vscode-debugprotocol';
+import type { CodeWithSourceMap } from 'source-map';
+import { SourceNode } from 'source-map';
+import type { DebugProtocol } from 'vscode-debugprotocol';
 import { fileUtils } from '../FileUtils';
-import { Project } from './ProjectManager';
+import type { Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
-import { SourceMapManager } from './SourceMapManager';
-import { LocationManager } from './LocationManager';
+import type { SourceMapManager } from './SourceMapManager';
+import type { LocationManager } from './LocationManager';
 import { util } from '../util';
 
 export class BreakpointManager {
@@ -20,9 +21,9 @@ export class BreakpointManager {
     }
 
     public launchConfiguration: {
-        sourceDirs: string[],
+        sourceDirs: string[];
         rootDir: string;
-        enableSourceMaps?: boolean
+        enableSourceMaps?: boolean;
     };
 
     /**
@@ -45,17 +46,18 @@ export class BreakpointManager {
      * These breakpoints are all set before launch, and then this list is not changed again after that.
      * (this concept may need to be modified once we get live breakpoint support)
      */
-    private breakpointsByFilePath = {} as { [sourceFilePath: string]: AugmentedSourceBreakpoint[] };
+    private breakpointsByFilePath = {} as Record<string, AugmentedSourceBreakpoint[]>;
 
     public static breakpointIdSequence = 1;
 
     /**
      * breakpoint lines are 1-based, and columns are zero-based
      */
-    public registerBreakpoint(sourceFilePath: string, breakpoint: DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint) {
+    public registerBreakpoint(sourceFilePath: string, breakpoint: AugmentedSourceBreakpoint | DebugProtocol.SourceBreakpoint) {
         sourceFilePath = this.sanitizeSourceFilePath(sourceFilePath);
         //get the breakpoints array (and optionally initialize it if not set)
-        let breakpointsArray = this.breakpointsByFilePath[sourceFilePath] = this.breakpointsByFilePath[sourceFilePath] ?? [];
+        let breakpointsArray = this.breakpointsByFilePath[sourceFilePath] ?? [];
+        this.breakpointsByFilePath[sourceFilePath] = breakpointsArray;
 
         let existingBreakpoint = breakpointsArray.find(x => x.line === breakpoint.line);
 
@@ -87,7 +89,7 @@ export class BreakpointManager {
 
             //if a breakpoint gets set in rootDir, and we have sourceDirs, convert the rootDir path to sourceDirs path
             //so the breakpoint gets moved into the source file instead of the output file
-            if (this.launchConfiguration && this.launchConfiguration.sourceDirs && this.launchConfiguration.sourceDirs.length > 0) {
+            if (this.launchConfiguration?.sourceDirs && this.launchConfiguration.sourceDirs.length > 0) {
                 let lastWorkingPath = '';
                 for (const sourceDir of this.launchConfiguration.sourceDirs) {
                     sourceFilePath = sourceFilePath.replace(this.launchConfiguration.rootDir, sourceDir);
@@ -110,7 +112,7 @@ export class BreakpointManager {
 
         //if we already have a breakpoint for this exact line, don't add another one
         if (breakpointsArray.find(x => x.line === breakpoint.line)) {
-            return;
+
         } else {
             //add the breakpoint to the list
             breakpointsArray.push(bp);
@@ -152,9 +154,7 @@ export class BreakpointManager {
      * This will also exclude files with breakpoints that are not in scope.
      */
     private async getBreakpointWork(project: Project) {
-        let result = {} as {
-            [stagingFilePath: string]: Array<BreakpointWorkItem>
-        };
+        let result = {} as Record<string, Array<BreakpointWorkItem>>;
 
         //iterate over every file that contains breakpoints
         for (let sourceFilePath in this.breakpointsByFilePath) {
@@ -209,7 +209,7 @@ export class BreakpointManager {
         return result;
     }
 
-    public sortAndRemoveDuplicateBreakpoints<T extends { line: number; column?: number; }>(
+    public sortAndRemoveDuplicateBreakpoints<T extends { line: number; column?: number }>(
         breakpoints: Array<T>
     ) {
         breakpoints = orderBy(breakpoints, [x => x.line, x => x.column]);
@@ -230,7 +230,7 @@ export class BreakpointManager {
      * Write "stop" lines into source code for each breakpoint of each file in the given project
      */
     public async writeBreakpointsForProject(project: Project) {
-        var breakpointsByStagingFilePath = await this.getBreakpointWork(project);
+        let breakpointsByStagingFilePath = await this.getBreakpointWork(project);
 
         let promises = [] as Promise<any>[];
         for (let stagingFilePath in breakpointsByStagingFilePath) {
@@ -254,11 +254,11 @@ export class BreakpointManager {
         //load the file as a string
         let fileContents = (await fsExtra.readFile(stagingFilePath)).toString();
 
-        let originalFilePath = breakpoints[0].type === 'sourceMap' ?
+        let originalFilePath = breakpoints[0].type === 'sourceMap'
             //the calling function will merge this sourcemap into the other existing sourcemap, so just use the same name because it doesn't matter
-            breakpoints[0].rootDirFilePath :
+            ? breakpoints[0].rootDirFilePath
             //the calling function doesn't have a sourcemap for this file, so we need to point it to the sourceDirs found location (probably rootDir...)
-            breakpoints[0].sourceFilePath;
+            : breakpoints[0].sourceFilePath;
 
         let sourceAndMap = this.getSourceAndMapWithBreakpoints(fileContents, originalFilePath, breakpoints);
 
@@ -333,6 +333,7 @@ export class BreakpointManager {
             let match;
 
             // Get all the value to evaluate as expressions
+            // eslint-disable-next-line no-cond-assign
             while (match = expressionsCheck.exec(logMessage)) {
                 logMessage = logMessage.replace(match[0], `"; ${match[1]};"`);
             }
@@ -443,5 +444,5 @@ interface BreakpointWorkItem {
      * `fileMap` means derived from the {src;dest} entry used by roku-deploy
      * `sourceDirs` means derived by walking up the `sourceDirs` list until a relative file was found
      */
-    type: 'sourceMap' | 'fileMap' | 'sourceDirs';
+    type: 'fileMap' | 'sourceDirs' | 'sourceMap';
 }

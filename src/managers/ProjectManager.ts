@@ -3,17 +3,16 @@ import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
-import { FileEntry, RokuDeploy } from 'roku-deploy';
-
-import { BreakpointManager } from './BreakpointManager';
-import { fileUtils } from '../FileUtils';
-import { LocationManager, SourceLocation } from './LocationManager';
-import { standardizePath as s } from '../FileUtils';
+import type { FileEntry } from 'roku-deploy';
+import type { BreakpointManager } from './BreakpointManager';
+import { fileUtils, standardizePath as s } from '../FileUtils';
+import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
-// tslint:disable-next-line:no-var-requires Had to add the import as a require do to issues using this module with normal imports
-let replaceInFile = require('replace-in-file');
 
-export const componentLibraryPostfix: string = '__lib';
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+const replaceInFile = require('replace-in-file');
+
+export const componentLibraryPostfix = '__lib';
 
 /**
  * Manages the collection of brightscript projects being used in a debug session.
@@ -75,6 +74,7 @@ export class ProjectManager {
              * but we need to compensate for the actual code line. So if there's a breakpoint
              * on this line, handle the next line's mapping as well (and skip one iteration of the loop)
              */
+            // eslint-disable-next-line @typescript-eslint/no-loop-func
             let breakpointForLine = breakpoints.find(x => x.line === sourceLineNumber);
             if (breakpointForLine) {
                 sourceLineByDebuggerLine[loopDebuggerLineNumber + 1] = sourceLineNumber;
@@ -103,7 +103,7 @@ export class ProjectManager {
             stagingFileInfo.relativePath = project.removeFileNamePostfix(stagingFileInfo.relativePath);
         }
 
-        var sourceLocation = await this.locationManager.getSourceLocation({
+        let sourceLocation = await this.locationManager.getSourceLocation({
             lineNumber: debuggerLineNumber,
             columnIndex: 0,
             fileMappings: project.fileMappings,
@@ -156,7 +156,7 @@ export class ProjectManager {
         let lowerStagingFilePath = stagingFilePath.toLowerCase();
         let projects = [this.mainProject, ...this.componentLibraryProjects];
         for (let project of projects) {
-            if (lowerStagingFilePath.indexOf(project.stagingFolderPath.toLowerCase()) === 0) {
+            if (lowerStagingFilePath.startsWith(project.stagingFolderPath.toLowerCase())) {
                 return project;
             }
         }
@@ -217,7 +217,7 @@ interface AddProjectParams {
     files: Array<FileEntry>;
     injectRaleTrackerTask?: boolean;
     raleTrackerTaskFileLocation?: string;
-    bsConst?: { [key: string]: boolean };
+    bsConst?: Record<string, boolean>;
     stagingFolderPath?: string;
 }
 
@@ -243,19 +243,19 @@ export class Project {
     public sourceDirs: string[];
     public files: Array<FileEntry>;
     public stagingFolderPath: string;
-    public fileMappings: Array<{ src: string; dest: string; }>;
-    public bsConst: { [key: string]: boolean };
+    public fileMappings: Array<{ src: string; dest: string }>;
+    public bsConst: Record<string, boolean>;
     public injectRaleTrackerTask: boolean;
     public raleTrackerTaskFileLocation: string;
 
     public async stage() {
-        var rokuDeploy = new RokuDeploy();
+        let rd = new rokuDeploy.RokuDeploy();
         if (!this.fileMappings) {
             this.fileMappings = await this.getFileMappings();
         }
 
         //override the getFilePaths function so rokuDeploy doesn't run it again during prepublishToStaging
-        (rokuDeploy as any).getFilePaths = () => {
+        (rd as any).getFilePaths = () => {
             let relativeFileMappings = [];
             for (let fileMapping of this.fileMappings) {
                 relativeFileMappings.push({
@@ -267,11 +267,11 @@ export class Project {
         };
 
         //copy all project files to the staging folder
-        await rokuDeploy.prepublishToStaging({
+        await rd.prepublishToStaging({
             rootDir: this.rootDir,
             stagingFolderPath: this.stagingFolderPath,
             files: this.files,
-            outDir: this.outDir,
+            outDir: this.outDir
         });
 
         //preload the original location of every file
@@ -312,7 +312,7 @@ export class Project {
         }
     }
 
-    public updateManifestBsConsts(consts: { [key: string]: boolean }, fileContents: string): string {
+    public updateManifestBsConsts(consts: Record<string, boolean>, fileContents: string): string {
         let bsConstLine;
         let missingConsts: string[] = [];
         let lines = eol.split(fileContents);
@@ -330,8 +330,8 @@ export class Project {
         if (bsConstLine) {
             // update the consts in the manifest and check for missing consts
             missingConsts = Object.keys(consts).reduce((results, key) => {
-                let match;
-                if (match = new RegExp('(' + key + '\\s*=\\s*[true|false]+[^\\S\\r\\n]*\)', 'i').exec(bsConstLine)) {
+                let match = new RegExp('(' + key + '\\s*=\\s*[true|false]+[^\\S\\r\\n]*\)', 'i').exec(bsConstLine);
+                if (match) {
                     newLine = newLine.replace(match[1], `${key}=${consts[key].toString()}`);
                 } else {
                     results.push(key);
@@ -444,6 +444,7 @@ export class ComponentLibraryProject extends Project {
         let manifestValues;
 
         // search the outFile for replaceable values such as ${title}
+        // eslint-disable-next-line no-cond-assign
         while (renamingMatch = regexp.exec(this.outFile)) {
             if (!manifestValues) {
                 // The first time a value is found we need to get the manifest values
@@ -474,7 +475,7 @@ export class ComponentLibraryProject extends Project {
 
         let expectedManifestDestPath = fileUtils.standardizePath(`${this.stagingFolderPath}/manifest`).toLowerCase();
         //find the file entry with the `dest` value of `${stagingFolderPath}/manifest` (case insensitive)
-        var manifestFileEntry = this.fileMappings.find(x => x.dest.toLowerCase() === expectedManifestDestPath);
+        let manifestFileEntry = this.fileMappings.find(x => x.dest.toLowerCase() === expectedManifestDestPath);
         if (manifestFileEntry) {
             //read the manifest from `src` since nothing has been copied to staging yet
             await this.computeOutFileName(manifestFileEntry.src);
@@ -509,7 +510,7 @@ export class ComponentLibraryProject extends Project {
     }
 
     public async postfixFiles() {
-        let pathDetails: object = {};
+        let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(
                 fileUtils.getRelativePath(this.stagingFolderPath, fileMapping.dest)
@@ -521,7 +522,7 @@ export class ComponentLibraryProject extends Project {
 
                 if (parsedPath.ext === '.brs') {
                     // Create the new file name to be used
-                    let newFileName: string = `${parsedPath.name}${this.postfix}${parsedPath.ext}`;
+                    let newFileName = `${parsedPath.name}${this.postfix}${parsedPath.ext}`;
                     relativePath = path.join(parsedPath.dir, newFileName);
 
                     // Rename the brs files to include the postfix namespacing tag

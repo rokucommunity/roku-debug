@@ -3,11 +3,12 @@ import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as net from 'net';
 import * as url from 'url';
-import { SmartBuffer } from 'smart-buffer';
-import { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
+import type { SmartBuffer } from 'smart-buffer';
+import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
-import { Position, Range } from 'vscode-languageserver';
-import { BrightScriptDebugCompileError, GENERAL_XML_ERROR } from './CompileErrorProcessor';
+import type { Position, Range } from 'vscode-languageserver';
+import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
+import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 
 class Util {
     /**
@@ -60,7 +61,7 @@ class Util {
      * Reads the the manifest file and converts to a javascript object skipping empty lines and comments
      * @param path location of the manifest file
      */
-    public async convertManifestToObject(path: string): Promise<{ [key: string]: string } | undefined> {
+    public async convertManifestToObject(path: string): Promise<Record<string, string> | undefined> {
         if (await this.fileExists(path) === false) {
             return undefined;
         } else {
@@ -68,12 +69,12 @@ class Util {
             let manifestLines = fileContents.split('\n');
 
             let manifestValues = {};
-            manifestLines.map((line) => {
-                let match;
-                if (match = /(\w+)=(.+)/.exec(line)) {
+            for (const line of manifestLines) {
+                let match = /(\w+)=(.+)/.exec(line);
+                if (match) {
                     manifestValues[match[1]] = match[2];
                 }
-            });
+            }
 
             return manifestValues;
         }
@@ -86,8 +87,16 @@ class Util {
     public async isPortInUse(port: number): Promise<boolean> {
         return new Promise<boolean>((resolve, reject) => {
             const tester = net.createServer()
-                .once('error', (err: any) => (err.code === 'EADDRINUSE' ? resolve(true) : reject(err)))
-                .once('listening', () => tester.once('close', () => resolve(false)).close())
+                .once('error', (err: any) => {
+                    if (err.code === 'EADDRINUSE') {
+                        resolve(true);
+                    } else {
+                        reject(err);
+                    }
+                })
+                .once('listening', () => tester.once('close', () => {
+                    resolve(false);
+                }).close())
                 .listen(port);
         });
     }
@@ -98,19 +107,25 @@ class Util {
      * @param obj2 comparison target
      * @param exclude fields to exclude in the comparison
      */
-    public objectDiff(obj1: object, obj2: object, exclude?: string[]) {
+    public objectDiff(obj1: Record<string, any>, obj2: Record<string, any>, exclude?: string[]) {
         let r = {};
 
-        if (!exclude) { exclude = []; }
+        if (!exclude) {
+            exclude = [];
+        }
 
         for (let prop in obj1) {
             if (obj1.hasOwnProperty(prop) && prop !== '__proto__') {
-                if (exclude.indexOf(obj1[prop]) === -1) {
+                if (!exclude.includes(obj1[prop])) {
 
                     // check if obj2 has prop
-                    if (!obj2.hasOwnProperty(prop)) { r[prop] = obj1[prop]; } else if (obj1[prop] === Object(obj1[prop])) {
+                    if (!obj2.hasOwnProperty(prop)) {
+                        r[prop] = obj1[prop];
+                    } else if (obj1[prop] === Object(obj1[prop])) {
                         let difference = this.objectDiff(obj1[prop], obj2[prop]);
-                        if (Object.keys(difference).length > 0) { r[prop] = difference; }
+                        if (Object.keys(difference).length > 0) {
+                            r[prop] = difference;
+                        }
                     } else if (obj1[prop] !== obj2[prop]) {
                         if (obj1[prop] === undefined) {
                             r[prop] = 'undefined';
@@ -178,9 +193,11 @@ class Util {
             }
         }
         let text = messages.join(', ');
-        this._debugSession?.sendEvent(new DebugServerLogOutputEvent(`${timestamp}: ${text}`));
+        if (this._debugSession) {
+            this._debugSession.sendEvent(new DebugServerLogOutputEvent(`${timestamp}: ${text}`));
+        }
 
-        console.log.apply(console, [timestamp, ...args]);
+        console.log(timestamp, ...args);
     }
 
     /**
@@ -189,7 +206,9 @@ class Util {
      */
     public log(message: string) {
         this.logDebug(message);
-        this._debugSession?.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
+        if (this._debugSession) {
+            this._debugSession.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
+        }
     }
 
     /**

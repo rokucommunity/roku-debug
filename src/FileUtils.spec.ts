@@ -1,12 +1,10 @@
-// tslint:disable: no-unused-expression
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 
 import { SourceNode } from 'source-map';
-import { fileUtils, standardizePath } from './FileUtils';
-import { standardizePath as s } from './FileUtils';
+import { fileUtils, standardizePath as s } from './FileUtils';
 import { SourceMapManager } from './managers/SourceMapManager';
 
 let sinon = sinonActual.createSandbox();
@@ -113,7 +111,7 @@ describe('FileUtils', () => {
 
         beforeEach(() => {
             sinon.stub(fsExtra, 'pathExists').callsFake((filePath: string) => {
-                return paths.indexOf(filePath) > -1;
+                return paths.includes(filePath);
             });
         });
 
@@ -141,22 +139,22 @@ describe('FileUtils', () => {
         let outFilePath = s`${outDirPath}/file.brs`;
         let outFileMapPath = s`${outFilePath}.map`;
 
-        beforeEach(async () => {
+        beforeEach(() => {
             fsExtra.removeSync(tempDirPath);
 
-            await fsExtra.mkdir(tempDirPath);
-            await fsExtra.mkdir(sourceDirPath);
-            await fsExtra.mkdir(outDirPath);
+            fsExtra.ensureDirSync(tempDirPath);
+            fsExtra.ensureDirSync(sourceDirPath);
+            fsExtra.ensureDirSync(outDirPath);
 
             let sourceContents = `function main()\n    print "hello"\n    print "world"\nend function
             `;
 
             //create a source file
-            await fsExtra.writeFile(sourceFilePath, sourceContents);
+            fsExtra.outputFileSync(sourceFilePath, sourceContents);
         });
 
-        afterEach(async () => {
-            await fsExtra.removeSync(tempDirPath);
+        afterEach(() => {
+            fsExtra.removeSync(tempDirPath);
         });
 
         async function createOutFiles(sourcePath) {
@@ -229,8 +227,8 @@ describe('FileUtils', () => {
 
     describe('standardizePath', () => {
         it('works with string literals', () => {
-            expect(standardizePath`a${1}b${2}c`).to.equal('a1b2c');
-            expect(standardizePath`a${1}b${2}`).to.equal('a1b2');
+            expect(s`a${1}b${2}c`).to.equal('a1b2c');
+            expect(s`a${1}b${2}`).to.equal('a1b2');
         });
     });
 

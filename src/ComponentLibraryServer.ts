@@ -21,7 +21,7 @@ export class ComponentLibraryServer {
 
         this.componentLibrariesOutDir = componentLibrariesOutDir;
 
-        // #region prepare static file hosting
+        // prepare static file hosting
         // maps file extension to MIME types
         const mimeType = {
             '.ico': 'image/x-icon',
@@ -54,7 +54,7 @@ export class ComponentLibraryServer {
             const sanitizePath = path.normalize(parsedUrl.pathname).replace(/^(\.\.[\/\\])+/, '');
             let pathname = path.join(this.componentLibrariesOutDir, sanitizePath);
 
-            fs.exists(pathname, function(exist) {
+            fs.exists(pathname, (exist) => {
                 if (!exist) {
                     // if the file is not found, return 404
                     res.statusCode = 404;
@@ -68,7 +68,7 @@ export class ComponentLibraryServer {
                 // }
 
                 // read file from file system
-                fs.readFile(pathname, function(err, data) {
+                fs.readFile(pathname, (err, data) => {
                     if (err) {
                         res.statusCode = 500;
                         res.end(`Error getting the file: ${err}.`);
@@ -85,23 +85,21 @@ export class ComponentLibraryServer {
         }).listen(port);
 
         sendDebugLogLine(`Server listening on port ${port}`);
-        // #endregion
 
-        // #region print possible IP addresses that may be the users local ip
+        // print possible IP addresses that may be the users local ip
         let ifaces = os.networkInterfaces();
-        Object.keys(ifaces).forEach((ifname) => {
+        for (const ifname of Object.keys(ifaces)) {
             let alias = 0;
 
-            ifaces[ifname].forEach((iface) => {
-                if ('IPv4' !== iface.family || iface.internal !== false) {
+            for (const iface of ifaces[ifname]) {
+                if (iface.family !== 'IPv4' || iface.internal !== false) {
                     // skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
                     return;
                 }
 
                 sendDebugLogLine(`Potential target ip for component libraries: ${iface.address}`);
-            });
-        });
-        // #endregion
+            }
+        }
     }
 
     /**

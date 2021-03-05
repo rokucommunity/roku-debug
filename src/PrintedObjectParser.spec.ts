@@ -41,6 +41,6 @@ describe('PrintedObjectParser', () => {
     });
 });
 
-function parseEquals(line: string, expected: { key: string, value: string }) {
+function parseEquals(line: string, expected: { key: string; value: string }) {
     expect(new PrintedObjectParser(`    ${line}`).result).to.eql(expected);
 }

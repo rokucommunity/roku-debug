@@ -2,7 +2,7 @@ import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer } from 'source-map';
 import * as path from 'path';
 import { standardizePath as s, fileUtils } from '../FileUtils';
-import { SourceMapManager } from './SourceMapManager';
+import type { SourceMapManager } from './SourceMapManager';
 import * as glob from 'glob';
 
 /**
@@ -106,8 +106,8 @@ export class LocationManager {
         sourceColumnIndex: number,
         sourceDirs: string[],
         stagingFolderPath: string,
-        fileMappings: Array<{ src: string; dest: string; }>
-    ): Promise<{ type: 'sourceMap' | 'fileMap' | 'sourceDirs', locations: SourceLocation[] }> {
+        fileMappings: Array<{ src: string; dest: string }>
+    ): Promise<{ type: 'fileMap' | 'sourceDirs' | 'sourceMap'; locations: SourceLocation[] }> {
 
         sourceFilePath = s`${sourceFilePath}`;
         sourceDirs = sourceDirs.map(x => s`${x}`);
