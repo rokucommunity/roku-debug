@@ -1,14 +1,13 @@
-// tslint:disable:no-unused-expression
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer, SourceNode } from 'source-map';
 
 import { BreakpointManager } from './BreakpointManager';
-import { fileUtils } from '../FileUtils';
+import { fileUtils, standardizePath as s } from '../FileUtils';
 import { Project } from './ProjectManager';
 let n = fileUtils.standardizePath.bind(fileUtils);
-import { standardizePath as s } from '../FileUtils';
-import { LocationManager, SourceLocation } from '../managers/LocationManager';
+import type { SourceLocation } from '../managers/LocationManager';
+import { LocationManager } from '../managers/LocationManager';
 import { SourceMapManager } from './SourceMapManager';
 
 describe('BreakpointManager', () => {
@@ -61,10 +60,9 @@ describe('BreakpointManager', () => {
                     function Main()
                         print "Hello world"
                     end function
-                `,
-                'main.brs',
-                [<any>{
-                    line: 3,
+                `, 'main.brs', [
+                <any>{
+                    line: 3
                 }]).code
             ).to.equal(`
                     function Main()\nSTOP
@@ -78,12 +76,10 @@ describe('BreakpointManager', () => {
                 function Main()
                     print "Hello world"
                 end function
-            `,
-                'main.brs',
-                <any>[{
-                    line: 3,
-                    condition: 'age=1'
-                }]).code).to.equal(`
+            `, 'main.brs', <any>[{
+                line: 3,
+                condition: 'age=1'
+            }]).code).to.equal(`
                 function Main()\nif age=1 then : STOP : end if
                     print "Hello world"
                 end function
@@ -95,8 +91,7 @@ describe('BreakpointManager', () => {
                 function Main()
                     print "Hello world"
                 end function
-            `,
-                'main.brs',
+            `, 'main.brs',
                 <any>[{
                     line: 3,
                     hitCondition: '1'
@@ -184,7 +179,7 @@ describe('BreakpointManager', () => {
 
     describe('setBreakpointsForFile', () => {
         it('verifies all breakpoints before launch', () => {
-            var breakpoints = bpManager.replaceBreakpoints(n(`${cwd}/file.brs`), [{
+            let breakpoints = bpManager.replaceBreakpoints(n(`${cwd}/file.brs`), [{
                 line: 0,
                 column: 0
             }, {
@@ -558,7 +553,7 @@ describe('BreakpointManager', () => {
 
         //this is just a sample test to show how we need to create
         it('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
-            var srcPath = 'program.brs';
+            let srcPath = 'program.brs';
             function n(line, col, txt) {
                 return new SourceNode(line, col, srcPath, txt);
             }
@@ -593,7 +588,7 @@ describe('BreakpointManager', () => {
 
         //this is just a sample test to show how we need to create
         it('places breakpoints at corect spot in out file when sourcemaps are involved', async () => {
-            var sourceFilePath = s`${srcDir}/source/main.bs`;
+            let sourceFilePath = s`${srcDir}/source/main.bs`;
             function n(line, col, txt) {
                 return new SourceNode(line, col, sourceFilePath, txt);
             }
@@ -681,12 +676,12 @@ describe('BreakpointManager', () => {
             ]).toStringWithSourceMap();
 
             //copy to rootDir
-            await fsExtra.writeFileSync(`${rootDir}/source/main.brs`, codeAndMap.code);
-            await fsExtra.writeFileSync(`${rootDir}/source/main.brs.map`, codeAndMap.map.toString());
+            fsExtra.outputFileSync(`${rootDir}/source/main.brs`, codeAndMap.code);
+            fsExtra.outputFileSync(`${rootDir}/source/main.brs.map`, codeAndMap.map.toString());
 
             //copy to staging
-            await fsExtra.writeFileSync(`${stagingDir}/source/main.brs`, codeAndMap.code);
-            await fsExtra.writeFileSync(`${stagingDir}/source/main.brs.map`, codeAndMap.map.toString());
+            fsExtra.outputFileSync(`${stagingDir}/source/main.brs`, codeAndMap.code);
+            fsExtra.outputFileSync(`${stagingDir}/source/main.brs.map`, codeAndMap.map.toString());
 
             //the sourcemap in staging should point to src
             expect(

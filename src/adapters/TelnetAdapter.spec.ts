@@ -1,10 +1,7 @@
-/* tslint:disable:no-unused-expression */
-/* tslint:disable:no-var-requires */
 import { assert, expect } from 'chai';
 import * as sinon from 'sinon';
-let Module = require('module');
-
-import { EvaluateContainer, TelnetAdapter } from './TelnetAdapter';
+import type { EvaluateContainer } from './TelnetAdapter';
+import { TelnetAdapter } from './TelnetAdapter';
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
@@ -38,7 +35,7 @@ describe('TelnetAdapter ', () => {
         });
     });
 
-    // tslint:disable:no-trailing-whitespace disable for this test because trailing whitespace matters
+    // disable:no-trailing-whitespace disable for this test because trailing whitespace matters
     describe('getForLoopPrintedChildren', () => {
         it('finds the proper number of children', () => {
             expect(adapter.getForLoopPrintedChildren('arr', `
@@ -151,38 +148,38 @@ vscode_key_start:mynewfield:vscode_key_stop vscode_is_string:false<Component: ro
 
             expect(variables.find(x => x.name === 'change')).to.deep.include(<EvaluateContainer>{
                 evaluateName: 'testNode["change"]',
-                type: 'roAssociativeArray',
+                type: 'roAssociativeArray'
             });
+
             // check children of testNode.change
-            {
-                expect(variables.find(x => x.name === 'change').children[0]).to.deep.include(<EvaluateContainer>{
-                    name: 'Index1',
-                    evaluateName: 'testNode["change"].Index1',
-                    //TODO -- is this correct?
-                    type: 'Float',
-                    value: '0'
-                });
-                //TODO check children of testNode.change
-                expect(variables.find(x => x.name === 'change').children[1]).to.deep.include(<EvaluateContainer>{
-                    name: 'Index2',
-                    evaluateName: 'testNode["change"].Index2',
-                    //TODO -- is this correct?
-                    type: 'Float',
-                    value: '0'
-                });
-                //TODO check children of testNode.change
-                expect(variables.find(x => x.name === 'change').children[2]).to.deep.include(<EvaluateContainer>{
-                    name: 'Operation',
-                    evaluateName: 'testNode["change"].Operation',
-                    type: 'String',
-                    value: '"none"'
-                });
-            }
+            expect(variables.find(x => x.name === 'change').children[0]).to.deep.include(<EvaluateContainer>{
+                name: 'Index1',
+                evaluateName: 'testNode["change"].Index1',
+                //TODO -- is this correct?
+                type: 'Float',
+                value: '0'
+            });
+            //TODO check children of testNode.change
+            expect(variables.find(x => x.name === 'change').children[1]).to.deep.include(<EvaluateContainer>{
+                name: 'Index2',
+                evaluateName: 'testNode["change"].Index2',
+                //TODO -- is this correct?
+                type: 'Float',
+                value: '0'
+            });
+            //TODO check children of testNode.change
+            expect(variables.find(x => x.name === 'change').children[2]).to.deep.include(<EvaluateContainer>{
+                name: 'Operation',
+                evaluateName: 'testNode["change"].Operation',
+                type: 'String',
+                value: '"none"'
+            });
+
             expect(variables.find(x => x.name === 'EDID')).to.deep.include(<EvaluateContainer>{
                 evaluateName: 'testNode["EDID"]',
-                type: 'roByteArray',
+                type: 'roByteArray'
             });
-            //children of EDID should be null, because we encountered the elipses (...) which means it should be evaluated later 
+            //children of EDID should be null, because we encountered the elipses (...) which means it should be evaluated later
             expect(variables.find(x => x.name === 'EDID').children[0]).to.be.undefined;
 
             expect(variables.find(x => x.name === 'focusable')).to.deep.include(<EvaluateContainer>{
@@ -202,7 +199,7 @@ vscode_key_start:mynewfield:vscode_key_stop vscode_is_string:false<Component: ro
             });
             expect(variables.find(x => x.name === 'mynewfield')).to.deep.include(<EvaluateContainer>{
                 evaluateName: 'testNode["mynewfield"]',
-                type: 'roSGNode:ContentNode',
+                type: 'roSGNode:ContentNode'
             });
         });
 

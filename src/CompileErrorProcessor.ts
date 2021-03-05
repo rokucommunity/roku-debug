@@ -80,9 +80,9 @@ export class CompileErrorProcessor {
         //session is shutting down, process logs immediately
         //HACK: leave time for events and errors resolvers to run,
         //otherwise the staging folder will have been deleted
-        return new Promise(resolve => {
+        return new Promise<void>(resolve => {
             this.onCompileErrorTimer();
-            setTimeout(() => resolve(), 500);
+            setTimeout(resolve, 500);
         });
     }
 
@@ -109,7 +109,7 @@ export class CompileErrorProcessor {
         let errors: BrightScriptDebugCompileError[] = [];
         let match: RegExpExecArray;
         // let syntaxRegEx = /(syntax|compile) error.* in (.*)\((\d+)\)/gim;
-        lines.forEach((line) => {
+        for (const line of lines) {
             match = this.getSyntaxErrorDetails(line);
             if (match) {
                 let path = this.sanitizeCompilePath(match[2]);
@@ -117,7 +117,7 @@ export class CompileErrorProcessor {
 
                 //FIXME
                 //if this match is a livecompile error, throw out all prior errors because that means we are re-running
-                if (path.toLowerCase().indexOf('$livecompile') === -1) {
+                if (!path.toLowerCase().includes('$livecompile')) {
 
                     errors.push({
                         path: path,
@@ -129,7 +129,7 @@ export class CompileErrorProcessor {
                     });
                 }
             }
-        });
+        }
         return errors;
     }
 
@@ -180,6 +180,7 @@ export class CompileErrorProcessor {
         let errors: BrightScriptDebugCompileError[] = [];
         let getFileInfoRegEx = /^--- Line (\d*): (.*)$/gim;
         let match: RegExpExecArray;
+        // eslint-disable-next-line no-cond-assign
         while (match = getFileInfoRegEx.exec(fileErrorText)) {
             let lineNumber = parseInt(match[1]); // 1-based
             let errorText = 'ERR_COMPILE:';
@@ -201,7 +202,7 @@ export class CompileErrorProcessor {
     public getSingleFileXmlError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
         let getFileInfoRegEx = /^-------> Error parsing XML component (.*).*$/i;
-        lines.forEach((line) => {
+        for (let line of lines) {
             let match = getFileInfoRegEx.exec(line);
             if (match) {
                 let errorText = 'ERR_COMPILE:';
@@ -216,7 +217,7 @@ export class CompileErrorProcessor {
                     charEnd: 999 //TODO
                 });
             }
-        });
+        }
 
         return errors;
     }
@@ -224,7 +225,8 @@ export class CompileErrorProcessor {
     public getSingleFileXmlComponentError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
         let getFileInfoRegEx = /Error in XML component [a-z0-9_-]+ defined in file (.*)/i;
-        lines.forEach((line, index) => {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             let match = getFileInfoRegEx.exec(line);
             if (match) {
                 let errorText = 'ERR_COMPILE:';
@@ -233,24 +235,24 @@ export class CompileErrorProcessor {
                     path: path,
                     lineNumber: 1,
                     errorText: errorText,
-                    message: `${line}\n${lines[index + 1] ?? ''}`,
+                    message: `${line}\n${lines[i + 1] ?? ''}`,
                     charStart: 0,
                     charEnd: 999 //TODO
                 });
             }
-        });
+        }
         return errors;
     }
 
     public getMultipleFileXmlError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
         let getFileInfoRegEx = /^-------> Error parsing multiple XML components \((.*)\)/i;
-        lines.forEach((line) => {
+        for (const line of lines) {
             let match = getFileInfoRegEx.exec(line);
             if (match) {
                 let errorText = 'ERR_COMPILE:';
-                let files = match[1].split(',');
-                files.forEach((path) => {
+                let filePaths = match[1].split(',');
+                for (const path of filePaths) {
                     errors.push({
                         path: this.sanitizeCompilePath(path.trim()),
                         lineNumber: 1,
@@ -259,9 +261,9 @@ export class CompileErrorProcessor {
                         charStart: 0,
                         charEnd: 999 //TODO
                     });
-                });
+                }
             }
-        });
+        }
 
         return errors;
     }
@@ -269,7 +271,7 @@ export class CompileErrorProcessor {
     public getMissingManifestError(lines: string[]): BrightScriptDebugCompileError[] {
         let errors: BrightScriptDebugCompileError[] = [];
         let getMissingManifestErrorRegEx = /^(?:-+)>(No manifest\. Invalid package\.)/i;
-        lines.forEach((line) => {
+        for (const line of lines) {
             let match = getMissingManifestErrorRegEx.exec(line);
             if (match) {
                 errors.push({
@@ -281,7 +283,7 @@ export class CompileErrorProcessor {
                     charEnd: 999 //TODO
                 });
             }
-        });
+        }
 
         return errors;
     }
@@ -307,7 +309,9 @@ export class CompileErrorProcessor {
         if (isRunning) {
             if (this.status === CompileStatus.compileError) {
                 // console.debug('resetting resetCompileErrorTimer');
-                this.compileErrorTimer = setTimeout(() => this.onCompileErrorTimer(), this.compileErrorTimeoutMs);
+                this.compileErrorTimer = setTimeout(() => {
+                    this.onCompileErrorTimer();
+                }, this.compileErrorTimeoutMs);
             }
         }
     }
@@ -321,7 +325,7 @@ export class CompileErrorProcessor {
     }
 
     private getStartingCompilingLine(lines: string[]): number {
-        let lastIndex: number = -1;
+        let lastIndex = -1;
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i];
             //if this line looks like the compiling line
@@ -333,7 +337,7 @@ export class CompileErrorProcessor {
     }
 
     private getEndCompilingLine(lines: string[]): number {
-        let lastIndex: number = -1;
+        let lastIndex = -1;
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i];
             // if this line looks like the compiling line
@@ -373,8 +377,8 @@ export interface BrightScriptDebugCompileError {
 }
 
 export enum CompileStatus {
-  none = 'none',
-  compiling = 'compiling',
-  compileError = 'compileError',
-  running = 'running'
+    none = 'none',
+    compiling = 'compiling',
+    compileError = 'compileError',
+    running = 'running'
 }

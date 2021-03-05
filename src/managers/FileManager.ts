@@ -8,13 +8,9 @@ import { Position, Range } from 'vscode-languageserver';
 export class FileManager {
     /**
      * A map of file lines, indexed by file path
+     * Store all paths in lower case since Roku is case-insensitive
      */
-    private cache = {} as {
-        /**
-         * Store all paths in lower case since Roku is case-insensitive
-         */
-        [lowerFilePath: string]: CodeFile;
-    };
+    private cache = {} as Record<string, CodeFile>;
 
     public getCodeFile(filePath: string) {
         let lowerFilePath = filePath.toLowerCase();
@@ -34,7 +30,7 @@ export class FileManager {
             }
             this.cache[lowerFilePath] = fileInfo;
         }
-        return this.cache[lowerFilePath] as CodeFile;
+        return this.cache[lowerFilePath];
     }
 
     private getFunctionInfo(lines: string[]) {
@@ -46,7 +42,7 @@ export class FileManager {
             let functionName: string;
             let openers = [
                 //function declaration
-                /^\s*(?:sub|function)\s+([a-z0-9_]+)/gim,
+                /^\s*(?:public|private|protected)?\s*(?:override)?\s*(?:sub|function)\s+([a-z0-9_]+)/gim,
                 //function in object
                 /"?([a-z0-9_]+)"?:\s*(?:sub|function)/gim,
                 //function in basic assignment
@@ -111,6 +107,7 @@ export class FileManager {
         let result = {};
 
         //create a cache of all function names in this file
+        // eslint-disable-next-line no-cond-assign
         while (match = regexp.exec(fileContents)) {
             let correctFunctionName = match[1];
             result[correctFunctionName.toLowerCase()] = correctFunctionName;
@@ -168,9 +165,9 @@ export class FileManager {
 export interface CodeFile {
     lines: string[];
     /**
-     * map of lower case function name to its actual case in the source file
+     * Map of lower case function name to its actual case in the source file
      */
-    functionNameMap: { [lowerFunctionName: string]: string };
+    functionNameMap: Record<string, string>;
     /**
      * An array of function information from this file
      */

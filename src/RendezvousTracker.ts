@@ -1,8 +1,7 @@
 import { EventEmitter } from 'events';
 import * as path from 'path';
 import * as replaceLast from 'replace-last';
-
-import { SourceLocation } from './managers/LocationManager';
+import type { SourceLocation } from './managers/LocationManager';
 
 export class RendezvousTracker {
     constructor() {
@@ -77,9 +76,9 @@ export class RendezvousTracker {
         let normalOutput = '';
 
         for (let line of lines) {
-            let match;
+            let match = /\[sg\.node\.(BLOCK|UNBLOCK)\s{0,}\] Rendezvous\[(\d+)\](?:\s\w+\n|\s\w{2}\s(.*)\((\d+)\)|[\s\w]+(\d+\.\d+)+|\s\w+)/g.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/In0t7d/6
-            if (match = /\[sg\.node\.(BLOCK|UNBLOCK)\s{0,}\] Rendezvous\[(\d+)\](?:\s\w+\n|\s\w{2}\s(.*)\((\d+)\)|[\s\w]+(\d+\.\d+)+|\s\w+)/g.exec(line)) {
+            if (match) {
                 let [fullMatch, type, id, fileName, lineNumber, duration] = match;
                 if (type === 'BLOCK') {
                     // detected the start of a rendezvous event
@@ -127,7 +126,7 @@ export class RendezvousTracker {
                     this.rendezvousHistory.occurrences[blockInfo.fileName].totalTime += timeToAdd;
                     this.rendezvousHistory.totalTime += timeToAdd;
 
-                    if (0 === timeToAdd) {
+                    if (timeToAdd === 0) {
                         this.rendezvousHistory.occurrences[blockInfo.fileName].zeroCostHitCount++;
                         this.rendezvousHistory.zeroCostHitCount++;
                     }
@@ -247,7 +246,7 @@ export class RendezvousTracker {
 
 export interface RendezvousHistory {
     hitCount: number;
-    occurrences: { [key: string]: RendezvousFileInfo };
+    occurrences: Record<string, RendezvousFileInfo>;
     totalTime: number;
     type: ElementType;
     zeroCostHitCount: number;
@@ -255,7 +254,7 @@ export interface RendezvousHistory {
 
 interface RendezvousFileInfo {
     hitCount: number;
-    occurrences: { [key: string]: RendezvousLineInfo };
+    occurrences: Record<string, RendezvousLineInfo>;
     totalTime: number;
     type: ElementType;
     zeroCostHitCount: number;
@@ -269,20 +268,14 @@ interface RendezvousLineInfo {
     type: ElementType;
 }
 
-interface RendezvousBlocks {
-    [key: string]: {
-        fileName: string;
-        lineNumber: string;
-    };
-}
+type RendezvousBlocks = Record<string, {
+    fileName: string;
+    lineNumber: string;
+}>;
 
-type ElementType = 'historyInfo' | 'fileInfo' | 'lineInfo';
+type ElementType = 'fileInfo' | 'historyInfo' | 'lineInfo';
 
-interface RendezvousClientPathMap {
-    [key: string]: {
-        clientLines: {
-            [key: string]: number
-        };
-        clientPath: string;
-    };
-}
+type RendezvousClientPathMap = Record<string, {
+    clientLines: Record<string, number>;
+    clientPath: string;
+}>;

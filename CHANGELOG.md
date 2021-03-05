@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+### [0.5.10] - 2021-02-16
+### Fixed
+ - stack trace for brighterscript class methods appearing as `anon`
+
+
+
 ## [0.5.9] - 2021-01-19
 ### Fixed
  - timing issue when shutting down debug session before the log processor has finish its job
@@ -135,3 +141,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.7]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.6...v0.5.7
 [0.5.8]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.7...v0.5.8
 [0.5.9]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.8...v0.5.9
+[0.5.10]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.9...v0.5.10

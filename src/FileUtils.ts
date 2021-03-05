@@ -1,7 +1,7 @@
 import * as eol from 'eol';
 import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
-import glob = require('glob');
+import * as glob from 'glob';
 import * as path from 'path';
 import { promisify } from 'util';
 import { util } from './util';
@@ -31,7 +31,7 @@ export class FileUtils {
         if (!subject || !search) {
             return false;
         }
-        return path.normalize(subject.toLowerCase()).indexOf(path.normalize(search.toLowerCase())) > -1;
+        return path.normalize(subject.toLowerCase()).includes(path.normalize(search.toLowerCase()));
     }
 
     /**
@@ -128,8 +128,8 @@ export class FileUtils {
      * Determine if the filename ends with one of the specified extensions
      */
     public hasAnyExtension(fileName: string, extensions: string[]) {
-        var ext = path.extname(fileName);
-        return extensions.indexOf(ext) > -1;
+        let ext = path.extname(fileName);
+        return extensions.includes(ext);
     }
 
     /**
@@ -149,7 +149,7 @@ export class FileUtils {
         filePathAbsolute = this.standardizePath(filePathAbsolute);
         for (let directoryPath of directoryPaths) {
             directoryPath = this.standardizePath(directoryPath);
-            if (filePathAbsolute.indexOf(directoryPath) === 0) {
+            if (filePathAbsolute.startsWith(directoryPath)) {
                 return directoryPath;
             }
         }
@@ -183,7 +183,7 @@ export class FileUtils {
         if (!thePath) {
             return thePath;
         }
-        var normalizedPath = path.normalize(
+        let normalizedPath = path.normalize(
             thePath.replace(/[\/\\]+/g, path.sep)
         );
         //force the drive letter to lower case
@@ -215,11 +215,11 @@ export class FileUtils {
      * @param fullPath
      */
     public getFileProtocolPath(fullPath: string) {
-        if (fullPath.indexOf('file://') === 0) {
+        if (fullPath.startsWith('file://')) {
             return fullPath;
         }
         let result: string;
-        if (fullPath.indexOf('/') === 0 || fullPath.indexOf('\\') === 0) {
+        if (fullPath.startsWith('/') || fullPath.startsWith('\\')) {
             result = `file://${fullPath}`;
         } else {
             result = `file:///${fullPath}`;
@@ -233,15 +233,15 @@ export class FileUtils {
      * @param projectPath - a path to a Roku project
      */
     public async findEntryPoint(projectPath: string) {
-        let results = Object.assign(
-            {},
-            await findInFiles.find({ term: 'sub\\s+RunUserInterface\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            await findInFiles.find({ term: 'function\\s+RunUserInterface\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            await findInFiles.find({ term: 'sub\\s+main\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            await findInFiles.find({ term: 'function\\s+main\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            await findInFiles.find({ term: 'sub\\s+RunScreenSaver\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            await findInFiles.find({ term: 'function\\s+RunScreenSaver\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/)
-        );
+        let results = {
+
+            ...await findInFiles.find({ term: 'sub\\s+RunUserInterface\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
+            ...await findInFiles.find({ term: 'function\\s+RunUserInterface\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
+            ...await findInFiles.find({ term: 'sub\\s+main\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
+            ...await findInFiles.find({ term: 'function\\s+main\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
+            ...await findInFiles.find({ term: 'sub\\s+RunScreenSaver\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
+            ...await findInFiles.find({ term: 'function\\s+RunScreenSaver\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/)
+        };
         let keys = Object.keys(results);
         if (keys.length === 0) {
             throw new Error('Unable to find an entry point. Please make sure that you have a RunUserInterface, RunScreenSaver, or Main sub/function declared in your BrightScript project');
@@ -258,7 +258,7 @@ export class FileUtils {
         //loop through the lines until we find the entry line
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i];
-            if (line.indexOf(entryLineContents) > -1) {
+            if (line.includes(entryLineContents)) {
                 lineNumber = i + 1;
                 break;
             }
@@ -307,7 +307,7 @@ export let fileUtils = new FileUtils();
  */
 export function standardizePath(stringParts, ...expressions: any[]) {
     let result = [];
-    for (var i = 0; i < stringParts.length; i++) {
+    for (let i = 0; i < stringParts.length; i++) {
         result.push(stringParts[i], expressions[i]);
     }
     return fileUtils.standardizePath(

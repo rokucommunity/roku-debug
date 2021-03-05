@@ -1,14 +1,11 @@
-//tslint:disable:no-unused-expression
-//tslint:disable:jsdoc-format
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
 import * as sinonActual from 'sinon';
-
-import { fileUtils } from '../FileUtils';
-import { Project, ComponentLibraryProject, ProjectManager, ComponentLibraryConstructorParams } from './ProjectManager';
-import { standardizePath as s } from '../FileUtils';
+import { fileUtils, standardizePath as s } from '../FileUtils';
+import type { ComponentLibraryConstructorParams } from './ProjectManager';
+import { Project, ComponentLibraryProject, ProjectManager } from './ProjectManager';
 import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
@@ -35,7 +32,7 @@ afterEach(() => {
 });
 
 describe('ProjectManager', () => {
-    var manager: ProjectManager;
+    let manager: ProjectManager;
     beforeEach(() => {
         sinon.stub(console, 'log').callsFake((...args) => { });
         let sourceMapManager = new SourceMapManager();
@@ -178,7 +175,7 @@ describe('ProjectManager', () => {
         });
 
         it(`searches for partial files in main project when '...' is encountered`, async () => {
-            let stub = sinon.stub(fileUtils, 'findPartialFileInDirectory').callsFake(function(partialFilePath, directoryPath) {
+            let stub = sinon.stub(fileUtils, 'findPartialFileInDirectory').callsFake((partialFilePath, directoryPath) => {
                 expect(partialFilePath).to.equal('...ource/main.brs');
                 expect(directoryPath).to.equal(manager.mainProject.stagingFolderPath);
                 return Promise.resolve(`source/main.brs`);
@@ -200,7 +197,7 @@ describe('ProjectManager', () => {
         });
 
         it(`detects partial paths to component library filenames`, async () => {
-            let stub = sinon.stub(fileUtils, 'findPartialFileInDirectory').callsFake(function(partialFilePath, directoryPath) {
+            let stub = sinon.stub(fileUtils, 'findPartialFileInDirectory').callsFake((partialFilePath, directoryPath) => {
                 expect(partialFilePath).to.equal('...ource/main__lib1.brs');
                 expect(directoryPath).to.equal(manager.componentLibraryProjects[0].stagingFolderPath);
                 return Promise.resolve(`source/main__lib1.brs`);
@@ -221,11 +218,11 @@ describe('ProjectManager', () => {
     describe('getSourceLocation', () => {
         it('handles truncated paths', async () => {
             //mock fsExtra so we don't have to create actual files
-            sinon.stub(fsExtra, 'pathExists').callsFake(async (filePath: string) => {
+            sinon.stub(fsExtra as any, 'pathExists').callsFake((filePath: string) => {
                 if (fileUtils.pathEndsWith(filePath, '.map')) {
-                    return false;
+                    return Promise.resolve(false);
                 } else {
-                    return true;
+                    return Promise.resolve(true);
                 }
             });
             sinon.stub(fileUtils, 'getAllRelativePaths').returns(Promise.resolve([
@@ -252,11 +249,11 @@ describe('ProjectManager', () => {
 
         it('handles pkg paths', async () => {
             //mock fsExtra so we don't have to create actual files
-            sinon.stub(fsExtra, 'pathExists').callsFake(async (filePath: string) => {
+            sinon.stub(fsExtra as any, 'pathExists').callsFake((filePath: string) => {
                 if (fileUtils.pathEndsWith(filePath, '.map')) {
-                    return false;
+                    return Promise.resolve(false);
                 } else {
-                    return true;
+                    return Promise.resolve(true);
                 }
             });
             manager.mainProject.rootDir = rootDir;
@@ -283,7 +280,7 @@ describe('ProjectManager', () => {
 });
 
 describe('Project', () => {
-    var project: Project;
+    let project: Project;
     const rdbFilesBasePath = 'rdbSource';
     beforeEach(() => {
         sinon.stub(console, 'log').callsFake((...args) => { });
@@ -317,7 +314,9 @@ describe('Project', () => {
 
     describe('stage', () => {
         afterEach(() => {
-            try { fsExtra.removeSync(tempPath); } catch (e) { }
+            try {
+                fsExtra.removeSync(tempPath);
+            } catch (e) { }
         });
         it('actually stages the project', async () => {
             project.raleTrackerTaskFileLocation = undefined;
@@ -340,7 +339,7 @@ describe('Project', () => {
     describe('updateManifestBsConsts', () => {
         let constsLine: string;
         let startingFileContents: string;
-        let bsConsts: { [key: string]: boolean };
+        let bsConsts: Record<string, boolean>;
 
         beforeEach(() => {
             constsLine = 'bs_const=const=false;const2=true;const3=false';
@@ -357,7 +356,7 @@ describe('Project', () => {
                 minor_version=1
                 build_version=00001
                 ${constsLine}
-            `.replace(/    /g, '');
+            `.replace(/ {4}/g, '');
 
             bsConsts = {};
         });
@@ -394,13 +393,13 @@ describe('Project', () => {
                 startingFileContents.replace(constsLine, 'bs_const=const=true;const2=false;const3=true')
             );
         });
-        it('should throw error when there is no bs_const line', async () => {
+        it('should throw error when there is no bs_const line', () => {
             expect(() => {
                 project.updateManifestBsConsts(bsConsts, startingFileContents.replace(constsLine, ''));
             }).to.throw;
         });
 
-        it('should throw error if there is consts in the bsConsts that are not in the manifest', async () => {
+        it('should throw error if there is consts in the bsConsts that are not in the manifest', () => {
             bsConsts.const4 = true;
             expect(() => {
                 project.updateManifestBsConsts(bsConsts, startingFileContents);
@@ -422,7 +421,7 @@ describe('Project', () => {
             fsExtra.rmdirSync(tempPath);
         });
 
-        async function doTest(fileContents: string, expectedContents: string, fileExt: string = 'brs') {
+        async function doTest(fileContents: string, expectedContents: string, fileExt = 'brs') {
             fsExtra.emptyDirSync(tempPath);
             let folder = s`${tempPath}/findMainFunctionTests/`;
             fsExtra.mkdirSync(folder);
@@ -520,9 +519,9 @@ describe('Project', () => {
         const sourceFilePath = s`${rdbFilesBasePath}/${sourceFileRelativePath}`;
         const componentsFilePath = s`${rdbFilesBasePath}/${componentsFileRelativePath}`;
         before(() => {
-            fsExtra.mkdirSync(path.dirname(sourceFilePath), {recursive: true});
+            fsExtra.mkdirSync(path.dirname(sourceFilePath), { recursive: true });
             fsExtra.writeFileSync(sourceFilePath, `' ${sourceFilePath}`);
-            fsExtra.mkdirSync(path.dirname(componentsFilePath), {recursive: true});
+            fsExtra.mkdirSync(path.dirname(componentsFilePath), { recursive: true });
             fsExtra.writeFileSync(componentsFilePath, `' ${componentsFilePath}`);
         });
         after(() => {
@@ -535,7 +534,7 @@ describe('Project', () => {
             fsExtra.rmdirSync(tempPath);
         });
 
-        async function doTest(fileContents: string, expectedContents: string, fileExt: string = 'brs', injectRdbOnDeviceComponent = true) {
+        async function doTest(fileContents: string, expectedContents: string, fileExt = 'brs', injectRdbOnDeviceComponent = true) {
             fsExtra.emptyDirSync(tempPath);
             let folder = s`${tempPath}/findMainFunctionTests/`;
             fsExtra.mkdirSync(folder);
@@ -656,7 +655,7 @@ describe('ComponentLibraryProject', () => {
 
     describe('computeOutFileName', () => {
         it('properly computes the outFile name', () => {
-            var project = new ComponentLibraryProject(params);
+            let project = new ComponentLibraryProject(params);
             expect(project.outFile).to.equal('PrettyComponent.zip');
             (project as any).computeOutFileName();
             expect(project.outFile).to.equal('PrettyComponent.zip');
@@ -697,6 +696,7 @@ describe('ComponentLibraryProject', () => {
                     ],
                     stagingFolderPath: s`${outDir}/complib1-staging`,
                     libraryIndex: 0,
+                    // eslint-disable-next-line no-template-curly-in-string
                     outFile: '${title}.zip'
                 });
                 await project.stage();

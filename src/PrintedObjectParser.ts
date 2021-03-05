@@ -77,11 +77,9 @@ export class PrintedObjectParser {
         this.takeWhitespace();
 
         //try to get the value. All of these methods will immediately exit if value was already found
-        {
-            this.tryTakeStringValue();
-            this.tryTakeComponentValue();
-            this.tryTakeBasicValue();
-        }
+        this.tryTakeStringValue();
+        this.tryTakeComponentValue();
+        this.tryTakeBasicValue();
 
         //if we found a value, then the remaining characters are the key
         if (this.hasValue()) {

@@ -1,14 +1,11 @@
 import * as net from 'net';
-import { Subscription, ReplaySubject } from 'rxjs';
+import type { Subscription } from 'rxjs';
+import { ReplaySubject } from 'rxjs';
 import { SmartBuffer } from 'smart-buffer';
 import { util } from '../util';
 import * as defer from 'p-defer';
 
 export class MockDebugProtocolServer {
-    constructor(
-    ) {
-    }
-
     /**
      * The net server that will be listening for incoming socket connections from clients
      */
@@ -31,9 +28,9 @@ export class MockDebugProtocolServer {
     private processActionsSubscription: Subscription;
 
     public async initialize() {
-        var clientDeferred = defer<void>();
+        const clientDeferred = defer<void>();
         this.clientLoadedPromise = clientDeferred.promise;
-        new Promise((resolve) => {
+        void new Promise((resolve) => {
             this.server = net.createServer((s) => {
                 this.client = new Client(s);
                 clientDeferred.resolve();
@@ -41,7 +38,7 @@ export class MockDebugProtocolServer {
         });
         this.server.listen(0);
         //wait for the server to start listening
-        await new Promise((resolve) => {
+        await new Promise<void>((resolve) => {
             this.server.on('listening', () => {
                 this.controllerPort = (this.server.address() as net.AddressInfo).port;
                 resolve();
@@ -60,6 +57,7 @@ export class MockDebugProtocolServer {
 
         //listen to all events sent to the client
         console.log('subscription being created');
+        // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.processActionsSubscription = this.client.subject.subscribe(async () => {
             console.log('subscription handler fired');
             //process events until one of them returns false.
@@ -71,13 +69,13 @@ export class MockDebugProtocolServer {
     }
 
     public waitForMagic() {
-        var action = new WaitForMagicAction();
+        const action = new WaitForMagicAction();
         this.actions.push(action);
         return action;
     }
 
-    public sendHandshakeResponse(magic: string | Promise<string>) {
-        var action = new SendHandshakeResponseAction(magic);
+    public sendHandshakeResponse(magic: Promise<string> | string) {
+        const action = new SendHandshakeResponseAction(magic);
         this.actions.push(action);
         return action;
     }
@@ -103,7 +101,7 @@ class Client {
     constructor(
         public socket: net.Socket
     ) {
-        var handler = (data) => {
+        const handler = (data) => {
             this.buffer = Buffer.concat([this.buffer, data]);
             this.subject.next();
         };
@@ -140,36 +138,36 @@ abstract class Action<T> {
 }
 
 class WaitForMagicAction extends Action<string> {
-    public async process(client: Client) {
-        var b = SmartBuffer.fromBuffer(client.buffer);
+    public process(client: Client) {
+        const b = SmartBuffer.fromBuffer(client.buffer);
         try {
-            var str = util.readStringNT(b);
+            const str = util.readStringNT(b);
             this.deferred.resolve(str);
             client.buffer = client.buffer.slice(b.readOffset);
-            return true;
+            return Promise.resolve(true);
         } catch (e) {
             console.error('WaitForMagicAction failed', e);
-            return false;
+            return Promise.resolve(false);
         }
     }
 }
 
 class SendHandshakeResponseAction extends Action<string> {
     constructor(
-        private magic: string | Promise<string>
+        private magic: Promise<string> | string
     ) {
         super();
     }
 
     public async process(client: Client) {
         console.log('processing handshake response');
-        var magic = await Promise.resolve(this.magic);
-        var b = new SmartBuffer();
+        const magic = await Promise.resolve(this.magic);
+        const b = new SmartBuffer();
         b.writeStringNT(magic);
         b.writeInt32LE(2);
         b.writeInt32LE(0);
         b.writeInt32LE(0);
-        var buffer = b.toBuffer();
+        const buffer = b.toBuffer();
 
         client.socket.write(buffer);
         this.deferred.resolve();
