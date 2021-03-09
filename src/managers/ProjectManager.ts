@@ -4,6 +4,9 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
+import * as glob from 'glob';
+import { promisify } from 'util';
+const globAsync = promisify(glob);
 import type { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
@@ -217,6 +220,8 @@ interface AddProjectParams {
     files: Array<FileEntry>;
     injectRaleTrackerTask?: boolean;
     raleTrackerTaskFileLocation?: string;
+    injectRdbOnDeviceComponent?: boolean;
+    rdbFilesBasePath?: string;
     bsConst?: Record<string, boolean>;
     stagingFolderPath?: string;
 }
@@ -236,6 +241,8 @@ export class Project {
             .map(x => fileUtils.standardizePath(x));
         this.injectRaleTrackerTask = params.injectRaleTrackerTask ?? false;
         this.raleTrackerTaskFileLocation = params.raleTrackerTaskFileLocation;
+        this.injectRdbOnDeviceComponent = params.injectRdbOnDeviceComponent ?? false;
+        this.rdbFilesBasePath = params.rdbFilesBasePath;
         this.files = params.files ?? [];
     }
     public rootDir: string;
@@ -247,6 +254,8 @@ export class Project {
     public bsConst: Record<string, boolean>;
     public injectRaleTrackerTask: boolean;
     public raleTrackerTaskFileLocation: string;
+    public injectRdbOnDeviceComponent: boolean;
+    public rdbFilesBasePath: string;
 
     public async stage() {
         let rd = new rokuDeploy.RokuDeploy();
@@ -280,6 +289,8 @@ export class Project {
         await this.transformManifestWithBsConst();
 
         await this.copyAndTransformRaleTrackerTask();
+
+        await this.copyAndTransformRDB();
     }
 
     /**
@@ -385,7 +396,61 @@ export class Project {
                 .map(result => result.file);
 
             if (injectedFiles.length === 0) {
-                console.error('WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' vscode_rale_tracker_entry"');
+                console.error(`WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RALE_TRACKER_ENTRY}"`);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    public static RDB_ODC_NODE_CODE = `if true = CreateObject("roAppInfo").IsDev() then m.vscode_rdb_odc_node = createObject("roSGNode", "RTA_OnDeviceComponent") ' RDB OnDeviceComponent`;
+    public static RDB_ODC_ENTRY = 'vscode_rdb_on_device_component_entry';
+    /**
+     * Search the project files for the RTA_ODC_ENTRY comment and replace it with the code needed to start RTA_OnDeviceComponent which is used by RDB.
+     */
+    public async copyAndTransformRDB() {
+        // inject the on device component into the staging files if we have everything we need
+        if (!this.injectRdbOnDeviceComponent || !this.rdbFilesBasePath) {
+            return;
+        }
+        try {
+            let files = await globAsync(`${this.rdbFilesBasePath}/**/*`, {
+                cwd: './',
+                absolute: false,
+                follow: true
+            });
+            for (let filePathAbsolute of files) {
+                const promises = [];
+                //only include files (i.e. skip directories)
+                if (await util.isFile(filePathAbsolute)) {
+                    const destinationPath = s`${this.stagingFolderPath}${filePathAbsolute.replace(s`${this.rdbFilesBasePath}`, '')}`;
+                    promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
+                }
+                await Promise.all(promises);
+                console.log('RDB OnDeviceComponent successfully injected');
+            }
+
+            // Search for the tracker task entry injection point
+            const replacementResult = await replaceInFile({
+                files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
+                from: new RegExp(`^.*'\\s*${Project.RDB_ODC_ENTRY}.*$`, 'mig'),
+                to: (match) => {
+                    // Strip off the comment
+                    let startOfLine = match.substring(0, match.indexOf(`'`));
+                    if (/[\S]/.exec(startOfLine)) {
+                        // There was some form of code before the tracker entry
+                        // append and use single line syntax
+                        startOfLine += ': ';
+                    }
+                    return `${startOfLine}${Project.RDB_ODC_NODE_CODE}`;
+                }
+            });
+            const injectedFiles = replacementResult
+                .filter(result => result.hasChanged)
+                .map(result => result.file);
+
+            if (injectedFiles.length === 0) {
+                console.error(`WARNING: Unable to find an entry point for RDB.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RDB_ODC_ENTRY}"`);
             }
         } catch (err) {
             console.error(err);
@@ -420,13 +485,13 @@ export class Project {
     }
 }
 
-export interface ComponentLibraryConstrutorParams extends AddProjectParams {
+export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
 }
 
 export class ComponentLibraryProject extends Project {
-    constructor(params: ComponentLibraryConstrutorParams) {
+    constructor(params: ComponentLibraryConstructorParams) {
         super(params);
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;

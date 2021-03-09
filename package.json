@@ -4,7 +4,7 @@
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
-        "build": "rimraf out && tsc",
+        "build": "rimraf dist && tsc",
         "preversion": "npm run build && npm run lint && npm run test",
         "lint": "eslint \"src/**\"",
         "test": "nyc mocha \"src/**/*spec.ts\" --full-trace",

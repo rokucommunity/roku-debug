@@ -1,10 +1,11 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
+import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
 import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
-import type { ComponentLibraryConstrutorParams } from './ProjectManager';
-import { Project, ComponentLibraryProject, ProjectManager, componentLibraryPostfix } from './ProjectManager';
+import type { ComponentLibraryConstructorParams } from './ProjectManager';
+import { Project, ComponentLibraryProject, ProjectManager } from './ProjectManager';
 import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
@@ -13,7 +14,7 @@ let sinon = sinonActual.createSandbox();
 let n = fileUtils.standardizePath.bind(fileUtils);
 
 let cwd = fileUtils.standardizePath(process.cwd());
-let tempPath = s`${cwd}/temp`;
+let tempPath = s`${cwd}/.tmp`;
 let rootDir = s`${tempPath}/rootDir`;
 let outDir = s`${tempPath}/outDir`;
 let stagingFolderPath = s`${outDir}/stagingDir`;
@@ -280,19 +281,21 @@ describe('ProjectManager', () => {
 
 describe('Project', () => {
     let project: Project;
+    const rdbFilesBasePath = 'rdbSource';
     beforeEach(() => {
         sinon.stub(console, 'log').callsFake((...args) => { });
         sinon.stub(console, 'error').callsFake((...args) => { });
         project = new Project({
             rootDir: cwd,
-            outDir: s`${cwd}/out`,
+            outDir: outDir,
             files: ['a'],
             bsConst: { b: true },
             injectRaleTrackerTask: true,
+            injectRdbOnDeviceComponent: true,
+            rdbFilesBasePath: rdbFilesBasePath,
             sourceDirs: [s`${cwd}/source1`],
-            stagingFolderPath: s`${cwd}/staging`,
+            stagingFolderPath: stagingFolderPath,
             raleTrackerTaskFileLocation: 'z'
-
         });
     });
 
@@ -301,23 +304,25 @@ describe('Project', () => {
         expect(project.files).to.eql(['a']);
         expect(project.bsConst).to.eql({ b: true });
         expect(project.injectRaleTrackerTask).to.equal(true);
-        expect(project.outDir).to.eql(s`${cwd}/out`);
+        expect(project.outDir).to.eql(outDir);
         expect(project.sourceDirs).to.eql([s`${cwd}/source1`]);
-        expect(project.stagingFolderPath).to.eql(s`${cwd}/staging`);
+        expect(project.stagingFolderPath).to.eql(stagingFolderPath);
         expect(project.raleTrackerTaskFileLocation).to.eql('z');
+        expect(project.injectRdbOnDeviceComponent).to.equal(true);
+        expect(project.rdbFilesBasePath).to.eql(rdbFilesBasePath);
     });
 
     describe('stage', () => {
         afterEach(() => {
             try {
-                fsExtra.removeSync(`${cwd}/.tmp`);
+                fsExtra.removeSync(tempPath);
             } catch (e) { }
         });
         it('actually stages the project', async () => {
             project.raleTrackerTaskFileLocation = undefined;
-            project.rootDir = s`${cwd}/.tmp/rootDir`;
-            project.outDir = s`${cwd}/.tmp/out`;
-            project.stagingFolderPath = s`${cwd}/.tmp/staging`;
+            project.rootDir = rootDir;
+            project.outDir = outDir;
+            project.stagingFolderPath = stagingFolderPath;
             fsExtra.ensureDirSync(project.rootDir);
             fsExtra.ensureDirSync(project.outDir);
             fsExtra.ensureDirSync(project.stagingFolderPath);
@@ -327,7 +332,7 @@ describe('Project', () => {
                 'manifest'
             ];
             await project.stage();
-            expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/manifest`)).to.be.true;
+            expect(fsExtra.pathExistsSync(`${stagingFolderPath}/manifest`)).to.be.true;
         });
     });
 
@@ -403,7 +408,6 @@ describe('Project', () => {
     });
 
     describe('copyAndTransformRaleTrackerTask', () => {
-        let tempPath = s`${cwd}/tmp`;
         let raleTrackerTaskFileLocation = s`${cwd}/TrackerTask.xml`;
         before(() => {
             fsExtra.writeFileSync(raleTrackerTaskFileLocation, `<!--dummy contents-->`);
@@ -508,10 +512,132 @@ describe('Project', () => {
             await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true\n             '        ${Project.RALE_TRACKER_ENTRY}      \n        end sub`), expectedXml, 'xml');
         });
     });
+
+    describe('copyAndTransformRDB', () => {
+        const sourceFileRelativePath = 'source/sourceFile.brs';
+        const componentsFileRelativePath = 'components/componentFile.brs';
+        const sourceFilePath = s`${rdbFilesBasePath}/${sourceFileRelativePath}`;
+        const componentsFilePath = s`${rdbFilesBasePath}/${componentsFileRelativePath}`;
+        before(() => {
+            fsExtra.mkdirSync(path.dirname(sourceFilePath), { recursive: true });
+            fsExtra.writeFileSync(sourceFilePath, `' ${sourceFilePath}`);
+            fsExtra.mkdirSync(path.dirname(componentsFilePath), { recursive: true });
+            fsExtra.writeFileSync(componentsFilePath, `' ${componentsFilePath}`);
+        });
+        after(() => {
+            fsExtra.removeSync(tempPath);
+            fsExtra.emptyDirSync(rdbFilesBasePath);
+            fsExtra.rmdirSync(rdbFilesBasePath);
+        });
+        afterEach(() => {
+            fsExtra.emptyDirSync(tempPath);
+            fsExtra.rmdirSync(tempPath);
+        });
+
+        async function doTest(fileContents: string, expectedContents: string, fileExt = 'brs', injectRdbOnDeviceComponent = true) {
+            fsExtra.emptyDirSync(tempPath);
+            let folder = s`${tempPath}/findMainFunctionTests/`;
+            fsExtra.mkdirSync(folder);
+
+            let filePath = s`${folder}/main.${fileExt}`;
+
+            fsExtra.writeFileSync(filePath, fileContents);
+            project.stagingFolderPath = folder;
+            project.injectRdbOnDeviceComponent = injectRdbOnDeviceComponent;
+            project.rdbFilesBasePath = rdbFilesBasePath;
+            await project.copyAndTransformRDB();
+            let newFileContents = (await fsExtra.readFile(filePath)).toString();
+            expect(newFileContents).to.equal(expectedContents);
+        }
+
+        it('copies the RDB files', async () => {
+            fsExtra.ensureDirSync(tempPath);
+            await doTest(`sub main()\nend sub`, `sub main()\nend sub`);
+            expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/${sourceFileRelativePath}`), `${sourceFileRelativePath} was not copied to staging`).to.be.true;
+            expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/${componentsFileRelativePath}`), `${componentsFileRelativePath} was not copied to staging`).to.be.true;
+        });
+
+        it('works for inline comments brs files', async () => {
+            let brsSample = `\nsub main()\n  screen.show  <ENTRY>\nend sub`;
+            let expectedBrs = brsSample.replace('<ENTRY>', `: ${Project.RDB_ODC_NODE_CODE}`);
+
+            await doTest(brsSample.replace('<ENTRY>', `\' ${Project.RDB_ODC_ENTRY}`), expectedBrs);
+            await doTest(brsSample.replace('<ENTRY>', `\'${Project.RDB_ODC_ENTRY}`), expectedBrs);
+            //works with extra spacing
+            await doTest(brsSample.replace('<ENTRY>', `\'         ${Project.RDB_ODC_ENTRY}                 `), expectedBrs);
+        });
+
+        // it('does not copy files or inject code if turned off', async () => {
+        //     fsExtra.ensureDirSync(tempPath);
+
+        //     let brsSample = `\nsub main()\n  screen.show\n  ' ${Project.RDB_ODC_ENTRY}\nend sub`;
+        //     project.injectRdbOnDeviceComponent = false
+        //     await doTest(brsSample, brsSample, 'brs', false);
+        //     expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/${sourceFileRelativePath}`), `${sourceFileRelativePath} should not have been copied to staging`).to.be.false;
+        //     expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/${componentsFileRelativePath}`), `${componentsFileRelativePath} should not have been copied to staging`).to.be.false;
+        // });
+
+        it('works for in line comments in xml files', async () => {
+            let xmlSample = `<?rokuml version="1.0" encoding="utf-8" ?>
+            <!--********** Copyright COMPANY All Rights Reserved. **********-->
+
+            <component name="TrackerTask" extends="Task">
+              <interface>
+                  <field id="sample" type="string"/>
+                  <function name="sampleFunction"/>
+              </interface>
+                <script type = "text/brightscript" >
+                <![CDATA[
+                    <ENTRY>
+                ]]>
+                </script>
+            </component>`;
+            let expectedXml = xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true : ${Project.RDB_ODC_NODE_CODE}\n        end sub`);
+
+            await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true ' ${Project.RDB_ODC_ENTRY}\n        end sub`), expectedXml, 'xml');
+            await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true '${Project.RDB_ODC_ENTRY}\n        end sub`), expectedXml, 'xml');
+            //works with extra spacing
+            await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true '        ${Project.RDB_ODC_ENTRY}      \n        end sub`), expectedXml, 'xml');
+        });
+
+        it('works for stand alone comments in brs files', async () => {
+            let brsSample = `\nsub main()\n  screen.show\n  <ENTRY>\nend sub`;
+            let expectedBrs = brsSample.replace('<ENTRY>', Project.RDB_ODC_NODE_CODE);
+
+            await doTest(brsSample.replace('<ENTRY>', `\' ${Project.RDB_ODC_ENTRY}`), expectedBrs);
+            await doTest(brsSample.replace('<ENTRY>', `\'${Project.RDB_ODC_ENTRY}`), expectedBrs);
+            //works with extra spacing
+            await doTest(brsSample.replace('<ENTRY>', `\'         ${Project.RDB_ODC_ENTRY}                 `), expectedBrs);
+        });
+
+        it('works for stand alone comments in xml files', async () => {
+            let xmlSample = `<?rokuml version="1.0" encoding="utf-8" ?>
+            <!--********** Copyright COMPANY All Rights Reserved. **********-->
+
+            <component name="TrackerTask" extends="Task">
+              <interface>
+                  <field id="sample" type="string"/>
+                  <function name="sampleFunction"/>
+              </interface>
+                <script type = "text/brightscript" >
+                <![CDATA[
+                    <ENTRY>
+                ]]>
+                </script>
+            </component>`;
+
+            let expectedXml = xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true\n             ${Project.RDB_ODC_NODE_CODE}\n        end sub`);
+
+            await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true\n             ' ${Project.RDB_ODC_ENTRY}\n        end sub`), expectedXml, 'xml');
+            await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true\n             '${Project.RDB_ODC_ENTRY}\n        end sub`), expectedXml, 'xml');
+            //works with extra spacing
+            await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true\n             '        ${Project.RDB_ODC_ENTRY}      \n        end sub`), expectedXml, 'xml');
+        });
+    });
 });
 
 describe('ComponentLibraryProject', () => {
-    let params: ComponentLibraryConstrutorParams;
+    let params: ComponentLibraryConstructorParams;
     beforeEach(() => {
         params = {
             rootDir: rootDir,

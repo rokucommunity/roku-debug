@@ -321,6 +321,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             bsConst: this.launchConfiguration.bsConst,
             injectRaleTrackerTask: this.launchConfiguration.injectRaleTrackerTask,
             raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation,
+            injectRdbOnDeviceComponent: this.launchConfiguration.injectRdbOnDeviceComponent,
+            rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
             stagingFolderPath: this.launchConfiguration.stagingFolderPath
         });
 

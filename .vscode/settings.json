@@ -1,5 +1,8 @@
 {
   "files.trimTrailingWhitespace": false,
+  "[markdown]": {
+    "files.trimTrailingWhitespace": false
+},
   "files.exclude": {
     "**/.git": true,
     "**/.svn": true,
@@ -19,6 +22,5 @@
   "editor.insertSpaces": true,
   "editor.detectIndentation": false,
   "editor.tabSize": 4,
-  "typescript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": false,
-  "tslint.autoFixOnSave": true
+  "typescript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": false
 }
