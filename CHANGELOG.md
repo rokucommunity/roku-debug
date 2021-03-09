@@ -6,7 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-### [0.5.10] - 2021-02-16
+## [0.6.0] - 2021-03-09
+### Added
+ - rdb integration ([#25](https://github.com/rokucommunity/roku-debug/pull/25))
+
+
+
+## [0.5.10] - 2021-02-16
 ### Fixed
  - stack trace for brighterscript class methods appearing as `anon`
 
@@ -126,19 +132,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[0.3.4]:  https://github.com/RokuCommunity/roku-debug/compare/v0.1.0...v0.3.4
-[0.3.5]:  https://github.com/RokuCommunity/roku-debug/compare/v0.3.4...v0.3.5
-[0.3.6]:  https://github.com/RokuCommunity/roku-debug/compare/v0.3.5...v0.3.6
-[0.3.7]:  https://github.com/RokuCommunity/roku-debug/compare/v0.3.6...v0.3.7
-[0.4.0]:  https://github.com/RokuCommunity/roku-debug/compare/v0.3.7...v0.4.0
-[0.5.0]:  https://github.com/RokuCommunity/roku-debug/compare/v0.4.0...v0.5.0
-[0.5.1]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.0...v0.5.1
-[0.5.2]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.1...v0.5.2
-[0.5.3]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.2...v0.5.3
-[0.5.4]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.3...v0.5.4
-[0.5.5]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.4...v0.5.5
-[0.5.6]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.5...v0.5.6
-[0.5.7]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.6...v0.5.7
-[0.5.8]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.7...v0.5.8
-[0.5.9]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.8...v0.5.9
+[0.3.4]:   https://github.com/RokuCommunity/roku-debug/compare/v0.1.0...v0.3.4
+[0.3.5]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.4...v0.3.5
+[0.3.6]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.5...v0.3.6
+[0.3.7]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.6...v0.3.7
+[0.4.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.7...v0.4.0
+[0.5.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.4.0...v0.5.0
+[0.5.1]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.0...v0.5.1
+[0.5.2]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.1...v0.5.2
+[0.5.3]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.2...v0.5.3
+[0.5.4]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.3...v0.5.4
+[0.5.5]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.4...v0.5.5
+[0.5.6]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.5...v0.5.6
+[0.5.7]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.6...v0.5.7
+[0.5.8]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.7...v0.5.8
+[0.5.9]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.8...v0.5.9
 [0.5.10]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.9...v0.5.10
+[0.6.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.10...v0.6.0
