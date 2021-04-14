@@ -51,7 +51,7 @@ export class ChanperfTracker {
      * @param logLine
      * @returns The debug output after parsing
      */
-    public async processLogLine(logLine: string): Promise<string> {
+    public processLogLine(logLine: string): string {
         let dataChanged = false;
         let lines = logLine.split('\n');
         let normalOutput = '';
@@ -62,21 +62,21 @@ export class ChanperfTracker {
             if (match) {
                 let [fullMatch, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = match;
 
-                this.chanperfHistory.totalMemKib = parseInt(totalMemKib)
-                this.chanperfHistory.anonMemKib = parseInt(anonMemKib)
-                this.chanperfHistory.fileMemKib = parseInt(fileMemKib)
-                this.chanperfHistory.sharedMemKib = parseInt(sharedMemKib)
-                this.chanperfHistory.totalCpuUsage = parseInt(totalCpuUsage)
-                this.chanperfHistory.userCpuUsage = parseInt(userCpuUsage)
-                this.chanperfHistory.sysCpuUsage = parseInt(sysCpuUsage)
+                this.chanperfHistory.totalMemKib = parseInt(totalMemKib);
+                this.chanperfHistory.anonMemKib = parseInt(anonMemKib);
+                this.chanperfHistory.fileMemKib = parseInt(fileMemKib);
+                this.chanperfHistory.sharedMemKib = parseInt(sharedMemKib);
+                this.chanperfHistory.totalCpuUsage = parseInt(totalCpuUsage);
+                this.chanperfHistory.userCpuUsage = parseInt(userCpuUsage);
+                this.chanperfHistory.sysCpuUsage = parseInt(sysCpuUsage);
 
-                this.chanperfHistory.dataSet.totalMemKib.push(parseInt(totalMemKib))
-                this.chanperfHistory.dataSet.anonMemKib.push(parseInt(anonMemKib))
-                this.chanperfHistory.dataSet.fileMemKib.push(parseInt(fileMemKib))
-                this.chanperfHistory.dataSet.sharedMemKib.push(parseInt(sharedMemKib))
-                this.chanperfHistory.dataSet.totalCpuUsage.push(parseInt(totalCpuUsage))
-                this.chanperfHistory.dataSet.userCpuUsage.push(parseInt(userCpuUsage))
-                this.chanperfHistory.dataSet.sysCpuUsage.push(parseInt(sysCpuUsage))
+                this.chanperfHistory.dataSet.totalMemKib.push(parseInt(totalMemKib));
+                this.chanperfHistory.dataSet.anonMemKib.push(parseInt(anonMemKib));
+                this.chanperfHistory.dataSet.fileMemKib.push(parseInt(fileMemKib));
+                this.chanperfHistory.dataSet.sharedMemKib.push(parseInt(sharedMemKib));
+                this.chanperfHistory.dataSet.totalCpuUsage.push(parseInt(totalCpuUsage));
+                this.chanperfHistory.dataSet.userCpuUsage.push(parseInt(userCpuUsage));
+                this.chanperfHistory.dataSet.sysCpuUsage.push(parseInt(sysCpuUsage));
 
                 if (!this.filterOutLogs) {
                     normalOutput += line + '\n';

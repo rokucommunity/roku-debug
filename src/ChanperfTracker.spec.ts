@@ -1,8 +1,9 @@
 import * as sinon from 'sinon';
 import { assert, expect } from 'chai';
-import { ChanperfHistory, ChanperfTracker } from './ChanperfTracker';
+import type { ChanperfHistory } from './ChanperfTracker';
+import { ChanperfTracker } from './ChanperfTracker';
 
-describe.only('BrightScriptFileUtils ', () => {
+describe('BrightScriptFileUtils ', () => {
     let chanperfTracker: ChanperfTracker;
     let chanperfTrackerMock;
     let logString: string;
