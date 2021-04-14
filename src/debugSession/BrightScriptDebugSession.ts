@@ -32,7 +32,8 @@ import {
     LogOutputEvent,
     RendezvousEvent,
     CompileFailureEvent,
-    StoppedEventReason
+    StoppedEventReason,
+    ChanperfEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -179,6 +180,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     this.sendEvent(new LogOutputEvent(data));
                 });
             }
+
+            // Send rendezvous events to the extension
+            this.rokuAdapter.on('chanperf-event', (output) => {
+                this.sendEvent(new ChanperfEvent(output));
+            });
 
             // Send rendezvous events to the extension
             this.rokuAdapter.on('rendezvous-event', (output) => {

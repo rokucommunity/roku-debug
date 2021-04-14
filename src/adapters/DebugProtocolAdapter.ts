@@ -8,6 +8,7 @@ import { defer } from '../debugSession/BrightScriptDebugSession';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
+import type { ChanperfHistory } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
@@ -24,6 +25,11 @@ export class DebugProtocolAdapter {
         this.chanperfTracker = new ChanperfTracker();
         this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
+
+        // watch for chanperf events
+        this.chanperfTracker.on('chanperf-event', (output) => {
+            this.emit('chanperf-event', output);
+        });
 
         // watch for rendezvous events
         this.rendezvousTracker.on('rendezvous-event', (output) => {
@@ -52,6 +58,7 @@ export class DebugProtocolAdapter {
      * @param handler
      */
     public on(eventName: 'cannot-continue', handler: () => void);
+    public on(eventname: 'chanperf-event', handler: (output: ChanperfHistory) => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
     public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
@@ -77,6 +84,7 @@ export class DebugProtocolAdapter {
         eventName:
             'app-exit' |
             'cannot-continue' |
+            'chanperf-event' |
             'close' |
             'compile-errors' |
             'connected' |
