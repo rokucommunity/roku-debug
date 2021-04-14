@@ -348,28 +348,28 @@ describe('BrightScriptFileUtils ', () => {
     });
 
     describe('processLogLine ', () => {
-        it('filters out all chanperf log lines', async () => {
+        it('filters out all chanperf log lines', () => {
             chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
-            assert.equal(await chanperfTracker.processLogLine(logString), expected);
+            assert.equal(chanperfTracker.processLogLine(logString), expected);
             assert.deepEqual(chanperfTracker.getChanperfHistory, expectedHistory);
             chanperfTrackerMock.verify();
         });
 
-        it('does not filter out chanperf log lines', async () => {
+        it('does not filter out chanperf log lines', () => {
             chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
             chanperfTracker.setConsoleOutput('full');
-            assert.equal(await chanperfTracker.processLogLine(logString), logString);
+            assert.equal(chanperfTracker.processLogLine(logString), logString);
             assert.deepEqual(chanperfTracker.getChanperfHistory, expectedHistory);
             chanperfTrackerMock.verify();
         });
     });
 
     describe('clearChanperfHistory', () => {
-        it('to reset the history data', async () => {
+        it('to reset the history data', () => {
             chanperfTrackerMock.expects('emit').withArgs('chanperf-event').twice();
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
-            assert.equal(await chanperfTracker.processLogLine(logString), expected);
+            assert.equal(chanperfTracker.processLogLine(logString), expected);
             assert.deepEqual(chanperfTracker.getChanperfHistory, expectedHistory);
 
             chanperfTracker.clearChanperfHistory();
