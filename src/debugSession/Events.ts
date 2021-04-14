@@ -1,7 +1,7 @@
 import type { DebugProtocol } from 'vscode-debugprotocol';
 import type { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
-import type { ChanperfHistory } from '../ChanPerfTracker';
+import type { ChanperfHistory } from '../ChanperfTracker';
 import type { RendezvousHistory } from '../RendezvousTracker';
 
 export class CompileFailureEvent implements DebugProtocol.Event {

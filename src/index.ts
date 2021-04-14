@@ -12,6 +12,6 @@ export * from './debugProtocol/responses';
 export * from './FileUtils';
 export * from './managers/ProjectManager';
 export * from './RendezvousTracker';
-export * from './ChanPerfTracker';
+export * from './ChanperfTracker';
 export * from './adapters/TelnetAdapter';
 export * from './managers/LocationManager';
