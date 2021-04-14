@@ -181,7 +181,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             }
 
-            // Send rendezvous events to the extension
+            // Send chanperf events to the extension
             this.rokuAdapter.on('chanperf-event', (output) => {
                 this.sendEvent(new ChanperfEvent(output));
             });
