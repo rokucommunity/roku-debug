@@ -57,11 +57,12 @@ export class ChanperfTracker {
         let normalOutput = '';
 
         for (let line of lines) {
-            let match = /channel: *mem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
+            let infoAvailableMatch = /channel: *mem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/AuQOxY/1
-            if (match) {
-                let [fullMatch, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = match;
+            if (infoAvailableMatch) {
+                let [fullMatch, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = infoAvailableMatch;
 
+                this.chanperfHistory.missingInfoMessage = null;
                 this.chanperfHistory.totalMemKib = parseInt(totalMemKib);
                 this.chanperfHistory.anonMemKib = parseInt(anonMemKib);
                 this.chanperfHistory.fileMemKib = parseInt(fileMemKib);
@@ -82,9 +83,22 @@ export class ChanperfTracker {
                     normalOutput += line + '\n';
                 }
                 dataChanged = true;
-            } else if (line) {
-                normalOutput += line + '\n';
+            } else {
+                // see the following for an explanation for this regex: https://regex101.com/r/Nwqd5e/1/
+                let noInfoAvailableMatch = /channel: *(mem *and *cpu *data *not *available)/gim.exec(line);
+
+                if (noInfoAvailableMatch) {
+                    this.chanperfHistory.missingInfoMessage = noInfoAvailableMatch[1];
+
+                    if (!this.filterOutLogs) {
+                        normalOutput += line + '\n';
+                    }
+                    dataChanged = true;
+                } else if (line) {
+                    normalOutput += line + '\n';
+                }
             }
+
         }
 
         if (dataChanged) {
@@ -120,6 +134,7 @@ export class ChanperfTracker {
 }
 
 export interface ChanperfHistory {
+    missingInfoMessage?: string;
     totalMemKib: number;
     anonMemKib: number;
     fileMemKib: number;

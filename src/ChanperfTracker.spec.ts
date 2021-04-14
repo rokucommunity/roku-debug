@@ -57,6 +57,7 @@ describe('BrightScriptFileUtils ', () => {
         `.replace(/ {4}/g, '');
 
         expectedHistory = {
+            missingInfoMessage: null,
             totalMemKib: 71676,
             anonMemKib: 46324,
             fileMemKib: 25104,
@@ -356,11 +357,64 @@ describe('BrightScriptFileUtils ', () => {
             chanperfTrackerMock.verify();
         });
 
+        it('filters out all not available chanperf log lines', () => {
+            chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
+            let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
+            assert.equal(chanperfTracker.processLogLine(`channel: Start\nStarting data processing\nchannel: mem and cpu data not available\nData processing completed\n`), expected);
+            assert.deepEqual(chanperfTracker.getChanperfHistory, {
+                missingInfoMessage: 'mem and cpu data not available',
+                totalMemKib: 0,
+                anonMemKib: 0,
+                fileMemKib: 0,
+                sharedMemKib: 0,
+                totalCpuUsage: 0,
+                userCpuUsage: 0,
+                sysCpuUsage: 0,
+                dataSet: {
+                    totalMemKib: [],
+                    anonMemKib: [],
+                    fileMemKib: [],
+                    sharedMemKib: [],
+                    totalCpuUsage: [],
+                    userCpuUsage: [],
+                    sysCpuUsage: []
+                }
+            });
+            chanperfTrackerMock.verify();
+        });
+
         it('does not filter out chanperf log lines', () => {
             chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
             chanperfTracker.setConsoleOutput('full');
             assert.equal(chanperfTracker.processLogLine(logString), logString);
             assert.deepEqual(chanperfTracker.getChanperfHistory, expectedHistory);
+            chanperfTrackerMock.verify();
+        });
+
+        it('does not filter out the not available chanperf log lines', () => {
+            chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
+            let expected = `channel: Start\nStarting data processing\nchannel: mem and cpu data not available\nData processing completed\n`;
+            chanperfTracker.setConsoleOutput('full');
+            assert.equal(chanperfTracker.processLogLine(expected), expected);
+            assert.deepEqual(chanperfTracker.getChanperfHistory, {
+                missingInfoMessage: 'mem and cpu data not available',
+                totalMemKib: 0,
+                anonMemKib: 0,
+                fileMemKib: 0,
+                sharedMemKib: 0,
+                totalCpuUsage: 0,
+                userCpuUsage: 0,
+                sysCpuUsage: 0,
+                dataSet: {
+                    totalMemKib: [],
+                    anonMemKib: [],
+                    fileMemKib: [],
+                    sharedMemKib: [],
+                    totalCpuUsage: [],
+                    userCpuUsage: [],
+                    sysCpuUsage: []
+                }
+            });
             chanperfTrackerMock.verify();
         });
     });
