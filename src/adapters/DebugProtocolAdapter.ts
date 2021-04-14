@@ -8,6 +8,7 @@ import { defer } from '../debugSession/BrightScriptDebugSession';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
+import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 
@@ -20,6 +21,7 @@ export class DebugProtocolAdapter {
         private stopOnEntry: boolean = false
     ) {
         this.emitter = new EventEmitter();
+        this.chanperfTracker = new ChanperfTracker();
         this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
 
@@ -34,6 +36,7 @@ export class DebugProtocolAdapter {
     private compileClient: Socket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
+    private chanperfTracker: ChanperfTracker;
     private rendezvousTracker: RendezvousTracker;
     private socketDebugger: Debugger;
     private nextFrameId = 1;
@@ -176,6 +179,7 @@ export class DebugProtocolAdapter {
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.socketDebugger.on('io-output', async (responseText) => {
                 if (responseText) {
+                    responseText = this.chanperfTracker.processLogLine(responseText);
                     responseText = await this.rendezvousTracker.processLogLine(responseText);
                     this.emit('unhandled-console-output', responseText);
                 }
@@ -575,18 +579,26 @@ export class DebugProtocolAdapter {
     }
 
     /**
-     * Passes the log level down to the RendezvousTracker
+     * Passes the log level down to the RendezvousTracker and ChanperfTracker
      * @param outputLevel the consoleOutput from the launch config
      */
     public setConsoleOutput(outputLevel: string) {
+        this.chanperfTracker.setConsoleOutput(outputLevel);
         this.rendezvousTracker.setConsoleOutput(outputLevel);
     }
 
     /**
-     * Sends a call you the RendezvousTracker to clear the current rendezvous history
+     * Sends a call to the RendezvousTracker to clear the current rendezvous history
      */
     public clearRendezvousHistory() {
         this.rendezvousTracker.clearRendezvousHistory();
+    }
+
+    /**
+     * Sends a call to the ChanperfTracker to clear the current chanperf history
+     */
+    public clearChanperfHistory() {
+        this.chanperfTracker.clearChanperfHistory();
     }
     // #endregion
 }

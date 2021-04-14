@@ -10,6 +10,7 @@ import { PrintedObjectParser } from '../PrintedObjectParser';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
+import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { util } from '../util';
 
@@ -24,6 +25,7 @@ export class TelnetAdapter {
         this.emitter = new EventEmitter();
         this.debugStartRegex = /BrightScript Micro Debugger\./ig;
         this.debugEndRegex = /Brightscript Debugger>/ig;
+        this.chanperfTracker = new ChanperfTracker();
         this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
 
@@ -42,6 +44,7 @@ export class TelnetAdapter {
     private isInMicroDebugger: boolean;
     private debugStartRegex: RegExp;
     private debugEndRegex: RegExp;
+    private chanperfTracker: ChanperfTracker;
     private rendezvousTracker: RendezvousTracker;
 
     private cache = {};
@@ -239,6 +242,7 @@ export class TelnetAdapter {
                 //if there was a runtime error, handle it
                 let hasRuntimeError = this.checkForRuntimeError(responseText);
 
+                responseText = this.chanperfTracker.processLogLine(responseText);
                 responseText = await this.rendezvousTracker.processLogLine(responseText);
                 //forward all unhandled console output
                 this.processBreakpoints(responseText);
@@ -1003,18 +1007,26 @@ export class TelnetAdapter {
     }
 
     /**
-     * Passes the log level down to the RendezvousTracker
+     * Passes the log level down to the RendezvousTracker and ChanperfTracker
      * @param outputLevel the consoleOutput from the launch config
      */
     public setConsoleOutput(outputLevel: string) {
+        this.chanperfTracker.setConsoleOutput(outputLevel);
         this.rendezvousTracker.setConsoleOutput(outputLevel);
     }
 
     /**
-     * Sends a call you the RendezvousTracker to clear the current rendezvous history
+     * Sends a call to the RendezvousTracker to clear the current rendezvous history
      */
     public clearRendezvousHistory() {
         this.rendezvousTracker.clearRendezvousHistory();
+    }
+
+    /**
+     * Sends a call to the ChanperfTracker to clear the current chanperf history
+     */
+    public clearChanperfHistory() {
+        this.chanperfTracker.clearChanperfHistory();
     }
     // #endregion
 }

@@ -162,7 +162,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
             });
 
-            //pass the log level down thought the adapter to the RendezvousTracker
+            //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
 
             //pass along the console output
@@ -353,6 +353,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected customRequest(command: string) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
+        }
+
+        if (command === 'chanperf.clearHistory') {
+            this.rokuAdapter.clearChanperfHistory();
         }
     }
 
