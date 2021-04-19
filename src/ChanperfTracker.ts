@@ -34,7 +34,7 @@ export class ChanperfTracker {
      * @param outputLevel the consoleOutput from the launch config
      */
     public setConsoleOutput(outputLevel: string) {
-        this.filterOutLogs = !(outputLevel === 'full');
+        this.filterOutLogs = (outputLevel !== 'full');
     }
 
     /**
@@ -55,29 +55,40 @@ export class ChanperfTracker {
         let dataChanged = false;
         let lines = logLine.split('\n');
         let normalOutput = '';
+        let chanperfHistory: ChanperfHistory;
 
         for (let line of lines) {
-            let infoAvailableMatch = /channel: *mem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
+            let infoAvailableMatch = /channel:\smem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/AuQOxY/1
             if (infoAvailableMatch) {
                 let [fullMatch, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = infoAvailableMatch;
+                if (chanperfHistory === undefined) {
+                    chanperfHistory = this.createNewChanperfHistory();
+                }
 
-                this.chanperfHistory.missingInfoMessage = null;
-                this.chanperfHistory.totalMemKib = parseInt(totalMemKib);
-                this.chanperfHistory.anonMemKib = parseInt(anonMemKib);
-                this.chanperfHistory.fileMemKib = parseInt(fileMemKib);
-                this.chanperfHistory.sharedMemKib = parseInt(sharedMemKib);
-                this.chanperfHistory.totalCpuUsage = parseInt(totalCpuUsage) > 100 ? 100 : parseInt(totalCpuUsage);
-                this.chanperfHistory.userCpuUsage = parseInt(userCpuUsage) > 100 ? 100 : parseInt(userCpuUsage);
-                this.chanperfHistory.sysCpuUsage = parseInt(sysCpuUsage) > 100 ? 100 : parseInt(sysCpuUsage);
+                chanperfHistory.missingInfoMessage = null;
 
-                this.chanperfHistory.dataSet.totalMemKib.push(parseInt(totalMemKib));
-                this.chanperfHistory.dataSet.anonMemKib.push(parseInt(anonMemKib));
-                this.chanperfHistory.dataSet.fileMemKib.push(parseInt(fileMemKib));
-                this.chanperfHistory.dataSet.sharedMemKib.push(parseInt(sharedMemKib));
-                this.chanperfHistory.dataSet.totalCpuUsage.push(parseInt(totalCpuUsage) > 100 ? 100 : parseInt(totalCpuUsage));
-                this.chanperfHistory.dataSet.userCpuUsage.push(parseInt(userCpuUsage) > 100 ? 100 : parseInt(userCpuUsage));
-                this.chanperfHistory.dataSet.sysCpuUsage.push(parseInt(sysCpuUsage) > 100 ? 100 : parseInt(sysCpuUsage));
+                chanperfHistory.memory = {
+                    total: parseInt(totalMemKib),
+                    anonymous: parseInt(anonMemKib),
+                    file: parseInt(fileMemKib),
+                    shared: parseInt(sharedMemKib)
+                };
+
+                chanperfHistory.memoryEvents.total.push(chanperfHistory.memory.total);
+                chanperfHistory.memoryEvents.anonymous.push(chanperfHistory.memory.anonymous);
+                chanperfHistory.memoryEvents.file.push(chanperfHistory.memory.file);
+                chanperfHistory.memoryEvents.shared.push(chanperfHistory.memory.shared);
+
+                chanperfHistory.cpu = {
+                    total: Math.min(parseInt(totalCpuUsage), 100),
+                    user: Math.min(parseInt(userCpuUsage), 100),
+                    system: Math.min(parseInt(sysCpuUsage), 100)
+                };
+
+                chanperfHistory.cpuEvents.total.push(chanperfHistory.cpu.total);
+                chanperfHistory.cpuEvents.user.push(chanperfHistory.cpu.user);
+                chanperfHistory.cpuEvents.system.push(chanperfHistory.cpu.system);
 
                 if (!this.filterOutLogs) {
                     normalOutput += line + '\n';
@@ -85,10 +96,11 @@ export class ChanperfTracker {
                 dataChanged = true;
             } else {
                 // see the following for an explanation for this regex: https://regex101.com/r/Nwqd5e/1/
-                let noInfoAvailableMatch = /channel: *(mem *and *cpu *data *not *available)/gim.exec(line);
+                let noInfoAvailableMatch = /channel:\s(mem\sand\scpu\sdata\snot\savailable)/gim.exec(line);
 
                 if (noInfoAvailableMatch) {
-                    this.chanperfHistory.missingInfoMessage = noInfoAvailableMatch[1];
+                    chanperfHistory = this.createNewChanperfHistory();
+                    chanperfHistory.missingInfoMessage = noInfoAvailableMatch[1];
 
                     if (!this.filterOutLogs) {
                         normalOutput += line + '\n';
@@ -102,7 +114,8 @@ export class ChanperfTracker {
         }
 
         if (dataChanged) {
-            this.emit('chanperf-event', this.chanperfHistory);
+            this.chanperfHistory = chanperfHistory;
+            this.emit('chanperf-event', chanperfHistory);
         }
 
         return normalOutput;
@@ -113,21 +126,27 @@ export class ChanperfTracker {
      */
     private createNewChanperfHistory(): ChanperfHistory {
         return {
-            totalMemKib: 0,
-            anonMemKib: 0,
-            fileMemKib: 0,
-            sharedMemKib: 0,
-            totalCpuUsage: 0,
-            userCpuUsage: 0,
-            sysCpuUsage: 0,
-            dataSet: {
-                totalMemKib: [],
-                anonMemKib: [],
-                fileMemKib: [],
-                sharedMemKib: [],
-                totalCpuUsage: [],
-                userCpuUsage: [],
-                sysCpuUsage: []
+            memory: {
+                total: 0,
+                anonymous: 0,
+                file: 0,
+                shared: 0
+            },
+            memoryEvents: {
+                total: [],
+                anonymous: [],
+                file: [],
+                shared: []
+            },
+            cpu: {
+                total: 0,
+                user: 0,
+                system: 0
+            },
+            cpuEvents: {
+                total: [],
+                user: [],
+                system: []
             }
         };
     }
@@ -135,22 +154,27 @@ export class ChanperfTracker {
 
 export interface ChanperfHistory {
     missingInfoMessage?: string;
-    totalMemKib: number;
-    anonMemKib: number;
-    fileMemKib: number;
-    sharedMemKib: number;
-    totalCpuUsage: number;
-    userCpuUsage: number;
-    sysCpuUsage: number;
-    dataSet: ChanperfDataSet;
+    memory: {
+        total: number;
+        anonymous: number;
+        file: number;
+        shared: number;
+    };
+    memoryEvents: {
+        total: Array<number>;
+        anonymous: Array<number>;
+        file: Array<number>;
+        shared: Array<number>;
+    };
+    cpu: {
+        total: number;
+        user: number;
+        system: number;
+    };
+    cpuEvents: {
+        total: Array<number>;
+        user: Array<number>;
+        system: Array<number>;
+    };
 }
 
-interface ChanperfDataSet {
-    totalMemKib: Array<number>;
-    anonMemKib: Array<number>;
-    fileMemKib: Array<number>;
-    sharedMemKib: Array<number>;
-    totalCpuUsage: Array<number>;
-    userCpuUsage: Array<number>;
-    sysCpuUsage: Array<number>;
-}

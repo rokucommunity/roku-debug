@@ -58,15 +58,14 @@ describe('BrightScriptFileUtils ', () => {
 
         expectedHistory = {
             missingInfoMessage: null,
-            totalMemKib: 71676,
-            anonMemKib: 46324,
-            fileMemKib: 25104,
-            sharedMemKib: 248,
-            totalCpuUsage: 3,
-            userCpuUsage: 2,
-            sysCpuUsage: 1,
-            dataSet: {
-                totalMemKib: [
+            memory: {
+                total: 71676,
+                anonymous: 46324,
+                file: 25104,
+                shared: 248
+            },
+            memoryEvents: {
+                total: [
                     61560,
                     65992,
                     71836,
@@ -105,7 +104,7 @@ describe('BrightScriptFileUtils ', () => {
                     71228,
                     71676
                 ],
-                anonMemKib: [
+                anonymous: [
                     36428,
                     40852,
                     46696,
@@ -144,7 +143,7 @@ describe('BrightScriptFileUtils ', () => {
                     46068,
                     46324
                 ],
-                fileMemKib: [
+                file: [
                     24884,
                     24892,
                     24892,
@@ -183,7 +182,7 @@ describe('BrightScriptFileUtils ', () => {
                     24916,
                     25104
                 ],
-                sharedMemKib: [
+                shared: [
                     248,
                     248,
                     248,
@@ -221,8 +220,15 @@ describe('BrightScriptFileUtils ', () => {
                     248,
                     244,
                     248
-                ],
-                totalCpuUsage: [
+                ]
+            },
+            cpu: {
+                total: 3,
+                user: 2,
+                system: 1
+            },
+            cpuEvents: {
+                total: [
                     13,
                     21,
                     30,
@@ -261,7 +267,7 @@ describe('BrightScriptFileUtils ', () => {
                     3,
                     3
                 ],
-                userCpuUsage: [
+                user: [
                     10,
                     19,
                     25,
@@ -300,7 +306,7 @@ describe('BrightScriptFileUtils ', () => {
                     3,
                     2
                 ],
-                sysCpuUsage: [
+                system: [
                     3,
                     2,
                     4,
@@ -363,21 +369,27 @@ describe('BrightScriptFileUtils ', () => {
             assert.equal(chanperfTracker.processLogLine(`channel: Start\nStarting data processing\nchannel: mem and cpu data not available\nData processing completed\n`), expected);
             assert.deepEqual(chanperfTracker.getChanperfHistory, {
                 missingInfoMessage: 'mem and cpu data not available',
-                totalMemKib: 0,
-                anonMemKib: 0,
-                fileMemKib: 0,
-                sharedMemKib: 0,
-                totalCpuUsage: 0,
-                userCpuUsage: 0,
-                sysCpuUsage: 0,
-                dataSet: {
-                    totalMemKib: [],
-                    anonMemKib: [],
-                    fileMemKib: [],
-                    sharedMemKib: [],
-                    totalCpuUsage: [],
-                    userCpuUsage: [],
-                    sysCpuUsage: []
+                memory: {
+                    total: 0,
+                    anonymous: 0,
+                    file: 0,
+                    shared: 0
+                },
+                memoryEvents: {
+                    total: [],
+                    anonymous: [],
+                    file: [],
+                    shared: []
+                },
+                cpu: {
+                    total: 0,
+                    user: 0,
+                    system: 0
+                },
+                cpuEvents: {
+                    total: [],
+                    user: [],
+                    system: []
                 }
             });
             chanperfTrackerMock.verify();
@@ -398,21 +410,27 @@ describe('BrightScriptFileUtils ', () => {
             assert.equal(chanperfTracker.processLogLine(expected), expected);
             assert.deepEqual(chanperfTracker.getChanperfHistory, {
                 missingInfoMessage: 'mem and cpu data not available',
-                totalMemKib: 0,
-                anonMemKib: 0,
-                fileMemKib: 0,
-                sharedMemKib: 0,
-                totalCpuUsage: 0,
-                userCpuUsage: 0,
-                sysCpuUsage: 0,
-                dataSet: {
-                    totalMemKib: [],
-                    anonMemKib: [],
-                    fileMemKib: [],
-                    sharedMemKib: [],
-                    totalCpuUsage: [],
-                    userCpuUsage: [],
-                    sysCpuUsage: []
+                memory: {
+                    total: 0,
+                    anonymous: 0,
+                    file: 0,
+                    shared: 0
+                },
+                memoryEvents: {
+                    total: [],
+                    anonymous: [],
+                    file: [],
+                    shared: []
+                },
+                cpu: {
+                    total: 0,
+                    user: 0,
+                    system: 0
+                },
+                cpuEvents: {
+                    total: [],
+                    user: [],
+                    system: []
                 }
             });
             chanperfTrackerMock.verify();
@@ -429,21 +447,27 @@ describe('BrightScriptFileUtils ', () => {
             chanperfTracker.clearChanperfHistory();
 
             assert.deepEqual(chanperfTracker.getChanperfHistory, {
-                totalMemKib: 0,
-                anonMemKib: 0,
-                fileMemKib: 0,
-                sharedMemKib: 0,
-                totalCpuUsage: 0,
-                userCpuUsage: 0,
-                sysCpuUsage: 0,
-                dataSet: {
-                    totalMemKib: [],
-                    anonMemKib: [],
-                    fileMemKib: [],
-                    sharedMemKib: [],
-                    totalCpuUsage: [],
-                    userCpuUsage: [],
-                    sysCpuUsage: []
+                memory: {
+                    total: 0,
+                    anonymous: 0,
+                    file: 0,
+                    shared: 0
+                },
+                memoryEvents: {
+                    total: [],
+                    anonymous: [],
+                    file: [],
+                    shared: []
+                },
+                cpu: {
+                    total: 0,
+                    user: 0,
+                    system: 0
+                },
+                cpuEvents: {
+                    total: [],
+                    user: [],
+                    system: []
                 }
             });
             chanperfTrackerMock.verify();
