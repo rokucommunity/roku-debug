@@ -4,14 +4,14 @@ export class ChanperfTracker {
     constructor() {
         this.emitter = new EventEmitter();
         this.filterOutLogs = true;
-        this.chanperfHistory = this.createNewChanperfHistory();
+        this.chanperfHistory = [];
     }
 
     private emitter: EventEmitter;
     private filterOutLogs: boolean;
-    private chanperfHistory: ChanperfHistory;
+    private chanperfHistory: Array<ChanperfEventData>;
 
-    public on(eventname: 'chanperf-event', handler: (output: ChanperfHistory) => void);
+    public on(eventname: 'chanperf-event', handler: (output: ChanperfEventData) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -21,11 +21,11 @@ export class ChanperfTracker {
         };
     }
 
-    private emit(eventName: 'chanperf-event', data?) {
+    private emit(eventName: 'chanperf-event', data: ChanperfEventData) {
         this.emitter.emit(eventName, data);
     }
 
-    public get getChanperfHistory(): ChanperfHistory {
+    public get getChanperfHistory(): Array<ChanperfEventData> {
         return this.chanperfHistory;
     }
 
@@ -41,8 +41,8 @@ export class ChanperfTracker {
      * Clears the current chanperf history
      */
     public clearChanperfHistory() {
-        this.chanperfHistory = this.createNewChanperfHistory();
-        this.emit('chanperf-event', this.chanperfHistory);
+        this.chanperfHistory = [];
+        this.emit('chanperf-event', this.chanperfHistory[0]);
     }
 
     /**
@@ -55,30 +55,22 @@ export class ChanperfTracker {
         let dataChanged = false;
         let lines = logLine.split('\n');
         let normalOutput = '';
-        let chanperfHistory: ChanperfHistory;
+        let chanperfHistory: ChanperfEventData;
 
         for (let line of lines) {
             let infoAvailableMatch = /channel:\smem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/AuQOxY/1
             if (infoAvailableMatch) {
                 let [fullMatch, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = infoAvailableMatch;
-                if (chanperfHistory === undefined) {
-                    chanperfHistory = this.createNewChanperfHistory();
-                }
-
-                chanperfHistory.missingInfoMessage = null;
+                chanperfHistory = this.createNewChanperfHistory();
+                chanperfHistory.error = null;
 
                 chanperfHistory.memory = {
-                    total: parseInt(totalMemKib),
-                    anonymous: parseInt(anonMemKib),
-                    file: parseInt(fileMemKib),
-                    shared: parseInt(sharedMemKib)
+                    total: parseInt(totalMemKib) * 1024,
+                    anonymous: parseInt(anonMemKib) * 1024,
+                    file: parseInt(fileMemKib) * 1024,
+                    shared: parseInt(sharedMemKib) * 1024
                 };
-
-                chanperfHistory.memoryEvents.total.push(chanperfHistory.memory.total);
-                chanperfHistory.memoryEvents.anonymous.push(chanperfHistory.memory.anonymous);
-                chanperfHistory.memoryEvents.file.push(chanperfHistory.memory.file);
-                chanperfHistory.memoryEvents.shared.push(chanperfHistory.memory.shared);
 
                 chanperfHistory.cpu = {
                     total: Math.min(parseInt(totalCpuUsage), 100),
@@ -86,26 +78,24 @@ export class ChanperfTracker {
                     system: Math.min(parseInt(sysCpuUsage), 100)
                 };
 
-                chanperfHistory.cpuEvents.total.push(chanperfHistory.cpu.total);
-                chanperfHistory.cpuEvents.user.push(chanperfHistory.cpu.user);
-                chanperfHistory.cpuEvents.system.push(chanperfHistory.cpu.system);
-
                 if (!this.filterOutLogs) {
                     normalOutput += line + '\n';
                 }
-                dataChanged = true;
+                this.emit('chanperf-event', chanperfHistory);
+                this.chanperfHistory.push(chanperfHistory);
             } else {
                 // see the following for an explanation for this regex: https://regex101.com/r/Nwqd5e/1/
                 let noInfoAvailableMatch = /channel:\s(mem\sand\scpu\sdata\snot\savailable)/gim.exec(line);
 
                 if (noInfoAvailableMatch) {
                     chanperfHistory = this.createNewChanperfHistory();
-                    chanperfHistory.missingInfoMessage = noInfoAvailableMatch[1];
+                    chanperfHistory.error = { message: noInfoAvailableMatch[1] };
 
                     if (!this.filterOutLogs) {
                         normalOutput += line + '\n';
                     }
-                    dataChanged = true;
+                    this.emit('chanperf-event', chanperfHistory);
+                    this.chanperfHistory.push(chanperfHistory);
                 } else if (line) {
                     normalOutput += line + '\n';
                 }
@@ -113,18 +103,13 @@ export class ChanperfTracker {
 
         }
 
-        if (dataChanged) {
-            this.chanperfHistory = chanperfHistory;
-            this.emit('chanperf-event', chanperfHistory);
-        }
-
         return normalOutput;
     }
 
     /**
-     * Helper function used to create a new ChanperfHistory object with default values
+     * Helper function used to create a new ChanperfEventData object with default values
      */
-    private createNewChanperfHistory(): ChanperfHistory {
+    private createNewChanperfHistory(): ChanperfEventData {
         return {
             memory: {
                 total: 0,
@@ -132,49 +117,29 @@ export class ChanperfTracker {
                 file: 0,
                 shared: 0
             },
-            memoryEvents: {
-                total: [],
-                anonymous: [],
-                file: [],
-                shared: []
-            },
             cpu: {
                 total: 0,
                 user: 0,
                 system: 0
-            },
-            cpuEvents: {
-                total: [],
-                user: [],
-                system: []
             }
         };
     }
 }
 
-export interface ChanperfHistory {
-    missingInfoMessage?: string;
+export interface ChanperfEventData {
+    error?: {
+        message: string;
+    };
     memory: {
         total: number;
         anonymous: number;
         file: number;
         shared: number;
     };
-    memoryEvents: {
-        total: Array<number>;
-        anonymous: Array<number>;
-        file: Array<number>;
-        shared: Array<number>;
-    };
     cpu: {
         total: number;
         user: number;
         system: number;
-    };
-    cpuEvents: {
-        total: Array<number>;
-        user: Array<number>;
-        system: Array<number>;
     };
 }
 

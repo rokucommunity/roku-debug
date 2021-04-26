@@ -1,17 +1,18 @@
 import * as sinon from 'sinon';
 import { assert, expect } from 'chai';
-import type { ChanperfHistory } from './ChanperfTracker';
+import type { ChanperfEventData } from './ChanperfTracker';
 import { ChanperfTracker } from './ChanperfTracker';
 
 describe('BrightScriptFileUtils ', () => {
     let chanperfTracker: ChanperfTracker;
-    let chanperfTrackerMock;
     let logString: string;
-    let expectedHistory: ChanperfHistory;
+    let expectedHistory: Array<ChanperfEventData>;
+    let expectedNoDataHistory: Array<ChanperfEventData>;
+    let emitStub: sinon.SinonStub;
 
     beforeEach(() => {
         chanperfTracker = new ChanperfTracker();
-        chanperfTrackerMock = sinon.mock(chanperfTracker);
+        emitStub = sinon.stub(chanperfTracker as any, 'emit');
 
         // regex and examples also available at: https://regex101.com/r/AuQOxY/1
         logString = `channel: Start
@@ -56,421 +57,123 @@ describe('BrightScriptFileUtils ', () => {
             channel: mem=71676KiB{anon=46324,file=25104,shared=248},%cpu=3{user=2,sys=1}
         `.replace(/ {4}/g, '');
 
-        expectedHistory = {
-            missingInfoMessage: null,
+
+        expectedHistory = [
+            { error: null, memory: { total: 61560, anonymous: 36428, file: 24884, shared: 248 }, cpu: { total: 13, user: 10, system: 3 } },
+            { error: null, memory: { total: 65992, anonymous: 40852, file: 24892, shared: 248 }, cpu: { total: 21, user: 19, system: 2 } },
+            { error: null, memory: { total: 71836, anonymous: 46696, file: 24892, shared: 248 }, cpu: { total: 30, user: 25, system: 4 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 2, user: 2, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71060, anonymous: 45916, file: 24896, shared: 248 }, cpu: { total: 10, user: 8, system: 2 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24896, shared: 244 }, cpu: { total: 4, user: 2, system: 2 } },
+            { error: null, memory: { total: 71060, anonymous: 45920, file: 24896, shared: 244 }, cpu: { total: 12, user: 11, system: 1 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 20, user: 17, system: 3 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71232, anonymous: 46068, file: 24916, shared: 248 }, cpu: { total: 1, user: 1, system: 0 } },
+            { error: null, memory: { total: 71228, anonymous: 46068, file: 24916, shared: 244 }, cpu: { total: 3, user: 3, system: 0 } },
+            { error: null, memory: { total: 71676, anonymous: 46324, file: 25104, shared: 248 }, cpu: { total: 3, user: 2, system: 1 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71232, anonymous: 46068, file: 24916, shared: 248 }, cpu: { total: 1, user: 1, system: 0 } },
+            { error: null, memory: { total: 71228, anonymous: 46068, file: 24916, shared: 244 }, cpu: { total: 3, user: 3, system: 0 } },
+            { error: null, memory: { total: 71676, anonymous: 46324, file: 25104, shared: 248 }, cpu: { total: 3, user: 2, system: 1 } }
+        ];
+
+        // Convert everything to bytes
+        for (let chanperfEvent of expectedHistory) {
+            chanperfEvent.memory.total *= 1024;
+            chanperfEvent.memory.anonymous *= 1024;
+            chanperfEvent.memory.file *= 1024;
+            chanperfEvent.memory.shared *= 1024;
+        }
+
+        expectedNoDataHistory = [{
+            error: { message: 'mem and cpu data not available' },
             memory: {
-                total: 71676,
-                anonymous: 46324,
-                file: 25104,
-                shared: 248
-            },
-            memoryEvents: {
-                total: [
-                    61560,
-                    65992,
-                    71836,
-                    71056,
-                    71056,
-                    71056,
-                    71056,
-                    71056,
-                    71056,
-                    71056,
-                    71056,
-                    71060,
-                    71056,
-                    71060,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71232,
-                    71228,
-                    71676,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71220,
-                    71232,
-                    71228,
-                    71676
-                ],
-                anonymous: [
-                    36428,
-                    40852,
-                    46696,
-                    45916,
-                    45916,
-                    45916,
-                    45916,
-                    45916,
-                    45916,
-                    45916,
-                    45916,
-                    45916,
-                    45916,
-                    45920,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46324,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46068,
-                    46324
-                ],
-                file: [
-                    24884,
-                    24892,
-                    24892,
-                    24892,
-                    24892,
-                    24892,
-                    24892,
-                    24892,
-                    24892,
-                    24892,
-                    24892,
-                    24896,
-                    24896,
-                    24896,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24916,
-                    24916,
-                    25104,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24904,
-                    24916,
-                    24916,
-                    25104
-                ],
-                shared: [
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    244,
-                    244,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    244,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    248,
-                    244,
-                    248
-                ]
+                total: 0,
+                anonymous: 0,
+                file: 0,
+                shared: 0
             },
             cpu: {
-                total: 3,
-                user: 2,
-                system: 1
-            },
-            cpuEvents: {
-                total: [
-                    13,
-                    21,
-                    30,
-                    2,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    10,
-                    4,
-                    12,
-                    20,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    1,
-                    3,
-                    3,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    1,
-                    3,
-                    3
-                ],
-                user: [
-                    10,
-                    19,
-                    25,
-                    2,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    8,
-                    2,
-                    11,
-                    17,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    1,
-                    3,
-                    2,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    1,
-                    3,
-                    2
-                ],
-                system: [
-                    3,
-                    2,
-                    4,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    2,
-                    2,
-                    1,
-                    3,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    1
-                ]
+                total: 0,
+                user: 0,
+                system: 0
             }
-        };
-
+        }];
     });
 
     afterEach(() => {
-        chanperfTrackerMock.restore();
+        emitStub.restore();
     });
 
     describe('processLogLine ', () => {
         it('filters out all chanperf log lines', () => {
-            chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
             assert.equal(chanperfTracker.processLogLine(logString), expected);
-            assert.deepEqual(chanperfTracker.getChanperfHistory, expectedHistory);
-            chanperfTrackerMock.verify();
+            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => x.args[1]);
+            expect(history).to.eql(expectedHistory);
+            expect(chanperfTracker.getChanperfHistory).to.eql(expectedHistory);
         });
 
         it('filters out all not available chanperf log lines', () => {
-            chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
             assert.equal(chanperfTracker.processLogLine(`channel: Start\nStarting data processing\nchannel: mem and cpu data not available\nData processing completed\n`), expected);
-            assert.deepEqual(chanperfTracker.getChanperfHistory, {
-                missingInfoMessage: 'mem and cpu data not available',
-                memory: {
-                    total: 0,
-                    anonymous: 0,
-                    file: 0,
-                    shared: 0
-                },
-                memoryEvents: {
-                    total: [],
-                    anonymous: [],
-                    file: [],
-                    shared: []
-                },
-                cpu: {
-                    total: 0,
-                    user: 0,
-                    system: 0
-                },
-                cpuEvents: {
-                    total: [],
-                    user: [],
-                    system: []
-                }
-            });
-            chanperfTrackerMock.verify();
+            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => x.args[1]);
+            expect(history).to.eql(expectedNoDataHistory);
+            expect(chanperfTracker.getChanperfHistory).to.eql(expectedNoDataHistory);
         });
 
         it('does not filter out chanperf log lines', () => {
-            chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
             chanperfTracker.setConsoleOutput('full');
             assert.equal(chanperfTracker.processLogLine(logString), logString);
-            assert.deepEqual(chanperfTracker.getChanperfHistory, expectedHistory);
-            chanperfTrackerMock.verify();
+            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => {
+                return x.args[1];
+            });
+            expect(history).to.eql(expectedHistory);
+            expect(chanperfTracker.getChanperfHistory).to.eql(expectedHistory);
         });
 
         it('does not filter out the not available chanperf log lines', () => {
-            chanperfTrackerMock.expects('emit').withArgs('chanperf-event').once();
             let expected = `channel: Start\nStarting data processing\nchannel: mem and cpu data not available\nData processing completed\n`;
             chanperfTracker.setConsoleOutput('full');
             assert.equal(chanperfTracker.processLogLine(expected), expected);
-            assert.deepEqual(chanperfTracker.getChanperfHistory, {
-                missingInfoMessage: 'mem and cpu data not available',
-                memory: {
-                    total: 0,
-                    anonymous: 0,
-                    file: 0,
-                    shared: 0
-                },
-                memoryEvents: {
-                    total: [],
-                    anonymous: [],
-                    file: [],
-                    shared: []
-                },
-                cpu: {
-                    total: 0,
-                    user: 0,
-                    system: 0
-                },
-                cpuEvents: {
-                    total: [],
-                    user: [],
-                    system: []
-                }
-            });
-            chanperfTrackerMock.verify();
+            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => x.args[1]);
+            expect(history).to.eql(expectedNoDataHistory);
+            expect(chanperfTracker.getChanperfHistory).to.eql(expectedNoDataHistory);
         });
     });
 
     describe('clearChanperfHistory', () => {
         it('to reset the history data', () => {
-            chanperfTrackerMock.expects('emit').withArgs('chanperf-event').twice();
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
             assert.equal(chanperfTracker.processLogLine(logString), expected);
-            assert.deepEqual(chanperfTracker.getChanperfHistory, expectedHistory);
+            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => x.args[1]);
+            expect(history).to.eql(expectedHistory);
+            expect(chanperfTracker.getChanperfHistory).to.eql(expectedHistory);
 
+            // Reset the old history
             chanperfTracker.clearChanperfHistory();
-
-            assert.deepEqual(chanperfTracker.getChanperfHistory, {
-                memory: {
-                    total: 0,
-                    anonymous: 0,
-                    file: 0,
-                    shared: 0
-                },
-                memoryEvents: {
-                    total: [],
-                    anonymous: [],
-                    file: [],
-                    shared: []
-                },
-                cpu: {
-                    total: 0,
-                    user: 0,
-                    system: 0
-                },
-                cpuEvents: {
-                    total: [],
-                    user: [],
-                    system: []
-                }
-            });
-            chanperfTrackerMock.verify();
+            assert.deepEqual(chanperfTracker.getChanperfHistory, []);
         });
     });
 });
