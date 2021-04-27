@@ -3,17 +3,19 @@ import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
-import { FileEntry, RokuDeploy } from 'roku-deploy';
-
-import { BreakpointManager } from './BreakpointManager';
-import { fileUtils } from '../FileUtils';
-import { LocationManager, SourceLocation } from './LocationManager';
-import { standardizePath as s } from '../FileUtils';
+import type { FileEntry } from 'roku-deploy';
+import * as glob from 'glob';
+import { promisify } from 'util';
+const globAsync = promisify(glob);
+import type { BreakpointManager } from './BreakpointManager';
+import { fileUtils, standardizePath as s } from '../FileUtils';
+import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
-// tslint:disable-next-line:no-var-requires Had to add the import as a require do to issues using this module with normal imports
-let replaceInFile = require('replace-in-file');
 
-export const componentLibraryPostfix: string = '__lib';
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+const replaceInFile = require('replace-in-file');
+
+export const componentLibraryPostfix = '__lib';
 
 /**
  * Manages the collection of brightscript projects being used in a debug session.
@@ -75,6 +77,7 @@ export class ProjectManager {
              * but we need to compensate for the actual code line. So if there's a breakpoint
              * on this line, handle the next line's mapping as well (and skip one iteration of the loop)
              */
+            // eslint-disable-next-line @typescript-eslint/no-loop-func
             let breakpointForLine = breakpoints.find(x => x.line === sourceLineNumber);
             if (breakpointForLine) {
                 sourceLineByDebuggerLine[loopDebuggerLineNumber + 1] = sourceLineNumber;
@@ -103,7 +106,7 @@ export class ProjectManager {
             stagingFileInfo.relativePath = project.removeFileNamePostfix(stagingFileInfo.relativePath);
         }
 
-        var sourceLocation = await this.locationManager.getSourceLocation({
+        let sourceLocation = await this.locationManager.getSourceLocation({
             lineNumber: debuggerLineNumber,
             columnIndex: 0,
             fileMappings: project.fileMappings,
@@ -156,7 +159,7 @@ export class ProjectManager {
         let lowerStagingFilePath = stagingFilePath.toLowerCase();
         let projects = [this.mainProject, ...this.componentLibraryProjects];
         for (let project of projects) {
-            if (lowerStagingFilePath.indexOf(project.stagingFolderPath.toLowerCase()) === 0) {
+            if (lowerStagingFilePath.startsWith(project.stagingFolderPath.toLowerCase())) {
                 return project;
             }
         }
@@ -217,7 +220,9 @@ interface AddProjectParams {
     files: Array<FileEntry>;
     injectRaleTrackerTask?: boolean;
     raleTrackerTaskFileLocation?: string;
-    bsConst?: { [key: string]: boolean };
+    injectRdbOnDeviceComponent?: boolean;
+    rdbFilesBasePath?: string;
+    bsConst?: Record<string, boolean>;
     stagingFolderPath?: string;
 }
 
@@ -236,6 +241,8 @@ export class Project {
             .map(x => fileUtils.standardizePath(x));
         this.injectRaleTrackerTask = params.injectRaleTrackerTask ?? false;
         this.raleTrackerTaskFileLocation = params.raleTrackerTaskFileLocation;
+        this.injectRdbOnDeviceComponent = params.injectRdbOnDeviceComponent ?? false;
+        this.rdbFilesBasePath = params.rdbFilesBasePath;
         this.files = params.files ?? [];
     }
     public rootDir: string;
@@ -243,19 +250,21 @@ export class Project {
     public sourceDirs: string[];
     public files: Array<FileEntry>;
     public stagingFolderPath: string;
-    public fileMappings: Array<{ src: string; dest: string; }>;
-    public bsConst: { [key: string]: boolean };
+    public fileMappings: Array<{ src: string; dest: string }>;
+    public bsConst: Record<string, boolean>;
     public injectRaleTrackerTask: boolean;
     public raleTrackerTaskFileLocation: string;
+    public injectRdbOnDeviceComponent: boolean;
+    public rdbFilesBasePath: string;
 
     public async stage() {
-        var rokuDeploy = new RokuDeploy();
+        let rd = new rokuDeploy.RokuDeploy();
         if (!this.fileMappings) {
             this.fileMappings = await this.getFileMappings();
         }
 
         //override the getFilePaths function so rokuDeploy doesn't run it again during prepublishToStaging
-        (rokuDeploy as any).getFilePaths = () => {
+        (rd as any).getFilePaths = () => {
             let relativeFileMappings = [];
             for (let fileMapping of this.fileMappings) {
                 relativeFileMappings.push({
@@ -267,11 +276,11 @@ export class Project {
         };
 
         //copy all project files to the staging folder
-        await rokuDeploy.prepublishToStaging({
+        await rd.prepublishToStaging({
             rootDir: this.rootDir,
             stagingFolderPath: this.stagingFolderPath,
             files: this.files,
-            outDir: this.outDir,
+            outDir: this.outDir
         });
 
         //preload the original location of every file
@@ -280,6 +289,8 @@ export class Project {
         await this.transformManifestWithBsConst();
 
         await this.copyAndTransformRaleTrackerTask();
+
+        await this.copyAndTransformRDB();
     }
 
     /**
@@ -312,7 +323,7 @@ export class Project {
         }
     }
 
-    public updateManifestBsConsts(consts: { [key: string]: boolean }, fileContents: string): string {
+    public updateManifestBsConsts(consts: Record<string, boolean>, fileContents: string): string {
         let bsConstLine;
         let missingConsts: string[] = [];
         let lines = eol.split(fileContents);
@@ -330,8 +341,8 @@ export class Project {
         if (bsConstLine) {
             // update the consts in the manifest and check for missing consts
             missingConsts = Object.keys(consts).reduce((results, key) => {
-                let match;
-                if (match = new RegExp('(' + key + '\\s*=\\s*[true|false]+[^\\S\\r\\n]*\)', 'i').exec(bsConstLine)) {
+                let match = new RegExp('(' + key + '\\s*=\\s*[true|false]+[^\\S\\r\\n]*\)', 'i').exec(bsConstLine);
+                if (match) {
                     newLine = newLine.replace(match[1], `${key}=${consts[key].toString()}`);
                 } else {
                     results.push(key);
@@ -385,7 +396,61 @@ export class Project {
                 .map(result => result.file);
 
             if (injectedFiles.length === 0) {
-                console.error('WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' vscode_rale_tracker_entry"');
+                console.error(`WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RALE_TRACKER_ENTRY}"`);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    public static RDB_ODC_NODE_CODE = `if true = CreateObject("roAppInfo").IsDev() then m.vscode_rdb_odc_node = createObject("roSGNode", "RTA_OnDeviceComponent") ' RDB OnDeviceComponent`;
+    public static RDB_ODC_ENTRY = 'vscode_rdb_on_device_component_entry';
+    /**
+     * Search the project files for the RTA_ODC_ENTRY comment and replace it with the code needed to start RTA_OnDeviceComponent which is used by RDB.
+     */
+    public async copyAndTransformRDB() {
+        // inject the on device component into the staging files if we have everything we need
+        if (!this.injectRdbOnDeviceComponent || !this.rdbFilesBasePath) {
+            return;
+        }
+        try {
+            let files = await globAsync(`${this.rdbFilesBasePath}/**/*`, {
+                cwd: './',
+                absolute: false,
+                follow: true
+            });
+            for (let filePathAbsolute of files) {
+                const promises = [];
+                //only include files (i.e. skip directories)
+                if (await util.isFile(filePathAbsolute)) {
+                    const destinationPath = s`${this.stagingFolderPath}${filePathAbsolute.replace(s`${this.rdbFilesBasePath}`, '')}`;
+                    promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
+                }
+                await Promise.all(promises);
+                console.log('RDB OnDeviceComponent successfully injected');
+            }
+
+            // Search for the tracker task entry injection point
+            const replacementResult = await replaceInFile({
+                files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
+                from: new RegExp(`^.*'\\s*${Project.RDB_ODC_ENTRY}.*$`, 'mig'),
+                to: (match) => {
+                    // Strip off the comment
+                    let startOfLine = match.substring(0, match.indexOf(`'`));
+                    if (/[\S]/.exec(startOfLine)) {
+                        // There was some form of code before the tracker entry
+                        // append and use single line syntax
+                        startOfLine += ': ';
+                    }
+                    return `${startOfLine}${Project.RDB_ODC_NODE_CODE}`;
+                }
+            });
+            const injectedFiles = replacementResult
+                .filter(result => result.hasChanged)
+                .map(result => result.file);
+
+            if (injectedFiles.length === 0) {
+                console.error(`WARNING: Unable to find an entry point for RDB.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RDB_ODC_ENTRY}"`);
             }
         } catch (err) {
             console.error(err);
@@ -420,13 +485,13 @@ export class Project {
     }
 }
 
-export interface ComponentLibraryConstrutorParams extends AddProjectParams {
+export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
 }
 
 export class ComponentLibraryProject extends Project {
-    constructor(params: ComponentLibraryConstrutorParams) {
+    constructor(params: ComponentLibraryConstructorParams) {
         super(params);
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
@@ -444,6 +509,7 @@ export class ComponentLibraryProject extends Project {
         let manifestValues;
 
         // search the outFile for replaceable values such as ${title}
+        // eslint-disable-next-line no-cond-assign
         while (renamingMatch = regexp.exec(this.outFile)) {
             if (!manifestValues) {
                 // The first time a value is found we need to get the manifest values
@@ -474,7 +540,7 @@ export class ComponentLibraryProject extends Project {
 
         let expectedManifestDestPath = fileUtils.standardizePath(`${this.stagingFolderPath}/manifest`).toLowerCase();
         //find the file entry with the `dest` value of `${stagingFolderPath}/manifest` (case insensitive)
-        var manifestFileEntry = this.fileMappings.find(x => x.dest.toLowerCase() === expectedManifestDestPath);
+        let manifestFileEntry = this.fileMappings.find(x => x.dest.toLowerCase() === expectedManifestDestPath);
         if (manifestFileEntry) {
             //read the manifest from `src` since nothing has been copied to staging yet
             await this.computeOutFileName(manifestFileEntry.src);
@@ -509,7 +575,7 @@ export class ComponentLibraryProject extends Project {
     }
 
     public async postfixFiles() {
-        let pathDetails: object = {};
+        let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(
                 fileUtils.getRelativePath(this.stagingFolderPath, fileMapping.dest)
@@ -521,7 +587,7 @@ export class ComponentLibraryProject extends Project {
 
                 if (parsedPath.ext === '.brs') {
                     // Create the new file name to be used
-                    let newFileName: string = `${parsedPath.name}${this.postfix}${parsedPath.ext}`;
+                    let newFileName = `${parsedPath.name}${this.postfix}${parsedPath.ext}`;
                     relativePath = path.join(parsedPath.dir, newFileName);
 
                     // Rename the brs files to include the postfix namespacing tag

@@ -1,12 +1,10 @@
-/* tslint:disable:no-unused-expression */
 import { expect } from 'chai';
-
 import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
 import { Server } from 'https';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
-import { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
+import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { DebugSession } from 'vscode-debugadapter';
 
 import {
@@ -14,28 +12,28 @@ import {
     defer
 } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
+import type { EvaluateContainer } from '../adapters/TelnetAdapter';
 import {
-    EvaluateContainer,
     HighLevelType,
     PrimativeType
 } from '../adapters/TelnetAdapter';
 
 let sinon = sinonActual.createSandbox();
-let n = path.normalize;
 let cwd = fileUtils.standardizePath(process.cwd());
 let outDir = fileUtils.standardizePath(`${cwd}/outDir`);
 let stagingFolderPath = fileUtils.standardizePath(`${outDir}/stagingDir`);
 const rootDir = path.normalize(path.dirname(__dirname));
 
-beforeEach(() => {
-    sinon.restore();
-});
+describe('BrightScriptDebugSession', () => {
+    beforeEach(() => {
+        sinon.restore();
+    });
 
-afterEach(() => {
-    fsExtra.remove(outDir);
-});
+    afterEach(() => {
+        fsExtra.removeSync(outDir);
+        sinon.restore();
+    });
 
-describe('Debugger', () => {
     let session: BrightScriptDebugSession;
     //session of type any so we can do private-ish things
     let s: any;
@@ -46,8 +44,8 @@ describe('Debugger', () => {
         },
         activate: () => Promise.resolve(),
         exitActiveBrightscriptDebugger: () => Promise.resolve(),
-        registerSourceLocator: function(a, b) { },
-        setConsoleOutput: function(a) { }
+        registerSourceLocator: (a, b) => { },
+        setConsoleOutput: (a) => { }
     };
     beforeEach(() => {
         try {
@@ -57,7 +55,7 @@ describe('Debugger', () => {
             console.log(e);
         }
         //override the error response function and throw an exception so we can fail any tests
-        (session as any).sendErrorResponse = function(...args) {
+        (session as any).sendErrorResponse = (...args) => {
             throw new Error(args[2]);
         };
         //mock the rokuDeploy module with promises so we can have predictable tests
@@ -105,7 +103,7 @@ describe('Debugger', () => {
         let responseDeferreds = [];
         let responses = [];
 
-        function getResponse(index: number) {
+        function getResponse<T>(index: number) {
             let deferred = defer();
             (deferred as any).index = index;
             if (responses[index]) {
@@ -114,7 +112,7 @@ describe('Debugger', () => {
                 //do nothing, it will get resolved later
             }
             responseDeferreds.push(deferred);
-            return deferred.promise;
+            return deferred.promise as Promise<T>;
         }
 
         function getBooleanEvaluateContainer(expression: string, name: string = null) {
@@ -140,7 +138,7 @@ describe('Debugger', () => {
 
                 //notify waiting deferreds
                 for (let deferred of responseDeferreds) {
-                    let index = (deferred as any).index;
+                    let index = (deferred).index;
                     if (responses.length - 1 >= index) {
                         deferred.resolve(responses[index]);
                     } else {
@@ -159,8 +157,8 @@ describe('Debugger', () => {
             getVariableValue = getBooleanEvaluateContainer(expression);
             //adapter has to be at prompt for evaluates to work
             rokuAdapter.isAtDebuggerPrompt = true;
-            session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
-            let response = <DebugProtocol.EvaluateResponse>await getResponse(0);
+            void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
+            let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
             assert.deepEqual(response.body, {
                 result: 'true',
                 variablesReference: 0,
@@ -183,8 +181,8 @@ describe('Debugger', () => {
             };
             //adapter has to be at prompt for evaluates to work
             rokuAdapter.isAtDebuggerPrompt = true;
-            session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
-            let response = <DebugProtocol.EvaluateResponse>await getResponse(0);
+            void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
+            let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
             assert.deepEqual(response.body, {
                 result: 'roArray',
                 variablesReference: 1,
@@ -206,8 +204,8 @@ describe('Debugger', () => {
             };
             //adapter has to be at prompt for evaluates to work
             rokuAdapter.isAtDebuggerPrompt = true;
-            session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
-            let response = <DebugProtocol.EvaluateResponse>await getResponse(0);
+            void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
+            let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
             assert.deepEqual(response.body, {
                 result: 'roAssociativeArray',
                 variablesReference: 1,
@@ -229,13 +227,13 @@ describe('Debugger', () => {
             };
             //adapter has to be at prompt for evaluates to work
             rokuAdapter.isAtDebuggerPrompt = true;
-            session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
+            void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
             /*let response = <DebugProtocol.EvaluateResponse>*/
             await getResponse(0);
 
             //get variables
-            session.variablesRequest(<any>{}, { variablesReference: 1 });
-            let childVars = <DebugProtocol.VariablesResponse>await getResponse(1);
+            void session.variablesRequest(<any>{}, { variablesReference: 1 });
+            let childVars = await getResponse<DebugProtocol.VariablesResponse>(1);
             assert.deepEqual(childVars.body.variables, [
                 {
                     name: 'isAlive',
@@ -267,7 +265,7 @@ describe('Debugger', () => {
             let filePath = path.resolve(`${folder}/main.brs`);
 
             //prevent actually talking to the file system...just hardcode the list to exactly our main file
-            (session.rokuDeploy as any).getFilePaths = function() {
+            (session.rokuDeploy as any).getFilePaths = () => {
                 return [{
                     src: filePath,
                     dest: filePath
@@ -414,7 +412,7 @@ describe('Debugger', () => {
 
     describe('shutdown', () => {
         it('erases all staging folders when configured to do so', () => {
-            var stub = sinon.stub(fsExtra, 'removeSync').returns(null);
+            let stub = sinon.stub(fsExtra, 'removeSync').returns(null);
             session.projectManager.mainProject = <any>{
                 stagingFolderPath: 'stagingPathA'
             };

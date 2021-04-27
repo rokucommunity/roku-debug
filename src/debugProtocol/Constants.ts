@@ -1,24 +1,24 @@
 export const enum PROTOCOL_ERROR_CODES {
-  NOT_TESTED,
-  SUPPORTED,
-  NOT_SUPPORTED
+    NOT_TESTED = 0,
+    SUPPORTED = 1,
+    NOT_SUPPORTED = 2
 }
 
 export const enum COMMANDS {
-  STOP = 1,
-  CONTINUE,
-  THREADS,
-  STACKTRACE,
-  VARIABLES,
-  STEP,
-  EXIT_CHANNEL = 122
+    STOP = 1,
+    CONTINUE = 2,
+    THREADS = 3,
+    STACKTRACE = 4,
+    VARIABLES = 5,
+    STEP = 6,
+    EXIT_CHANNEL = 122
 }
 
 export const enum STEP_TYPE {
-  STEP_TYPE_NONE,
-  STEP_TYPE_LINE,
-  STEP_TYPE_OUT,
-  STEP_TYPE_OVER
+    STEP_TYPE_NONE = 0,
+    STEP_TYPE_LINE = 1,
+    STEP_TYPE_OUT = 2,
+    STEP_TYPE_OVER = 3
 }
 
 //#region RESPONSE CONSTS

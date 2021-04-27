@@ -22,9 +22,7 @@ export class Debugger {
         return this.stopped;
     }
 
-    public get supportedVersionRange(): string {
-        return '=2.0.0';
-    }
+    public supportedVersionRange = '=2.0.0';
 
     constructor(
         options: ConstructorOptions
@@ -34,7 +32,7 @@ export class Debugger {
             host: undefined,
             stopOnEntry: false,
             //override the defaults with the options from parameters
-            ...options ?? {},
+            ...options ?? {}
         };
     }
     public static DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
@@ -61,7 +59,7 @@ export class Debugger {
      */
     public once(eventName: string) {
         return new Promise((resolve) => {
-            var disconnect = this.on(<any>eventName, (...args) => {
+            const disconnect = this.on(<any>eventName, (...args) => {
                 disconnect();
                 resolve(...args);
             });
@@ -72,12 +70,12 @@ export class Debugger {
      * Subscribe to various events
      */
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
-    public on(eventName: 'data' | 'suspend' | 'runtime-error', handler: (data: any) => void);
+    public on(eventName: 'data' | 'runtime-error' | 'suspend', handler: (data: any) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
     public on(eventName: 'handshake-verified', handler: (data: HandshakeResponse) => void);
-    // public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
+    // public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
@@ -87,18 +85,20 @@ export class Debugger {
     }
 
     private emit(
+        /* eslint-disable */
         eventName:
             'app-exit' |
             'cannot-continue' |
             'close' |
             'connected' |
             'data' |
+            'handshake-verified' |
             'io-output' |
             'protocol-version' |
             'runtime-error' |
             'start' |
-            'suspend' |
-            'handshake-verified',
+            'suspend',
+        /* eslint-disable */
         data?
     ) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
@@ -237,7 +237,7 @@ export class Debugger {
         return this.stopped && threadIndex > -1 ? this.makeRequest(buffer, COMMANDS.STACKTRACE) : -1;
     }
 
-    public async getVariables(variablePathEntries: Array<string> = [], getChildKeys: boolean = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
+    public async getVariables(variablePathEntries: Array<string> = [], getChildKeys = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
         if (this.stopped && threadIndex > -1) {
             let buffer = new SmartBuffer({ size: 17 });
             buffer.writeUInt8(getChildKeys ? 1 : 0); // variable_request_flags

@@ -13,6 +13,6 @@ describe('SourceMapManager', () => {
         fsExtra.removeSync(tmpPath);
     });
     it('constructs', () => {
-        var mgr = new SourceMapManager();
+        const mgr = new SourceMapManager();
     });
 });

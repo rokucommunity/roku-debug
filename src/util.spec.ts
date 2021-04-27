@@ -1,4 +1,4 @@
-/* tslint:disable:no-unused-expression */
+/* eslint-disable camelcase */
 import * as assert from 'assert';
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
@@ -6,7 +6,8 @@ import * as getPort from 'get-port';
 import * as net from 'net';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
-import { BrightScriptDebugCompileError, GENERAL_XML_ERROR } from './CompileErrorProcessor';
+import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
+import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 
 import { util } from './util';
 let sinon = sinonActual.createSandbox();
@@ -66,25 +67,25 @@ describe('Util', () => {
     });
 
     describe('removeFileScheme', () => {
-        it('should return remove the leading scheme', async () => {
+        it('should return remove the leading scheme', () => {
             assert.equal(util.removeFileScheme('g:/images/channel-poster_hd.png'), '/images/channel-poster_hd.png');
             assert.equal(util.removeFileScheme('pkg:/images/channel-poster_hd.png'), '/images/channel-poster_hd.png');
             assert.equal(util.removeFileScheme('RandomComponentLibraryName:/images/channel-poster_hd.png'), '/images/channel-poster_hd.png');
         });
 
-        it('should should not modify the path when there is no scheme', async () => {
+        it('should should not modify the path when there is no scheme', () => {
             assert.equal(util.removeFileScheme('/images/channel-poster_hd.png'), '/images/channel-poster_hd.png');
             assert.equal(util.removeFileScheme('ages/channel-poster_hd.png'), 'ages/channel-poster_hd.png');
         });
     });
 
     describe('getFileScheme', () => {
-        it('should return the leading scheme', async () => {
+        it('should return the leading scheme', () => {
             assert.equal(util.getFileScheme('pkg:/images/channel-poster_hd.png'), 'pkg:');
             assert.equal(util.getFileScheme('RandomComponentLibraryName:/images/channel-poster_hd.png'), 'randomcomponentlibraryname:');
         });
 
-        it('should should return null when there is no scheme', async () => {
+        it('should should return null when there is no scheme', () => {
             assert.equal(util.getFileScheme('/images/channel-poster_hd.png'), null);
             assert.equal(util.getFileScheme('ages/channel-poster_hd.png'), null);
         });
@@ -92,7 +93,7 @@ describe('Util', () => {
 
     describe('convertManifestToObject', () => {
         let fileContents: string;
-        let expectedManifestObject: { [key: string]: string };
+        let expectedManifestObject: Record<string, string>;
         let folder: string;
         let filePath: string;
 
@@ -119,7 +120,7 @@ describe('Util', () => {
 
                 confirm_partner_button=1
                 bs_const=const=false;const2=true;const3=false
-            `.replace(/    /g, '');
+            `.replace(/ {4}/g, '');
 
             expectedManifestObject = {
                 title: 'HeroGridChannel',
@@ -171,7 +172,9 @@ describe('Util', () => {
             port = await getPort();
             otherServer = await new Promise<net.Server>((resolve, reject) => {
                 const tester = net.createServer()
-                    .once('listening', () => resolve(tester))
+                    .once('listening', () => {
+                        resolve(tester);
+                    })
                     .listen(port);
             });
         });
@@ -184,8 +187,8 @@ describe('Util', () => {
             assert.equal(false, await util.isPortInUse(port + 1));
         });
 
-        afterEach(async () => {
-            await otherServer.close();
+        afterEach(() => {
+            otherServer.close();
         });
     });
 

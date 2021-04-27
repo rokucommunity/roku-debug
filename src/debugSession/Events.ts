@@ -1,7 +1,8 @@
-import { DebugProtocol } from 'vscode-debugprotocol';
-import { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
-import { LaunchConfiguration } from '../LaunchConfiguration';
-import { RendezvousHistory } from '../RendezvousTracker';
+import type { DebugProtocol } from 'vscode-debugprotocol';
+import type { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
+import type { LaunchConfiguration } from '../LaunchConfiguration';
+import type { ChanperfData } from '../ChanperfTracker';
+import type { RendezvousHistory } from '../RendezvousTracker';
 
 export class CompileFailureEvent implements DebugProtocol.Event {
     constructor(compileError: BrightScriptDebugCompileError[]) {
@@ -40,6 +41,18 @@ export class RendezvousEvent implements DebugProtocol.Event {
     }
 
     public body: RendezvousHistory;
+    public event: string;
+    public seq: number;
+    public type: string;
+}
+
+export class ChanperfEvent implements DebugProtocol.Event {
+    constructor(output: ChanperfData) {
+        this.body = output;
+        this.event = 'BSChanperfEvent';
+    }
+
+    public body: ChanperfData;
     public event: string;
     public seq: number;
     public type: string;

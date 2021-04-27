@@ -2,7 +2,8 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as request from 'request';
-import { RokuDeploy } from 'roku-deploy';
+import * as rokuDeploy from 'roku-deploy';
+import type { RokuDeploy } from 'roku-deploy';
 import { serializeError } from 'serialize-error';
 import {
     DebugSession as BaseDebugSession,
@@ -17,23 +18,24 @@ import {
     Thread,
     Variable
 } from 'vscode-debugadapter';
-import { DebugProtocol } from 'vscode-debugprotocol';
+import type { DebugProtocol } from 'vscode-debugprotocol';
 import { util } from '../util';
-import { fileUtils } from '../FileUtils';
+import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
-import { standardizePath as s } from '../FileUtils';
-import { EvaluateContainer, DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
+import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
-import { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
+import type { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
 import {
     LaunchStartEvent,
     LogOutputEvent,
     RendezvousEvent,
     CompileFailureEvent,
-    StoppedEventReason
+    StoppedEventReason,
+    ChanperfEvent
 } from './Events';
-import { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
+import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
@@ -66,7 +68,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public sourceMapManager: SourceMapManager;
 
     //set imports as class properties so they can be spied upon during testing
-    public rokuDeploy = require('roku-deploy') as RokuDeploy;
+    public rokuDeploy = rokuDeploy as unknown as RokuDeploy;
 
     private componentLibraryServer = new ComponentLibraryServer();
 
@@ -76,10 +78,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     private firstRunDeferred = defer<void>();
 
-    private evaluateRefIdLookup: { [expression: string]: number } = {};
+    private evaluateRefIdLookup: Record<string, number> = {};
     private evaluateRefIdCounter = 1;
 
-    private variables: { [refId: number]: AugmentedVariable } = {};
+    private variables: Record<number, AugmentedVariable> = {};
 
     private variableHandles = new Handles<string>();
 
@@ -158,10 +160,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
             this.rokuAdapter.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
-                return await this.projectManager.getSourceLocation(debuggerPath, lineNumber);
+                return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
             });
 
-            //pass the log level down thought the adapter to the RendezvousTracker
+            //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
 
             //pass along the console output
@@ -179,8 +181,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             }
 
+            // Send chanperf events to the extension
+            this.rokuAdapter.on('chanperf', (output) => {
+                this.sendEvent(new ChanperfEvent(output));
+            });
+
             // Send rendezvous events to the extension
-            this.rokuAdapter.on('rendezvous-event', (output) => {
+            this.rokuAdapter.on('rendezvous', (output) => {
                 this.sendEvent(new RendezvousEvent(output));
             });
 
@@ -194,6 +201,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             });
 
             // handle any compile errors
+            // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.rokuAdapter.on('compile-errors', async (errors: BrightScriptDebugCompileError[]) => {
                 // remove redundant errors and adjust the line number:
                 // - Roku device and sourcemap work with 1-based line numbers,
@@ -213,11 +221,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 this.sendEvent(new CompileFailureEvent(compileErrors));
                 //stop the roku adapter and exit the channel
-                this.rokuAdapter.destroy();
-                this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+                void this.rokuAdapter.destroy();
+                void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
             });
 
             // close disconnect if required when the app is exited
+            // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.rokuAdapter.on('app-exit', async () => {
                 if (this.launchConfiguration.stopDebuggerOnAppExit || !this.rokuAdapter.supportsMultipleRuns) {
                     let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchConfiguration.stopDebuggerOnAppExit is true' : ''}`;
@@ -226,7 +235,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     util.logDebug(message);
                     this.sendEvent(new LogOutputEvent(message));
                     if (this.rokuAdapter) {
-                        this.rokuAdapter.destroy();
+                        void this.rokuAdapter.destroy();
                     }
                     //return to the home screen
                     await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
@@ -298,7 +307,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
             //send the deep link http request
             await new Promise((resolve, reject) => {
-                request.post(this.launchConfiguration.deepLinkUrl, function(err, response) {
+                request.post(this.launchConfiguration.deepLinkUrl, (err, response) => {
                     return err ? reject(err) : resolve(response);
                 });
             });
@@ -318,6 +327,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             bsConst: this.launchConfiguration.bsConst,
             injectRaleTrackerTask: this.launchConfiguration.injectRaleTrackerTask,
             raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation,
+            injectRdbOnDeviceComponent: this.launchConfiguration.injectRdbOnDeviceComponent,
+            rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
             stagingFolderPath: this.launchConfiguration.stagingFolderPath
         });
 
@@ -348,6 +359,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected customRequest(command: string) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
+        }
+
+        if (command === 'chanperf.clearHistory') {
+            this.rokuAdapter.clearChanperfHistory();
         }
     }
 
@@ -381,7 +396,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //prepare all of the libraries in parallel
-            var compLibPromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+            let compLibPromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
 
                 await compLibProject.stage();
 
@@ -396,7 +411,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await compLibProject.zipPackage({ retainStagingFolder: true });
             });
 
-            var hostingPromise: Promise<any>;
+            let hostingPromise: Promise<any>;
             if (compLibPromises) {
                 // prepare static file hosting
                 hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message) => {
@@ -415,7 +430,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments) {
         util.logDebug('sourceRequest');
         let old = this.sendResponse;
-        this.sendResponse = function(...args) {
+        this.sendResponse = function sendResponse(...args) {
             old.apply(this, args);
             this.sendResponse = old;
         };
@@ -432,7 +447,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
         let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
         //sort the breakpoints
-        var sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
+        let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
             //filter out the inactive breakpoints
             .filter(x => x.isHidden === false);
 
@@ -457,7 +472,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // }, 100);
     }
 
-    protected async exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {
+    protected exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {
         util.logDebug('exceptionInfoRequest');
     }
 
@@ -502,7 +517,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //the stacktrace returns function identifiers in all lower case. Try to get the actual case
                     //load the contents of the file and get the correct casing for the function identifier
                     try {
-                        let functionName = await this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
+                        let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
                         if (functionName) {
 
                             //search for original function name if this is an anonymous function.
@@ -559,6 +574,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                     v = this.getVariableFromResult(result, args.frameId);
                     //TODO - testing something, remove later
+                    // eslint-disable-next-line camelcase
                     v.request_seq = response.request_seq;
                     v.frameId = args.frameId;
                 }
@@ -695,7 +711,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             try {
 
                 if (this.rokuAdapter.isAtDebuggerPrompt) {
-                    if (['hover', 'watch'].indexOf(args.context) > -1 || args.expression.toLowerCase().trim().startsWith('print ')) {
+                    if (['hover', 'watch'].includes(args.context) || args.expression.toLowerCase().trim().startsWith('print ')) {
                         //if this command has the word print in front of it, remove that word
                         let expression = args.expression.replace(/^print/i, '').trim();
                         let refId = this.getEvaluateRefId(expression, args.frameId);
@@ -711,6 +727,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             }
                             v = this.getVariableFromResult(result, args.frameId);
                             //TODO - testing something, remove later
+                            // eslint-disable-next-line camelcase
                             v.request_seq = response.request_seq;
                             v.frameId = args.frameId;
                         }
@@ -736,7 +753,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             await this.rokuAdapter.stepOut(-1);
 
                         } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
-                            (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
+                            await (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
 
                         } else {
                             const promise = this.rokuAdapter.evaluate(args.expression);
@@ -789,13 +806,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Registers the main events for the RokuAdapter
      */
     private async connectRokuAdapter() {
-        this.rokuAdapter.on('start', async () => {
+        this.rokuAdapter.on('start', () => {
             if (!this.firstRunDeferred.isCompleted) {
                 this.firstRunDeferred.resolve();
             }
         });
 
         //when the debugger suspends (pauses for debugger input)
+        // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
             let threads = await this.rokuAdapter.getThreads();
             let threadId = threads[0].threadId;
@@ -809,6 +827,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         });
 
         //anytime the adapter encounters an exception on the roku,
+        // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('runtime-error', async (exception) => {
             let rokuAdapter = await this.getRokuAdapter();
             let threads = await rokuAdapter.getThreads();
@@ -919,24 +938,25 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
 interface AugmentedVariable extends DebugProtocol.Variable {
     childVariables?: AugmentedVariable[];
+    // eslint-disable-next-line camelcase
     request_seq?: number;
     frameId?: number;
 }
 
 export function defer<T>() {
-    let resolve: (value?: T | PromiseLike<T>) => void;
-    let reject: (reason?: any) => void;
+    let _resolve: (value?: PromiseLike<T> | T) => void;
+    let _reject: (reason?: any) => void;
     let promise = new Promise<T>((resolveValue, rejectValue) => {
-        resolve = resolveValue;
-        reject = rejectValue;
+        _resolve = resolveValue;
+        _reject = rejectValue;
     });
     return {
         promise: promise,
-        resolve: function(value?: T | PromiseLike<T>) {
+        resolve: function resolve(value?: PromiseLike<T> | T) {
             if (!this.isResolved) {
                 this.isResolved = true;
-                resolve(value);
-                resolve = undefined;
+                _resolve(value);
+                _resolve = undefined;
             } else {
                 throw new Error(
                     `Attempted to resolve a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +
@@ -944,11 +964,11 @@ export function defer<T>() {
                 );
             }
         },
-        reject: function(reason?: any) {
+        reject: function reject(reason?: any) {
             if (!this.isCompleted) {
                 this.isRejected = true;
-                reject(reason);
-                reject = undefined;
+                _reject(reason);
+                _reject = undefined;
             } else {
                 throw new Error(
                     `Attempted to reject a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +

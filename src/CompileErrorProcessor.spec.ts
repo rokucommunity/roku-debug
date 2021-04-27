@@ -1,15 +1,15 @@
-// tslint:disable: no-floating-promises
-import { CompileErrorProcessor, BrightScriptDebugCompileError, CompileStatus } from './CompileErrorProcessor';
+import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
+import { CompileErrorProcessor, CompileStatus } from './CompileErrorProcessor';
 import { expect, assert } from 'chai';
-import * as sinonImport from 'sinon';
-var sinon = sinonImport.createSandbox();
+import { createSandbox } from 'sinon';
+const sinon = createSandbox();
 
 describe('BrightScriptDebugger', () => {
-    var compiler: CompileErrorProcessor;
+    let compiler: CompileErrorProcessor;
 
-    beforeEach(async () => {
-        sinon.stub(console, 'log').callsFake((...args ) => {});
-        sinon.stub(console, 'debug').callsFake((...args ) => {});
+    beforeEach(() => {
+        sinon.stub(console, 'log').callsFake((...args) => { });
+        sinon.stub(console, 'debug').callsFake((...args) => { });
         compiler = new CompileErrorProcessor();
         compiler.compileErrorTimeoutMs = 1;
     });
@@ -107,7 +107,7 @@ describe('BrightScriptDebugger', () => {
             let compileErrors: BrightScriptDebugCompileError[];
             let promise: Promise<any>;
             if (expectedErrors) {
-                promise = new Promise((resolve) => {
+                promise = new Promise<void>((resolve) => {
                     compiler.on('compile-errors', (errors) => {
                         compileErrors = errors;
                         resolve();
@@ -127,7 +127,7 @@ describe('BrightScriptDebugger', () => {
             expect(compiler.status).to.eql(expectedStatus);
         }
 
-        it('detects No errors' , async () => {
+        it('detects No errors', async () => {
             let lines = [
                 `03-26 23:57:28.111 [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0)`,
                 `03-26 23:57:28.112 [beacon.signal] |AppCompileInitiate --------> TimeBase(1 ms)`,
@@ -151,7 +151,7 @@ describe('BrightScriptDebugger', () => {
             await runTest(lines, CompileStatus.running);
         });
 
-        it('detects Error loading file' , async () => {
+        it('detects Error loading file', async () => {
             let lines = [
                 `03-25 13:48:30.501 [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)`,
                 `03-25 13:48:30.501 [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)`,
@@ -361,7 +361,7 @@ describe('BrightScriptDebugger', () => {
             await runTest(lines, CompileStatus.compileError, expectedErrors);
         });
 
-        it('detects Invalid #If/#ElseIf expression' , async () => {
+        it('detects Invalid #If/#ElseIf expression', async () => {
             let lines = [
                 `03-27 00:19:07.768 [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0)`,
                 `03-27 00:19:07.768 [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)`,
