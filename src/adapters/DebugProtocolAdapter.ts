@@ -8,7 +8,7 @@ import { defer } from '../debugSession/BrightScriptDebugSession';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
-import type { ChanperfEventData } from '../ChanperfTracker';
+import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
@@ -27,13 +27,13 @@ export class DebugProtocolAdapter {
         this.compileErrorProcessor = new CompileErrorProcessor();
 
         // watch for chanperf events
-        this.chanperfTracker.on('chanperf-event', (output) => {
-            this.emit('chanperf-event', output);
+        this.chanperfTracker.on('chanperf', (output) => {
+            this.emit('chanperf', output);
         });
 
         // watch for rendezvous events
-        this.rendezvousTracker.on('rendezvous-event', (output) => {
-            this.emit('rendezvous-event', output);
+        this.rendezvousTracker.on('rendezvous', (output) => {
+            this.emit('rendezvous', output);
         });
     }
 
@@ -58,14 +58,14 @@ export class DebugProtocolAdapter {
      * @param handler
      */
     public on(eventName: 'cannot-continue', handler: () => void);
-    public on(eventname: 'chanperf-event', handler: (output: ChanperfEventData) => void);
+    public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
     public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
     public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
-    public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
+    public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
@@ -84,13 +84,13 @@ export class DebugProtocolAdapter {
         eventName:
             'app-exit' |
             'cannot-continue' |
-            'chanperf-event' |
+            'chanperf' |
             'close' |
             'compile-errors' |
             'connected' |
             'console-output' |
             'protocol-version' |
-            'rendezvous-event' |
+            'rendezvous' |
             'runtime-error' |
             'start' |
             'suspend' |
@@ -187,8 +187,8 @@ export class DebugProtocolAdapter {
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.socketDebugger.on('io-output', async (responseText) => {
                 if (responseText) {
-                    responseText = this.chanperfTracker.processLogLine(responseText);
-                    responseText = await this.rendezvousTracker.processLogLine(responseText);
+                    responseText = this.chanperfTracker.processLog(responseText);
+                    responseText = await this.rendezvousTracker.processLog(responseText);
                     this.emit('unhandled-console-output', responseText);
                 }
             });
@@ -599,14 +599,14 @@ export class DebugProtocolAdapter {
      * Sends a call to the RendezvousTracker to clear the current rendezvous history
      */
     public clearRendezvousHistory() {
-        this.rendezvousTracker.clearRendezvousHistory();
+        this.rendezvousTracker.clearHistory();
     }
 
     /**
      * Sends a call to the ChanperfTracker to clear the current chanperf history
      */
     public clearChanperfHistory() {
-        this.chanperfTracker.clearChanperfHistory();
+        this.chanperfTracker.clearHistory();
     }
     // #endregion
 }

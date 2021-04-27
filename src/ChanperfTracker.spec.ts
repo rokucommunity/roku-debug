@@ -1,13 +1,13 @@
 import * as sinon from 'sinon';
 import { assert, expect } from 'chai';
-import type { ChanperfEventData } from './ChanperfTracker';
+import type { ChanperfData } from './ChanperfTracker';
 import { ChanperfTracker } from './ChanperfTracker';
 
 describe('BrightScriptFileUtils ', () => {
     let chanperfTracker: ChanperfTracker;
     let logString: string;
-    let expectedHistory: Array<ChanperfEventData>;
-    let expectedNoDataHistory: Array<ChanperfEventData>;
+    let expectedHistory: Array<ChanperfData>;
+    let expectedNoDataHistory: Array<ChanperfData>;
     let emitStub: sinon.SinonStub;
 
     beforeEach(() => {
@@ -126,54 +126,54 @@ describe('BrightScriptFileUtils ', () => {
         emitStub.restore();
     });
 
-    describe('processLogLine ', () => {
+    describe('processLog ', () => {
         it('filters out all chanperf log lines', () => {
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
-            assert.equal(chanperfTracker.processLogLine(logString), expected);
-            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => x.args[1]);
+            assert.equal(chanperfTracker.processLog(logString), expected);
+            const history = emitStub.withArgs('chanperf').getCalls().map(x => x.args[1]);
             expect(history).to.eql(expectedHistory);
-            expect(chanperfTracker.getChanperfHistory).to.eql(expectedHistory);
+            expect(chanperfTracker.getHistory).to.eql(expectedHistory);
         });
 
         it('filters out all not available chanperf log lines', () => {
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
-            assert.equal(chanperfTracker.processLogLine(`channel: Start\nStarting data processing\nchannel: mem and cpu data not available\nData processing completed\n`), expected);
-            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => x.args[1]);
+            assert.equal(chanperfTracker.processLog(`channel: Start\nStarting data processing\nchannel: mem and cpu data not available\nData processing completed\n`), expected);
+            const history = emitStub.withArgs('chanperf').getCalls().map(x => x.args[1]);
             expect(history).to.eql(expectedNoDataHistory);
-            expect(chanperfTracker.getChanperfHistory).to.eql(expectedNoDataHistory);
+            expect(chanperfTracker.getHistory).to.eql(expectedNoDataHistory);
         });
 
         it('does not filter out chanperf log lines', () => {
             chanperfTracker.setConsoleOutput('full');
-            assert.equal(chanperfTracker.processLogLine(logString), logString);
-            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => {
+            assert.equal(chanperfTracker.processLog(logString), logString);
+            const history = emitStub.withArgs('chanperf').getCalls().map(x => {
                 return x.args[1];
             });
             expect(history).to.eql(expectedHistory);
-            expect(chanperfTracker.getChanperfHistory).to.eql(expectedHistory);
+            expect(chanperfTracker.getHistory).to.eql(expectedHistory);
         });
 
         it('does not filter out the not available chanperf log lines', () => {
             let expected = `channel: Start\nStarting data processing\nchannel: mem and cpu data not available\nData processing completed\n`;
             chanperfTracker.setConsoleOutput('full');
-            assert.equal(chanperfTracker.processLogLine(expected), expected);
-            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => x.args[1]);
+            assert.equal(chanperfTracker.processLog(expected), expected);
+            const history = emitStub.withArgs('chanperf').getCalls().map(x => x.args[1]);
             expect(history).to.eql(expectedNoDataHistory);
-            expect(chanperfTracker.getChanperfHistory).to.eql(expectedNoDataHistory);
+            expect(chanperfTracker.getHistory).to.eql(expectedNoDataHistory);
         });
     });
 
-    describe('clearChanperfHistory', () => {
+    describe('clearHistory', () => {
         it('to reset the history data', () => {
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
-            assert.equal(chanperfTracker.processLogLine(logString), expected);
-            const history = emitStub.withArgs('chanperf-event').getCalls().map(x => x.args[1]);
+            assert.equal(chanperfTracker.processLog(logString), expected);
+            const history = emitStub.withArgs('chanperf').getCalls().map(x => x.args[1]);
             expect(history).to.eql(expectedHistory);
-            expect(chanperfTracker.getChanperfHistory).to.eql(expectedHistory);
+            expect(chanperfTracker.getHistory).to.eql(expectedHistory);
 
             // Reset the old history
-            chanperfTracker.clearChanperfHistory();
-            assert.deepEqual(chanperfTracker.getChanperfHistory, []);
+            chanperfTracker.clearHistory();
+            assert.deepEqual(chanperfTracker.getHistory, []);
         });
     });
 });

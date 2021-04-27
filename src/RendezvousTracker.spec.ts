@@ -263,32 +263,32 @@ describe('BrightScriptFileUtils ', () => {
         rendezvousTrackerMock.restore();
     });
 
-    describe('processLogLine ', () => {
+    describe('processLog ', () => {
         it('filters out all rendezvous log lines', async () => {
-            rendezvousTrackerMock.expects('emit').withArgs('rendezvous-event').once();
+            rendezvousTrackerMock.expects('emit').withArgs('rendezvous').once();
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
-            assert.equal(await rendezvousTracker.processLogLine(logString), expected);
+            assert.equal(await rendezvousTracker.processLog(logString), expected);
             assert.deepEqual(rendezvousTracker.getRendezvousHistory, expectedHistory);
             rendezvousTrackerMock.verify();
         });
 
         it('does not filter out rendezvous log lines', async () => {
-            rendezvousTrackerMock.expects('emit').withArgs('rendezvous-event').once();
+            rendezvousTrackerMock.expects('emit').withArgs('rendezvous').once();
             rendezvousTracker.setConsoleOutput('full');
-            assert.equal(await rendezvousTracker.processLogLine(logString), logString);
+            assert.equal(await rendezvousTracker.processLog(logString), logString);
             assert.deepEqual(rendezvousTracker.getRendezvousHistory, expectedHistory);
             rendezvousTrackerMock.verify();
         });
     });
 
-    describe('clearRendezvousHistory', () => {
+    describe('clearHistory', () => {
         it('to reset the history data', async () => {
-            rendezvousTrackerMock.expects('emit').withArgs('rendezvous-event').twice();
+            rendezvousTrackerMock.expects('emit').withArgs('rendezvous').twice();
             let expected = `channel: Start\nStarting data processing\nData processing completed\n`;
-            assert.equal(await rendezvousTracker.processLogLine(logString), expected);
+            assert.equal(await rendezvousTracker.processLog(logString), expected);
             assert.deepEqual(rendezvousTracker.getRendezvousHistory, expectedHistory);
 
-            rendezvousTracker.clearRendezvousHistory();
+            rendezvousTracker.clearHistory();
 
             assert.deepEqual(rendezvousTracker.getRendezvousHistory, {
                 hitCount: 0,
