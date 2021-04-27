@@ -412,8 +412,8 @@ export class TelnetAdapter {
     }
 
     /**
-     * Execute a command directly on the roku. Returns the output of the command
-     * @param command
+     * Execute a command directly on the roku. Returns the output of the command.
+     * @param command the command to execute. If the command does not start with `print` the command will be prefixed with `print ` because
      */
     public async evaluate(command: string) {
         if (!this.isAtDebuggerPrompt) {
@@ -542,7 +542,7 @@ export class TelnetAdapter {
                 data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, true);
 
                 //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
-            } else if (['roarray', 'rolist', 'robytearray'].includes(lowerExpressionType)) {
+            } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
                 data = await this.requestPipeline.executeCommand(
                     `for each vscodeLoopItem in ${expression} : print "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString")); vscodeLoopItem : end for`
                     , true);
@@ -567,7 +567,7 @@ export class TelnetAdapter {
                 let highLevelType = this.getHighLevelType(expressionType);
 
                 let children: EvaluateContainer[];
-                if (highLevelType === HighLevelType.array || ['roassociativearray', 'rosgnode', 'robytearray'].includes(lowerExpressionType)) {
+                if (highLevelType === HighLevelType.array || ['roassociativearray', 'rosgnode', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
                     //the print statment will always have 1 trailing newline, so remove that.
                     value = util.removeTrailingNewline(value);
                     //the array/associative array print is a loop of every value, so handle that
@@ -586,6 +586,31 @@ export class TelnetAdapter {
                         children: []
                     };
                     children.push(nodeChildren);
+                }
+
+                //xml elements won't display on their own, so we need to create some sub elements
+                if (lowerExpressionType === 'roxmlelement') {
+                    //add a computed `[[children]]` property to allow expansion of node children
+                    children.push({
+                        name: '[[children]]',
+                        type: 'roArray',
+                        highLevelType: HighLevelType.array,
+                        evaluateName: `${expression}.GetChildNodes()`,
+                        children: []
+                    } as EvaluateContainer);
+
+                    children.push({
+                        name: '[[attributes]]',
+                        type: 'roArray',
+                        highLevelType: HighLevelType.array,
+                        evaluateName: `${expression}.GetAttributes()`,
+                        children: []
+                    } as EvaluateContainer);
+
+                    //look up the element name right now
+                    const container = await this.getVariable(`${expression}.GetName()`);
+                    container.name = '[[name]]';
+                    children.push(container);
                 }
 
                 //if this item is an array or a list, add the item count to the end of the type

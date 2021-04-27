@@ -756,9 +756,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             await (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
 
                         } else {
-                            let result = await this.rokuAdapter.evaluate(args.expression);
+                            const promise = this.rokuAdapter.evaluate(args.expression);
                             response.body = <any>{
-                                result: result
+                                result: await promise
                             };
                             // //print the output to the screen
                             // this.sendEvent(new OutputEvent(result, 'stdout'));
@@ -869,11 +869,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v = new Variable(result.name, `${result.value}`);
                 } else if (result.highLevelType === 'array') {
                     let refId = this.getEvaluateRefId(result.evaluateName, frameId);
-                    v = new Variable(result.name, result.type, refId, result.children.length, 0);
+                    v = new Variable(result.name, result.type, refId, result.children?.length ?? 0, 0);
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'object') {
                     let refId = this.getEvaluateRefId(result.evaluateName, frameId);
-                    v = new Variable(result.name, result.type, refId, 0, result.children.length);
+                    v = new Variable(result.name, result.type, refId, 0, result.children?.length ?? 0);
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'function') {
                     v = new Variable(result.name, result.value);
