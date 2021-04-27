@@ -18,7 +18,7 @@ export class RendezvousTracker {
     private rendezvousBlocks: RendezvousBlocks;
     private rendezvousHistory: RendezvousHistory;
 
-    public on(eventname: 'rendezvous-event', handler: (output: RendezvousHistory) => void);
+    public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -28,7 +28,7 @@ export class RendezvousTracker {
         };
     }
 
-    private emit(eventName: 'rendezvous-event', data?) {
+    private emit(eventName: 'rendezvous', data?) {
         this.emitter.emit(eventName, data);
     }
 
@@ -59,20 +59,20 @@ export class RendezvousTracker {
     /**
      * Clears the current rendezvous history
      */
-    public clearRendezvousHistory() {
+    public clearHistory() {
         this.rendezvousHistory = this.createNewRendezvousHistory();
-        this.emit('rendezvous-event', this.rendezvousHistory);
+        this.emit('rendezvous', this.rendezvousHistory);
     }
 
     /**
      * Takes the debug output from the device and parses it for any rendezvous information.
      * Also if consoleOutput was not set to 'full' then any rendezvous output will be filtered from the output.
-     * @param logLine
+     * @param log
      * @returns The debug output after parsing
      */
-    public async processLogLine(logLine: string): Promise<string> {
+    public async processLog(log: string): Promise<string> {
         let dataChanged = false;
-        let lines = logLine.split('\n');
+        let lines = log.split('\n');
         let normalOutput = '';
 
         for (let line of lines) {
@@ -144,7 +144,7 @@ export class RendezvousTracker {
         }
 
         if (dataChanged) {
-            this.emit('rendezvous-event', this.rendezvousHistory);
+            this.emit('rendezvous', this.rendezvousHistory);
         }
 
         return normalOutput;

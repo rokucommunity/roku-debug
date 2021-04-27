@@ -32,7 +32,8 @@ import {
     LogOutputEvent,
     RendezvousEvent,
     CompileFailureEvent,
-    StoppedEventReason
+    StoppedEventReason,
+    ChanperfEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -162,7 +163,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
             });
 
-            //pass the log level down thought the adapter to the RendezvousTracker
+            //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
 
             //pass along the console output
@@ -180,8 +181,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             }
 
+            // Send chanperf events to the extension
+            this.rokuAdapter.on('chanperf', (output) => {
+                this.sendEvent(new ChanperfEvent(output));
+            });
+
             // Send rendezvous events to the extension
-            this.rokuAdapter.on('rendezvous-event', (output) => {
+            this.rokuAdapter.on('rendezvous', (output) => {
                 this.sendEvent(new RendezvousEvent(output));
             });
 
@@ -353,6 +359,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected customRequest(command: string) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
+        }
+
+        if (command === 'chanperf.clearHistory') {
+            this.rokuAdapter.clearChanperfHistory();
         }
     }
 
