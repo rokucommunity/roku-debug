@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.7.0] - 2021-04-27
+### Added
+ - support for inspecting roXmlElement ([#23](https://github.com/rokucommunity/roku-debug/pull/23))
+ - support for capturing chanperf events ([#28](https://github.com/rokucommunity/roku-debug/pull/28))
+
+
+
 ## [0.6.0] - 2021-03-09
 ### Added
  - rdb integration ([#25](https://github.com/rokucommunity/roku-debug/pull/25))
@@ -149,3 +156,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.9]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.8...v0.5.9
 [0.5.10]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.9...v0.5.10
 [0.6.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.10...v0.6.0
+[0.7.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.6.0...v0.7.0
