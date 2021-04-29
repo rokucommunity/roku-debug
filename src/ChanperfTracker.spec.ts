@@ -3,7 +3,7 @@ import { assert, expect } from 'chai';
 import type { ChanperfData } from './ChanperfTracker';
 import { ChanperfTracker } from './ChanperfTracker';
 
-describe('BrightScriptFileUtils ', () => {
+describe('ChanperfTracker ', () => {
     let chanperfTracker: ChanperfTracker;
     let logString: string;
     let expectedHistory: Array<ChanperfData>;
