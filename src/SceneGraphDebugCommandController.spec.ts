@@ -9,7 +9,31 @@ describe('SceneGraphDebugCommandController ', () => {
     beforeEach(() => {
         commandController = new SceneGraphDebugCommandController('192.168.1.1');
         commandController['connection'] = {};
-        execStub = sinon.stub(commandController, 'exec');
+        execStub = sinon.stub(commandController, 'exec').callsFake((command: string) => {
+            return new Promise((resolve) => {
+                switch (command) {
+                    case 'fps_display':
+                    case 'fps_display 0':
+                    case 'fps_display 1':
+                        resolve({
+                            command: command,
+                            result: {
+                                rawResponse: ''
+                            }
+                        });
+                        break;
+
+                    default:
+                        resolve({
+                            command: command,
+                            result: {
+                                rawResponse: ''
+                            }
+                        });
+                        break;
+                }
+            });
+        });
     });
 
     afterEach(() => {

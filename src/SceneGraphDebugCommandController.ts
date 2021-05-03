@@ -87,7 +87,7 @@ export class SceneGraphDebugCommandController {
 
         let response = await this.exec(command);
         if (!response?.error) {
-            response.result.data = 'FPS Display enabled';
+            response.result.data = `FPS Display: ${option}`;
         }
         return response;
     }
