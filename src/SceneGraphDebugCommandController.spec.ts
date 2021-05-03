@@ -8,7 +8,7 @@ describe('SceneGraphDebugCommandController ', () => {
 
     beforeEach(() => {
         commandController = new SceneGraphDebugCommandController('192.168.1.1');
-        (commandController as any).connectionSuccessful = true;
+        commandController['connection'] = {};
         execStub = sinon.stub(commandController, 'exec');
     });
 

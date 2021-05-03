@@ -3,8 +3,6 @@ import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as request from 'request';
 import * as rokuDeploy from 'roku-deploy';
-// eslint-disable-next-line
-const Telnet = require('telnet-client');
 import type { RokuDeploy } from 'roku-deploy';
 import { serializeError } from 'serialize-error';
 import {
@@ -341,7 +339,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             util.log('Enabling FPS Display');
                             response = await connection.fpsDisplay('on');
                             if (!response.error) {
-                                util.log('FPS Display enabled');
+                                util.log(response.result.data);
                             }
                             break;
 

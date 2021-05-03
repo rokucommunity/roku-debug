@@ -1,3 +1,5 @@
+import { util } from './util';
+
 // eslint-disable-next-line
 const Telnet = require('telnet-client');
 
@@ -6,7 +8,6 @@ export class SceneGraphDebugCommandController {
     }
 
     private connection: typeof Telnet;
-    private connectionSuccessful = false;
 
     private shellPrompt = '>';
     private echoLines = 0;
@@ -14,23 +15,29 @@ export class SceneGraphDebugCommandController {
     private port = 8080;
 
     public async connect() {
-        // reset the connection state
-        this.connectionSuccessful = false;
+        this.removeConnection();
 
         try {
             // Make a new telnet connections object
-            this.connection = new Telnet();
-            await this.connection.connect({
+            let connection = new Telnet();
+
+            connection.on('close', this.removeConnection);
+
+            await connection.connect({
                 host: this.host,
                 port: this.port,
                 shellPrompt: this.shellPrompt,
                 echoLines: this.echoLines,
                 timeout: this.timeout
             });
-            this.connectionSuccessful = true;
+            this.connection = connection;
         } catch (error) {
             throw new Error(error.message);
         }
+    }
+
+    private removeConnection() {
+        this.connection = null;
     }
 
     /**
@@ -78,7 +85,11 @@ export class SceneGraphDebugCommandController {
             command = `${command} ${option === 'on' ? 1 : 0}`;
         }
 
-        return this.exec(command);
+        let response = await this.exec(command);
+        if (!response?.error) {
+            response.result.data = 'FPS Display enabled';
+        }
+        return response;
     }
 
     /**
@@ -211,9 +222,10 @@ export class SceneGraphDebugCommandController {
      */
     public async exec(command: string): Promise<SceneGraphCommandResponse> {
         let response = this.getBlankResponseObject(command);
+        util.logDebug(`Running: ${command}`);
 
         // Set up a short lived connection if a long lived one has not beed started
-        let closeConnectionAfterCommand = !this.connectionSuccessful;
+        let closeConnectionAfterCommand = !this.connection;
         if (closeConnectionAfterCommand) {
             try {
                 await this.connect();
@@ -223,7 +235,7 @@ export class SceneGraphDebugCommandController {
         }
 
         // Send the commend if we have a connection
-        if (this.connectionSuccessful) {
+        if (this.connection) {
             try {
                 response.result.rawResponse = await this.connection.exec(command);
             } catch (error) {
@@ -245,19 +257,20 @@ export class SceneGraphDebugCommandController {
      * Closes the socket connection to the device
      */
     public async end() {
-        // Reset the connection status
-        this.connectionSuccessful = false;
-        try {
+        if (this.connection) {
+            this.connection.removeListener('close', this.removeConnection);
             try {
-                // Asking the host to close is much faster then running our own connections destroy
-                await this.connection.exec('quit', { shellPrompt: 'Quit command received, exiting.' });
+                try {
+                    // Asking the host to close is much faster then running our own connections destroy
+                    await this.connection.exec('quit', { shellPrompt: 'Quit command received, exiting.' });
+                } catch (error) {
+                    console.log(error);
+                }
+                this.removeConnection();
             } catch (error) {
-                console.log(error);
+                this.removeConnection();
+                console.log(error, this.connection);
             }
-            this.connection = null;
-        } catch (error) {
-            this.connection = null;
-            console.log(error, this.connection);
         }
     }
 
@@ -281,6 +294,7 @@ export interface SceneGraphCommandResponse<T=undefined> {
     error?: SceneGraphCommandError<T>;
     result: {
         rawResponse: string;
+        data?: any;
     };
 }
 
