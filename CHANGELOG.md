@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.8.1] - 2021-05-04
+[0.8.1]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.0...v0.8.1
+### Fixed
+ - Fix incorrect sgnodes shell prompt matching string. ([#31](https://github.com/rokucommunity/roku-debug/pull/31))
+ - Increase port 8080 commands max buffer size ([#31](https://github.com/rokucommunity/roku-debug/pull/31))
+
+
+
 ## [0.8.0] - 2021-05-03
 [0.8.0]: https://github.com/RokuCommunity/roku-debug/compare/v0.7.0...v0.8.0
 ### Added
