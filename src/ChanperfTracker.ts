@@ -57,18 +57,19 @@ export class ChanperfTracker {
         let chanperfEventData: ChanperfData;
 
         for (let line of lines) {
-            let infoAvailableMatch = /channel:\smem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
-            // see the following for an explanation for this regex: https://regex101.com/r/AuQOxY/1
+            let infoAvailableMatch = /channel:\smem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)(,[a-z]+=([0-9]+))?},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
+            // see the following for an explanation for this regex: https://regex101.com/r/3HKIO0/2
             if (infoAvailableMatch) {
-                let [fullMatch, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = infoAvailableMatch;
+                let [fullMatch, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, swapFullMatch, swapMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = infoAvailableMatch;
                 chanperfEventData = this.createNewChanperfEventData();
                 chanperfEventData.error = null;
 
                 chanperfEventData.memory = {
-                    total: parseInt(totalMemKib) * 1024,
-                    anonymous: parseInt(anonMemKib) * 1024,
-                    file: parseInt(fileMemKib) * 1024,
-                    shared: parseInt(sharedMemKib) * 1024
+                    total: this.toBytes(totalMemKib),
+                    anonymous: this.toBytes(anonMemKib),
+                    file: this.toBytes(fileMemKib),
+                    shared: this.toBytes(sharedMemKib),
+                    swap: this.toBytes(swapMemKib)
                 };
 
                 chanperfEventData.cpu = {
@@ -105,6 +106,11 @@ export class ChanperfTracker {
         return normalOutput;
     }
 
+    private toBytes(KiB): number {
+        let amount = parseInt(KiB);
+        return isNaN(amount) ? 0 : amount * 1024;
+    }
+
     /**
      * Helper function used to create a new ChanperfData object with default values
      */
@@ -114,7 +120,8 @@ export class ChanperfTracker {
                 total: 0,
                 anonymous: 0,
                 file: 0,
-                shared: 0
+                shared: 0,
+                swap: 0
             },
             cpu: {
                 total: 0,
@@ -134,6 +141,7 @@ export interface ChanperfData {
         anonymous: number;
         file: number;
         shared: number;
+        swap: number;
     };
     cpu: {
         total: number;

@@ -21,7 +21,7 @@ describe('ChanperfTracker ', () => {
             channel: mem=71836KiB{anon=46696,file=24892,shared=248},%cpu=30{user=25,sys=4}
             channel: mem=71056KiB{anon=45916,file=24892,shared=248},%cpu=2{user=2,sys=0}
             channel: mem=71056KiB{anon=45916,file=24892,shared=248},%cpu=0{user=0,sys=0}
-            channel: mem=71056KiB{anon=45916,file=24892,shared=248},%cpu=0{user=0,sys=0}
+            channel: mem=71056KiB{anon=45916,file=24892,shared=248,swap=0},%cpu=0{user=0,sys=0}
             channel: mem=71056KiB{anon=45916,file=24892,shared=248},%cpu=0{user=0,sys=0}
             channel: mem=71056KiB{anon=45916,file=24892,shared=248},%cpu=0{user=0,sys=0}
             channel: mem=71056KiB{anon=45916,file=24892,shared=248},%cpu=0{user=0,sys=0}
@@ -29,7 +29,7 @@ describe('ChanperfTracker ', () => {
             channel: mem=71056KiB{anon=45916,file=24892,shared=248},%cpu=0{user=0,sys=0}
             channel: mem=71060KiB{anon=45916,file=24896,shared=248},%cpu=10{user=8,sys=2}
             channel: mem=71056KiB{anon=45916,file=24896,shared=244},%cpu=4{user=2,sys=2}
-            channel: mem=71060KiB{anon=45920,file=24896,shared=244},%cpu=12{user=11,sys=1}
+            channel: mem=71064KiB{anon=45920,file=24896,shared=244,swap=4},%cpu=12{user=11,sys=1}
             channel: mem=71220KiB{anon=46068,file=24904,shared=248},%cpu=20{user=17,sys=3}
             Starting data processing
             channel: mem=71220KiB{anon=46068,file=24904,shared=248},%cpu=0{user=0,sys=0}
@@ -39,7 +39,7 @@ describe('ChanperfTracker ', () => {
             channel: mem=71220KiB{anon=46068,file=24904,shared=248},%cpu=0{user=0,sys=0}
             channel: mem=71220KiB{anon=46068,file=24904,shared=248},%cpu=0{user=0,sys=0}
             channel: mem=71220KiB{anon=46068,file=24904,shared=248},%cpu=0{user=0,sys=0}
-            channel: mem=71220KiB{anon=46068,file=24904,shared=248},%cpu=0{user=0,sys=0}
+            channel: mem=71749KiB{anon=46068,file=24904,shared=248,swap=529},%cpu=0{user=0,sys=0}
             channel: mem=71232KiB{anon=46068,file=24916,shared=248},%cpu=1{user=1,sys=0}
             channel: mem=71228KiB{anon=46068,file=24916,shared=244},%cpu=3{user=3,sys=0}
             channel: mem=71676KiB{anon=46324,file=25104,shared=248},%cpu=3{user=2,sys=1}
@@ -59,43 +59,43 @@ describe('ChanperfTracker ', () => {
 
 
         expectedHistory = [
-            { error: null, memory: { total: 61560, anonymous: 36428, file: 24884, shared: 248 }, cpu: { total: 13, user: 10, system: 3 } },
-            { error: null, memory: { total: 65992, anonymous: 40852, file: 24892, shared: 248 }, cpu: { total: 21, user: 19, system: 2 } },
-            { error: null, memory: { total: 71836, anonymous: 46696, file: 24892, shared: 248 }, cpu: { total: 30, user: 25, system: 4 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 2, user: 2, system: 0 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71060, anonymous: 45916, file: 24896, shared: 248 }, cpu: { total: 10, user: 8, system: 2 } },
-            { error: null, memory: { total: 71056, anonymous: 45916, file: 24896, shared: 244 }, cpu: { total: 4, user: 2, system: 2 } },
-            { error: null, memory: { total: 71060, anonymous: 45920, file: 24896, shared: 244 }, cpu: { total: 12, user: 11, system: 1 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 20, user: 17, system: 3 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71232, anonymous: 46068, file: 24916, shared: 248 }, cpu: { total: 1, user: 1, system: 0 } },
-            { error: null, memory: { total: 71228, anonymous: 46068, file: 24916, shared: 244 }, cpu: { total: 3, user: 3, system: 0 } },
-            { error: null, memory: { total: 71676, anonymous: 46324, file: 25104, shared: 248 }, cpu: { total: 3, user: 2, system: 1 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248 }, cpu: { total: 0, user: 0, system: 0 } },
-            { error: null, memory: { total: 71232, anonymous: 46068, file: 24916, shared: 248 }, cpu: { total: 1, user: 1, system: 0 } },
-            { error: null, memory: { total: 71228, anonymous: 46068, file: 24916, shared: 244 }, cpu: { total: 3, user: 3, system: 0 } },
-            { error: null, memory: { total: 71676, anonymous: 46324, file: 25104, shared: 248 }, cpu: { total: 3, user: 2, system: 1 } }
+            { error: null, memory: { total: 61560, anonymous: 36428, file: 24884, shared: 248, swap: 0 }, cpu: { total: 13, user: 10, system: 3 } },
+            { error: null, memory: { total: 65992, anonymous: 40852, file: 24892, shared: 248, swap: 0 }, cpu: { total: 21, user: 19, system: 2 } },
+            { error: null, memory: { total: 71836, anonymous: 46696, file: 24892, shared: 248, swap: 0 }, cpu: { total: 30, user: 25, system: 4 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248, swap: 0 }, cpu: { total: 2, user: 2, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24892, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71060, anonymous: 45916, file: 24896, shared: 248, swap: 0 }, cpu: { total: 10, user: 8, system: 2 } },
+            { error: null, memory: { total: 71056, anonymous: 45916, file: 24896, shared: 244, swap: 0 }, cpu: { total: 4, user: 2, system: 2 } },
+            { error: null, memory: { total: 71064, anonymous: 45920, file: 24896, shared: 244, swap: 4 }, cpu: { total: 12, user: 11, system: 1 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 20, user: 17, system: 3 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71749, anonymous: 46068, file: 24904, shared: 248, swap: 529 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71232, anonymous: 46068, file: 24916, shared: 248, swap: 0 }, cpu: { total: 1, user: 1, system: 0 } },
+            { error: null, memory: { total: 71228, anonymous: 46068, file: 24916, shared: 244, swap: 0 }, cpu: { total: 3, user: 3, system: 0 } },
+            { error: null, memory: { total: 71676, anonymous: 46324, file: 25104, shared: 248, swap: 0 }, cpu: { total: 3, user: 2, system: 1 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71220, anonymous: 46068, file: 24904, shared: 248, swap: 0 }, cpu: { total: 0, user: 0, system: 0 } },
+            { error: null, memory: { total: 71232, anonymous: 46068, file: 24916, shared: 248, swap: 0 }, cpu: { total: 1, user: 1, system: 0 } },
+            { error: null, memory: { total: 71228, anonymous: 46068, file: 24916, shared: 244, swap: 0 }, cpu: { total: 3, user: 3, system: 0 } },
+            { error: null, memory: { total: 71676, anonymous: 46324, file: 25104, shared: 248, swap: 0 }, cpu: { total: 3, user: 2, system: 1 } }
         ];
 
         // Convert everything to bytes
@@ -104,6 +104,7 @@ describe('ChanperfTracker ', () => {
             chanperfEvent.memory.anonymous *= 1024;
             chanperfEvent.memory.file *= 1024;
             chanperfEvent.memory.shared *= 1024;
+            chanperfEvent.memory.swap *= 1024;
         }
 
         expectedNoDataHistory = [{
@@ -112,7 +113,8 @@ describe('ChanperfTracker ', () => {
                 total: 0,
                 anonymous: 0,
                 file: 0,
-                shared: 0
+                shared: 0,
+                swap: 0
             },
             cpu: {
                 total: 0,
