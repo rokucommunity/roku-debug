@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.8.0] - 2021-05-03
+[0.8.0]: https://github.com/RokuCommunity/roku-debug/compare/v0.7.0...v0.8.0
 ### Added
  - port 8080 command support ([#29](https://github.com/rokucommunity/roku-debug/pull/29))
 ### Fixed
@@ -15,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.7.0] - 2021-04-27
+[0.7.0]: https://github.com/RokuCommunity/roku-debug/compare/v0.6.0...v0.7.0
 ### Added
  - support for inspecting roXmlElement ([#23](https://github.com/rokucommunity/roku-debug/pull/23))
  - support for capturing chanperf events ([#28](https://github.com/rokucommunity/roku-debug/pull/28))
@@ -22,18 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.6.0] - 2021-03-09
+[0.6.0]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.10...v0.6.0
 ### Added
  - rdb integration ([#25](https://github.com/rokucommunity/roku-debug/pull/25))
 
 
 
 ## [0.5.10] - 2021-02-16
+[0.5.10]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.9...v0.5.10
 ### Fixed
  - stack trace for brighterscript class methods appearing as `anon`
 
 
 
 ## [0.5.9] - 2021-01-19
+[0.5.9]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.8...v0.5.9
 ### Fixed
  - timing issue when shutting down debug session before the log processor has finish its job
  - off-by-one location of "compile errors" when device validates XML components
@@ -46,30 +51,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.5.8] - 2020-10-23
+[0.5.8]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.7...v0.5.8
 ### Fixed
  - bug when converting `$anon_###` function names into original function names that was using the wrong line number to look up the name. ([#21](https://github.com/rokucommunity/roku-debug/pull/21))
 
 
 
 ## [0.5.7] - 2020-10-06
+[0.5.7]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.6...v0.5.7
 ### Fixed
  - bug that was not passing in the `stagingFolderPath` property for the root project, and therefore incorrectly loading that value from `bsconfig.json` if it existed. ([#18](https://github.com/rokucommunity/roku-debug/pull/18))
 
 
 
 ## [0.5.6] - 2020-09-30
+[0.5.6]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.5...v0.5.6
 ### Fixed
  - bug that prevented component library debug sessions from launching.
 
 
 
 ## [0.5.5] - 2020-09-28
+[0.5.5]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.4...v0.5.5
 ### Fixed
  - bug in the component library bundling that was using the `src` instead of `dest` for finding the manifest path ([#15](https://github.com/rokucommunity/roku-debug/pull/15))
 
 
 
 ## [0.5.4] - 2020-09-25
+[0.5.4]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.3...v0.5.4
 ### Changed
  - fixed some false positive detections of `Can't continue` in the TelnetAdapter
  - fixed version comparision links in the changelogs
@@ -77,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.5.3] - 2020-08-14
+[0.5.3]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.2...v0.5.3
 ### Changed
  - upgraded to [roku-deploy@3.2.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#323---2020-08-14)
  - throw exception when copying to staging folder and `rootDir` does not exist in the file system
@@ -85,6 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.5.2] - 2020-07-14
+[0.5.2]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.1...v0.5.2
 ### Changed
  - upgraded to [roku-deploy@3.2.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#322---2020-07-14)
 ### Fixed
@@ -93,6 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.5.1] - 2020-07-11
+[0.5.1]: https://github.com/RokuCommunity/roku-debug/compare/v0.5.0...v0.5.1
 ### Fixed
  - Prevent debug session crash if target breakpoint file doesn't exist. [#10](https://github.com/rokucommunity/roku-debug/pull/10)
   -Bug when converting source location to staging locations that incorrectly checked rootDir before sourceDirs. [#10](https://github.com/rokucommunity/roku-debug/pull/10)
@@ -100,6 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.5.0] - 2020-07-06
+[0.5.0]: https://github.com/RokuCommunity/roku-debug/compare/v0.4.0...v0.5.0
 ### Added
  - support for inline values during a debug session. [#8](https://github.com/rokucommunity/roku-debug/pull/8)
 ### Fixed
@@ -108,12 +122,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.4.0] - 2020-07-02
+[0.4.0]: https://github.com/RokuCommunity/roku-debug/compare/v0.3.7...v0.4.0
 ### Changed
  - Try to look up original function names for anonymous functions in call stack [#6](https://github.com/rokucommunity/roku-debug/issues/6)
 
 
 
 ## [0.3.7] - 2020-05-11
+[0.3.7]: https://github.com/RokuCommunity/roku-debug/compare/v0.3.6...v0.3.7
 ### Changed
  - upgraded to roku-deploy@3.1.1
  - brightscript debug commands from the debug console in the telnet adapter like `cont` and `step` are now supported (but use at your own risk as there are synchronization issues between the adapter and vscode sometimes)
@@ -128,12 +144,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.3.6] - 2020-04-16
+[0.3.6]: https://github.com/RokuCommunity/roku-debug/compare/v0.3.5...v0.3.6
 ### Fixed
  - bug in socket debugger that would randomly try and run the `verifyHandshake()` method more than once during startup.
 
 
 
 ## [0.3.5] - 2020-04-10
+[0.3.5]: https://github.com/RokuCommunity/roku-debug/compare/v0.3.4...v0.3.5
 ### Changed
  - upgraded to [roku-deploy@3.0.2](https://www.npmjs.com/package/roku-debug/v/0.3.4) which fixed a file copy bug in subdirectories of symlinked folders
 
@@ -144,24 +162,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - renamed `enableSocketDebugger` to `enableDebugProtocol`
 ### Fixed
  - Bug in the telnet debugger on windows devices that would crash the debug session when `stopOnEntry` was enabled.
-
-
-
-[0.3.5]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.4...v0.3.5
-[0.3.6]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.5...v0.3.6
-[0.3.7]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.6...v0.3.7
-[0.4.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.7...v0.4.0
-[0.5.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.4.0...v0.5.0
-[0.5.1]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.0...v0.5.1
-[0.5.2]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.1...v0.5.2
-[0.5.3]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.2...v0.5.3
-[0.5.4]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.3...v0.5.4
-[0.5.5]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.4...v0.5.5
-[0.5.6]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.5...v0.5.6
-[0.5.7]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.6...v0.5.7
-[0.5.8]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.7...v0.5.8
-[0.5.9]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.8...v0.5.9
-[0.5.10]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.9...v0.5.10
-[0.6.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.10...v0.6.0
-[0.7.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.6.0...v0.7.0
-[0.8.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.7.0...v0.8.0
