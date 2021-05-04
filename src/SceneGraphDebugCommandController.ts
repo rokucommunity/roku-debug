@@ -21,7 +21,9 @@ export class SceneGraphDebugCommandController {
             // Make a new telnet connections object
             let connection = new Telnet();
 
-            connection.on('close', this.removeConnection);
+            connection.on('close', () => {
+                this.removeConnection();
+            });
 
             await connection.connect({
                 host: this.host,
@@ -86,7 +88,7 @@ export class SceneGraphDebugCommandController {
         }
 
         let response = await this.exec(command);
-        if (!response?.error) {
+        if (!response.error) {
             response.result.data = `FPS Display: ${option}`;
         }
         return response;
