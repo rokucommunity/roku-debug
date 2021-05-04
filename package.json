@@ -1,6 +1,6 @@
 {
     "name": "roku-debug",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
