@@ -9,10 +9,11 @@ export class SceneGraphDebugCommandController {
 
     private connection: typeof Telnet;
 
-    private shellPrompt = '>';
+    private shellPrompt = /^>$/img;
     private echoLines = 0;
     private timeout = 5000;
     private port = 8080;
+    private maxBufferLength = 5242880;
 
     public async connect() {
         this.removeConnection();
@@ -30,7 +31,8 @@ export class SceneGraphDebugCommandController {
                 port: this.port,
                 shellPrompt: this.shellPrompt,
                 echoLines: this.echoLines,
-                timeout: this.timeout
+                timeout: this.timeout,
+                maxBufferLength: this.maxBufferLength
             });
             this.connection = connection;
         } catch (error) {
