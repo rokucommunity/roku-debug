@@ -18,6 +18,8 @@ import {
     Thread,
     Variable
 } from 'vscode-debugadapter';
+import type { SceneGraphCommandResponse } from '../SceneGraphDebugCommandController';
+import { SceneGraphDebugCommandController } from '../SceneGraphDebugCommandController';
 import type { DebugProtocol } from 'vscode-debugprotocol';
 import { util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
@@ -154,6 +156,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } else {
                 await (this.rokuAdapter as DebugProtocolAdapter).watchCompileOutput();
             }
+
+            await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             util.log(`Exiting any active brightscript debugger`);
             await this.rokuAdapter.exitActiveBrightscriptDebugger();
@@ -311,6 +315,55 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     return err ? reject(err) : resolve(response);
                 });
             });
+        }
+    }
+
+    private async runAutomaticSceneGraphCommands(commands: string[]) {
+        if (commands) {
+            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.host);
+
+            try {
+                await connection.connect();
+                for (let command of this.launchConfiguration.autoRunSgDebugCommands) {
+                    let response: SceneGraphCommandResponse;
+                    switch (command) {
+                        case 'chanperf':
+                            util.log('Enabling Chanperf Tracking');
+                            response = await connection.chanperf({ interval: 1 });
+                            if (!response.error) {
+                                util.log(response.result.rawResponse);
+                            }
+                            break;
+
+                        case 'fpsdisplay':
+                            util.log('Enabling FPS Display');
+                            response = await connection.fpsDisplay('on');
+                            if (!response.error) {
+                                util.log(response.result.data);
+                            }
+                            break;
+
+                        case 'logrendezvous':
+                            util.log('Enabling Rendezvous Logging:');
+                            response = await connection.logrendezvous('on');
+                            if (!response.error) {
+                                util.log(response.result.rawResponse);
+                            }
+                            break;
+
+                        default:
+                            util.log(`Running custom SceneGraph debug command on port 8080 '${command}':`);
+                            response = await connection.exec(command);
+                            if (!response.error) {
+                                util.log(response.result.rawResponse);
+                            }
+                            break;
+                    }
+                }
+                await connection.end();
+            } catch (error) {
+                util.log(`Error connecting to port 8080: ${error.message}`);
+            }
         }
     }
 

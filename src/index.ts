@@ -13,5 +13,6 @@ export * from './FileUtils';
 export * from './managers/ProjectManager';
 export * from './RendezvousTracker';
 export * from './ChanperfTracker';
+export * from './SceneGraphDebugCommandController';
 export * from './adapters/TelnetAdapter';
 export * from './managers/LocationManager';

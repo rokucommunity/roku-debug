@@ -56,6 +56,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     componentLibraries: ComponentLibraryConfiguration[];
 
     /**
+     * An array of of SceneGraph debug commands to be run at the start of a debug session.
+     */
+    autoRunSgDebugCommands: string[];
+
+    /**
      * The folder where the output files are places during the packaging process
      */
     outDir?: string;
