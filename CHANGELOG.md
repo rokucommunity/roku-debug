@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.8.0] - 2021-05-03
+### Added
+ - port 8080 command support ([#29](https://github.com/rokucommunity/roku-debug/pull/29))
+### Fixed
+ - issue where chanperf logs were not being detected ([#30](https://github.com/rokucommunity/roku-debug/pull/30))
+
+
+
 ## [0.7.0] - 2021-04-27
 ### Added
  - support for inspecting roXmlElement ([#23](https://github.com/rokucommunity/roku-debug/pull/23))
@@ -139,7 +147,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[0.3.4]:   https://github.com/RokuCommunity/roku-debug/compare/v0.1.0...v0.3.4
 [0.3.5]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.4...v0.3.5
 [0.3.6]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.5...v0.3.6
 [0.3.7]:   https://github.com/RokuCommunity/roku-debug/compare/v0.3.6...v0.3.7
@@ -157,3 +164,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.5.10]:  https://github.com/RokuCommunity/roku-debug/compare/v0.5.9...v0.5.10
 [0.6.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.5.10...v0.6.0
 [0.7.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.6.0...v0.7.0
+[0.8.0]:   https://github.com/RokuCommunity/roku-debug/compare/v0.7.0...v0.8.0
