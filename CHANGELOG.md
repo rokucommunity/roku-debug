@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.8.2] - 2021-05-28
+[0.8.2]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.1...v0.8.2
+### Changed
+ - upgraded to [roku-deploy@3.4.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#340---2021-05-28) which brings significant zip speed improvements
+
+
+
 ## [0.8.1] - 2021-05-04
 [0.8.1]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.0...v0.8.1
 ### Fixed
