@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.8.3] - 2021-06-01
+[0.8.3]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.2...v0.8.3
+### Changed
+ - upgraded to [roku-deploy@3.4.1](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#341---2021-06-01) which fixes bugs introduced in roku-deploy@3.4.0
+
+
+
 ## [0.8.2] - 2021-05-28
 [0.8.2]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.1...v0.8.2
 ### Changed
