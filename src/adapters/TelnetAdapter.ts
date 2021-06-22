@@ -1160,45 +1160,47 @@ export class RequestPipeline {
 
         this.client.addListener('data', (data) => {
             let responseText = data.toString();
-            if (!responseText.endsWith('\n') && !this.checkForDebuggerPrompt(responseText)) {
+            const cumulative = lastPartialLine + responseText;
+            if (!cumulative.endsWith('\n') && !this.checkForDebuggerPrompt(cumulative)) {
                 // buffer was split and was not the result of a prompt, save the partial line
                 lastPartialLine += responseText;
-            } else {
-                if (lastPartialLine) {
-                    // there was leftover lines, join the partial lines back together
-                    responseText = lastPartialLine + responseText;
-                    lastPartialLine = '';
-                }
+                return;
+            }
 
-                //forward all raw console output
-                this.emit('console-output', responseText);
-                allResponseText += responseText;
+            if (lastPartialLine) {
+                // there was leftover lines, join the partial lines back together
+                responseText = lastPartialLine + responseText;
+                lastPartialLine = '';
+            }
 
-                let foundDebuggerPrompt = this.checkForDebuggerPrompt(allResponseText);
+            //forward all raw console output
+            this.emit('console-output', responseText);
+            allResponseText += responseText;
 
-                //if we are not processing, immediately broadcast the latest data
-                if (!this.isProcessing) {
-                    this.emit('unhandled-console-output', allResponseText);
-                    allResponseText = '';
+            let foundDebuggerPrompt = this.checkForDebuggerPrompt(allResponseText);
 
-                    if (foundDebuggerPrompt) {
-                        this.isAtDebuggerPrompt = true;
-                        if (this.hasRequests) {
-                            // There are requests waiting to be processed
-                            this.process();
-                        }
-                    }
-                } else {
-                    //if responseText produced a prompt, return the responseText
-                    if (foundDebuggerPrompt) {
-                        //resolve the command's promise (if it cares)
-                        this.isAtDebuggerPrompt = true;
-                        this.currentRequest.onComplete(allResponseText);
-                        allResponseText = '';
-                        this.currentRequest = undefined;
-                        //try to run the next request
+            //if we are not processing, immediately broadcast the latest data
+            if (!this.isProcessing) {
+                this.emit('unhandled-console-output', allResponseText);
+                allResponseText = '';
+
+                if (foundDebuggerPrompt) {
+                    this.isAtDebuggerPrompt = true;
+                    if (this.hasRequests) {
+                        // There are requests waiting to be processed
                         this.process();
                     }
+                }
+            } else {
+                //if responseText produced a prompt, return the responseText
+                if (foundDebuggerPrompt) {
+                    //resolve the command's promise (if it cares)
+                    this.isAtDebuggerPrompt = true;
+                    this.currentRequest.onComplete(allResponseText);
+                    allResponseText = '';
+                    this.currentRequest = undefined;
+                    //try to run the next request
+                    this.process();
                 }
             }
         });
