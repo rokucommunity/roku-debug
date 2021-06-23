@@ -587,7 +587,7 @@ export class TelnetAdapter {
                     children = this.getObjectChildren(expression, value.trim());
                 }
 
-                if (['rostring', 'roint', 'rointeger', 'rofloat', 'rodouble', 'roboolean'].includes(lowerExpressionType)) {
+                if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
                     return {
                         name: expression,
                         value: util.removeTrailingNewline(value),
