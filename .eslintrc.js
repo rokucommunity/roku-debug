@@ -193,7 +193,8 @@ module.exports = {
             '@typescript-eslint/dot-notation': 'off',
             'github/array-foreach': 'off',
             'new-cap': 'off',
-            'no-shadow': 'off'
+            'no-shadow': 'off',
+            'func-names': 'off'
         }
     }, {
         files: ['benchmarks/**/*'],
