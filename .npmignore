@@ -13,3 +13,4 @@ tsconfig.json
 tslint.json
 bsconfig.json
 .github/**/*
+.eslintrc.js
