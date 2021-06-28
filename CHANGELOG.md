@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.8.4] - 2021-06-01
+[0.8.4]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.3...v0.8.4
+### Fixed
+ - debugger freeze when debugger prompt split across multiple telnet messages ([#35](https://github.com/rokucommunity/roku-debug/pull/35))
+
+
+
 ## [0.8.3] - 2021-06-01
 [0.8.3]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.2...v0.8.3
 ### Changed
