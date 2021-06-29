@@ -49,50 +49,50 @@ describe('TelnetAdapter ', () => {
             `).length).to.equal(6);
         });
         it('handles basic arrays', () => {
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:false 1.1 `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Float:vscode_type_stop vscode_is_string:false 1.1 `)[0]).to.deep.include(<EvaluateContainer>{
                 name: '0',
                 evaluateName: 'arr[0]',
-                type: 'Integer',
+                type: 'Float',
                 value: '1.1'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:falsetrue`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsetrue`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'Boolean',
                 value: 'true'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:falsefalse`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsefalse`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'Boolean',
                 value: 'false'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:trueTrailingSpace `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueTrailingSpace `)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"TrailingSpace "'
             });
             //empty string
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:true`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '""'
             });
             //whitespace-only string
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:true `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true `)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '" "'
             });
         });
 
         it('handles newlines in strings', () => {
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:true\n`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true\n`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"\n"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:trueRoku\n`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueRoku\n`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"Roku\n"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:true\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"\nRoku"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:trueRoku\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueRoku\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"Roku\nRoku"'
             });
@@ -120,7 +120,7 @@ describe('TelnetAdapter ', () => {
             expect(variables.find(x => x.name === 'message2').value).to.equal('"World"');
         });
 
-        it.only('handles nodes with nested arrays', () => {
+        it('handles nodes with nested arrays', () => {
             const variables = adapter.getForLoopPrintedChildren('testNode', dedent`
                 vscode_key_start:change:vscode_key_stop vscode_is_string:false<Component: roAssociativeArray> =
                 {
@@ -150,30 +150,7 @@ describe('TelnetAdapter ', () => {
                 evaluateName: 'testNode["change"]',
                 highLevelType: 'object',
                 type: 'roAssociativeArray',
-                children: [{
-                    name: 'Index1',
-                    evaluateName: 'testNode["change"].Index1',
-                    //TODO -- is this correct?
-                    type: 'Float',
-                    value: '0',
-                    children: [],
-                    highLevelType: 'primative'
-                }, {
-                    name: 'Index2',
-                    evaluateName: 'testNode["change"].Index2',
-                    //TODO -- is this correct?
-                    type: 'Float',
-                    value: '0',
-                    children: [],
-                    highLevelType: 'primative'
-                }, {
-                    name: 'Operation',
-                    evaluateName: 'testNode["change"].Operation',
-                    type: 'String',
-                    value: '"none"',
-                    children: [],
-                    highLevelType: 'primative'
-                }]
+                children: []
             }, {
                 name: 'EDID',
                 evaluateName: 'testNode["EDID"]',
@@ -206,7 +183,13 @@ describe('TelnetAdapter ', () => {
                 evaluateName: 'testNode["mynewfield"]',
                 type: 'roSGNode:ContentNode',
                 name: 'mynewfield',
-                children: [],
+                children: [{
+                    children: [],
+                    evaluateName: 'testNode["mynewfield"].getChildren(-1,0)',
+                    highLevelType: 'array',
+                    name: '[[children]]',
+                    type: 'roArray'
+                }],
                 highLevelType: 'object'
             }]);
         });

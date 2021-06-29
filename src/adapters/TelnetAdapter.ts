@@ -763,20 +763,9 @@ export class TelnetAdapter {
                         break;
                     }
                 }
-                //if the next-to-last line of collection is `...`, then scrap the values
-                //because we will need to run a full evaluation (later) to get around the `...` issue
-                if (collectionLineList.length > 3 && collectionLineList[collectionLineList.length - 2].trim() === '...') {
-                    child.children = [];
+                //we have reached the end of the collection. scrap children because they need evaluated in a separate call to compute their types
+                child.children = [];
 
-                    //get the object children
-                } else if (child.highLevelType === HighLevelType.object) {
-                    child.children = this.getObjectChildren(child.evaluateName, collectionLineList.join('\n'));
-
-                    //get all of the array children right now since we have them
-                } else {
-                    child.children = this.getArrayOrListChildren(child.evaluateName, collectionLineList.join('\n'));
-                    child.type += `(${child.children.length})`;
-                }
                 if (isRoSGNode) {
                     let nodeChildrenProperty = <EvaluateContainer>{
                         name: '[[children]]',
@@ -788,7 +777,7 @@ export class TelnetAdapter {
                     child.children.push(nodeChildrenProperty);
                 }
 
-                //this if block must preseec the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
+                //this if block must pre-seek the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
             } else if (objectType === 'roInvalid') {
                 child.highLevelType = HighLevelType.uninitialized;
                 child.type = 'roInvalid';
