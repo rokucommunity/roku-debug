@@ -14,6 +14,7 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { util } from '../util';
+import { methodMappings } from '../MethodMappings';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -561,6 +562,8 @@ export class TelnetAdapter {
                     ' end for'
                 ].join(';');
                 data = await this.requestPipeline.executeCommand(command, true);
+
+                //get every primitive method map value
             } else {
                 data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
             }
@@ -608,10 +611,9 @@ export class TelnetAdapter {
                         children: []
                     };
                     children.push(nodeChildren);
-                }
 
-                //xml elements won't display on their own, so we need to create some sub elements
-                if (lowerExpressionType === 'roxmlelement') {
+                    //xml elements won't display on their own, so we need to create some sub elements
+                } else if (lowerExpressionType === 'roxmlelement') {
                     //add a computed `[[children]]` property to allow expansion of node children
                     children.push({
                         name: '[[children]]',
@@ -633,6 +635,47 @@ export class TelnetAdapter {
                     const container = await this.getVariable(`${expression}.GetName()`);
                     container.name = '[[name]]';
                     children.push(container);
+
+                    //if we have a registered method-prop map for this object type, add those properties.
+                }
+
+                if (methodMappings[lowerExpressionType]) {
+                    //print a newline
+                    let printCommand = `vscode_loop_var = invalid`;
+                    for (const map of methodMappings[lowerExpressionType]) {
+                        const evaluateName = `${expression}.${map.method}()`;
+                        //look up child values now
+                        if (map.highLevelType === HighLevelType.primative) {
+                            printCommand += (
+                                ' : ' +
+                                ` vscode_loop_var = ${evaluateName} : ` +
+                                ` print "vscode_key_start:${map.name}:vscode_key_stop" ; ` +
+                                //assign the method to a variable to improve perf
+                                ` "vscode_type_start:" + type(vscode_loop_var) + ":vscode_type_stop" ; ` +
+                                ` "vscode_is_string:"; (invalid <> GetInterface(vscode_loop_var, "ifString")) ; ` +
+                                ` vscode_loop_var ; ` +
+                                ` chr(10)`
+                            );
+
+                            //look up reference objects later
+                        } else {
+                            children.push({
+                                ...map as any,
+                                evaluateName: evaluateName,
+                                children: []
+                            });
+                        }
+                    }
+                    const start = Date.now();
+                    //execute all of the method maps in a single command
+                    data = util.removeTrailingNewline(
+                        await this.requestPipeline.executeCommand(printCommand, true)
+                    );
+                    children.push(
+                        ...this.getForLoopPrintedChildren(expression, value)
+                    );
+                    const end = Date.now() - start;
+                    console.log(end);
                 }
 
                 //if this item is an array or a list, add the item count to the end of the type
