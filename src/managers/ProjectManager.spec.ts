@@ -723,8 +723,16 @@ describe('ComponentLibraryProject', () => {
         });
 
         it('adds postfix to the path if missing', () => {
-            expect(project.addFileNamePostfix(`source/main.brs`)).to.equal('source/main__lib0.brs');
-            expect(project.addFileNamePostfix(`components/component1.brs`)).to.equal('components/component1__lib0.brs');
+            expect(
+                s`${project.addFileNamePostfix(`source/main.brs`)}`
+            ).to.equal(
+                s`source/main__lib0.brs`
+            );
+            expect(
+                s`${project.addFileNamePostfix(`components/component1.brs`)}`
+            ).to.equal(
+                s`components/component1__lib0.brs`
+            );
         });
 
         it('does nothing to files that already have the correct postfix', () => {
@@ -732,7 +740,11 @@ describe('ComponentLibraryProject', () => {
         });
 
         it('only adds the postfix to the end of the file', () => {
-            expect(project.addFileNamePostfix(`source/__lib1.brs/main.brs`)).to.equal('source/__lib1.brs/main__lib0.brs');
+            expect(
+                s`${project.addFileNamePostfix(`source/__lib1.brs/main.brs`)}`
+            ).to.equal(
+                s`source/__lib1.brs/main__lib0.brs`
+            );
         });
 
         it('only adds the postfix to paths to a file with an extension', () => {

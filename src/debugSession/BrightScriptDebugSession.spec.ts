@@ -343,9 +343,9 @@ describe('BrightScriptDebugSession', () => {
             };
         });
 
-        it('returns correct results', () => {
+        it('returns correct results', async () => {
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints[0]).to.deep.include({
                 line: 1,
                 verified: true
@@ -356,12 +356,12 @@ describe('BrightScriptDebugSession', () => {
 
             //remove the breakpoint breakpoint (it should not remove the breakpoint because it was already verified)
             args.breakpoints = [];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
             //add breakpoint during live debug session. one was there before, the other is new. Only one will be verified
             args.breakpoints = [{ line: 1 }, { line: 2 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(
                 response.body.breakpoints.map(x => ({ line: x.line, verified: x.verified }))
             ).to.eql([{
@@ -373,18 +373,18 @@ describe('BrightScriptDebugSession', () => {
             }]);
         });
 
-        it('supports breakpoints within xml files', () => {
+        it('supports breakpoints within xml files', async () => {
             args.source.path = `${rootDir}/some/xml-file.xml`;
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             //breakpoint should be disabled
             expect(response.body.breakpoints[0]).to.deep.include({ line: 1, verified: true });
         });
 
-        it('handles breakpoints for non-brightscript files', () => {
+        it('handles breakpoints for non-brightscript files', async () => {
             args.source.path = `${rootDir}/some/xml-file.jpg`;
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(1);
             //breakpoint should be disabled
             expect(response.body.breakpoints[0]).to.deep.include({ line: 1, verified: false });
