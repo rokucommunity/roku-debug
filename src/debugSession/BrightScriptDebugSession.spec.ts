@@ -1,28 +1,27 @@
 import { expect } from 'chai';
 import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
-import { Server } from 'https';
 import * as path from 'path';
-import * as sinonActual from 'sinon';
+import { createSandbox } from 'sinon';
 import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { DebugSession } from 'vscode-debugadapter';
-
 import {
     BrightScriptDebugSession,
     defer
 } from './BrightScriptDebugSession';
-import { fileUtils } from '../FileUtils';
+import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { EvaluateContainer } from '../adapters/TelnetAdapter';
 import {
     HighLevelType,
     PrimativeType
 } from '../adapters/TelnetAdapter';
+import { Project } from '../managers/ProjectManager';
+let sinon = createSandbox();
 
-let sinon = sinonActual.createSandbox();
-let cwd = fileUtils.standardizePath(process.cwd());
-let outDir = fileUtils.standardizePath(`${cwd}/outDir`);
-let stagingFolderPath = fileUtils.standardizePath(`${outDir}/stagingDir`);
-const rootDir = path.normalize(path.dirname(__dirname));
+const tmpDir = s`${process.cwd()}/.tmp`;
+const outDir = s`${tmpDir}/outDir`;
+const stagingDir = s`${tmpDir}/stagingDir`;
+const rootDir = s`${tmpDir}/rootDir`;
 
 describe('BrightScriptDebugSession', () => {
     beforeEach(() => {
@@ -35,8 +34,7 @@ describe('BrightScriptDebugSession', () => {
     });
 
     let session: BrightScriptDebugSession;
-    //session of type any so we can do private-ish things
-    let s: any;
+    let mainProject: Project;
     let rokuAdapter: any = {
         on: () => {
             return () => {
@@ -50,10 +48,14 @@ describe('BrightScriptDebugSession', () => {
     beforeEach(() => {
         try {
             session = new BrightScriptDebugSession();
-            s = session;
         } catch (e) {
             console.log(e);
         }
+        mainProject = new Project({
+            rootDir: rootDir,
+            outDir: outDir,
+            files: null
+        });
         //override the error response function and throw an exception so we can fail any tests
         (session as any).sendErrorResponse = (...args) => {
             throw new Error(args[2]);
@@ -395,12 +397,12 @@ describe('BrightScriptDebugSession', () => {
         it('registers the entry breakpoint when stopOnEntry is enabled', async () => {
             (session as any).launchConfiguration = { stopOnEntry: true };
             session.projectManager.mainProject = <any>{
-                stagingFolderPath: stagingFolderPath
+                stagingFolderPath: stagingDir
             };
             let stub = sinon.stub(session.projectManager, 'registerEntryBreakpoint').returns(Promise.resolve());
             await session.handleEntryBreakpoint();
             expect(stub.called).to.be.true;
-            expect(stub.args[0][0]).to.equal(stagingFolderPath);
+            expect(stub.args[0][0]).to.equal(stagingDir);
         });
         it('does NOT register the entry breakpoint when stopOnEntry is enabled', async () => {
             (session as any).launchConfiguration = { stopOnEntry: false };
@@ -431,6 +433,24 @@ describe('BrightScriptDebugSession', () => {
                 'stagingPathA',
                 'stagingPathB'
             ]);
+        });
+    });
+
+    describe('getBreakpointRequests', () => {
+        beforeEach(() => {
+            mainProject.fileMappings = [];
+        });
+
+        it('converts windows slashes into forward slashes for pkg path', async () => {
+            fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, '');
+            const result = await session['getBreakpointRequests'](
+                //create a path using windows path separators
+                rootDir + '\\source\\main.brs',
+                { line: 3 },
+                mainProject,
+                'pkg:'
+            );
+            expect(result.pop()?.filePath).to.eql('pkg:/source/main.brs');
         });
     });
 });

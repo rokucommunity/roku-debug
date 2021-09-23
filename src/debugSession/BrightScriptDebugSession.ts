@@ -652,7 +652,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async getBreakpointRequests(path: string, breakpoint: DebugProtocol.SourceBreakpoint, project: ComponentLibraryProject | Project, fileProtocol: string) {
-        let breakpoints = [];
+        let breakpoints: AddBreakpointRequestObject[] = [];
         console.log(project);
         let stagingLocationsResult = await this.locationManager.getStagingLocations(
             path,
