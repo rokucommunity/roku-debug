@@ -681,7 +681,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             let breakpointRequest: AddBreakpointRequestObject = {
-                filePath: fileProtocol + '/' + relativeStagingPath,
+                filePath: fileProtocol + '/' + relativeStagingPath.replace(/\\+/g, '/'),
                 lineNumber: stagingLocation.lineNumber,
                 hitCount: breakpoint.hitCondition ? parseInt(breakpoint.hitCondition) : 0
             };
