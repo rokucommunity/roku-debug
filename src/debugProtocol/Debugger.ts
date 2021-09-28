@@ -267,9 +267,13 @@ export class Debugger {
                 buffer.writeUInt32LE(breakpoint.lineNumber); // line_number - The line number in the channel application code where the breakpoint is to be executed.
                 buffer.writeUInt32LE(breakpoint.hitCount); // ignore_count - The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
             });
-            return this.makeRequest(buffer, COMMANDS.ADD_BREAKPOINTS);
+            return this.makeRequest<ListOrAddBreakpointsResponse>(buffer, COMMANDS.ADD_BREAKPOINTS);
         }
         return [];
+    }
+
+    public async listBreakpoints() {
+        return this.makeRequest<ListOrAddBreakpointsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.LIST_BREAKPOINTS);
     }
 
     public async removeBreakpoints(breakpointIds: RemoveBreakpointRequestObject = []) {
@@ -280,12 +284,12 @@ export class Debugger {
             breakpointIds.forEach((breakpointId) => {
                 buffer.writeUInt32LE(breakpointId); // breakpoint_ids - An array of breakpoint IDs representing the breakpoints to be removed.
             });
-            return this.makeRequest(buffer, COMMANDS.REMOVE_BREAKPOINTS);
+            return this.makeRequest<ListOrAddBreakpointsResponse>(buffer, COMMANDS.REMOVE_BREAKPOINTS);
         }
         return [];
     }
 
-    private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
+    private async makeRequest<T = any>(buffer: SmartBuffer, command: COMMANDS, extraData?) {
         this.totalRequests++;
         let requestId = this.totalRequests;
         buffer.insertUInt32LE(command, 0); // command_code - An enum representing the debugging command being sent. See the COMMANDS enum
@@ -297,11 +301,11 @@ export class Debugger {
             extraData: extraData
         };
 
-        return new Promise((resolve, reject) => {
-            let disconnect = this.on('data', (responseHandler) => {
-                if (responseHandler.requestId === requestId) {
+        return new Promise<T>((resolve, reject) => {
+            let disconnect = this.on('data', (data) => {
+                if (data.requestId === requestId) {
                     disconnect();
-                    resolve(responseHandler);
+                    resolve(data);
                 }
             });
 
@@ -545,7 +549,7 @@ export interface AddBreakpointRequestObject {
     hitCount: number;
 }
 
-export interface RemoveBreakpointRequestObject extends Array<number> {}
+export interface RemoveBreakpointRequestObject extends Array<number> { }
 
 export interface ConstructorOptions {
     /**
