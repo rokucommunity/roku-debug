@@ -43,13 +43,14 @@ import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { AddBreakpointRequestObject } from '../debugProtocol/Debugger';
+import { BreakpointQueue } from '../managers/BreakpointQueue';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
         super();
         // this debugger uses one-based lines and columns
-        this.setDebuggerLinesStartAt1(true);
-        this.setDebuggerColumnsStartAt1(true);
+        this.setDebuggerLinesStartAt1(false);
+        this.setDebuggerColumnsStartAt1(false);
 
         //give util a reference to this session to assist in logging across the entire module
         util._debugSession = this;
@@ -57,14 +58,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
-        this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
+        this.projectManager = new ProjectManager(this.breakpointQueue, this.locationManager);
     }
 
     public fileManager: FileManager;
 
     public projectManager: ProjectManager;
 
-    public breakpointManager: BreakpointManager;
+    public breakpointQueue = new BreakpointQueue();
+
+    public breakpointManager1: BreakpointManager;
 
     public locationManager: LocationManager;
 
@@ -95,7 +98,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variableHandles = new Handles<string>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
-    private enableDebugProtocol: boolean;
+
+    private get isDebugProtocolEnabled() {
+        return this.launchConfiguration.isDebugProtocolEnabled ?? false;
+    }
 
     private getRokuAdapter() {
         return this.rokuAdapterDeferred.promise;
@@ -138,8 +144,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         this.launchConfiguration = config;
 
-        this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
-
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
 
@@ -154,10 +158,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
 
-            util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
+            util.log(`Connecting to Roku via ${this.isDebugProtocolEnabled ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
             this.createRokuAdapter(this.launchConfiguration.host);
-            if (!this.enableDebugProtocol) {
+            if (!this.isDebugProtocolEnabled) {
                 //connect to the roku debug via telnet
                 await this.connectRokuAdapter();
             } else {
@@ -261,13 +265,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //ignore the compile error failure from within the publish
             (this.launchConfiguration as any).failOnCompileError = false;
-            // Set the remote debug flag on the args to be passed to roku deploy so the socket debugger can be started if needed.
-            (this.launchConfiguration as any).remoteDebug = this.enableDebugProtocol;
+            //Enable the new debug protocol if true
+            (this.launchConfiguration as any).remoteDebug = this.isDebugProtocolEnabled;
 
             //publish the package to the target Roku
             await this.rokuDeploy.publish(this.launchConfiguration as any);
 
-            if (this.enableDebugProtocol) {
+            if (this.isDebugProtocolEnabled) {
                 //connect to the roku debug via sockets
                 await this.connectRokuAdapter();
             }
@@ -404,8 +408,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //prevent new breakpoints from being verified
         this.breakpointManager.lockBreakpoints();
 
-        //write all `stop` statements to the files in the staging folder
-        await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
+        if (this.isDebugProtocolEnabled) {
+            //write all `stop` statements to the files in the staging folder
+            await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
+        }
 
         //create zip package from staging folder
         util.log('Creating zip archive from project sources');
@@ -502,11 +508,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     /**
-     * Called every time a breakpoint is created, modified, or deleted, for each file. This receives the entire list of breakpoints every time.
+     * Called every time a breakpoint is created, modified, or deleted, for each file.
+     * This receives the entire list of breakpoints for the file every time.
      */
-    public async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
-        if (!this.enableDebugProtocol) {
-            let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
+    public setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
+        this.breakpointQueue.setBreakpoints(
+            args.source.path,
+            args.breakpoints
+        );
+        //TODO send to device if possible
+    }
+
+    private async setBreakpointsRequestOld(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
+        if (!this.isDebugProtocolEnabled) {
+            let sanitizedBreakpoints = this.breakpointManager1.replaceBreakpoints(args.source.path, args.breakpoints);
             //sort the breakpoints
             let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
                 //filter out the inactive breakpoints
@@ -625,7 +640,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async sendQueuedBreakpointsToDevice() {
-        if (this.enableDebugProtocol) {
+        if (this.isDebugProtocolEnabled) {
             for (const queuedBreakpoint of Object.values(this.breakpointsQueue)) {
                 queuedBreakpoint.response.seq = 0;
                 await this.setBreakPointsRequest(queuedBreakpoint.response, queuedBreakpoint.args);
@@ -779,7 +794,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             const scopes = new Array<Scope>();
 
-            if (this.enableDebugProtocol) {
+            if (this.isDebugProtocolEnabled) {
                 let refId = this.getEvaluateRefId('', args.frameId);
                 let v: AugmentedVariable;
                 //if we already looked this item up, return it
@@ -955,7 +970,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             namedVariables: v.namedVariables || 0,
                             indexedVariables: v.indexedVariables || 0
                         };
-                    } else if (args.context === 'repl' && !this.enableDebugProtocol) {
+                    } else if (args.context === 'repl' && !this.isDebugProtocolEnabled) {
                         let lowerExpression = args.expression.toLowerCase().trim();
 
                         if (['cont', 'c'].includes(lowerExpression)) {
@@ -1005,7 +1020,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.rokuAdapter.destroy();
         }
         //return to the home screen
-        if (!this.enableDebugProtocol) {
+        if (!this.isDebugProtocolEnabled) {
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
         }
         this.componentLibraryServer.stop();
@@ -1013,7 +1028,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private createRokuAdapter(host: string) {
-        if (this.enableDebugProtocol) {
+        if (this.isDebugProtocolEnabled) {
             this.rokuAdapter = new DebugProtocolAdapter(host, this.launchConfiguration.stopOnEntry);
         } else {
             this.rokuAdapter = new TelnetAdapter(host, this.launchConfiguration.enableDebuggerAutoRecovery);
@@ -1040,7 +1055,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let exceptionText = '';
             const event: StoppedEvent = new StoppedEvent(StoppedEventReason.breakpoint, threadId, exceptionText);
             // Socket debugger will always stop all threads and supports multi thread inspection.
-            (event.body as any).allThreadsStopped = this.enableDebugProtocol;
+            (event.body as any).allThreadsStopped = this.isDebugProtocolEnabled;
             this.sendEvent(event);
             await this.sendQueuedBreakpointsToDevice();
         });
@@ -1067,7 +1082,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let v: AugmentedVariable;
 
         if (result) {
-            if (this.enableDebugProtocol) {
+            if (this.isDebugProtocolEnabled) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
                 if (result.keyType) {
                     // check to see if this is an dictionary or a list
@@ -1131,7 +1146,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * If `stopOnEntry` is enabled, register the entry breakpoint.
      */
     public async handleEntryBreakpoint() {
-        if (this.launchConfiguration.stopOnEntry && !this.enableDebugProtocol) {
+        if (this.launchConfiguration.stopOnEntry && !this.isDebugProtocolEnabled) {
             await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
         }
     }

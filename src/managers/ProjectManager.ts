@@ -4,13 +4,13 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
-import * as glob from 'glob';
 import { promisify } from 'util';
+import * as glob from 'glob';
 const globAsync = promisify(glob);
-import type { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
+import type { BreakpointQueue } from './BreakpointQueue';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -27,11 +27,9 @@ export class ProjectManager {
          * A class that keeps track of all the breakpoints for a debug session.
          * It needs to be notified of any changes in breakpoints
          */
-        public breakpointManager: BreakpointManager,
-        public locationManager: LocationManager
-    ) {
-        this.breakpointManager = breakpointManager;
-    }
+        private breakpointQueue: BreakpointQueue,
+        private locationManager: LocationManager
+    ) { }
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;
@@ -62,8 +60,6 @@ export class ProjectManager {
      */
     public getLineNumberOffsetByBreakpoints(filePath: string, debuggerLineNumber: number) {
         let breakpoints = this.breakpointManager.getBreakpointsForFile(filePath);
-        //throw out duplicate breakpoints (account for entry breakpoint) and sort them ascending
-        breakpoints = this.breakpointManager.sortAndRemoveDuplicateBreakpoints(breakpoints);
 
         let sourceLineByDebuggerLine = {};
         let sourceLineNumber = 0;
@@ -146,10 +142,13 @@ export class ProjectManager {
         let sourceLocation = await this.getSourceLocation(entryPoint.relativePath, entryPoint.lineNumber);
 
         //register the entry breakpoint
-        this.breakpointManager.registerBreakpoint(sourceLocation.filePath, {
-            //+1 to select the first line of the function
-            line: sourceLocation.lineNumber + 1
-        });
+        this.breakpointQueue.setSystemBreakpoint(
+            sourceLocation.filePath,
+            {
+                //+1 to select the first line of the function
+                line: sourceLocation.lineNumber + 1
+            }
+        );
     }
 
     /**

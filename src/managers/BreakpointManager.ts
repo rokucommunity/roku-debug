@@ -27,30 +27,6 @@ export class BreakpointManager {
     };
 
     /**
-     * Tell the breakpoint manager that no new breakpoints can be verified
-     * (most likely due to the app being launched and roku not supporting dynamic breakpoints)
-     */
-    public lockBreakpoints() {
-        this.areBreakpointsLocked = true;
-    }
-
-    /**
-     * Indicates whether the app has been launched or not.
-     * This will determine whether the breakpoints should be written to the files, or marked as not verified (greyed out in vscode)
-     */
-    private areBreakpointsLocked = false;
-
-    /**
-     * A map of breakpoints by what file they were set in.
-     * This does not handle any source-to-dest mapping...these breakpoints are stored in the file they were set in.
-     * These breakpoints are all set before launch, and then this list is not changed again after that.
-     * (this concept may need to be modified once we get live breakpoint support)
-     */
-    private breakpointsByFilePath = {} as Record<string, AugmentedSourceBreakpoint[]>;
-
-    public static breakpointIdSequence = 1;
-
-    /**
      * breakpoint lines are 1-based, and columns are zero-based
      */
     public registerBreakpoint(sourceFilePath: string, breakpoint: AugmentedSourceBreakpoint | DebugProtocol.SourceBreakpoint) {
@@ -67,9 +43,6 @@ export class BreakpointManager {
         bp.column = bp.column ?? 0;
 
         bp.wasAddedBeforeLaunch = bp.wasAddedBeforeLaunch ?? this.areBreakpointsLocked === false;
-
-        //set an id if one does not already exist (used for pushing breakpoints to the client)
-        bp.id = bp.id ?? BreakpointManager.breakpointIdSequence++;
 
         //any breakpoint set in this function is not hidden
         bp.isHidden = false;
@@ -201,29 +174,7 @@ export class BreakpointManager {
                 }
             }
         }
-        //sort every breakpoint by location
-        for (let stagingFilePath in result) {
-            result[stagingFilePath] = this.sortAndRemoveDuplicateBreakpoints(result[stagingFilePath]);
-        }
-
         return result;
-    }
-
-    public sortAndRemoveDuplicateBreakpoints<T extends { line: number; column?: number }>(
-        breakpoints: Array<T>
-    ) {
-        breakpoints = orderBy(breakpoints, [x => x.line, x => x.column]);
-        //throw out any duplicate breakpoints (walk backwards so this is easier)
-        for (let i = breakpoints.length - 1; i >= 0; i--) {
-            let breakpoint = breakpoints[i];
-            let higherBreakpoint = breakpoints[i + 1];
-            //only support one breakpoint per line
-            if (higherBreakpoint && higherBreakpoint.line === breakpoint.line) {
-                //throw out the higher breakpoint because it's probably the user-defined breakpoint
-                breakpoints.splice(i + 1, 1);
-            }
-        }
-        return breakpoints;
     }
 
     /**
