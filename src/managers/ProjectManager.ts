@@ -11,6 +11,7 @@ import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
 import type { BreakpointQueue } from './BreakpointQueue';
+import type { LaunchConfiguration } from '../LaunchConfiguration';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -31,9 +32,7 @@ export class ProjectManager {
         private locationManager: LocationManager
     ) { }
 
-    public launchConfiguration: {
-        enableSourceMaps?: boolean;
-    };
+    public launchConfiguration: LaunchConfiguration;
 
     public mainProject: Project;
     public componentLibraryProjects = [] as ComponentLibraryProject[];

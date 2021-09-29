@@ -3,7 +3,6 @@ import { Debugger } from '../debugProtocol/Debugger';
 import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
-
 import { defer } from '../debugSession/BrightScriptDebugSession';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
@@ -12,6 +11,7 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import type { QueueBreakpoint } from '../managers/BreakpointQueue';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -555,12 +555,24 @@ export class DebugProtocolAdapter {
         }
     }
 
-    public addBreakpoints(breakpoints: Array<AddBreakpointRequestObject> = []): Promise<any> {
-        return this.socketDebugger.addBreakpoints(breakpoints);
-    }
-
-    public removeBreakpoints(breakpoints: RemoveBreakpointRequestObject = []): Promise<any> {
-        return this.socketDebugger.removeBreakpoints(breakpoints);
+    /**
+     * Synchronize the full list of breakpoints to the protocol (delete existing and then send new)
+     */
+    public async syncBreakpoints(breakpoints: QueueBreakpoint[]) {
+        //get all existing breakpoints
+        const deviceBreakpoints = (await this.socketDebugger.listBreakpoints()).breakpoints ?? [];
+        //remove all existing breakpoints
+        if (deviceBreakpoints.length > 0) {
+            await this.socketDebugger.removeBreakpoints(deviceBreakpoints.map(x => x.breakpointId));
+        }
+        //send the new full list of breakpoints
+        await this.socketDebugger.addBreakpoints(
+            breakpoints.map(x => ({
+                filePath: '', //x.destPath,
+                hitCount: parseInt(x.hitCondition) ?? 0,
+                lineNumber: x.line
+            }))
+        );
     }
 
     /**

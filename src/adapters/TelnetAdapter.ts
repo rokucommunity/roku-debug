@@ -14,6 +14,7 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { util } from '../util';
+import type { QueueBreakpoint } from '../managers/BreakpointQueue';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -148,6 +149,10 @@ export class TelnetAdapter {
                 this.emit('suspend', threads[0].threadId);
             }
         }
+    }
+
+    public async syncBreakpoints(breakpoints: QueueBreakpoint[]) {
+        //do nothing, we can't sync breakpoints over telnet
     }
 
     /**

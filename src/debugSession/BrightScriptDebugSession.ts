@@ -44,6 +44,7 @@ import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { AddBreakpointRequestObject } from '../debugProtocol/Debugger';
 import { BreakpointQueue } from '../managers/BreakpointQueue';
+import { BreakpointMapper } from '../BreakpointMapper';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -59,13 +60,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         this.projectManager = new ProjectManager(this.breakpointQueue, this.locationManager);
+        this.breakpointQueue = new BreakpointQueue();
+        this.breakpointMapper = new BreakpointMapper(this.breakpointQueue);
     }
 
     public fileManager: FileManager;
 
     public projectManager: ProjectManager;
 
-    public breakpointQueue = new BreakpointQueue();
+    /**
+     * Collects all the breakpoints coming from vscode
+     */
+    public breakpointQueue: BreakpointQueue;
+
+    /**
+     * Maps breakpoints to their device locations so we know where to insert the breakpoints
+     */
+    public breakpointMapper: BreakpointMapper;
 
     public breakpointManager1: BreakpointManager;
 
@@ -99,8 +110,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
 
+    /**
+     * Determines if this debug session uses the debug procol. False means the telnet debugger will be used
+     */
     private get isDebugProtocolEnabled() {
-        return this.launchConfiguration.isDebugProtocolEnabled ?? false;
+        return this.launchConfiguration.enableDebugProtocol ?? false;
     }
 
     private getRokuAdapter() {
@@ -1048,6 +1062,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
+            this.syncBreakpoints();
             let threads = await this.rokuAdapter.getThreads();
             let threadId = threads[0].threadId;
 
@@ -1076,6 +1091,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //make the connection
         await this.rokuAdapter.connect();
         this.rokuAdapterDeferred.resolve(this.rokuAdapter);
+    }
+
+    private async syncBreakpoints() {
+        if (this.breakpointQueue.isDirty) {
+            //translate breakpoints to their device locations
+            const breakpoints = await this.breakpointMapper.map();
+            await this.rokuAdapter.syncBreakpoints(breakpoints);
+            this.breakpointQueue.isDirty = false;
+        }
     }
 
     private getVariableFromResult(result: EvaluateContainer, frameId: number) {

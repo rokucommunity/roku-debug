@@ -38,7 +38,7 @@ export class ListOrAddBreakpointsResponse {
     // response fields
     public requestId = -1;
     public numBreakpoints: number;
-    public breakpoints = [];
+    public breakpoints = [] as BreakpointInfo[];
     public data = -1;
     public errorCode: string;
 }
