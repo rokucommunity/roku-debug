@@ -10,7 +10,7 @@ const globAsync = promisify(glob);
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
-import type { BreakpointQueue } from './BreakpointQueue';
+import type { BreakpointQueue } from '../breakpoints/BreakpointQueue';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports

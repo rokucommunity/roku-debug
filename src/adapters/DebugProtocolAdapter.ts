@@ -4,6 +4,7 @@ import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
 import { defer } from '../debugSession/BrightScriptDebugSession';
+import type { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
@@ -11,7 +12,7 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
-import type { QueueBreakpoint } from '../managers/BreakpointQueue';
+import type { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -57,52 +58,51 @@ export class DebugProtocolAdapter {
      * @param eventName
      * @param handler
      */
-    public on(eventName: 'cannot-continue', handler: () => void);
-    public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
-    public on(eventName: 'close', handler: () => void);
-    public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
-    public on(eventName: 'connected', handler: (params: boolean) => void);
-    public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
-    public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
-    public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
-    public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
-    public on(eventName: 'suspend', handler: () => void);
-    public on(eventName: 'start', handler: () => void);
-    public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
-    public on(eventName: string, handler: (payload: any) => void) {
-        this.emitter.on(eventName, handler);
+    public on(event: 'cannot-continue', handler: () => void);
+    public on(event: 'chanperf', handler: (output: ChanperfData) => void);
+    public on(event: 'close', handler: () => void);
+    public on(event: 'app-exit', handler: () => void);
+    public on(event: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
+    public on(event: 'connected', handler: (params: boolean) => void);
+    public on(event: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
+    public on(event: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
+    public on(event: 'rendezvous', handler: (output: RendezvousHistory) => void);
+    public on(event: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
+    public on(event: 'suspend', handler: () => void);
+    public on(event: 'start', handler: () => void);
+    public on(event: 'unhandled-console-output', handler: (output: string) => void);
+    public on(event: 'breakpoints-verified', handler: (data: QueueBreakpoint[]) => void);
+    public on(event: 'breakpoints-added', handler: (data: QueueBreakpoint[]) => void);
+    public on(event: 'breakpoints-removed', handler: (data: QueueBreakpoint[]) => void);
+    public on(event: string, handler: (payload: any) => void) {
+        this.emitter.on(event, handler);
         return () => {
             if (this.emitter !== undefined) {
-                this.emitter.removeListener(eventName, handler);
+                this.emitter.removeListener(event, handler);
             }
         };
     }
 
-    private emit(
-        /* eslint-disable */
-        eventName:
-            'app-exit' |
-            'cannot-continue' |
-            'chanperf' |
-            'close' |
-            'compile-errors' |
-            'connected' |
-            'console-output' |
-            'protocol-version' |
-            'rendezvous' |
-            'runtime-error' |
-            'start' |
-            'suspend' |
-            'unhandled-console-output',
-        /* eslint-enable */
-        data?
-    ) {
+    private emit(event: 'app-exit')
+    private emit(event: 'cannot-continue')
+    private emit(event: 'chanperf', data: ChanperfData)
+    private emit(event: 'close')
+    private emit(event: 'compile-errors', data: BrightScriptDebugCompileError[])
+    private emit(event: 'connected', data: boolean)
+    private emit(event: 'protocol-version', data: ProtocolVersionDetails)
+    private emit(event: 'rendezvous', data: RendezvousHistory)
+    private emit(event: 'runtime-error', data: BrightScriptRuntimeError)
+    private emit(event: 'start')
+    private emit(event: 'suspend', threadId: number)
+    private emit(event: 'console-output', data: string)
+    private emit(event: 'unhandled-console-output', data: string)
+    private emit(event: 'breakpoints-verified', data: QueueBreakpoint[])
+    private emit(event: string, data?: any) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
             if (this.emitter) {
-                this.emitter.emit(eventName, data);
+                this.emitter.emit(event, data);
             }
         }, 0);
     }
@@ -566,13 +566,22 @@ export class DebugProtocolAdapter {
             await this.socketDebugger.removeBreakpoints(deviceBreakpoints.map(x => x.breakpointId));
         }
         //send the new full list of breakpoints
-        await this.socketDebugger.addBreakpoints(
+        const result = await this.socketDebugger.addBreakpoints(
             breakpoints.map(x => ({
                 filePath: '', //x.destPath,
                 hitCount: parseInt(x.hitCondition) ?? 0,
                 lineNumber: x.line
             }))
         );
+        const verifiedBreakpoints = [];
+        //emit an event for every breakpoint. All breakpoints are marked as 'disabled' by default,
+        //so we only emit the verified breakpoints
+        for (let i = 0; i < breakpoints.length; i++) {
+            if (result.breakpoints[i].isVerified) {
+                verifiedBreakpoints.push(breakpoints[i]);
+            }
+        }
+        this.emit('breakpoints-verified', verifiedBreakpoints);
     }
 
     /**

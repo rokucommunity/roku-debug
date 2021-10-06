@@ -5,7 +5,7 @@ export class ListOrAddBreakpointsResponse {
 
     constructor(buffer: Buffer) {
         // The minimum size of a connect to IO port request
-        if (buffer.byteLength >= 8) {
+        if (buffer?.byteLength >= 8) {
             try {
                 let bufferReader = SmartBuffer.fromBuffer(buffer);
                 this.requestId = bufferReader.readUInt32LE(); // request_id
@@ -58,6 +58,9 @@ export class BreakpointInfo {
         this.success = true;
     }
 
+    public get isVerified() {
+        return this.breakpointId > 0;
+    }
     public success = false;
     public breakpointId: number;
     public errorCode: string;

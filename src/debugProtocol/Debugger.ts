@@ -258,10 +258,9 @@ export class Debugger {
     }
 
     public async addBreakpoints(breakpoints: Array<AddBreakpointRequestObject> = []) {
-        const numBreakpoints = breakpoints.length;
-        if (numBreakpoints > 0) {
+        if (breakpoints?.length > 0) {
             let buffer = new SmartBuffer();
-            buffer.writeUInt32LE(numBreakpoints); // num_breakpoints - The number of breakpoints in the breakpoints array.
+            buffer.writeUInt32LE(breakpoints.length); // num_breakpoints - The number of breakpoints in the breakpoints array.
             breakpoints.forEach((breakpoint) => {
                 buffer.writeStringNT(breakpoint.filePath); // file_path - The path of the source file where the breakpoint is to be inserted.
                 buffer.writeUInt32LE(breakpoint.lineNumber); // line_number - The line number in the channel application code where the breakpoint is to be executed.
@@ -269,7 +268,7 @@ export class Debugger {
             });
             return this.makeRequest<ListOrAddBreakpointsResponse>(buffer, COMMANDS.ADD_BREAKPOINTS);
         }
-        return [];
+        return new ListOrAddBreakpointsResponse(null);
     }
 
     public async listBreakpoints() {

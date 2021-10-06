@@ -4,7 +4,7 @@ import { standardizePath as s } from '../FileUtils';
 import { BpMap, BreakpointQueue } from './BreakpointQueue';
 import type { QueueBreakpoint } from './BreakpointQueue';
 
-describe.only('BreakpointQueue', () => {
+describe('BreakpointQueue', () => {
     const mainPath = s`${rootDir}/source/main.brs`;
 
     const [bp1, bp2, bp3, bp4, bp5] = [{

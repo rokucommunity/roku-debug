@@ -124,6 +124,15 @@ export class FileUtils {
         }
     }
 
+    public findFirstRelativeFileSync(relativeFilePath: string, directoryPaths: string[]) {
+        for (let directoryPath of directoryPaths) {
+            let fullPath = path.normalize(path.join(directoryPath, relativeFilePath));
+            if (fsExtra.pathExistsSync(fullPath)) {
+                return fullPath;
+            }
+        }
+    }
+
     /**
      * Determine if the filename ends with one of the specified extensions
      */

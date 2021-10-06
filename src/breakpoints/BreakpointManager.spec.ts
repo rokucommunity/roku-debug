@@ -4,11 +4,11 @@ import { SourceMapConsumer, SourceNode } from 'source-map';
 
 import { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
-import { Project } from './ProjectManager';
+import { Project } from '../managers/ProjectManager';
 let n = fileUtils.standardizePath.bind(fileUtils);
 import type { SourceLocation } from '../managers/LocationManager';
 import { LocationManager } from '../managers/LocationManager';
-import { SourceMapManager } from './SourceMapManager';
+import { SourceMapManager } from '../managers/SourceMapManager';
 
 describe('BreakpointManager', () => {
     let cwd = fileUtils.standardizePath(process.cwd());

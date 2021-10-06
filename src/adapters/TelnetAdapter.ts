@@ -14,7 +14,7 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { util } from '../util';
-import type { QueueBreakpoint } from '../managers/BreakpointQueue';
+import type { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -1147,8 +1147,7 @@ export class RequestPipeline {
 
     private emitter = new EventEmitter();
 
-    public on(eventName: 'console-output' | 'unhandled-console-output', handler: (data: string) => void);
-    public on(eventName: string, handler: (data: string) => void) {
+    public on(eventName: string, handler: (data: any) => void) {
         this.emitter.on(eventName, handler);
         return () => {
             this.emitter.removeListener(eventName, handler);

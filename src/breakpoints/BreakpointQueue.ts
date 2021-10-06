@@ -1,9 +1,27 @@
 import { standardizePath as s } from '../FileUtils';
 import type { DebugProtocol } from 'vscode-debugprotocol';
-import { IdGenerator } from '../IdGenerator';
-type SourceBreakpoint = DebugProtocol.SourceBreakpoint;
+import * as EventEmitter from 'events';
+
+export type SourceBreakpoint = DebugProtocol.SourceBreakpoint;
 
 export class BreakpointQueue {
+
+    private emitter = new EventEmitter();
+
+    public on(event: 'add', handler: (breakpoint: QueueBreakpoint) => void): () => void
+    public on(event: 'delete', handler: (breakpoint: QueueBreakpoint) => void): () => void
+    public on(event: string, handler: (param: any) => void): () => void {
+        this.emitter.on(event, handler);
+        return () => {
+            this.emitter.off(event, handler);
+        };
+    }
+
+    private emit(event: 'add', data: QueueBreakpoint)
+    private emit(event: 'delete', data: QueueBreakpoint)
+    private emit(event: string, data: any) {
+        this.emitter.emit(event, data);
+    }
 
     /**
      * Breakpoints by file
@@ -59,6 +77,7 @@ export class BreakpointQueue {
             breakpoint,
             ...this.breakpoints.get(srcPath) ?? []
         ]);
+        this.emit('add', breakpoint as QueueBreakpoint);
     }
 
     /**
@@ -72,6 +91,8 @@ export class BreakpointQueue {
         if (index > -1) {
             breakpoints.splice(index, 1);
         }
+        (breakpoint as QueueBreakpoint).srcPath = s`${srcPath}`;
+        this.emit('delete', breakpoint as QueueBreakpoint);
     }
 
     /**
