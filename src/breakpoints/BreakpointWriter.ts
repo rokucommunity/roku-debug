@@ -24,7 +24,7 @@ export class BreakpointWriter {
     /**
      * Write "stop" lines into source code for each breakpoint of each file in the given project
      */
-    public async writeBreakpointsForProject(breakpoints: Breakpoint) {
+    public async writeBreakpointsForProject(project: Project, breakpoints: Breakpoint) {
         let breakpointsByStagingFilePath = await this.getBreakpointWork(project);
 
         let promises = [] as Promise<any>[];

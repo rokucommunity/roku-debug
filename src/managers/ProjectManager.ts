@@ -12,6 +12,8 @@ import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
 import type { BreakpointQueue } from '../breakpoints/BreakpointQueue';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
+import { BreakpointMapper } from '../breakpoints/BreakpointMapper';
+import { BreakpointWriter } from '../breakpoints/BreakpointWriter';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -148,6 +150,18 @@ export class ProjectManager {
                 line: sourceLocation.lineNumber + 1
             }
         );
+    }
+
+    /**
+     * This inserts `stop` statements into the staged files for any breakpoints not supported by the debug adapter.
+     * For telnet, that's every type of breakpoint. For debug protocol, that's only a few types
+     */
+    public async injectStaticBreakpoints(project: Project) {
+        const breakpoints = new BreakpointMapper(
+            this.breakpointQueue,
+            this.locationManager
+        ).mapBreakpoints(project);
+        await new BreakpointWriter(this.sourceMapManager).writeBreakpointsForProject(project, breakpoints);
     }
 
     /**

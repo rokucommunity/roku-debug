@@ -78,8 +78,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     public breakpointMapper: BreakpointMapper;
 
-    public breakpointManager1: BreakpointManager;
-
     public locationManager: LocationManager;
 
     public sourceMapManager: SourceMapManager;
@@ -440,19 +438,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         util.log('Moving selected files to staging area');
         await this.projectManager.mainProject.stage();
 
+
         //add the entry breakpoint if stopOnEntry is true
         await this.handleEntryBreakpoint();
 
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
-        //prevent new breakpoints from being verified
-        this.breakpointManager.lockBreakpoints();
-
-        if (this.isDebugProtocolEnabled) {
-            //write all `stop` statements to the files in the staging folder
-            await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
-        }
+        //write all `stop` statements to the files in the staging folder
+        await this.projectManager.injectStaticBreakpoints(this.projectManager.mainProject);
 
         //create zip package from staging folder
         util.log('Creating zip archive from project sources');
@@ -507,10 +501,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 await compLibProject.stage();
 
+                await this.projectManager.injectStaticBreakpoints(compLibProject);
+
                 // Add breakpoint lines to the staging files and before publishing
                 util.log('Adding stop statements for active breakpoints in Component Libraries');
-
-                compLibProject.writeBreakpoints();
 
                 await compLibProject.postfixFiles();
 
@@ -943,8 +937,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async syncBreakpoints() {
         if (this.breakpointQueue.isDirty) {
+            const breakpoints = [];
             //translate breakpoints to their device locations
-            const breakpoints = await this.breakpointMapper.map();
+            await Promise.all([
+                this.projectManager.mainProject,
+                ...this.projectManager.componentLibraryProjects
+            ].map(async project => {
+                breakpoints.push(...await this.breakpointMapper.mapBreakpoints(project));
+            }));
             await this.rokuAdapter.syncBreakpoints(breakpoints);
             this.breakpointQueue.isDirty = false;
         }

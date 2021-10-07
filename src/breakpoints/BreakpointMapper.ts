@@ -12,7 +12,7 @@ export class BreakpointMapper {
 
     }
 
-    public async map(project: Project) {
+    public async mapBreakpoints(project: Project) {
         //move rootDir breakpoints into sourceDirs if applicable
         await this.handleSourceDirs(project);
 
