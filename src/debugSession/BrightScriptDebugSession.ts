@@ -59,7 +59,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.fileManager = new FileManager();
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
-        this.projectManager = new ProjectManager(this.breakpointQueue, this.locationManager);
+        this.projectManager = new ProjectManager(this.breakpointQueue, this.locationManager, this.sourceMapManager);
         this.breakpointQueue = new BreakpointQueue();
         this.breakpointMapper = new BreakpointMapper(this.breakpointQueue, this.locationManager);
     }

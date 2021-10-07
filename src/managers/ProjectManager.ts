@@ -14,6 +14,7 @@ import type { BreakpointQueue } from '../breakpoints/BreakpointQueue';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import { BreakpointMapper } from '../breakpoints/BreakpointMapper';
 import { BreakpointWriter } from '../breakpoints/BreakpointWriter';
+import { SourceMapManager } from './SourceMapManager';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -31,7 +32,8 @@ export class ProjectManager {
          * It needs to be notified of any changes in breakpoints
          */
         private breakpointQueue: BreakpointQueue,
-        private locationManager: LocationManager
+        private locationManager: LocationManager,
+        private sourceMapManager: SourceMapManager
     ) { }
 
     public launchConfiguration: LaunchConfiguration;
