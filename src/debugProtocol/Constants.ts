@@ -10,7 +10,11 @@ export const enum COMMANDS {
     THREADS = 3,
     STACKTRACE = 4,
     VARIABLES = 5,
-    STEP = 6,
+    STEP = 6, // Since protocol 1.1
+    ADD_BREAKPOINTS = 7, // since protocol 1.2
+    LIST_BREAKPOINTS = 8, // since protocol 1.2
+    REMOVE_BREAKPOINTS = 9, // since protocol 1.2
+    EXECUTE = 10, // since protocol 2.1
     EXIT_CHANNEL = 122
 }
 

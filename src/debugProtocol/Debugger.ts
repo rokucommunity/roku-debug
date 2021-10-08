@@ -252,6 +252,18 @@ export class Debugger {
         return -1;
     }
 
+    public async executeCommand(sourceCode: string, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
+        if (this.stopped && threadIndex > -1) {
+            console.log(sourceCode);
+            let buffer = new SmartBuffer({ size: 8 });
+            buffer.writeUInt32LE(threadIndex); // thread_index
+            buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
+            buffer.writeStringNT(sourceCode); // source_code
+            return this.makeRequest(buffer, COMMANDS.EXECUTE, sourceCode);
+        }
+        return -1;
+    }
+
     private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
         this.totalRequests++;
         let requestId = this.totalRequests;
@@ -292,7 +304,7 @@ export class Debugger {
                 }
 
                 let commandType = this.activeRequests[debuggerRequestResponse.requestId].commandType;
-                if (commandType === COMMANDS.STOP || commandType === COMMANDS.CONTINUE || commandType === COMMANDS.STEP || commandType === COMMANDS.EXIT_CHANNEL) {
+                if (commandType === COMMANDS.STOP || commandType === COMMANDS.CONTINUE || commandType === COMMANDS.STEP || commandType === COMMANDS.EXIT_CHANNEL || commandType === COMMANDS.EXECUTE) {
                     this.removedProcessedBytes(debuggerRequestResponse, unhandledData);
                     return true;
                 }
