@@ -99,7 +99,7 @@ export class BreakpointMapper {
 
 export interface BreakpointWorkItem {
     /**
-     * The path to the file where the breakpoint was originall set
+     * The path to the file where the breakpoint was originally set
      */
     srcPath: string;
     /**

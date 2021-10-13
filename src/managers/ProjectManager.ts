@@ -14,7 +14,7 @@ import type { BreakpointQueue } from '../breakpoints/BreakpointQueue';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import { BreakpointMapper } from '../breakpoints/BreakpointMapper';
 import { BreakpointWriter } from '../breakpoints/BreakpointWriter';
-import { SourceMapManager } from './SourceMapManager';
+import type { SourceMapManager } from './SourceMapManager';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -62,7 +62,7 @@ export class ProjectManager {
      * @param debuggerLineNumber - the line number from the debugger
      */
     public getLineNumberOffsetByBreakpoints(filePath: string, debuggerLineNumber: number) {
-        let breakpoints = this.breakpointManager.getBreakpointsForFile(filePath);
+        let breakpoints = [];//this.breakpointManager.getBreakpointsForFile(filePath);
 
         let sourceLineByDebuggerLine = {};
         let sourceLineNumber = 0;
@@ -159,11 +159,11 @@ export class ProjectManager {
      * For telnet, that's every type of breakpoint. For debug protocol, that's only a few types
      */
     public async injectStaticBreakpoints(project: Project) {
-        const breakpoints = new BreakpointMapper(
+        const breakpoints = await new BreakpointMapper(
             this.breakpointQueue,
             this.locationManager
         ).mapBreakpoints(project);
-        await new BreakpointWriter(this.sourceMapManager).writeBreakpointsForProject(project, breakpoints);
+        await new BreakpointWriter(this.sourceMapManager).writeBreakpointsForProject(project, breakpoints as any);
     }
 
     /**
@@ -227,7 +227,7 @@ export class ProjectManager {
     }
 }
 
-interface AddProjectParams {
+export interface AddProjectParams {
     rootDir: string;
     outDir: string;
     sourceDirs?: string[];

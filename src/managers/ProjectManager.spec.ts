@@ -6,7 +6,6 @@ import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { ComponentLibraryConstructorParams } from './ProjectManager';
 import { Project, ComponentLibraryProject, ProjectManager } from './ProjectManager';
-import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
 

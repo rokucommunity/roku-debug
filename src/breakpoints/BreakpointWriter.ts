@@ -4,7 +4,8 @@ import { SourceNode } from 'source-map';
 import type { Project } from '../managers/ProjectManager';
 import type { SourceMapManager } from '../managers/SourceMapManager';
 import { util } from '../util';
-
+import * as eol from 'eol';
+import type { BreakpointWorkItem } from './BreakpointMapper';
 
 /**
  * Writes breakpoints to files in the staging dir
@@ -23,13 +24,25 @@ export class BreakpointWriter {
 
     /**
      * Write "stop" lines into source code for each breakpoint of each file in the given project
+     * @param project
+     * @param breakpointsByStagingPath map of breakpoints for each staging folder path
      */
-    public async writeBreakpointsForProject(project: Project, breakpoints: Breakpoint) {
-        let breakpointsByStagingFilePath = await this.getBreakpointWork(project);
+    public async writeBreakpointsForProject(project: Project, breakpoints: BreakpointWorkItem[]) {
+        //group breakpoints by staging path
+        const breakpointsByStagingPath = breakpoints.reduce((map, bp) => {
+            if (!map.has(bp.stagingPath)) {
+                map.set(bp.stagingPath, [bp]);
+            } else {
+                map.get(bp.stagingPath).push(bp);
+            }
+            return map;
+        }, new Map<string, BreakpointWorkItem[]>());
 
         let promises = [] as Promise<any>[];
-        for (let stagingFilePath in breakpointsByStagingFilePath) {
-            promises.push(this.writeBreakpointsToFile(stagingFilePath, breakpointsByStagingFilePath[stagingFilePath]));
+        for (let [stagingFilePath, breakpoints] of breakpointsByStagingPath) {
+            promises.push(
+                this.writeBreakpointsToFile(stagingFilePath, breakpoints)
+            );
         }
 
         await Promise.all(promises);
@@ -51,9 +64,9 @@ export class BreakpointWriter {
 
         let originalFilePath = breakpoints[0].type === 'sourceMap'
             //the calling function will merge this sourcemap into the other existing sourcemap, so just use the same name because it doesn't matter
-            ? breakpoints[0].rootDirFilePath
+            ? breakpoints[0].rootPath
             //the calling function doesn't have a sourcemap for this file, so we need to point it to the sourceDirs found location (probably rootDir...)
-            : breakpoints[0].sourceFilePath;
+            : breakpoints[0].srcPath;
 
         let sourceAndMap = this.getSourceAndMapWithBreakpoints(fileContents, originalFilePath, breakpoints);
 

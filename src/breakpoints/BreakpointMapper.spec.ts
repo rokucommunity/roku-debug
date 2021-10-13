@@ -1,6 +1,6 @@
 import { BreakpointMapper } from './BreakpointMapper';
-import type { SourceBreakpoint } from './managers/BreakpointQueue';
-import { BreakpointQueue } from './managers/BreakpointQueue';
+import type { SourceBreakpoint } from '../breakpoints/BreakpointQueue';
+import { BreakpointQueue } from '../breakpoints/BreakpointQueue';
 import { LocationManager } from '../managers/LocationManager';
 import { ProjectManager } from '../managers/ProjectManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
@@ -9,7 +9,7 @@ import { standardizePath as s } from '../FileUtils';
 import * as fsExtra from 'fs-extra';
 import { expect } from 'chai';
 
-describe.only('BreakpointMapper', () => {
+describe('BreakpointMapper', () => {
     let mapper: BreakpointMapper;
     let projectManager: ProjectManager;
     let queue: BreakpointQueue;
