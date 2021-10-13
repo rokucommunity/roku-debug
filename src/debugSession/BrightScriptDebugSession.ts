@@ -763,8 +763,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             try {
 
+                console.log(args.context);
                 if (this.rokuAdapter.isAtDebuggerPrompt) {
-                    if (['hover', 'watch'].includes(args.context) || args.expression.toLowerCase().trim().startsWith('print ')) {
+                    if (['hover', 'watch'].includes(args.context) || (!this.enableDebugProtocol && args.expression.toLowerCase().trim().startsWith('print '))) {
                         //if this command has the word print in front of it, remove that word
                         let expression = args.expression.replace(/^print/i, '').trim();
                         let refId = this.getEvaluateRefId(expression, args.frameId);
@@ -790,32 +791,66 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             namedVariables: v.namedVariables || 0,
                             indexedVariables: v.indexedVariables || 0
                         };
-                    } else if (args.context === 'repl' && !this.enableDebugProtocol) {
-                        let lowerExpression = args.expression.toLowerCase().trim();
+                    } else if (args.context === 'repl') {
+                        if (!this.enableDebugProtocol) {
+                            let lowerExpression = args.expression.toLowerCase().trim();
 
-                        if (['cont', 'c'].includes(lowerExpression)) {
-                            await this.rokuAdapter.continue();
+                            if (['cont', 'c'].includes(lowerExpression)) {
+                                await this.rokuAdapter.continue();
 
-                        } else if (lowerExpression === 'over') {
-                            await this.rokuAdapter.stepOver(-1);
+                            } else if (lowerExpression === 'over') {
+                                await this.rokuAdapter.stepOver(-1);
 
-                        } else if (['step', 's', 't'].includes(lowerExpression)) {
-                            await this.rokuAdapter.stepInto(-1);
+                            } else if (['step', 's', 't'].includes(lowerExpression)) {
+                                await this.rokuAdapter.stepInto(-1);
 
-                        } else if (lowerExpression === 'out') {
-                            await this.rokuAdapter.stepOut(-1);
+                            } else if (lowerExpression === 'out') {
+                                await this.rokuAdapter.stepOut(-1);
 
-                        } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
-                            await (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
+                            } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
+                                await (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
 
+                            } else {
+                                const promise = this.rokuAdapter.evaluate(args.expression);
+                                response.body = <any>{
+                                    result: await promise
+                                };
+
+                                console.log(response.body.result);
+                                // //print the output to the screen
+                                // this.sendEvent(new OutputEvent(result, 'stdout'));
+                                // TODO: support var? maybe?
+                            }
                         } else {
-                            const promise = this.rokuAdapter.evaluate(args.expression);
-                            response.body = <any>{
-                                result: await promise
-                            };
-                            // //print the output to the screen
-                            // this.sendEvent(new OutputEvent(result, 'stdout'));
-                            // TODO: support var? maybe?
+                            let lowerExpression = args.expression.toLowerCase().trim();
+
+                            if (['cont', 'c'].includes(lowerExpression)) {
+                                await this.rokuAdapter.continue();
+
+                            } else if (lowerExpression === 'over') {
+                                await this.rokuAdapter.stepOver(-1);
+
+                            } else if (['step', 's', 't'].includes(lowerExpression)) {
+                                await this.rokuAdapter.stepInto(-1);
+
+                            } else if (lowerExpression === 'out') {
+                                await this.rokuAdapter.stepOut(-1);
+
+                            } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
+                                await (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
+
+                            } else {
+                                debugger;
+                                const promise = this.rokuAdapter.evaluate(args.expression);
+                                response.body = <any>{
+                                    result: await promise
+                                };
+
+                                console.log(response.body.result);
+                                // //print the output to the screen
+                                // this.sendEvent(new OutputEvent(result, 'stdout'));
+                                // TODO: support var? maybe?
+                            }
                         }
                     }
                 } else {

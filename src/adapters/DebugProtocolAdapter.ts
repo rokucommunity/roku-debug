@@ -356,8 +356,12 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot run evaluate: debugger is not paused');
         }
 
+        let frame = this.getStackTraceById(frameId);
+        if (!frame) {
+            throw new Error('Cannot execute command without a corresponding frame');
+        }
         // Pipe all evaluate requests though as a variable request as evaluate is not available at the moment.
-        return this.getVariable(command, frameId);
+        return this.socketDebugger.executeCommand(command, frame.frameIndex, frame.threadIndex);
     }
 
     public async getStackTrace(threadId: number = this.socketDebugger.primaryThread) {
