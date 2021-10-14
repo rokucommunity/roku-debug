@@ -501,14 +501,6 @@ export interface ProtocolVersionDetails {
     errorCode: PROTOCOL_ERROR_CODES;
 }
 
-export interface AddBreakpointRequestObject {
-    filePath: string;
-    lineNumber: number;
-    hitCount: number;
-}
-
-export interface RemoveBreakpointRequestObject extends Array<number> { }
-
 export interface ConstructorOptions {
     /**
      * The host/ip address of the Roku
