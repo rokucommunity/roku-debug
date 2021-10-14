@@ -181,17 +181,17 @@ export class TelnetAdapter {
     public processBreakpoints(text): string | null {
         let newLines = eol.split(text);
         for (const line of newLines) {
-            console.log('Running processing line; ', line);
+            //Running processing line
             if (this.debugStartRegex.exec(line)) {
-                console.log('start MicroDebugger block');
+                //start MicroDebugger block
                 this.isInMicroDebugger = true;
                 this.isNextBreakpointSkipped = false;
             } else if (this.isInMicroDebugger && this.debugEndRegex.exec(line)) {
-                console.log('ended MicroDebugger block');
+                //ended MicroDebugger block
                 this.isInMicroDebugger = false;
             } else if (this.isInMicroDebugger) {
                 if (this.enableDebuggerAutoRecovery && line.startsWith('Break in ')) {
-                    console.log('this block is a break: skipping it');
+                    //this block is a break: skipping it
                     this.isNextBreakpointSkipped = true;
                 }
             }

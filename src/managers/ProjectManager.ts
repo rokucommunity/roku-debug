@@ -375,7 +375,7 @@ export class Project {
         }
         try {
             await fsExtra.copy(this.raleTrackerTaskFileLocation, s`${this.stagingFolderPath}/components/TrackerTask.xml`);
-            console.log('Tracker task successfully injected');
+            util.logDebug('Tracker task successfully injected');
             // Search for the tracker task entry injection point
             const trackerReplacementResult = await replaceInFile({
                 files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
@@ -427,7 +427,7 @@ export class Project {
                     promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
                 }
                 await Promise.all(promises);
-                console.log('RDB OnDeviceComponent successfully injected');
+                util.logDebug('RDB OnDeviceComponent successfully injected');
             }
 
             // Search for the tracker task entry injection point
