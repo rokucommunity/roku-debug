@@ -12,6 +12,7 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { util } from '../util';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -212,14 +213,14 @@ export class DebugProtocolAdapter {
 
             this.connected = await this.socketDebugger.connect();
 
-            console.log(`Closing telnet connection used for compile errors`);
+            util.logDebug(`Closing telnet connection used for compile errors`);
             if (this.compileClient) {
                 this.compileClient.removeAllListeners();
                 this.compileClient.destroy();
                 this.compileClient = undefined;
             }
 
-            console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
+            util.logDebug(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
             this.emit('connected', this.connected);
 
             // Listen for the app exit event
@@ -273,7 +274,7 @@ export class DebugProtocolAdapter {
             });
 
             this.compileClient.connect(8085, this.host, () => {
-                console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} VIA TELNET FOR COMPILE INFO +++++++++++`);
+                util.logDebug(`+++++++++++ CONNECTED TO DEVICE ${this.host} VIA TELNET FOR COMPILE INFO +++++++++++`);
             });
 
             await this.settle(this.compileClient, 'data');
