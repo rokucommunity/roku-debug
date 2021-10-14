@@ -268,7 +268,7 @@ export class SceneGraphDebugCommandController {
                     // Asking the host to close is much faster then running our own connections destroy
                     await this.connection.exec('quit', { shellPrompt: 'Quit command received, exiting.' });
                 } catch (error) {
-                    console.log(error);
+                    util.logDebug(`Error quitting SceneGraphDebugCommand ${error}`);
                 }
                 this.removeConnection();
             } catch (error) {

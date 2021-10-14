@@ -37,7 +37,6 @@ describe('debugProtocol Debugger', () => {
             void roku.processActions();
             let magic = await action.promise;
             expect(magic).to.equal(Debugger.DEBUGGER_MAGIC);
-            console.log('test finished');
         });
 
         it('validates magic from server on connect', async () => {
