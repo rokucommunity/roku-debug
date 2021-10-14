@@ -171,17 +171,19 @@ export class Debugger {
         let result;
         if (this.stopped) {
             this.stopped = false;
-            result = this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.CONTINUE);
+            result = this.makeRequest<Response>(new SmartBuffer({ size: 12 }), COMMANDS.CONTINUE);
         }
         return result;
     }
 
     public async pause() {
-        return !this.stopped ? this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.STOP) : -1;
+        if (!this.stopped) {
+            return this.makeRequest<Response>(new SmartBuffer({ size: 12 }), COMMANDS.STOP);
+        }
     }
 
     public async exitChannel() {
-        return this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.EXIT_CHANNEL);
+        return this.makeRequest<Response>(new SmartBuffer({ size: 12 }), COMMANDS.EXIT_CHANNEL);
     }
 
     public async stepIn(threadId: number = this.primaryThread) {
@@ -196,13 +198,13 @@ export class Debugger {
         return this.step(STEP_TYPE.STEP_TYPE_OUT, threadId);
     }
 
-    private async step(stepType: STEP_TYPE, threadId: number) {
+    private async step(stepType: STEP_TYPE, threadId: number): Promise<Response> {
         let buffer = new SmartBuffer({ size: 17 });
         buffer.writeUInt32LE(threadId); // thread_index
         buffer.writeUInt8(stepType); // step_type
         if (this.stopped) {
             this.stopped = false;
-            let stepResult: any = await this.makeRequest(buffer, COMMANDS.STEP);
+            let stepResult: any = await this.makeRequest<Response>(buffer, COMMANDS.STEP);
             if (stepResult.errorCode === 'OK') {
                 // this.stopped = true;
                 // this.emit('suspend');
@@ -217,7 +219,7 @@ export class Debugger {
     public async threads() {
         let result;
         if (this.stopped) {
-            result = this.makeRequest(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
+            result = this.makeRequest<ThreadsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
             if (result.errorCode === 'OK') {
                 for (let i = 0; i < result.threadCount; i++) {
                     let thread = result.threads[i];
@@ -234,7 +236,9 @@ export class Debugger {
     public async stackTrace(threadIndex: number = this.primaryThread) {
         let buffer = new SmartBuffer({ size: 16 });
         buffer.writeUInt32LE(threadIndex); // thread_index
-        return this.stopped && threadIndex > -1 ? this.makeRequest(buffer, COMMANDS.STACKTRACE) : -1;
+        if (this.stopped && threadIndex > -1) {
+            return this.makeRequest<StackTraceResponse>(buffer, COMMANDS.STACKTRACE);
+        }
     }
 
     public async getVariables(variablePathEntries: Array<string> = [], getChildKeys = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
@@ -247,28 +251,27 @@ export class Debugger {
             variablePathEntries.forEach(variablePathEntry => {
                 buffer.writeStringNT(variablePathEntry); // variable_path_entries - optional
             });
-            return this.makeRequest(buffer, COMMANDS.VARIABLES, variablePathEntries);
+            return this.makeRequest<VariableResponse>(buffer, COMMANDS.VARIABLES, variablePathEntries);
         }
-        return -1;
     }
 
-    private async makeRequest(buffer: SmartBuffer, command: COMMANDS, extraData?) {
+    private async makeRequest<T>(buffer: SmartBuffer, command: COMMANDS, extraData?) {
         this.totalRequests++;
         let requestId = this.totalRequests;
-        buffer.insertUInt32LE(command, 0); // command_code
-        buffer.insertUInt32LE(requestId, 0); // request_id
-        buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length
+        buffer.insertUInt32LE(command, 0); // command_code - An enum representing the debugging command being sent. See the COMMANDS enum
+        buffer.insertUInt32LE(requestId, 0); // request_id - The ID of the debugger request (must be >=1). This ID is included in the debugger response.
+        buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length - The size of the packet to be sent.
 
         this.activeRequests[requestId] = {
             commandType: command,
             extraData: extraData
         };
 
-        return new Promise((resolve, reject) => {
-            let disconnect = this.on('data', (responseHandler) => {
-                if (responseHandler.requestId === requestId) {
+        return new Promise<T>((resolve, reject) => {
+            let disconnect = this.on('data', (data) => {
+                if (data.requestId === requestId) {
                     disconnect();
-                    resolve(responseHandler);
+                    resolve(data);
                 }
             });
 
