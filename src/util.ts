@@ -6,9 +6,10 @@ import * as url from 'url';
 import type { SmartBuffer } from 'smart-buffer';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
-import type { Position, Range } from 'vscode-languageserver';
 import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
+import type { Position, Range, AssignmentStatement } from 'brighterscript';
+import { Parser, DiagnosticSeverity, isVariableExpression, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression } from 'brighterscript';
 
 class Util {
     /**
@@ -273,6 +274,78 @@ class Util {
             }
             return true;
         });
+    }
+
+    /**
+     * Removes the trailing `Brightscript Debugger>` prompt if present. If not present, returns original value
+     * @param value
+     */
+    public trimDebugPrompt(value: string) {
+        const match = /(.*?)\r?\nBrightscript Debugger>\s*/is.exec(value);
+        if (match) {
+            return match[1];
+        } else {
+            return value;
+        }
+    }
+
+    /**
+     * Get the keys for a given variable expression, or undefined if the expression doesn't make sense.
+     */
+    public getVariablePathOld(expression: string): string[] {
+        // Regex 101 link for match examples: https://regex101.com/r/KNKfHP/8
+        let regexp = /(?:\[\"(.*?)\"\]|([a-z_][a-z0-9_\$%!#]*)|\[([0-9]*)\]|\.([0-9]+))/gi;
+        let match: RegExpMatchArray;
+        let variablePath = [];
+
+        // eslint-disable-next-line no-cond-assign
+        while (match = regexp.exec(expression)) {
+            // match 1: strings between quotes - this["that"]
+            // match 2: any valid brightscript viable format
+            // match 3: array/list access via index - this[0]
+            // match 3: array/list access via dot notation (not valid in code but returned as part of the VS Code flow) - this.0
+            variablePath.push(match[1] ?? match[2] ?? match[3] ?? match[4]);
+        }
+        return variablePath;
+    }
+
+    public getVariablePath(expression: string): string[] {
+        //HACK: assign to a variable so it turns into a valid expression, then we'll look at the right-hand-side
+        const parser = Parser.parse(`__rokuDebugVar = ${expression}`);
+        if (
+            //quit if there are parse errors
+            parser.diagnostics.find(x => x.severity === DiagnosticSeverity.Error) ||
+            //quit if there are zero statements or more than one statement
+            parser.ast.statements.length !== 1
+        ) {
+            return undefined;
+        }
+        let value = (parser.ast.statements[0] as AssignmentStatement).value;
+
+        const parts = [] as string[];
+        while (value) {
+            if (isVariableExpression(value)) {
+                parts.unshift(value.name.text);
+                return parts;
+            } else if (isDottedGetExpression(value)) {
+                parts.unshift(value.name.text);
+                value = value.obj;
+            } else if (isIndexedGetExpression(value)) {
+                if (isLiteralExpression(value.index)) {
+                    parts.unshift(
+                        //remove leading and trailing quotes (won't hurt for numeric literals)
+                        value.index.token.text?.replace(/^"/, '').replace(/"$/, '')
+                    );
+                } else {
+                    //if we found a non-literal value, this entire variable path is NOT a true variable path
+                    return;
+                }
+                value = value.obj;
+            } else {
+                //not valid
+                return;
+            }
+        }
     }
 }
 

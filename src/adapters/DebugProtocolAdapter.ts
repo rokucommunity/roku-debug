@@ -351,6 +351,7 @@ export class DebugProtocolAdapter {
     /**
      * Execute a command directly on the roku. Returns the output of the command
      * @param command
+     * @returns the output of the command (if possible)
      */
     public async evaluate(command: string, frameId: number = this.socketDebugger.primaryThread) {
         if (!this.isAtDebuggerPrompt) {
@@ -362,7 +363,8 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot execute command without a corresponding frame');
         }
         // Pipe all evaluate requests though as a variable request as evaluate is not available at the moment.
-        return this.socketDebugger.executeCommand(command, frame.frameIndex, frame.threadIndex);
+        const response = await this.socketDebugger.executeCommand(command, frame.frameIndex, frame.threadIndex);
+        return undefined;
     }
 
     public async getStackTrace(threadId: number = this.socketDebugger.primaryThread) {
@@ -416,7 +418,7 @@ export class DebugProtocolAdapter {
         }
 
         return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
-            let variablePath = this.getVariablePath(expression);
+            let variablePath = util.getVariablePath(expression);
             let variableInfo: any = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
             if (variableInfo.errorCode === 'OK') {
@@ -484,23 +486,6 @@ export class DebugProtocolAdapter {
                 return mainContainer;
             }
         });
-    }
-
-    public getVariablePath(expression: string): string[] {
-        // Regex 101 link for match examples: https://regex101.com/r/KNKfHP/8
-        let regexp = /(?:\[\"(.*?)\"\]|([a-z_][a-z0-9_\$%!#]*)|\[([0-9]*)\]|\.([0-9]+))/gi;
-        let match: RegExpMatchArray;
-        let variablePath = [];
-
-        // eslint-disable-next-line no-cond-assign
-        while (match = regexp.exec(expression)) {
-            // match 1: strings between quotes - this["that"]
-            // match 2: any valid brightscript viable format
-            // match 3: array/list access via index - this[0]
-            // match 3: array/list access via dot notation (not valid in code but returned as part of the VS Code flow) - this.0
-            variablePath.push(match[1] ?? match[2] ?? match[3] ?? match[4]);
-        }
-        return variablePath;
     }
 
     /**

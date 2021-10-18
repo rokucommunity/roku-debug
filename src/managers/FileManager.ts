@@ -1,6 +1,6 @@
 import * as fsExtra from 'fs-extra';
 import { util } from '../util';
-import { Position, Range } from 'vscode-languageserver';
+import { Position, Range } from 'brighterscript';
 
 /**
  * Unifies access to source files across the whole project

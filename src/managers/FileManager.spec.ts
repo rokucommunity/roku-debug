@@ -1,6 +1,6 @@
 import { FileManager } from './FileManager';
 import { expect } from 'chai';
-import { Range } from 'vscode-languageserver';
+import { Range } from 'brighterscript';
 import { createSandbox } from 'sinon';
 import * as fsExtra from 'fs-extra';
 

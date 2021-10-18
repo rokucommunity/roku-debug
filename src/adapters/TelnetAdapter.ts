@@ -463,17 +463,6 @@ export class TelnetAdapter {
     }
 
     /**
-     * Runs a regex to get the content between telnet commands
-     * @param value
-     */
-    public getExpressionDetails(value: string) {
-        const match = /(.*?)\r?\nBrightscript Debugger>\s*/is.exec(value);
-        if (match) {
-            return match[1];
-        }
-    }
-
-    /**
      * Runs a regex to check if the target is an object and get the type if it is
      * @param value
      */
@@ -554,8 +543,9 @@ export class TelnetAdapter {
                 data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
             }
 
-            let match = this.getExpressionDetails(data);
-            if (match !== undefined) {
+            let match = util.trimDebugPrompt(data);
+            //if we successfully removed a debug prompt
+            if (match !== data) {
                 let value = match;
                 if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
                     value = value.trim().replace(/--string-wrap--/g, '');
@@ -936,8 +926,9 @@ export class TelnetAdapter {
         return this.resolve(`${expression}`, async () => {
             let data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
 
-            let match = this.getExpressionDetails(data);
-            if (match) {
+            let match = util.trimDebugPrompt(data);
+            //if the debug prompt was present
+            if (match !== data) {
                 let typeValue: string = match;
                 //remove whitespace
                 typeValue = typeValue.trim();
