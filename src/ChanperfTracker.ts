@@ -53,10 +53,10 @@ export class ChanperfTracker {
      */
     public processLog(log: string): string {
         let lines = log.split('\n');
-        let normalOutput = '';
         let chanperfEventData: ChanperfData;
 
-        for (let line of lines) {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             let infoAvailableMatch = /channel:\smem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)(,[a-z]+=([0-9]+))?},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/3HKIO0/2
             if (infoAvailableMatch) {
@@ -78,8 +78,8 @@ export class ChanperfTracker {
                     system: Math.min(parseInt(sysCpuUsage), 100)
                 };
 
-                if (!this.filterOutLogs) {
-                    normalOutput += line + '\n';
+                if (this.filterOutLogs) {
+                    lines.splice(i--, 1);
                 }
                 this.emit('chanperf', chanperfEventData);
                 this.history.push(chanperfEventData);
@@ -91,19 +91,16 @@ export class ChanperfTracker {
                     chanperfEventData = this.createNewChanperfEventData();
                     chanperfEventData.error = { message: noInfoAvailableMatch[1] };
 
-                    if (!this.filterOutLogs) {
-                        normalOutput += line + '\n';
+                    if (this.filterOutLogs) {
+                        lines.splice(i--, 1);
                     }
                     this.emit('chanperf', chanperfEventData);
                     this.history.push(chanperfEventData);
-                } else if (line) {
-                    normalOutput += line + '\n';
                 }
             }
-
         }
 
-        return normalOutput;
+        return lines.join('\n');
     }
 
     private toBytes(KiB): number {
