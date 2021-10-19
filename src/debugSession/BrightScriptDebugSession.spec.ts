@@ -504,6 +504,23 @@ describe('BrightScriptDebugSession', () => {
             });
         });
 
+        it('clears cache on evaluate call', async () => {
+            const refId = session['getEvaluateRefId']('person.name', frameId);
+            session['variables'][refId] = {
+                name: 'person.name',
+                variablesReference: 0,
+                value: 'someValue'
+            };
+            await expectResponse({
+                context: 'repl',
+                expression: 'print person.name'
+            }, {
+                result: 'invalid',
+                variablesReference: 0
+            });
+            expect(session['variables']).to.be.empty;
+        });
+
         describe('repl', () => {
             it('calls eval for print statement', async () => {
                 await expectResponse({
@@ -517,7 +534,6 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('calls getVariable for var expressions', async () => {
-
                 await expectResponse({
                     context: 'repl',
                     expression: 'person.name'
@@ -530,6 +546,7 @@ describe('BrightScriptDebugSession', () => {
                 expect(getVarStub.calledWith('person.name', frameId, true));
             });
         });
+
     });
 
 });
