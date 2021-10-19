@@ -1,6 +1,7 @@
 import * as fsExtra from 'fs-extra';
 import { util } from '../util';
-import { Position, Range } from 'brighterscript';
+import type { Range } from 'brighterscript';
+import { Position, util as bscUtil } from 'brighterscript';
 
 /**
  * Unifies access to source files across the whole project
@@ -57,7 +58,7 @@ export class FileManager {
                     functionStack.push({
                         name: match[1],
                         children: [],
-                        range: Range.create(
+                        range: bscUtil.createRange(
                             lineIndex,
                             0, //TODO determine the char for this range,
                             -1,
@@ -79,7 +80,7 @@ export class FileManager {
                     if (!func) {
                         return [];
                     }
-                    func.range = Range.create(
+                    func.range = bscUtil.createRangeFromPositions(
                         func.range.start,
                         Position.create(lineIndex, Number.MAX_SAFE_INTEGER)
                     );
