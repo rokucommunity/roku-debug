@@ -792,8 +792,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         namedVariables: v.namedVariables || 0,
                         indexedVariables: v.indexedVariables || 0
                     };
+
+                    //run an `evaluate` call
                 } else {
-                    //treat this as an `execute` call
+                    //clear variable cache since this action could have side-effects
+                    this.clearState();
                     const output = util.trimDebugPrompt(
                         await this.rokuAdapter.evaluate(args.expression, args.frameId)
                     );
