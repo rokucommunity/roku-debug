@@ -7,6 +7,7 @@
         "build": "rimraf dist && tsc",
         "preversion": "npm run build && npm run lint && npm run test",
         "lint": "eslint \"src/**\"",
+        "watch": "tsc --watch",
         "test": "nyc mocha \"src/**/*spec.ts\" --full-trace",
         "test:nocover": "ts-mocha \"src/**/*.spec.ts\" --full-trace",
         "publish-coverage": "nyc report --reporter=text-lcov | coveralls"
