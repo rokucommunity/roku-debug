@@ -279,6 +279,13 @@ describe('BrightScriptFileUtils ', () => {
             assert.deepEqual(rendezvousTracker.getRendezvousHistory, expectedHistory);
             rendezvousTrackerMock.verify();
         });
+
+        it('does not discard extra newlines', async () => {
+            const text = `\n\r\nmessage\n\r\n\nmessage\n\r\n`;
+            expect(
+                await rendezvousTracker.processLog(text)
+            ).to.eql(text);
+        });
     });
 
     describe('clearHistory', () => {
