@@ -122,8 +122,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // This debug adapter supports breakpoints that break execution after a specified number of hits
         response.body.supportsHitConditionalBreakpoints = true;
 
-        args.supportsVariableType
-
         // This debug adapter supports log points by interpreting the 'logMessage' attribute of the SourceBreakpoint
         response.body.supportsLogPoints = true;
 
@@ -779,8 +777,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     } else {
                         let result = await this.rokuAdapter.getVariable(args.expression, args.frameId, true);
                         if (!result) {
-                            util.logDebug(`bad variable request ${args.expression}`);
-                            return;
+                            throw new Error(`bad variable request "${args.expression}"`);
                         }
                         v = this.getVariableFromResult(result, args.frameId);
                         //TODO - testing something, remove later
@@ -792,7 +789,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         result: v.value,
                         variablesReference: v.variablesReference,
                         namedVariables: v.namedVariables || 0,
-                        indexedVariables: v.indexedVariables || 0
+                        indexedVariables: v.indexedVariables || 0,
+                        type: v.type
                     };
 
                     //run an `evaluate` call
@@ -807,7 +805,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         this.sendEvent(new OutputEvent(output, 'stdio'));
                     }
                     response.body = {
-                        result: undefined,
+                        result: 'invalid',
                         variablesReference: 0
                     };
                 }
@@ -927,6 +925,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             v.evaluateName = result.evaluateName;
             v.frameId = frameId;
+            v.type = result.type;
 
             if (result.children) {
                 let childVariables = [];
