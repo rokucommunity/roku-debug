@@ -418,7 +418,7 @@ export class DebugProtocolAdapter {
         }
 
         return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
-            let variablePath = util.getVariablePath(expression);
+            let variablePath = expression === '' ? [] : util.getVariablePath(expression);
             let variableInfo: any = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
             if (variableInfo.errorCode === 'OK') {
