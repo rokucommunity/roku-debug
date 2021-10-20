@@ -122,6 +122,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // This debug adapter supports breakpoints that break execution after a specified number of hits
         response.body.supportsHitConditionalBreakpoints = true;
 
+        args.supportsVariableType
+
         // This debug adapter supports log points by interpreting the 'logMessage' attribute of the SourceBreakpoint
         response.body.supportsLogPoints = true;
 
@@ -805,7 +807,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         this.sendEvent(new OutputEvent(output, 'stdio'));
                     }
                     response.body = {
-                        result: 'invalid',
+                        result: undefined,
                         variablesReference: 0
                     };
                 }
