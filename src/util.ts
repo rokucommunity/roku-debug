@@ -195,7 +195,7 @@ class Util {
      */
     public logDebug(...args) {
         args = Array.isArray(args) ? args : [];
-        let timestamp = dateFormat(new Date(), 'HH:mm:ss.l ');
+        let timestamp = `[${dateFormat(new Date(), 'HH:mm:ss.l')}]`;
         let messages = [];
 
         for (let arg of args) {
@@ -211,7 +211,7 @@ class Util {
         }
         let text = messages.join(', ');
         if (this._debugSession) {
-            this._debugSession.sendEvent(new DebugServerLogOutputEvent(`${timestamp}: ${text}`));
+            this._debugSession.sendEvent(new DebugServerLogOutputEvent(`${timestamp} ${text}`));
         }
 
         console.log(timestamp, ...args);

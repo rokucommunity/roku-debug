@@ -173,15 +173,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //pass along the console output
             if (this.launchConfiguration.consoleOutput === 'full') {
                 this.rokuAdapter.on('console-output', (data) => {
-                    //forward the console output
-                    this.sendEvent(new OutputEvent(data, 'stdout'));
-                    this.sendEvent(new LogOutputEvent(data));
+                    this.sendLogOutput(data);
                 });
             } else {
                 this.rokuAdapter.on('unhandled-console-output', (data) => {
-                    //forward the console output
-                    this.sendEvent(new OutputEvent(data, 'stdout'));
-                    this.sendEvent(new LogOutputEvent(data));
+                    this.sendLogOutput(data);
                 });
             }
 
@@ -315,6 +311,19 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     return err ? reject(err) : resolve(response);
                 });
             });
+        }
+    }
+
+    /**
+     * Send log output to the "client" (i.e. vscode)
+     * @param logOutput
+     */
+    private sendLogOutput(logOutput: string) {
+        const lines = logOutput.split(/\r?\n/g);
+        for (let line of lines) {
+            line += '\n';
+            this.sendEvent(new OutputEvent(line, 'stdout'));
+            this.sendEvent(new LogOutputEvent(line));
         }
     }
 
