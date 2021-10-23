@@ -474,7 +474,13 @@ export class DebugProtocolAdapter {
 
                         let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
                         container.name = pathAddition.toString();
-                        container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
+                        //if we have an evaluate name to the left, prefix our new addition with it
+                        if (mainContainer.evaluateName) {
+                            container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
+                        } else {
+                            //this is most likely the "get all local variables" call, so just keep the initial path as-is
+                            container.evaluateName = pathAddition;
+                        }
                         container.variablePath = [].concat(container.variablePath, [pathAddition.toString()]);
                         if (container.keyType) {
                             container.children = [];
