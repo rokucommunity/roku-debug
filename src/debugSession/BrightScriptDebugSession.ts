@@ -4,7 +4,6 @@ import * as path from 'path';
 import * as request from 'request';
 import * as rokuDeploy from 'roku-deploy';
 import type { RokuDeploy } from 'roku-deploy';
-import { serializeError } from 'serialize-error';
 import {
     DebugSession as BaseDebugSession,
     Handles,
@@ -21,7 +20,7 @@ import {
 import type { SceneGraphCommandResponse } from '../SceneGraphDebugCommandController';
 import { SceneGraphDebugCommandController } from '../SceneGraphDebugCommandController';
 import type { DebugProtocol } from 'vscode-debugprotocol';
-import { util } from '../util';
+import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
@@ -254,7 +253,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             (this.launchConfiguration as any).remoteDebug = this.enableDebugProtocol;
 
             //publish the package to the target Roku
-            await this.rokuDeploy.publish(this.launchConfiguration as any);
+            await this.rokuDeploy.publish(this.launchConfiguration as rokuDeploy.RokuDeployOptions);
 
             if (this.enableDebugProtocol) {
                 //connect to the roku debug via sockets
@@ -287,8 +286,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (e.message !== 'compileErrors' && e.message !== 'Invalid response code: 400') {
                 //TODO make the debugger stop!
                 util.log('Encountered an issue during the publish process');
-                util.log(e.message);
-                this.sendErrorResponse(response, -1, e.message);
+                util.log((e as Error).message);
+                this.sendErrorResponse(response, -1, (e as Error).message);
             } else {
                 //request adapter to send errors (even empty) before ending the session
                 await this.rokuAdapter.sendErrors();
@@ -348,7 +347,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             util.log('Enabling FPS Display');
                             response = await connection.fpsDisplay('on');
                             if (!response.error) {
-                                util.log(response.result.data);
+                                util.log(response.result.data as string);
                             }
                             break;
 
@@ -476,7 +475,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let hostingPromise: Promise<any>;
             if (compLibPromises) {
                 // prepare static file hosting
-                hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message) => {
+                hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
                     util.log(message);
                 });
             }
@@ -844,7 +843,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param response
      * @param args
      */
-    protected async disconnectRequest(response: any, args: any) {
+    protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
         if (this.rokuAdapter) {
             await this.rokuAdapter.destroy();
         }
@@ -1003,45 +1002,4 @@ interface AugmentedVariable extends DebugProtocol.Variable {
     // eslint-disable-next-line camelcase
     request_seq?: number;
     frameId?: number;
-}
-
-export function defer<T>() {
-    let _resolve: (value?: PromiseLike<T> | T) => void;
-    let _reject: (reason?: any) => void;
-    let promise = new Promise<T>((resolveValue, rejectValue) => {
-        _resolve = resolveValue;
-        _reject = rejectValue;
-    });
-    return {
-        promise: promise,
-        resolve: function resolve(value?: PromiseLike<T> | T) {
-            if (!this.isResolved) {
-                this.isResolved = true;
-                _resolve(value);
-                _resolve = undefined;
-            } else {
-                throw new Error(
-                    `Attempted to resolve a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +
-                    `New value: ${JSON.stringify(value)}`
-                );
-            }
-        },
-        reject: function reject(reason?: any) {
-            if (!this.isCompleted) {
-                this.isRejected = true;
-                _reject(reason);
-                _reject = undefined;
-            } else {
-                throw new Error(
-                    `Attempted to reject a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +
-                    `New error message: ${JSON.stringify(serializeError(reason))}`
-                );
-            }
-        },
-        isResolved: false,
-        isRejected: false,
-        get isCompleted() {
-            return this.isResolved || this.isRejected;
-        }
-    };
 }

@@ -1,5 +1,4 @@
 import * as assert from 'assert';
-import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
@@ -324,11 +323,11 @@ export class Project {
     }
 
     public updateManifestBsConsts(consts: Record<string, boolean>, fileContents: string): string {
-        let bsConstLine;
+        let bsConstLine: string;
         let missingConsts: string[] = [];
-        let lines = eol.split(fileContents);
+        let lines = fileContents.split(/\r?\n/g);
 
-        let newLine;
+        let newLine: string;
         //loop through the lines until we find the bs_const line if it exists
         for (const line of lines) {
             if (line.toLowerCase().startsWith('bs_const')) {
@@ -380,7 +379,7 @@ export class Project {
             const trackerReplacementResult = await replaceInFile({
                 files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
                 from: new RegExp(`^.*'\\s*${Project.RALE_TRACKER_ENTRY}.*$`, 'mig'),
-                to: (match) => {
+                to: (match: string) => {
                     // Strip off the comment
                     let startOfLine = match.substring(0, match.indexOf(`'`));
                     if (/[\S]/.exec(startOfLine)) {
@@ -434,7 +433,7 @@ export class Project {
             const replacementResult = await replaceInFile({
                 files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
                 from: new RegExp(`^.*'\\s*${Project.RDB_ODC_ENTRY}.*$`, 'mig'),
-                to: (match) => {
+                to: (match: string) => {
                     // Strip off the comment
                     let startOfLine = match.substring(0, match.indexOf(`'`));
                     if (/[\S]/.exec(startOfLine)) {
@@ -505,8 +504,8 @@ export class ComponentLibraryProject extends Project {
      */
     private async computeOutFileName(manifestPath: string) {
         let regexp = /\$\{([\w\d_]*)\}/;
-        let renamingMatch;
-        let manifestValues;
+        let renamingMatch: RegExpExecArray;
+        let manifestValues: Record<string, string>;
 
         // search the outFile for replaceable values such as ${title}
         // eslint-disable-next-line no-cond-assign
@@ -563,7 +562,7 @@ export class ComponentLibraryProject extends Project {
             fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingFolderPath, this.stagingFolderPath);
         }
 
-        return await super.stage();
+        return super.stage();
     }
 
     /**

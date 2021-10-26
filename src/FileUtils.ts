@@ -1,4 +1,3 @@
-import * as eol from 'eol';
 import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
 import * as glob from 'glob';
@@ -104,8 +103,8 @@ export class FileUtils {
      * The Roku telnet debugger truncates file paths, so this removes that truncation piece.
      * @param filePath
      */
-    public removeFileTruncation(filePath) {
-        return (filePath.indexOf('...') === 0) ? filePath.substring(3) : filePath;
+    public removeFileTruncation(filePath: string) {
+        return filePath.startsWith('...') ? filePath.substring(3) : filePath;
     }
 
     /**
@@ -254,7 +253,7 @@ export class FileUtils {
         let lineNumber: number;
         //load the file contents
         let contents = await fsExtra.readFile(entryPath);
-        let lines = eol.split(contents.toString());
+        let lines = contents.toString().split(/\r?\n/g);
         //loop through the lines until we find the entry line
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i];

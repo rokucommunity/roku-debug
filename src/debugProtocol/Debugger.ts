@@ -58,7 +58,7 @@ export class Debugger {
      */
     public once(eventName: string) {
         return new Promise((resolve) => {
-            const disconnect = this.on(<any>eventName, (...args) => {
+            const disconnect = this.on(eventName as Parameters<Debugger['on']>[0], (...args) => {
                 disconnect();
                 resolve(...args);
             });

@@ -157,7 +157,7 @@ describe('FileUtils', () => {
             fsExtra.removeSync(tempDirPath);
         });
 
-        async function createOutFiles(sourcePath) {
+        async function createOutFiles(sourcePath: string) {
             //transform the file (by adding extra newlines
             let result = new SourceNode(null, null, sourcePath, [
                 new SourceNode(1, 0, sourcePath, 'function main()\n'),

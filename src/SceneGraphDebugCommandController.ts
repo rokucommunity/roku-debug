@@ -35,8 +35,8 @@ export class SceneGraphDebugCommandController {
                 maxBufferLength: this.maxBufferLength
             });
             this.connection = connection;
-        } catch (error) {
-            throw new Error(error.message);
+        } catch (e) {
+            throw new Error((e as Error).message);
         }
     }
 
@@ -48,7 +48,7 @@ export class SceneGraphDebugCommandController {
      * executes the different bsprof commands used for brightscript profiling.
      * @param {('pause'|'resume'|'status')} option Pause, resume, or get BS profiling status.
      */
-    public async bsprof(option: 'pause'|'resume'|'status'): Promise<SceneGraphCommandResponse> {
+    public async bsprof(option: 'pause' | 'resume' | 'status'): Promise<SceneGraphCommandResponse> {
         return this.exec(`bsprof-${option}`);
     }
 
@@ -82,7 +82,7 @@ export class SceneGraphDebugCommandController {
      * Displays frames-per-second and free memory on-screen. Leverage this tool to optimize your channel UI. It presents a 1-second moving average of the current frame rate.
      * @param {('off'|'on'|'toggle')} option
      */
-    public async fpsDisplay(option: 'off'|'on'|'toggle'): Promise<SceneGraphCommandResponse> {
+    public async fpsDisplay(option: 'off' | 'on' | 'toggle'): Promise<SceneGraphCommandResponse> {
         let command = 'fps_display';
 
         if (option !== 'toggle') {
@@ -122,7 +122,7 @@ export class SceneGraphDebugCommandController {
      * Enable, disable, or checks the status of console logging of thread rendezvous.
      * @param {('status'|'off'|'on')} option
      */
-    public async logrendezvous(option: 'status'|'off'|'on'): Promise<SceneGraphCommandResponse> {
+    public async logrendezvous(option: 'status' | 'off' | 'on'): Promise<SceneGraphCommandResponse> {
         let command = 'logrendezvous';
 
         if (option !== 'status') {
@@ -197,7 +197,7 @@ export class SceneGraphDebugCommandController {
      * Provides basic node operation performance metrics. This command tracks all node operations by a thread, whether it's being created or an operation on an existing node, and whether it involves a rendezvous.
      * @param {('start'|'clear'|'report'|'stop')} action start - enables counting, clear - resets counters to zero, report - prints current counts with rendezvous as a percentage, stop - disables counting.
      */
-    public async sgperf(action: 'start'|'clear'|'report'|'stop'): Promise<SceneGraphCommandResponse> {
+    public async sgperf(action: 'start' | 'clear' | 'report' | 'stop'): Promise<SceneGraphCommandResponse> {
         return this.exec(`sgperf ${action}`);
     }
 
@@ -293,7 +293,7 @@ export class SceneGraphDebugCommandController {
     }
 }
 
-export interface SceneGraphCommandResponse<T=undefined> {
+export interface SceneGraphCommandResponse<T = undefined> {
     command: string;
     error?: SceneGraphCommandError<T>;
     result: {
@@ -302,7 +302,7 @@ export interface SceneGraphCommandResponse<T=undefined> {
     };
 }
 
-interface SceneGraphCommandError<T=undefined> {
+interface SceneGraphCommandError<T = undefined> {
     message: string;
     type: 'socket' | 'device';
     data?: T;

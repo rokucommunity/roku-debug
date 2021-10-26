@@ -39,7 +39,7 @@ export class ComponentLibraryServer {
             '.eot': 'appliaction/vnd.ms-fontobject',
             '.ttf': 'aplication/font-sfnt',
             '.zip': 'application/zip'
-        };
+        } as Record<string, string>;
 
         this.server = http.createServer((req, res) => {
             sendDebugLogLine(`${req.method} ${req.url}`);

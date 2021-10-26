@@ -1,10 +1,7 @@
 import type { ProtocolVersionDetails } from '../debugProtocol/Debugger';
 import { Debugger } from '../debugProtocol/Debugger';
-import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
-
-import { defer } from '../debugSession/BrightScriptDebugSession';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
@@ -12,7 +9,7 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
-import { util } from '../util';
+import { defer, util } from '../util';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -249,7 +246,7 @@ export class DebugProtocolAdapter {
         } catch (e) {
             deferred.reject(e);
         }
-        return await deferred.promise;
+        return deferred.promise;
     }
 
     private beginAppExit() {
@@ -302,7 +299,7 @@ export class DebugProtocolAdapter {
         } catch (e) {
             deferred.reject(e);
         }
-        return await deferred.promise;
+        return deferred.promise;
     }
 
     /**
