@@ -2,8 +2,8 @@ import * as net from 'net';
 import type { Subscription } from 'rxjs';
 import { ReplaySubject } from 'rxjs';
 import { SmartBuffer } from 'smart-buffer';
-import { util } from '../util';
-import * as defer from 'p-defer';
+import type { Deferred } from '../util';
+import { util, defer } from '../util';
 
 export class MockDebugProtocolServer {
     /**
@@ -103,7 +103,7 @@ class Client {
     ) {
         const handler = (data) => {
             this.buffer = Buffer.concat([this.buffer, data]);
-            this.subject.next();
+            this.subject.next(undefined);
         };
         socket.on('data', handler);
         this.disconnectSocket = () => {
@@ -125,7 +125,7 @@ abstract class Action<T> {
     constructor() {
         this.deferred = defer<T>();
     }
-    protected deferred: defer.DeferredPromise<T>;
+    protected deferred: Deferred<T>;
     public get promise() {
         return this.deferred.promise;
     }

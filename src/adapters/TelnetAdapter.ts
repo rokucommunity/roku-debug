@@ -1,11 +1,8 @@
-import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { orderBy } from 'natural-orderby';
 import type { Socket } from 'net';
 import * as net from 'net';
 import * as rokuDeploy from 'roku-deploy';
-
-import { defer } from '../debugSession/BrightScriptDebugSession';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
@@ -13,7 +10,7 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { util } from '../util';
+import { defer, util } from '../util';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -178,8 +175,8 @@ export class TelnetAdapter {
         });
     }
 
-    public processBreakpoints(text): string | null {
-        let newLines = eol.split(text);
+    public processBreakpoints(text: string): string | null {
+        let newLines = text.split(/\r?\n/g);
         for (const line of newLines) {
             //Running processing line
             if (this.debugStartRegex.exec(line)) {
@@ -436,7 +433,7 @@ export class TelnetAdapter {
             //perform a request to load the stack trace
             let responseText = await this.requestPipeline.executeCommand('bt', true);
             let regexp = /#(\d+)\s+(?:function|sub)\s+([\$\w\d]+).*\s+file\/line:\s+(.*)\((\d+)\)/ig;
-            let matches;
+            let matches: RegExpExecArray;
             let frames: StackFrame[] = [];
             // eslint-disable-next-line no-cond-assign
             while (matches = regexp.exec(responseText)) {
@@ -504,13 +501,13 @@ export class TelnetAdapter {
         }
         return this.resolve(`Scope Variables`, async () => {
             let data: string;
-            let vars = [];
+            let vars = [] as string[];
 
             data = await this.requestPipeline.executeCommand(`var`, true);
             let splitData = data.split('\n');
 
             for (const line of splitData) {
-                let match;
+                let match: RegExpExecArray;
                 if (!line.includes('Brightscript Debugger') && (match = this.getFirstWord(line))) {
                     // There seems to be a local ifGlobal interface variable under the name of 'global' but it
                     // is not accessible by the channel. Stript it our.
@@ -660,7 +657,7 @@ export class TelnetAdapter {
      */
     public getForLoopPrintedChildren(expression: string, data: string) {
         let children = [] as EvaluateContainer[];
-        let lines = eol.split(data);
+        let lines = data.split(/\r?\n/g);
         //if there are no lines, this is an empty object/array
         if (lines.length === 1 && lines[0].trim() === '') {
             return children;
@@ -818,7 +815,7 @@ export class TelnetAdapter {
         }
         let children = [] as EvaluateContainer[];
         //split by newline. the array contents start at index 2
-        let lines = eol.split(data);
+        let lines = data.split(/\r?\n/g);
         let arrayIndex = 0;
         for (let i = 2; i < lines.length; i++) {
             let line = lines[i].trim();
@@ -872,7 +869,7 @@ export class TelnetAdapter {
         try {
             let children: EvaluateContainer[] = [];
             //split by newline. the object contents start at index 2
-            let lines = eol.split(data);
+            let lines = data.split(/\r?\n/g);
             for (let i = 2; i < lines.length; i++) {
                 let line = lines[i];
                 let trimmedLine = line.trim();
@@ -1269,7 +1266,7 @@ export class RequestPipeline {
 
             let request = {
                 executeCommand: executeCommand,
-                onComplete: (data) => {
+                onComplete: (data: string) => {
                     console.debug(`Command finished (${waitForPrompt ? 'after waiting for prompt' : 'did not wait for prompt'}`, command);
                     console.debug('Data:', data);
                     resolve(data);

@@ -1,4 +1,3 @@
-import * as eol from 'eol';
 import { EventEmitter } from 'events';
 
 export const GENERAL_XML_ERROR = 'General XML compilation error';
@@ -8,7 +7,7 @@ export class CompileErrorProcessor {
     public status: CompileStatus = CompileStatus.none;
     public startCompilingLine = -1;
     public endCompilingLine = -1;
-    public compilingLines = [];
+    public compilingLines = [] as string[];
     public compileErrorTimeoutMs = 1000;
     private emitter = new EventEmitter();
     public compileErrorTimer: NodeJS.Timeout;
@@ -38,7 +37,7 @@ export class CompileErrorProcessor {
             return;
         }
 
-        let newLines = eol.split(responseText);
+        let newLines = responseText.split(/\r?\n/g);
         // console.debug('processUnhandledLines: this.status ' + this.status);
         switch (this.status) {
             case CompileStatus.compiling:
