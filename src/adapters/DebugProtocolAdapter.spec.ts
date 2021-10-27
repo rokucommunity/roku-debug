@@ -1,12 +1,19 @@
 
 import { assert, expect } from 'chai';
+import { Debugger } from '../debugProtocol/Debugger';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
+import { createSandbox } from 'sinon';
+import { VariableInfo, VariableResponse } from '../debugProtocol/responses';
+const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
     let adapter: DebugProtocolAdapter;
-
+    let socketDebugger: Debugger;
     beforeEach(() => {
+
         adapter = new DebugProtocolAdapter(null, null);
+        socketDebugger = new Debugger(undefined);
+        adapter['socketDebugger'] = socketDebugger;
     });
 
     describe('getVariablePath', () => {
@@ -25,6 +32,28 @@ describe('DebugProtocolAdapter', () => {
             expect(adapter.getVariablePath(`m.global.initialInputEvent.0[123]["this \"-that.thing"]`)).to.eql(['m', 'global', 'initialInputEvent', '0', '123', 'this \"-that.thing']);
             expect(adapter.getVariablePath(`m.global["something with a quote"]initialInputEvent.0[123]["this \"-that.thing"]`)).to.eql(['m', 'global', 'something with a quote', 'initialInputEvent', '0', '123', 'this \"-that.thing']);
             expect(adapter.getVariablePath(`m.["that"]`)).to.eql(['m', 'that']);
+        });
+    });
+
+    describe.only('getVariable', () => {
+        const response = new VariableResponse(undefined);
+        const variables = [] as Partial<VariableInfo>[];
+
+        beforeEach(() => {
+            sinon.stub(adapter as any, 'getStackTraceById').returns({});
+            sinon.stub(socketDebugger, 'getVariables').callsFake(() => {
+                response.variables = variables as any;
+                return Promise.resolve(response);
+            });
+            socketDebugger['stopped'] = true;
+        });
+
+        it('works', async () => {
+            variables.push({
+                name: 'm'
+            });
+            const vars = await adapter.getVariable('', 1, true);
+            expect(vars?.children).to.eql([]);
         });
     });
 });
