@@ -1,6 +1,8 @@
 import { expect } from 'chai';
 import type { EvaluateContainer } from './TelnetAdapter';
 import { TelnetAdapter, RequestPipeline } from './TelnetAdapter';
+import * as dedent from 'dedent';
+import { HighLevelType } from './DebugProtocolAdapter';
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
@@ -47,50 +49,50 @@ describe('TelnetAdapter ', () => {
             `).length).to.equal(6);
         });
         it('handles basic arrays', () => {
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:false 1.1 `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Float:vscode_type_stop vscode_is_string:false 1.1 `)[0]).to.deep.include(<EvaluateContainer>{
                 name: '0',
                 evaluateName: 'arr[0]',
-                type: 'Integer',
+                type: 'Float',
                 value: '1.1'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:falsetrue`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsetrue`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'Boolean',
                 value: 'true'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:falsefalse`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsefalse`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'Boolean',
                 value: 'false'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:trueTrailingSpace `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueTrailingSpace `)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"TrailingSpace "'
             });
             //empty string
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:true`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '""'
             });
             //whitespace-only string
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:true `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true `)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '" "'
             });
         });
 
         it('handles newlines in strings', () => {
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:true\n`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true\n`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"\n"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:trueRoku\n`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueRoku\n`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"Roku\n"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:true\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"\nRoku"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_is_string:trueRoku\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueRoku\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"Roku\nRoku"'
             });
@@ -119,87 +121,77 @@ describe('TelnetAdapter ', () => {
         });
 
         it('handles nodes with nested arrays', () => {
-            const variables = adapter.getForLoopPrintedChildren('testNode',
-                `vscode_key_start:change:vscode_key_stop vscode_is_string:false<Component: roAssociativeArray> =
-{
-    Index1: 0
-    Index2: 0
-    Operation: "none"
-}
-vscode_key_start:EDID:vscode_key_stop vscode_is_string:false<Component: roByteArray> =
-[
-    0
-    ...
-]
-vscode_key_start:focusable:vscode_key_stop vscode_is_string:falsefalse
-vscode_key_start:focusedChild:vscode_key_stop vscode_is_string:false<Component: roInvalid>
-vscode_key_start:id:vscode_key_stop vscode_is_string:true
-vscode_key_start:mynewfield:vscode_key_stop vscode_is_string:false<Component: roSGNode:ContentNode> =
-{
-    change: <Component: roAssociativeArray>
-    focusable: false
-    focusedChild: <Component: roInvalid>
-    id: ""
-    TITLE: "Node Three"
-}`
-            );
-            expect(variables).to.be.lengthOf(6);
-
-            expect(variables.find(x => x.name === 'change')).to.deep.include(<EvaluateContainer>{
+            const variables = adapter.getForLoopPrintedChildren('testNode', dedent`
+                vscode_key_start:change:vscode_key_stop vscode_is_string:false<Component: roAssociativeArray> =
+                {
+                    Index1: 0
+                    Index2: 0
+                    Operation: "none"
+                }
+                vscode_key_start:EDID:vscode_key_stop vscode_is_string:false<Component: roByteArray> =
+                [
+                    0
+                    ...
+                ]
+                vscode_key_start:focusable:vscode_key_stop vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsefalse
+                vscode_key_start:focusedChild:vscode_key_stop vscode_is_string:false<Component: roInvalid>
+                vscode_key_start:id:vscode_key_stop vscode_type_start:String:vscode_type_stop vscode_is_string:true
+                vscode_key_start:mynewfield:vscode_key_stop vscode_is_string:false<Component: roSGNode:ContentNode> =
+                {
+                    change: <Component: roAssociativeArray>
+                    focusable: false
+                    focusedChild: <Component: roInvalid>
+                    id: ""
+                    TITLE: "Node Three"
+                }
+            `);
+            expect(variables).to.eql([{
+                name: 'change',
                 evaluateName: 'testNode["change"]',
-                type: 'roAssociativeArray'
-            });
-
-            // check children of testNode.change
-            expect(variables.find(x => x.name === 'change').children[0]).to.deep.include(<EvaluateContainer>{
-                name: 'Index1',
-                evaluateName: 'testNode["change"].Index1',
-                //TODO -- is this correct?
-                type: 'Float',
-                value: '0'
-            });
-            //TODO check children of testNode.change
-            expect(variables.find(x => x.name === 'change').children[1]).to.deep.include(<EvaluateContainer>{
-                name: 'Index2',
-                evaluateName: 'testNode["change"].Index2',
-                //TODO -- is this correct?
-                type: 'Float',
-                value: '0'
-            });
-            //TODO check children of testNode.change
-            expect(variables.find(x => x.name === 'change').children[2]).to.deep.include(<EvaluateContainer>{
-                name: 'Operation',
-                evaluateName: 'testNode["change"].Operation',
-                type: 'String',
-                value: '"none"'
-            });
-
-            expect(variables.find(x => x.name === 'EDID')).to.deep.include(<EvaluateContainer>{
+                highLevelType: 'object',
+                type: 'roAssociativeArray',
+                children: []
+            }, {
+                name: 'EDID',
                 evaluateName: 'testNode["EDID"]',
-                type: 'roByteArray'
-            });
-            //children of EDID should be null, because we encountered the elipses (...) which means it should be evaluated later
-            expect(variables.find(x => x.name === 'EDID').children[0]).to.be.undefined;
-
-            expect(variables.find(x => x.name === 'focusable')).to.deep.include(<EvaluateContainer>{
+                type: 'roByteArray',
+                //children of EDID should be null because we encountered the elipses (...) which means it should be evaluated later
+                children: [],
+                highLevelType: 'array'
+            }, {
                 evaluateName: 'testNode["focusable"]',
                 type: 'Boolean',
-                value: 'false'
-            });
-            expect(variables.find(x => x.name === 'focusedChild')).to.deep.include(<EvaluateContainer>{
+                value: 'false',
+                name: 'focusable',
+                children: undefined,
+                highLevelType: 'primative'
+            }, {
                 evaluateName: 'testNode["focusedChild"]',
+                name: 'focusedChild',
                 type: 'roInvalid',
-                value: 'roInvalid'
-            });
-            expect(variables.find(x => x.name === 'id')).to.deep.include(<EvaluateContainer>{
+                value: 'roInvalid',
+                children: undefined,
+                highLevelType: HighLevelType.uninitialized
+            }, {
                 evaluateName: 'testNode["id"]',
+                name: 'id',
                 type: 'String',
-                value: '""'
-            });
-            expect(variables.find(x => x.name === 'mynewfield')).to.deep.include(<EvaluateContainer>{
+                value: '""',
+                children: undefined,
+                highLevelType: 'primative'
+            }, {
                 evaluateName: 'testNode["mynewfield"]',
-                type: 'roSGNode:ContentNode'
-            });
+                type: 'roSGNode:ContentNode',
+                name: 'mynewfield',
+                children: [{
+                    children: [],
+                    evaluateName: 'testNode["mynewfield"].getChildren(-1,0)',
+                    highLevelType: 'array',
+                    name: '[[children]]',
+                    type: 'roArray'
+                }],
+                highLevelType: 'object'
+            }]);
         });
     });
 });

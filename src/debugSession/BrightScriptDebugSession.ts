@@ -794,6 +794,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         }
                         response.body = {
                             result: v.value,
+                            type: v.type,
                             variablesReference: v.variablesReference,
                             namedVariables: v.namedVariables || 0,
                             indexedVariables: v.indexedVariables || 0
@@ -941,6 +942,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             }
 
+            v.type = result.type;
             v.evaluateName = result.evaluateName;
             v.frameId = frameId;
 

@@ -155,8 +155,9 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest({} as DebugProtocol.EvaluateResponse, { context: 'hover', expression: expression } as DebugProtocol.EvaluateArguments);
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'true',
+                type: 'Boolean',
                 variablesReference: 0,
                 namedVariables: 0,
                 indexedVariables: 0
@@ -179,8 +180,9 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'roArray',
+                type: 'roArray',
                 variablesReference: 1,
                 namedVariables: 0,
                 indexedVariables: 2
@@ -202,8 +204,9 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'roAssociativeArray',
+                type: 'roAssociativeArray',
                 variablesReference: 1,
                 namedVariables: 2,
                 indexedVariables: 0
