@@ -3,7 +3,8 @@ import { assert, expect } from 'chai';
 import { Debugger } from '../debugProtocol/Debugger';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
-import { VariableInfo, VariableResponse } from '../debugProtocol/responses';
+import type { VariableInfo } from '../debugProtocol/responses';
+import { VariableResponse } from '../debugProtocol/responses';
 const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
