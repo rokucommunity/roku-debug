@@ -35,11 +35,14 @@ describe('DebugProtocolAdapter', () => {
         });
     });
 
-    describe.only('getVariable', () => {
-        const response = new VariableResponse(undefined);
-        const variables = [] as Partial<VariableInfo>[];
+    describe('getVariable', () => {
+        let response: VariableResponse;
+        let variables: Partial<VariableInfo>[];
 
         beforeEach(() => {
+            response = new VariableResponse(undefined);
+            response.errorCode = 'OK';
+            variables = [];
             sinon.stub(adapter as any, 'getStackTraceById').returns({});
             sinon.stub(socketDebugger, 'getVariables').callsFake(() => {
                 response.variables = variables as any;
@@ -48,12 +51,37 @@ describe('DebugProtocolAdapter', () => {
             socketDebugger['stopped'] = true;
         });
 
-        it('works', async () => {
-            variables.push({
-                name: 'm'
-            });
+        it('works for local vars', async () => {
+            variables.push(
+                { name: 'm' },
+                { name: 'person' },
+                { name: 'age' }
+            );
             const vars = await adapter.getVariable('', 1, true);
-            expect(vars?.children).to.eql([]);
+            expect(
+                vars?.children.map(x => x.evaluateName)
+            ).to.eql([
+                'm',
+                'person',
+                'age'
+            ]);
         });
+
+        it('works for object properties', async () => {
+            variables.push(
+                { isContainer: true, elementCount: 2, isChildKey: false, variableType: 'AA' },
+                { name: 'name', isChildKey: true },
+                { name: 'age', isChildKey: true }
+            );
+
+            const vars = await adapter.getVariable('person', 1, true);
+            expect(
+                vars?.children.map(x => x.evaluateName)
+            ).to.eql([
+                'person.name',
+                'person.age'
+            ]);
+        });
+
     });
 });
