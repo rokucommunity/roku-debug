@@ -12,8 +12,7 @@ module.exports = {
     },
     plugins: [
         '@typescript-eslint',
-        'no-only-tests',
-        'github'
+        'no-only-tests'
     ],
     extends: [
         'eslint:all',
