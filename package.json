@@ -90,7 +90,7 @@
         "natural-orderby": "^2.0.3",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
-        "roku-deploy": "^3.4.2",
+        "roku-deploy": "^3.5.0",
         "semver": "^7.3.5",
         "serialize-error": "^8.1.0",
         "smart-buffer": "^4.2.0",
