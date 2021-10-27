@@ -103,7 +103,7 @@ class Client {
     ) {
         const handler = (data) => {
             this.buffer = Buffer.concat([this.buffer, data]);
-            this.subject.next();
+            this.subject.next(undefined);
         };
         socket.on('data', handler);
         this.disconnectSocket = () => {
