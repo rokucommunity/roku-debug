@@ -543,13 +543,24 @@ export class TelnetAdapter {
 
                 //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
             } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
-                data = await this.requestPipeline.executeCommand(
-                    `for each vscodeLoopItem in ${expression} : print "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString")); vscodeLoopItem : end for`
-                    , true);
+                const command = [
+                    `for each vscodeLoopItem in ${expression} : print ` +
+                    `   "vscode_type_start:" + type(vscodeLoopItem) + ":vscode_type_stop "`,
+                    `   "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString"))`,
+                    `   vscodeLoopItem :` +
+                    ` end for`
+                ].join(';');
+                data = await this.requestPipeline.executeCommand(command, true);
             } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
-                data = await this.requestPipeline.executeCommand(
-                    `for each vscodeLoopKey in ${expression}.keys() : print "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop " + "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString")); ${expression}[vscodeLoopKey] : end for`,
-                    true);
+                const command = [
+                    `for each vscodeLoopKey in ${expression}.keys(): print` +
+                    `   "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop "`,
+                    `   "vscode_type_start:" + type(${expression}[vscodeLoopKey]) + ":vscode_type_stop "`,
+                    `   "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString"))`,
+                    `   ${expression}[vscodeLoopKey] :` +
+                    ' end for'
+                ].join(';');
+                data = await this.requestPipeline.executeCommand(command, true);
             } else {
                 data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
             }
@@ -574,6 +585,17 @@ export class TelnetAdapter {
                     children = this.getForLoopPrintedChildren(expression, value);
                 } else if (highLevelType === HighLevelType.object) {
                     children = this.getObjectChildren(expression, value.trim());
+                }
+
+                if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
+                    return {
+                        name: expression,
+                        value: util.removeTrailingNewline(value),
+                        type: expressionType,
+                        highLevelType: HighLevelType.primative,
+                        evaluateName: expression,
+                        children: []
+                    } as EvaluateContainer;
                 }
 
                 //add a computed `[[children]]` property to allow expansion of node children
@@ -667,6 +689,20 @@ export class TelnetAdapter {
                 child.evaluateName = `${expression}[${children.length}]`;
             }
 
+            //get the object type
+            let typeStartWrapper = 'vscode_type_start:';
+            let typeStopWrapper = ':vscode_type_stop ';
+            let type: string;
+
+            const typeStartIndex = line.indexOf(typeStartWrapper);
+            //if the type is present, extract it
+            if (typeStartIndex > -1) {
+                type = line.substring(typeStartIndex + typeStartWrapper.length, line.indexOf(typeStopWrapper));
+
+                //throw out the type chunk
+                line = line.substring(line.indexOf(typeStopWrapper) + typeStopWrapper.length);
+            }
+
             if (line.includes('vscode_is_string:true')) {
                 line = line.replace('vscode_is_string:true', '');
                 //support multi-line strings
@@ -727,20 +763,9 @@ export class TelnetAdapter {
                         break;
                     }
                 }
-                //if the next-to-last line of collection is `...`, then scrap the values
-                //because we will need to run a full evaluation (later) to get around the `...` issue
-                if (collectionLineList.length > 3 && collectionLineList[collectionLineList.length - 2].trim() === '...') {
-                    child.children = [];
+                //we have reached the end of the collection. scrap children because they need evaluated in a separate call to compute their types
+                child.children = [];
 
-                    //get the object children
-                } else if (child.highLevelType === HighLevelType.object) {
-                    child.children = this.getObjectChildren(child.evaluateName, collectionLineList.join('\n'));
-
-                    //get all of the array children right now since we have them
-                } else {
-                    child.children = this.getArrayOrListChildren(child.evaluateName, collectionLineList.join('\n'));
-                    child.type += `(${child.children.length})`;
-                }
                 if (isRoSGNode) {
                     let nodeChildrenProperty = <EvaluateContainer>{
                         name: '[[children]]',
@@ -752,7 +777,7 @@ export class TelnetAdapter {
                     child.children.push(nodeChildrenProperty);
                 }
 
-                //this if block must preseec the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
+                //this if block must pre-seek the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
             } else if (objectType === 'roInvalid') {
                 child.highLevelType = HighLevelType.uninitialized;
                 child.type = 'roInvalid';
@@ -766,7 +791,7 @@ export class TelnetAdapter {
 
             } else {
                 //is some primative type
-                child.type = this.getPrimativeTypeFromValue(line);
+                child.type = type;
                 child.value = line.trim();
                 child.highLevelType = HighLevelType.primative;
                 child.children = undefined;
@@ -954,11 +979,16 @@ export class TelnetAdapter {
      * @param factory
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
-        if (this.cache[key]) {
+        try {
+            if (this.cache[key]) {
+                return this.cache[key];
+            }
+            const result = factory();
+            this.cache[key] = Promise.resolve<T>(result);
             return this.cache[key];
+        } catch (e) {
+            return Promise.reject(e);
         }
-        this.cache[key] = Promise.resolve<T>(factory());
-        return this.cache[key];
     }
 
     /**
