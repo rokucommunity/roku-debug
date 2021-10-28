@@ -41,7 +41,7 @@ describe('DebugProtocolAdapter', () => {
         let variables: Partial<VariableInfo>[];
 
         beforeEach(() => {
-            response = new VariableResponse(undefined);
+            response = new VariableResponse(Buffer.alloc(5));
             response.errorCode = 'OK';
             variables = [];
             sinon.stub(adapter as any, 'getStackTraceById').returns({});

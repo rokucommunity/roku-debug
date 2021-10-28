@@ -6,7 +6,7 @@ export class VariableResponse {
 
     constructor(buffer: Buffer) {
         // Minimum variable request response size
-        if (buffer?.byteLength >= 13) {
+        if (buffer.byteLength >= 13) {
             try {
                 let bufferReader = SmartBuffer.fromBuffer(buffer);
                 this.requestId = bufferReader.readUInt32LE();
