@@ -499,6 +499,7 @@ describe('BrightScriptDebugSession', () => {
             }, {
                 result: 'someValue',
                 variablesReference: 0,
+                type: undefined,
                 indexedVariables: 0,
                 namedVariables: 0
             });
@@ -541,6 +542,7 @@ describe('BrightScriptDebugSession', () => {
                     result: '"alpha"',
                     variablesReference: 0,
                     indexedVariables: 0,
+                    type: undefined,
                     namedVariables: 0
                 });
                 expect(getVarStub.calledWith('person.name', frameId, true));
