@@ -410,13 +410,13 @@ export class DebugProtocolAdapter {
 
         return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
             let variablePath = this.getVariablePath(expression);
-            let variableInfo: any = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+            let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
-            if (variableInfo.errorCode === 'OK') {
+            if (response.errorCode === 'OK') {
                 let mainContainer: EvaluateContainer;
                 let children: EvaluateContainer[] = [];
                 let firstHandled = false;
-                for (let variable of variableInfo.variables) {
+                for (let variable of response.variables) {
                     let value;
                     let variableType = variable.variableType;
                     if (variable.value === null) {
@@ -449,7 +449,7 @@ export class DebugProtocolAdapter {
                         mainContainer = container;
                     } else {
                         if (!firstHandled && variablePath.length === 0) {
-                            // If this is a scope request there will be no entry's in the variable path
+                            // If this is a scope request there will be no entries in the variable path
                             // We will need to create a fake mainContainer
                             firstHandled = true;
                             mainContainer = <EvaluateContainer>{
@@ -459,13 +459,17 @@ export class DebugProtocolAdapter {
                                 type: '',
                                 value: null,
                                 keyType: 'String',
-                                elementCount: variableInfo.numVariables
+                                elementCount: response.numVariables
                             };
                         }
 
                         let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
                         container.name = pathAddition.toString();
-                        container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
+                        if (mainContainer.evaluateName) {
+                            container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
+                        } else {
+                            container.evaluateName = pathAddition.toString();
+                        }
                         container.variablePath = [].concat(container.variablePath, [pathAddition.toString()]);
                         if (container.keyType) {
                             container.children = [];

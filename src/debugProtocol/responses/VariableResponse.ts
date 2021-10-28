@@ -40,7 +40,7 @@ export class VariableResponse {
     public requestId = -1;
     public errorCode: string;
     public numVariables = -1;
-    public variables = [];
+    public variables = [] as VariableInfo[];
 }
 
 export class VariableInfo {
