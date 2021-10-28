@@ -1,7 +1,7 @@
 import * as fsExtra from 'fs-extra';
 import { util } from '../util';
-import type { Range } from 'brighterscript';
-import { Position, util as bscUtil } from 'brighterscript';
+import type { Range, Position } from 'brighterscript';
+import { util as bscUtil } from 'brighterscript';
 
 /**
  * Unifies access to source files across the whole project
@@ -61,8 +61,8 @@ export class FileManager {
                         range: bscUtil.createRange(
                             lineIndex,
                             0, //TODO determine the char for this range,
-                            -1,
-                            -1
+                            lineIndex,
+                            0
                         )
                     });
                     break;
@@ -82,7 +82,7 @@ export class FileManager {
                     }
                     func.range = bscUtil.createRangeFromPositions(
                         func.range.start,
-                        Position.create(lineIndex, Number.MAX_SAFE_INTEGER)
+                        bscUtil.createPosition(lineIndex, Number.MAX_SAFE_INTEGER)
                     );
                     //if there's a parent function, register this function as a child
                     if (functionStack.length > 0) {
@@ -155,7 +155,7 @@ export class FileManager {
      */
     public getFunctionNameAtPosition(sourceFilePath: string, lineIndex: number, functionName: string) {
         let fileInfo = this.getCodeFile(sourceFilePath);
-        let functionInfo = this.getFunctionInfoAtPosition(Position.create(lineIndex, 0), fileInfo.functionInfo);
+        let functionInfo = this.getFunctionInfoAtPosition(bscUtil.createPosition(lineIndex, 0), fileInfo.functionInfo);
         if (functionInfo) {
             functionName = functionInfo.name;
         }

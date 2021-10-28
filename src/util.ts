@@ -6,10 +6,11 @@ import * as url from 'url';
 import type { SmartBuffer } from 'smart-buffer';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
+import type { AssignmentStatement, Position, Range } from 'brighterscript';
+import { DiagnosticSeverity, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
-import type { Position, Range, AssignmentStatement } from 'brighterscript';
-import { Parser, DiagnosticSeverity, isVariableExpression, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression } from 'brighterscript';
+import { serializeError } from 'serialize-error';
 
 class Util {
     /**
@@ -119,52 +120,6 @@ class Util {
     }
 
     /**
-     * With return the differences in two objects
-     * @param obj1 base target
-     * @param obj2 comparison target
-     * @param exclude fields to exclude in the comparison
-     */
-    public objectDiff(obj1: Record<string, any>, obj2: Record<string, any>, exclude?: string[]) {
-        let r = {};
-
-        if (!exclude) {
-            exclude = [];
-        }
-
-        for (let prop in obj1) {
-            if (obj1.hasOwnProperty(prop) && prop !== '__proto__') {
-                if (!exclude.includes(obj1[prop])) {
-
-                    // check if obj2 has prop
-                    if (!obj2.hasOwnProperty(prop)) {
-                        r[prop] = obj1[prop];
-                    } else if (obj1[prop] === Object(obj1[prop])) {
-                        let difference = this.objectDiff(obj1[prop], obj2[prop]);
-                        if (Object.keys(difference).length > 0) {
-                            r[prop] = difference;
-                        }
-                    } else if (obj1[prop] !== obj2[prop]) {
-                        if (obj1[prop] === undefined) {
-                            r[prop] = 'undefined';
-                        }
-
-                        if (obj1[prop] === null) {
-                            r[prop] = null;
-                        } else if (typeof obj1[prop] === 'function') {
-                            r[prop] = 'function';
-                        } else if (typeof obj1[prop] === 'object') {
-                            r[prop] = 'object';
-                        } else {
-                            r[prop] = obj1[prop];
-                        }
-                    }
-                }
-            }
-        }
-        return r;
-    }
-
-    /**
      * Tries to read a string from the buffer and will throw an error if there is no null terminator.
      * @param {SmartBuffer} bufferReader
      */
@@ -193,7 +148,7 @@ class Util {
     /**
      * Send debug server messages to the BrightScript Debug Log channel, as well as writing to console.debug
      */
-    public logDebug(...args) {
+    public logDebug(...args: any[]) {
         args = Array.isArray(args) ? args : [];
         let timestamp = `[${dateFormat(new Date(), 'HH:mm:ss.l')}]`;
         let messages = [];
@@ -214,6 +169,7 @@ class Util {
             this._debugSession.sendEvent(new DebugServerLogOutputEvent(`${timestamp} ${text}`));
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
         console.log(timestamp, ...args);
     }
 
@@ -349,5 +305,50 @@ class Util {
     }
 }
 
-const util = new Util();
-export { util };
+export function defer<T>() {
+    let _resolve: (value?: PromiseLike<T> | T) => void;
+    let _reject: (reason?: any) => void;
+    let promise = new Promise<T>((resolveValue, rejectValue) => {
+        _resolve = resolveValue;
+        _reject = rejectValue;
+    });
+    return {
+        promise: promise,
+        resolve: function resolve(value?: PromiseLike<T> | T) {
+            if (!this.isResolved) {
+                this.isResolved = true;
+                _resolve(value);
+                _resolve = undefined;
+            } else {
+                throw new Error(
+                    `Attempted to resolve a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +
+                    `New value: ${JSON.stringify(value)}`
+                );
+            }
+        },
+        reject: function reject(reason?: any) {
+            if (!this.isCompleted) {
+                this.isRejected = true;
+                _reject(reason);
+                _reject = undefined;
+            } else {
+                throw new Error(
+                    `Attempted to reject a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +
+                    `New error message: ${JSON.stringify(serializeError(reason))}`
+                );
+            }
+        },
+        isResolved: false,
+        isRejected: false,
+        get isCompleted() {
+            return this.isResolved || this.isRejected;
+        }
+    };
+}
+
+export const util = new Util();
+export interface Deferred<T> {
+    promise: Promise<T>;
+    resolve(value?: T);
+    reject(error?: any);
+}

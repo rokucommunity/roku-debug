@@ -1,11 +1,8 @@
-import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { orderBy } from 'natural-orderby';
 import type { Socket } from 'net';
 import * as net from 'net';
 import * as rokuDeploy from 'roku-deploy';
-
-import { defer } from '../debugSession/BrightScriptDebugSession';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
@@ -13,7 +10,7 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { util } from '../util';
+import { defer, util } from '../util';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -178,8 +175,8 @@ export class TelnetAdapter {
         });
     }
 
-    public processBreakpoints(text): string | null {
-        let newLines = eol.split(text);
+    public processBreakpoints(text: string): string | null {
+        let newLines = text.split(/\r?\n/g);
         for (const line of newLines) {
             //Running processing line
             if (this.debugStartRegex.exec(line)) {
@@ -436,7 +433,7 @@ export class TelnetAdapter {
             //perform a request to load the stack trace
             let responseText = await this.requestPipeline.executeCommand('bt', true);
             let regexp = /#(\d+)\s+(?:function|sub)\s+([\$\w\d]+).*\s+file\/line:\s+(.*)\((\d+)\)/ig;
-            let matches;
+            let matches: RegExpExecArray;
             let frames: StackFrame[] = [];
             // eslint-disable-next-line no-cond-assign
             while (matches = regexp.exec(responseText)) {
@@ -493,13 +490,13 @@ export class TelnetAdapter {
         }
         return this.resolve(`Scope Variables`, async () => {
             let data: string;
-            let vars = [];
+            let vars = [] as string[];
 
             data = await this.requestPipeline.executeCommand(`var`, true);
             let splitData = data.split('\n');
 
             for (const line of splitData) {
-                let match;
+                let match: RegExpExecArray;
                 if (!line.includes('Brightscript Debugger') && (match = this.getFirstWord(line))) {
                     // There seems to be a local ifGlobal interface variable under the name of 'global' but it
                     // is not accessible by the channel. Stript it our.
@@ -532,13 +529,24 @@ export class TelnetAdapter {
 
                 //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
             } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
-                data = await this.requestPipeline.executeCommand(
-                    `for each vscodeLoopItem in ${expression} : print "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString")); vscodeLoopItem : end for`
-                    , true);
+                const command = [
+                    `for each vscodeLoopItem in ${expression} : print ` +
+                    `   "vscode_type_start:" + type(vscodeLoopItem) + ":vscode_type_stop "`,
+                    `   "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString"))`,
+                    `   vscodeLoopItem :` +
+                    ` end for`
+                ].join(';');
+                data = await this.requestPipeline.executeCommand(command, true);
             } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
-                data = await this.requestPipeline.executeCommand(
-                    `for each vscodeLoopKey in ${expression}.keys() : print "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop " + "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString")); ${expression}[vscodeLoopKey] : end for`,
-                    true);
+                const command = [
+                    `for each vscodeLoopKey in ${expression}.keys(): print` +
+                    `   "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop "`,
+                    `   "vscode_type_start:" + type(${expression}[vscodeLoopKey]) + ":vscode_type_stop "`,
+                    `   "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString"))`,
+                    `   ${expression}[vscodeLoopKey] :` +
+                    ' end for'
+                ].join(';');
+                data = await this.requestPipeline.executeCommand(command, true);
             } else {
                 data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
             }
@@ -564,6 +572,17 @@ export class TelnetAdapter {
                     children = this.getForLoopPrintedChildren(expression, value);
                 } else if (highLevelType === HighLevelType.object) {
                     children = this.getObjectChildren(expression, value.trim());
+                }
+
+                if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
+                    return {
+                        name: expression,
+                        value: util.removeTrailingNewline(value),
+                        type: expressionType,
+                        highLevelType: HighLevelType.primative,
+                        evaluateName: expression,
+                        children: []
+                    } as EvaluateContainer;
                 }
 
                 //add a computed `[[children]]` property to allow expansion of node children
@@ -628,7 +647,7 @@ export class TelnetAdapter {
      */
     public getForLoopPrintedChildren(expression: string, data: string) {
         let children = [] as EvaluateContainer[];
-        let lines = eol.split(data);
+        let lines = data.split(/\r?\n/g);
         //if there are no lines, this is an empty object/array
         if (lines.length === 1 && lines[0].trim() === '') {
             return children;
@@ -655,6 +674,20 @@ export class TelnetAdapter {
             } else {
                 child.name = children.length.toString();
                 child.evaluateName = `${expression}[${children.length}]`;
+            }
+
+            //get the object type
+            let typeStartWrapper = 'vscode_type_start:';
+            let typeStopWrapper = ':vscode_type_stop ';
+            let type: string;
+
+            const typeStartIndex = line.indexOf(typeStartWrapper);
+            //if the type is present, extract it
+            if (typeStartIndex > -1) {
+                type = line.substring(typeStartIndex + typeStartWrapper.length, line.indexOf(typeStopWrapper));
+
+                //throw out the type chunk
+                line = line.substring(line.indexOf(typeStopWrapper) + typeStopWrapper.length);
             }
 
             if (line.includes('vscode_is_string:true')) {
@@ -717,20 +750,9 @@ export class TelnetAdapter {
                         break;
                     }
                 }
-                //if the next-to-last line of collection is `...`, then scrap the values
-                //because we will need to run a full evaluation (later) to get around the `...` issue
-                if (collectionLineList.length > 3 && collectionLineList[collectionLineList.length - 2].trim() === '...') {
-                    child.children = [];
+                //we have reached the end of the collection. scrap children because they need evaluated in a separate call to compute their types
+                child.children = [];
 
-                    //get the object children
-                } else if (child.highLevelType === HighLevelType.object) {
-                    child.children = this.getObjectChildren(child.evaluateName, collectionLineList.join('\n'));
-
-                    //get all of the array children right now since we have them
-                } else {
-                    child.children = this.getArrayOrListChildren(child.evaluateName, collectionLineList.join('\n'));
-                    child.type += `(${child.children.length})`;
-                }
                 if (isRoSGNode) {
                     let nodeChildrenProperty = <EvaluateContainer>{
                         name: '[[children]]',
@@ -742,7 +764,7 @@ export class TelnetAdapter {
                     child.children.push(nodeChildrenProperty);
                 }
 
-                //this if block must preseec the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
+                //this if block must pre-seek the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
             } else if (objectType === 'roInvalid') {
                 child.highLevelType = HighLevelType.uninitialized;
                 child.type = 'roInvalid';
@@ -756,7 +778,7 @@ export class TelnetAdapter {
 
             } else {
                 //is some primative type
-                child.type = this.getPrimativeTypeFromValue(line);
+                child.type = type;
                 child.value = line.trim();
                 child.highLevelType = HighLevelType.primative;
                 child.children = undefined;
@@ -783,7 +805,7 @@ export class TelnetAdapter {
         }
         let children = [] as EvaluateContainer[];
         //split by newline. the array contents start at index 2
-        let lines = eol.split(data);
+        let lines = data.split(/\r?\n/g);
         let arrayIndex = 0;
         for (let i = 2; i < lines.length; i++) {
             let line = lines[i].trim();
@@ -837,7 +859,7 @@ export class TelnetAdapter {
         try {
             let children: EvaluateContainer[] = [];
             //split by newline. the object contents start at index 2
-            let lines = eol.split(data);
+            let lines = data.split(/\r?\n/g);
             for (let i = 2; i < lines.length; i++) {
                 let line = lines[i];
                 let trimmedLine = line.trim();
@@ -945,11 +967,16 @@ export class TelnetAdapter {
      * @param factory
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
-        if (this.cache[key]) {
+        try {
+            if (this.cache[key]) {
+                return this.cache[key];
+            }
+            const result = factory();
+            this.cache[key] = Promise.resolve<T>(result);
             return this.cache[key];
+        } catch (e) {
+            return Promise.reject(e);
         }
-        this.cache[key] = Promise.resolve<T>(factory());
-        return this.cache[key];
     }
 
     /**
@@ -1230,7 +1257,7 @@ export class RequestPipeline {
 
             let request = {
                 executeCommand: executeCommand,
-                onComplete: (data) => {
+                onComplete: (data: string) => {
                     console.debug(`Command finished (${waitForPrompt ? 'after waiting for prompt' : 'did not wait for prompt'}`, command);
                     console.debug('Data:', data);
                     resolve(data);

@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.8.5] - 2021-01-27
+[0.8.4]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.4...v0.8.5
+### Changed
+ - additional logging to the "BrightScript Debug Server" output panel
+ - upgrade to  [roku-deploy@3.5.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#350---2021-10-27)  which adds the ability to use negated non-rootDir top-level 
+### Fixed
+ - bug with boxed primitives for telnet debugger ([#36](https://github.com/rokucommunity/roku-debug/pull/36))
+ - send stdio lines as separate debug events which fixes focus bug in the output panel. ([#51](https://github.com/rokucommunity/roku-debug/pull/51))
+ - retain newlines in log output after tracker preprocessing ([#50](https://github.com/rokucommunity/roku-debug/pull/50))
+
+
+
 ## [0.8.4] - 2021-06-01
 [0.8.4]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.3...v0.8.4
 ### Fixed

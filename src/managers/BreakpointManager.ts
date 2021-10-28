@@ -1,4 +1,3 @@
-import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import type { CodeWithSourceMap } from 'source-map';
@@ -282,7 +281,7 @@ export class BreakpointManager {
         let chunks = [] as Array<SourceNode | string>;
 
         //split the file by newline
-        let lines = eol.split(fileContents);
+        let lines = fileContents.split(/\r?\n/g);
         let newline = '\n';
         for (let originalLineIndex = 0; originalLineIndex < lines.length; originalLineIndex++) {
             let line = lines[originalLineIndex];
@@ -324,13 +323,13 @@ export class BreakpointManager {
     }
 
     private getBreakpointLines(breakpoint: BreakpointWorkItem, originalFilePath: string) {
-        let lines = [];
+        let lines = [] as Array<string | SourceNode>;
         if (breakpoint.logMessage) {
             let logMessage = breakpoint.logMessage;
             //wrap the log message in quotes
             logMessage = `"${logMessage}"`;
             let expressionsCheck = /\{(.*?)\}/g;
-            let match;
+            let match: RegExpExecArray;
 
             // Get all the value to evaluate as expressions
             // eslint-disable-next-line no-cond-assign

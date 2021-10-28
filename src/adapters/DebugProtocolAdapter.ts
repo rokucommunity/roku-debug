@@ -1,10 +1,7 @@
 import type { ProtocolVersionDetails } from '../debugProtocol/Debugger';
 import { Debugger } from '../debugProtocol/Debugger';
-import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
-
-import { defer } from '../debugSession/BrightScriptDebugSession';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
@@ -12,7 +9,7 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
-import { util } from '../util';
+import { defer, util } from '../util';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -249,7 +246,7 @@ export class DebugProtocolAdapter {
         } catch (e) {
             deferred.reject(e);
         }
-        return await deferred.promise;
+        return deferred.promise;
     }
 
     private beginAppExit() {
@@ -302,7 +299,7 @@ export class DebugProtocolAdapter {
         } catch (e) {
             deferred.reject(e);
         }
-        return await deferred.promise;
+        return deferred.promise;
     }
 
     /**
@@ -353,7 +350,7 @@ export class DebugProtocolAdapter {
      * @param command
      * @returns the output of the command (if possible)
      */
-    public async evaluate(command: string, frameId: number = this.socketDebugger.primaryThread) {
+    public async evaluate(command: string, frameId: number = this.socketDebugger.primaryThread): Promise<string> {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot run evaluate: debugger is not paused');
         }
@@ -419,13 +416,13 @@ export class DebugProtocolAdapter {
 
         return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
             let variablePath = expression === '' ? [] : util.getVariablePath(expression);
-            let variableInfo: any = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+            let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
-            if (variableInfo.errorCode === 'OK') {
+            if (response.errorCode === 'OK') {
                 let mainContainer: EvaluateContainer;
                 let children: EvaluateContainer[] = [];
                 let firstHandled = false;
-                for (let variable of variableInfo.variables) {
+                for (let variable of response.variables) {
                     let value;
                     let variableType = variable.variableType;
                     if (variable.value === null) {
@@ -458,7 +455,7 @@ export class DebugProtocolAdapter {
                         mainContainer = container;
                     } else {
                         if (!firstHandled && variablePath.length === 0) {
-                            // If this is a scope request there will be no entry's in the variable path
+                            // If this is a scope request there will be no entries in the variable path
                             // We will need to create a fake mainContainer
                             firstHandled = true;
                             mainContainer = <EvaluateContainer>{
@@ -468,18 +465,16 @@ export class DebugProtocolAdapter {
                                 type: '',
                                 value: null,
                                 keyType: 'String',
-                                elementCount: variableInfo.numVariables
+                                elementCount: response.numVariables
                             };
                         }
 
                         let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
                         container.name = pathAddition.toString();
-                        //if we have an evaluate name to the left, prefix our new addition with it
                         if (mainContainer.evaluateName) {
                             container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
                         } else {
-                            //this is most likely the "get all local variables" call, so just keep the initial path as-is
-                            container.evaluateName = pathAddition;
+                            container.evaluateName = pathAddition.toString();
                         }
                         container.variablePath = [].concat(container.variablePath, [pathAddition.toString()]);
                         if (container.keyType) {

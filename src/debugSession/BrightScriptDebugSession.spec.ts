@@ -5,18 +5,15 @@ import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { DebugSession } from 'vscode-debugadapter';
-import type { SinonStub } from 'sinon';
-
-import {
-    BrightScriptDebugSession,
-    defer
-} from './BrightScriptDebugSession';
+import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
 import type { EvaluateContainer } from '../adapters/TelnetAdapter';
 import {
     HighLevelType,
     PrimativeType
 } from '../adapters/TelnetAdapter';
+import { defer } from '../util';
+import type { SinonStub } from 'sinon';
 
 let sinon = sinonActual.createSandbox();
 let cwd = fileUtils.standardizePath(process.cwd());
@@ -48,7 +45,7 @@ describe('BrightScriptDebugSession', () => {
             console.log(e);
         }
         //override the error response function and throw an exception so we can fail any tests
-        (session as any).sendErrorResponse = (...args) => {
+        (session as any).sendErrorResponse = (...args: string[]) => {
             throw new Error(args[2]);
         };
         //mock the rokuDeploy module with promises so we can have predictable tests
@@ -118,7 +115,7 @@ describe('BrightScriptDebugSession', () => {
     describe('initializeRequest', () => {
         it('does not throw', () => {
             assert.doesNotThrow(() => {
-                session.initializeRequest(<any>{}, <any>{});
+                session.initializeRequest({} as DebugProtocol.InitializeResponse, {} as DebugProtocol.InitializeRequestArguments);
             });
         });
     });
@@ -160,10 +157,11 @@ describe('BrightScriptDebugSession', () => {
             getVariableValue = getBooleanEvaluateContainer(expression);
             //adapter has to be at prompt for evaluates to work
             rokuAdapter.isAtDebuggerPrompt = true;
-            void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
+            void session.evaluateRequest({} as DebugProtocol.EvaluateResponse, { context: 'hover', expression: expression } as DebugProtocol.EvaluateArguments);
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'true',
+                type: 'Boolean',
                 variablesReference: 0,
                 namedVariables: 0,
                 indexedVariables: 0
@@ -186,8 +184,9 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'roArray',
+                type: 'roArray',
                 variablesReference: 1,
                 namedVariables: 0,
                 indexedVariables: 2
@@ -209,8 +208,9 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'roAssociativeArray',
+                type: 'roAssociativeArray',
                 variablesReference: 1,
                 namedVariables: 2,
                 indexedVariables: 0

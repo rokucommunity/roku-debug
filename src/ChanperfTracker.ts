@@ -103,7 +103,7 @@ export class ChanperfTracker {
         return lines.join('\n');
     }
 
-    private toBytes(KiB): number {
+    private toBytes(KiB: string): number {
         let amount = parseInt(KiB);
         return isNaN(amount) ? 0 : amount * 1024;
     }

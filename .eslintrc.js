@@ -12,8 +12,7 @@ module.exports = {
     },
     plugins: [
         '@typescript-eslint',
-        'no-only-tests',
-        'github'
+        'no-only-tests'
     ],
     extends: [
         'eslint:all',
@@ -58,7 +57,6 @@ module.exports = {
         '@typescript-eslint/no-unused-vars-experimental': 'off',
         '@typescript-eslint/no-use-before-define': 'off',
         '@typescript-eslint/object-curly-spacing': ['error', 'always'],
-        '@typescript-eslint/prefer-for-of': 'off',
         '@typescript-eslint/prefer-readonly': 'off',
         '@typescript-eslint/prefer-readonly-parameter-types': 'off',
         '@typescript-eslint/promise-function-async': 'off',
@@ -97,7 +95,6 @@ module.exports = {
         'function-call-argument-newline': 'off',
         'function-paren-newline': 'off',
         'getter-return': 'off',
-        'github/array-foreach': 'error',
         'guard-for-in': 'off',
         'id-length': 'off',
         'indent': 'off',
@@ -183,6 +180,7 @@ module.exports = {
     {
         files: ['*.spec.ts'],
         rules: {
+            '@typescript-eslint/no-unsafe-argument': 'off',
             '@typescript-eslint/no-unsafe-assignment': 'off',
             '@typescript-eslint/no-unsafe-call': 'off',
             '@typescript-eslint/no-unsafe-member-access': 'off',
