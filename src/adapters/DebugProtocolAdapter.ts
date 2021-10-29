@@ -414,79 +414,77 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot request variable without a corresponding frame');
         }
 
-        return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
-            let variablePath = expression === '' ? [] : util.getVariablePath(expression);
-            let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+        let variablePath = expression === '' ? [] : util.getVariablePath(expression);
+        let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
-            if (response.errorCode === 'OK') {
-                let mainContainer: EvaluateContainer;
-                let children: EvaluateContainer[] = [];
-                let firstHandled = false;
-                for (let variable of response.variables) {
-                    let value;
-                    let variableType = variable.variableType;
-                    if (variable.value === null) {
-                        value = 'roInvalid';
-                    } else if (variableType === 'String') {
-                        value = `\"${variable.value}\"`;
-                    } else {
-                        value = variable.value;
-                    }
-
-                    if (variableType === 'Subtyped_Object') {
-                        let parts = variable.value.split('; ');
-                        variableType = `${parts[0]} (${parts[1]})`;
-                    } else if (variableType === 'AA') {
-                        variableType = 'AssociativeArray';
-                    }
-
-                    let container = <EvaluateContainer>{
-                        name: expression,
-                        evaluateName: expression,
-                        variablePath: variablePath,
-                        type: variableType,
-                        value: value,
-                        keyType: variable.keyType,
-                        elementCount: variable.elementCount
-                    };
-
-                    if (!firstHandled && variablePath.length > 0) {
-                        firstHandled = true;
-                        mainContainer = container;
-                    } else {
-                        if (!firstHandled && variablePath.length === 0) {
-                            // If this is a scope request there will be no entries in the variable path
-                            // We will need to create a fake mainContainer
-                            firstHandled = true;
-                            mainContainer = <EvaluateContainer>{
-                                name: expression,
-                                evaluateName: expression,
-                                variablePath: variablePath,
-                                type: '',
-                                value: null,
-                                keyType: 'String',
-                                elementCount: response.numVariables
-                            };
-                        }
-
-                        let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
-                        container.name = pathAddition.toString();
-                        if (mainContainer.evaluateName) {
-                            container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
-                        } else {
-                            container.evaluateName = pathAddition.toString();
-                        }
-                        container.variablePath = [].concat(container.variablePath, [pathAddition.toString()]);
-                        if (container.keyType) {
-                            container.children = [];
-                        }
-                        children.push(container);
-                    }
+        if (response.errorCode === 'OK') {
+            let mainContainer: EvaluateContainer;
+            let children: EvaluateContainer[] = [];
+            let firstHandled = false;
+            for (let variable of response.variables) {
+                let value;
+                let variableType = variable.variableType;
+                if (variable.value === null) {
+                    value = 'roInvalid';
+                } else if (variableType === 'String') {
+                    value = `\"${variable.value}\"`;
+                } else {
+                    value = variable.value;
                 }
-                mainContainer.children = children;
-                return mainContainer;
+
+                if (variableType === 'Subtyped_Object') {
+                    let parts = variable.value.split('; ');
+                    variableType = `${parts[0]} (${parts[1]})`;
+                } else if (variableType === 'AA') {
+                    variableType = 'AssociativeArray';
+                }
+
+                let container = <EvaluateContainer>{
+                    name: expression,
+                    evaluateName: expression,
+                    variablePath: variablePath,
+                    type: variableType,
+                    value: value,
+                    keyType: variable.keyType,
+                    elementCount: variable.elementCount
+                };
+
+                if (!firstHandled && variablePath.length > 0) {
+                    firstHandled = true;
+                    mainContainer = container;
+                } else {
+                    if (!firstHandled && variablePath.length === 0) {
+                        // If this is a scope request there will be no entries in the variable path
+                        // We will need to create a fake mainContainer
+                        firstHandled = true;
+                        mainContainer = <EvaluateContainer>{
+                            name: expression,
+                            evaluateName: expression,
+                            variablePath: variablePath,
+                            type: '',
+                            value: null,
+                            keyType: 'String',
+                            elementCount: response.numVariables
+                        };
+                    }
+
+                    let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
+                    container.name = pathAddition.toString();
+                    if (mainContainer.evaluateName) {
+                        container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
+                    } else {
+                        container.evaluateName = pathAddition.toString();
+                    }
+                    container.variablePath = [].concat(container.variablePath, [pathAddition.toString()]);
+                    if (container.keyType) {
+                        container.children = [];
+                    }
+                    children.push(container);
+                }
             }
-        });
+            mainContainer.children = children;
+            return mainContainer;
+        }
     }
 
     /**

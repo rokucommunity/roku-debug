@@ -8,6 +8,7 @@ import {
     DebugSession as BaseDebugSession,
     Handles,
     InitializedEvent,
+    InvalidatedEvent,
     OutputEvent,
     Scope,
     Source,
@@ -94,12 +95,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private launchConfiguration: LaunchConfiguration;
+    private initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
     /**
      * The 'initialize' request is the first request called by the frontend
      * to interrogate the features the debug adapter provides.
      */
     public initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
+        this.initRequestArgs = args;
         // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
         // we request them early by sending an 'initializeRequest' to the frontend.
         // The frontend will end the configuration sequence by calling 'configurationDone' request.
@@ -758,7 +761,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
         let deferred = defer<any>();
-
         try {
             this.evaluateRequestPromise = this.evaluateRequestPromise.then(() => {
                 return deferred.promise;
@@ -803,11 +805,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     //run an `evaluate` call
                 } else {
-                    //clear variable cache since this action could have side-effects
-                    this.clearState();
                     const output = util.trimDebugPrompt(
                         await this.rokuAdapter.evaluate(args.expression, args.frameId)
                     );
+                    //clear variable cache since this action could have side-effects
+                    this.clearState();
+                    this.sendInvalidatedEvent(null, args.frameId);
                     //if the adapter captured output (probably only telnet), print it to the vscode debug console
                     if (typeof output === 'string') {
                         this.sendEvent(new OutputEvent(output, 'stdio'));
@@ -948,6 +951,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return v;
     }
 
+
     private getEvaluateRefId(expression: string, frameId: number) {
         let evaluateRefId = `${expression}-${frameId}`;
         if (!this.evaluateRefIdLookup[evaluateRefId]) {
@@ -959,6 +963,19 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private clearState() {
         //erase all cached variables
         this.variables = {};
+        this.variables = {};
+    }
+
+    /**
+     * Tells the client to re-request all variables because we've invalidated them
+     * @param threadId
+     * @param stackFrameId
+     */
+    private sendInvalidatedEvent(threadId?: number, stackFrameId?: number) {
+        //if the client supports this request, send it
+        if (this.initRequestArgs.supportsInvalidatedEvent) {
+            this.sendEvent(new InvalidatedEvent(['variables'], threadId, stackFrameId));
+        }
     }
 
     /**
