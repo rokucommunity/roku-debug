@@ -192,6 +192,32 @@ describe('Util', () => {
         });
     });
 
+    describe('ensureDebugPromptOnOwnLine', () => {
+        it('leaves good code alone', () => {
+            expect(
+                util.ensureDebugPromptOnOwnLine(`Brightscript Debugger>`)
+            ).to.eql(`Brightscript Debugger>`);
+        });
+
+        it('splits leading text', () => {
+            expect(
+                util.ensureDebugPromptOnOwnLine(`BLABLABrightscript Debugger>`)
+            ).to.eql(`BLABLA\nBrightscript Debugger>`);
+        });
+
+        it('splits trailing text', () => {
+            expect(
+                util.ensureDebugPromptOnOwnLine(`Brightscript Debugger>BLABLA`)
+            ).to.eql(`Brightscript Debugger>\nBLABLA`);
+        });
+
+        it('splits trailing text and whitespace', () => {
+            expect(
+                util.ensureDebugPromptOnOwnLine(`Brightscript Debugger> 10-29 15:39:24.956 [beacon.header] __________________________________________`)
+            ).to.eql(`Brightscript Debugger> \n10-29 15:39:24.956 [beacon.header] __________________________________________`);
+        });
+    });
+
     describe('filterGenericErrors', () => {
         it('should remove generic errors IF a more specific exists', () => {
             const err1: BrightScriptDebugCompileError = {

@@ -214,6 +214,47 @@ class Util {
         return true;
     }
 
+    /**
+     * Ensures that all roku-emitted beacons are entirely on their own lines
+     */
+    public ensureDebugPromptOnOwnLine(text: string) {
+        const regexp = /^((.*?)Brightscript\s+Debugger>\s*)(.*?)$/gm;
+        let match: RegExpExecArray;
+        const splitIndexes = [] as number[];
+        // eslint-disable-next-line no-cond-assign
+        while (match = regexp.exec(text)) {
+            const leadingAndBeaconText = match[1];
+            const leadingText = match[2];
+            const trailingText = match[3];
+            //if there is text before the beacon, split the line
+            if (leadingText.length > 0) {
+                splitIndexes.push(match.index + leadingText.length);
+            }
+            //if there is text after the beacon, split the line
+            if (trailingText.length > 0) {
+                splitIndexes.push(match.index + leadingAndBeaconText.length);
+            }
+        }
+
+        let result = text;
+        //inject newlines between each split index
+        for (let i = splitIndexes.length - 1; i >= 0; i--) {
+            const index = splitIndexes[i];
+            result = result.substring(0, index) + '\n' + result.substring(index);
+        }
+        return result;
+    }
+
+    /**
+     * Checks the supplied string for the "Brightscript Debugger>" prompt
+     * @param responseText
+     */
+    public checkForDebuggerPrompt(text: string) {
+        let match = /Brightscript\s+Debugger>\s*$/im.exec(text.trim());
+        return !!match;
+    }
+
+
     public filterGenericErrors(errors: BrightScriptDebugCompileError[]) {
         const specificErrors: Record<string, BrightScriptDebugCompileError> = {};
 
@@ -228,6 +269,19 @@ class Util {
                 specificErrors[path] = e;
             }
             return true;
+        });
+    }
+
+    /**
+     * setTimeout but with a promise.
+     * @param ms
+     * @returns
+     */
+    public sleep(ms: number) {
+        return new Promise<void>((resolve) => {
+            setTimeout(() => {
+                resolve();
+            }, ms);
         });
     }
 }

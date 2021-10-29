@@ -208,12 +208,6 @@ export class TelnetAdapter {
             await rokuDeploy.pressHomeButton(this.host);
             let client: Socket = new net.Socket();
 
-            client.connect(8085, this.host, () => {
-                console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} +++++++++++`);
-                this.connected = true;
-                this.emit('connected', this.connected);
-            });
-
             //listen for the close event
             client.addListener('close', (err, data) => {
                 this.emit('close');
@@ -224,7 +218,14 @@ export class TelnetAdapter {
                 deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message}`));
             });
 
-            await this.settle(client, 'data');
+            const settlePromise = this.settle(client, 'data');
+            client.connect(8085, this.host, () => {
+                console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} +++++++++++`);
+                this.connected = true;
+                this.emit('connected', this.connected);
+            });
+
+            await settlePromise;
 
             //hook up the pipeline to the socket
             this.requestPipeline = new RequestPipeline(client);
@@ -286,8 +287,7 @@ export class TelnetAdapter {
                     }
 
                     //watch for debugger prompt output
-                    // eslint-disable-next-line no-cond-assign
-                    if (match = /Brightscript\s*Debugger>\s*$/i.exec(responseText.trim())) {
+                    if (util.checkForDebuggerPrompt(responseText)) {
 
                         //if we are activated AND this is the first time seeing the debugger prompt since a continue/step action
                         if (this.isNextBreakpointSkipped) {
@@ -993,7 +993,7 @@ export class TelnetAdapter {
      */
     public async getThreads() {
         if (!this.isAtDebuggerPrompt) {
-            throw new Error('Cannot get threads: debugger is not paused');
+            util.logDebug('Cannot get threads: debugger is not paused');
         }
         return this.resolve('threads', async () => {
             let data = await this.requestPipeline.executeCommand('threads', true);
@@ -1031,8 +1031,24 @@ export class TelnetAdapter {
      * Disconnect from the telnet session and unset all objects
      */
     public async destroy() {
+        try {
+            //press the home key on the roku to exit the app
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+            await this.requestPipeline.executeCommand(`exit`, false);
+        } catch (e) {
+            util.logDebug('Failure running `exit` command during TelnetAdapter destroy()', e);
+        }
+
         if (this.requestPipeline) {
-            await this.exitActiveBrightscriptDebugger();
             this.requestPipeline.destroy();
         }
 
@@ -1149,12 +1165,10 @@ export class RequestPipeline {
     constructor(
         private client: Socket
     ) {
-        this.debuggerLineRegex = /Brightscript\s+Debugger>\s*$/i;
         this.connect();
     }
 
     private requests: RequestPipelineRequest[] = [];
-    private debuggerLineRegex: RegExp;
     private isAtDebuggerPrompt = false;
 
     private get isProcessing() {
@@ -1188,7 +1202,9 @@ export class RequestPipeline {
         this.client.addListener('data', (data) => {
             let responseText = data.toString();
             const cumulative = lastPartialLine + responseText;
-            if (!cumulative.endsWith('\n') && !this.checkForDebuggerPrompt(cumulative)) {
+            //ensure all debugger prompts appear completely on their own line
+            responseText = util.ensureDebugPromptOnOwnLine(responseText);
+            if (!cumulative.endsWith('\n') && !util.checkForDebuggerPrompt(cumulative)) {
                 // buffer was split and was not the result of a prompt, save the partial line
                 lastPartialLine += responseText;
                 return;
@@ -1204,7 +1220,7 @@ export class RequestPipeline {
             this.emit('console-output', responseText);
             allResponseText += responseText;
 
-            let foundDebuggerPrompt = this.checkForDebuggerPrompt(allResponseText);
+            let foundDebuggerPrompt = util.checkForDebuggerPrompt(allResponseText);
 
             //if we are not processing, immediately broadcast the latest data
             if (!this.isProcessing) {
@@ -1234,15 +1250,6 @@ export class RequestPipeline {
     }
 
     /**
-     * Checks the supplied string for the debugger input prompt
-     * @param responseText
-     */
-    private checkForDebuggerPrompt(responseText: string) {
-        let match = this.debuggerLineRegex.exec(responseText.trim());
-        return (match);
-    }
-
-    /**
      * Schedule a command to be run. Resolves with the result once the command finishes
      * @param commandFunction
      * @param waitForPrompt - if true, the promise will wait until we find a prompt, and return all output in between. If false, the promise will immediately resolve
@@ -1257,6 +1264,7 @@ export class RequestPipeline {
                 if (!silent) {
                     this.emit('console-output', command);
                 }
+                console.log(`TELNET WRITE: "${commandText}"`);
                 this.client.write(commandText);
                 if (waitForPrompt) {
                     // The act of executing this command means we are no longer at the debug prompt
@@ -1267,7 +1275,7 @@ export class RequestPipeline {
             let request = {
                 executeCommand: executeCommand,
                 onComplete: (data: string) => {
-                    console.debug(`Command finished (${waitForPrompt ? 'after waiting for prompt' : 'did not wait for prompt'}`, command);
+                    console.debug(`Command finished (${waitForPrompt ? 'after waiting for prompt' : 'did not wait for prompt'}):`, command);
                     console.debug('Data:', data);
                     resolve(data);
                 },
