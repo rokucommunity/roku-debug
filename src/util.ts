@@ -10,6 +10,7 @@ import type { Position, Range } from 'brighterscript';
 import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 import { serializeError } from 'serialize-error';
+import * as dns from 'dns';
 
 class Util {
     /**
@@ -271,6 +272,22 @@ class Util {
             return true;
         });
     }
+
+    /**
+     * Look up the ip address for a hostname. This is cached for the lifetime of the app, or bypassed with the `skipCache` parameter
+     * @param host
+     * @param skipCache
+     * @returns
+     */
+    public async dnsLookup(host: string, skipCache = false) {
+        if (!this.dnsCache.has(host) || skipCache) {
+            const result = await dns.promises.lookup(host);
+            this.dnsCache.set(host, result.address ?? host);
+        }
+        return this.dnsCache.get(host);
+    }
+
+    private dnsCache = new Map<string, string>();
 }
 
 export function defer<T>() {

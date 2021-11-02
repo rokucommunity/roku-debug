@@ -132,6 +132,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
 
+        //do a DNS lookup for the host to fix issues with roku rejecting ECP
+        this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
+
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
 
