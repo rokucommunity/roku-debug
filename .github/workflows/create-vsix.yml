@@ -9,4 +9,3 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'create-vsix')
     steps:
       - run: echo "hello world"
-    
