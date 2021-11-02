@@ -1240,7 +1240,7 @@ export class RequestPipeline {
      * @param silent - if true, the command will be hidden from the output
      */
     public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
-        console.debug(`Execute command (and ${waitForPrompt ? 'do' : 'do not'} wait for prompt):`, command);
+        console.debug(`Execute command (and${waitForPrompt ? '' : ' don\'t'} wait for prompt):`, command);
         return new Promise<string>((resolve, reject) => {
             let executeCommand = () => {
                 let commandText = `${command}\r\n`;
@@ -1303,10 +1303,12 @@ export class RequestPipeline {
         nextRequest.executeCommand();
     }
 
-    public destroy() {
+    public async destroy() {
         this.client.removeAllListeners();
         this.client.destroy();
         this.client = undefined;
+        //needs to be async to match the DebugProtocolAdapter implementation
+        return Promise.resolve();
     }
 }
 
