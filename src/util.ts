@@ -271,19 +271,6 @@ class Util {
             return true;
         });
     }
-
-    /**
-     * setTimeout but with a promise.
-     * @param ms
-     * @returns
-     */
-    public sleep(ms: number) {
-        return new Promise<void>((resolve) => {
-            setTimeout(() => {
-                resolve();
-            }, ms);
-        });
-    }
 }
 
 export function defer<T>() {
