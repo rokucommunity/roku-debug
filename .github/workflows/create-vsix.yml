@@ -1,0 +1,11 @@
+name: create-vsix
+on: [pull_request]
+
+jobs:
+  create-vsix:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_CONTEXT: ${{ toJson(github) }}
+    steps:
+      run: echo "$GITHUB_CONTEXT"
+    
