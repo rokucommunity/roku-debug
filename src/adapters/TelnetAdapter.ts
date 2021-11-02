@@ -1030,24 +1030,7 @@ export class TelnetAdapter {
     /**
      * Disconnect from the telnet session and unset all objects
      */
-    public async destroy() {
-        try {
-            //press the home key on the roku to exit the app
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-            await this.requestPipeline.executeCommand(`exit`, false);
-        } catch (e) {
-            util.logDebug('Failure running `exit` command during TelnetAdapter destroy()', e);
-        }
-
+    public destroy() {
         if (this.requestPipeline) {
             this.requestPipeline.destroy();
         }
