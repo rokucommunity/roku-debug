@@ -142,7 +142,7 @@ export class TelnetAdapter {
             //emit the suspend event when it's ready
             if (this.isAtDebuggerPrompt === true) {
                 let threads = await this.getThreads();
-                this.emit('suspend', threads[0].threadId);
+                this.emit('suspend', threads[0]?.threadId);
             }
         }
     }
@@ -994,6 +994,7 @@ export class TelnetAdapter {
     public async getThreads() {
         if (!this.isAtDebuggerPrompt) {
             util.logDebug('Cannot get threads: debugger is not paused');
+            return [];
         }
         return this.resolve('threads', async () => {
             let data = await this.requestPipeline.executeCommand('threads', true);
@@ -1041,6 +1042,8 @@ export class TelnetAdapter {
             this.emitter.removeAllListeners();
         }
         this.emitter = undefined;
+        //needs to be async to match the DebugProtocolAdapter implementation
+        return Promise.resolve();
     }
 
     /**
@@ -1303,12 +1306,10 @@ export class RequestPipeline {
         nextRequest.executeCommand();
     }
 
-    public async destroy() {
+    public destroy() {
         this.client.removeAllListeners();
         this.client.destroy();
         this.client = undefined;
-        //needs to be async to match the DebugProtocolAdapter implementation
-        return Promise.resolve();
     }
 }
 
