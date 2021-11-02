@@ -25,6 +25,26 @@
                 "isDefault": true
             },
             "problemMatcher": []
-        }
+        },
+        {
+            "label": "watch",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "watch",
+                "--loglevel",
+                "silent"
+            ],
+            "presentation": {
+                "group": "watch",
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "isBackground": true,
+            "problemMatcher": "$tsc-watch"
+        },
     ]
 }
