@@ -160,11 +160,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //delete any previously installed channel
             try {
-                util.log(`Deleting existing sideloaded channel (if it exists)`);
+                util.log(`Deleting existing sideloaded channel (if there is one)`);
                 await this.rokuDeploy.deleteInstalledChannel(this.launchConfiguration as RokuDeployOptions);
             } catch (e) {
                 util.logDebug('Error deleting previously installed channel. Probably not a big deal...', e);
             }
+
+            //press the home button to ensure we're at the home screen
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
 
             //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
             this.rokuAdapter.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
