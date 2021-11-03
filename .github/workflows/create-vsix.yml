@@ -11,6 +11,7 @@ jobs:
       - uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: create-vsix
+          ref: master
           repo: rokucommunity/vscode-brightscript-language
           token: ${{ secrets.WORKFLOW_DISPATCH_PERSONAL_TOKEN }}
           inputs: '{ "branch ": "${GITHUB_REF}"}'
