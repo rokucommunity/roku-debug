@@ -13,8 +13,8 @@ jobs:
         uses: tibdex/github-app-token@v1
         id: generate-token
         with:
-          app_id: ${{ secrets.BOT_CLIENT_ID }}
-          private_key: ${{ secrets.BOT_CLIENT_SECRET }}
+          app_id: ${{ secrets.BOT_APP_ID }}
+          private_key: ${{ secrets.BOT_PRIVATE_KEY }}
       - name: Set New GitHub Token
         run: echo "TOKEN=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
 
