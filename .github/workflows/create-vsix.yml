@@ -16,15 +16,18 @@ jobs:
           private_key: ${{ secrets.BOT_PRIVATE_KEY }}
       - name: Set New GitHub Token
         run: echo "TOKEN=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
-      #- uses: aurelien-baudet/workflow-dispatch@v2.1.1
-      #  with:
-      #   workflow: create-vsix
-      #   ref: master
-      #   wait-for-completion: true
-      #   display-workflow-run-url: true
-      #   repo: rokucommunity/vscode-brightscript-language
-      #   token: ${{ env.TOKEN }}
-      #   inputs: '{ "branch": "${{ github.head_ref }}"}'
+      #trigger the build on vscode-brightscript-language
+      - uses: aurelien-baudet/workflow-dispatch@v2.1.1
+        id: create-vsix
+        with:
+         workflow: create-vsix
+         ref: master
+         wait-for-completion: true
+         display-workflow-run-url: true
+         repo: rokucommunity/vscode-brightscript-language
+         token: ${{ env.TOKEN }}
+         inputs: '{ "branch": "${{ github.head_ref }}"}'
+      #add a comment comment on the PR with the workflow link (for the artifact link)
       - uses: actions/github-script@v5
         with:
           github-token: ${{ env.TOKEN }}
@@ -33,5 +36,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '👋 Thanks for reporting!'
+              body: 'Hey there. I just built a new version of the vscode extension for you based on #${{ github.sha }}, which can be downloaded [here](${{steps.create-vsix.outputs.workflow-url}}). Follow [these instructions](https://github.com/rokucommunity/vscode-brightscript-language#pre-release-versions) for how to install it.'
             })
