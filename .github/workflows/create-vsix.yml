@@ -13,7 +13,7 @@ jobs:
           workflow: create-vsix
           ref: master
           wait-for-completion: true
-          display-worflow-run-url: true
+          display-workflow-run-url: true
           repo: rokucommunity/vscode-brightscript-language
           token: ${{ secrets.WORKFLOW_DISPATCH_PERSONAL_TOKEN }}
           inputs: '{ "branch": "${{ github.head_ref }}"}'
