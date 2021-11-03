@@ -7,5 +7,10 @@ jobs:
   create-vsix:
     runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'create-vsix')
-    steps:
-      - run: echo "hello world"
+    uses: benc-uk/workflow-dispatch@v1
+    with:
+      workflow: create-vsix
+      repo: rokucommunity/vscode-brightscript-language
+      token: ${{ secrets.WORKFLOW_DISPATCH_PERSONAL_TOKEN }}
+      inputs: '{ "branch ": "${GITHUB_REF}"}'
+
