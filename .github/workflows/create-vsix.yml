@@ -8,13 +8,21 @@ jobs:
     runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'create-vsix')
     steps:
-      - uses: aurelien-baudet/workflow-dispatch@v2.1.1
+      #- uses: aurelien-baudet/workflow-dispatch@v2.1.1
+      #  with:
+      #    workflow: create-vsix
+      #    ref: master
+      #    wait-for-completion: true
+      #    display-workflow-run-url: true
+      #    repo: rokucommunity/vscode-brightscript-language
+      #    token: ${{ secrets.WORKFLOW_DISPATCH_PERSONAL_TOKEN }}
+      #    inputs: '{ "branch": "${{ github.head_ref }}"}'
+      - uses: actions/github-script@v5
         with:
-          workflow: create-vsix
-          ref: master
-          wait-for-completion: true
-          display-workflow-run-url: true
-          repo: rokucommunity/vscode-brightscript-language
-          token: ${{ secrets.WORKFLOW_DISPATCH_PERSONAL_TOKEN }}
-          inputs: '{ "branch": "${{ github.head_ref }}"}'
-
+          script: |
+            github.rest.issues.createComment({
+              issue_number: github.event.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '👋 Thanks for reporting!'
+            })
