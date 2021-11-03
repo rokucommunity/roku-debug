@@ -14,5 +14,5 @@ jobs:
           ref: master
           repo: rokucommunity/vscode-brightscript-language
           token: ${{ secrets.WORKFLOW_DISPATCH_PERSONAL_TOKEN }}
-          inputs: '{ "branch ": "${GITHUB_REF}"}'
+          inputs: '{ "branch": "${GITHUB_REF}"}'
 
