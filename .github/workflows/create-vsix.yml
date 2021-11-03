@@ -2,7 +2,6 @@ name: create-vsix
 on: 
   pull_request:
     types: [labeled, unlabeled, synchronize]
-
 jobs:
   create-vsix:
     runs-on: ubuntu-latest
@@ -17,7 +16,6 @@ jobs:
           private_key: ${{ secrets.BOT_PRIVATE_KEY }}
       - name: Set New GitHub Token
         run: echo "TOKEN=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
-
       #- uses: aurelien-baudet/workflow-dispatch@v2.1.1
       #  with:
       #   workflow: create-vsix
@@ -29,6 +27,7 @@ jobs:
       #   inputs: '{ "branch": "${{ github.head_ref }}"}'
       - uses: actions/github-script@v5
         with:
+          github-token: ${{ env.TOKEN }}
           script: |
             github.rest.issues.createComment({
               issue_number: context.issue.number,
