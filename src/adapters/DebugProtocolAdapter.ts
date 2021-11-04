@@ -560,13 +560,6 @@ export class DebugProtocolAdapter {
         this.emitter = undefined;
     }
 
-    /**
-     * Make sure any active Brightscript Debugger threads are exited
-     */
-    public async exitActiveBrightscriptDebugger() {
-        // Legacy function called by the debug section
-    }
-
     // #region Rendezvous Tracker pass though functions
     /**
      * Passes the debug functions used to locate the client files and lines to the RendezvousTracker

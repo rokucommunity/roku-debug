@@ -11,6 +11,7 @@ import { DiagnosticSeverity, isDottedGetExpression, isIndexedGetExpression, isLi
 import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 import { serializeError } from 'serialize-error';
+import * as dns from 'dns';
 
 class Util {
     /**
@@ -215,6 +216,47 @@ class Util {
         return true;
     }
 
+    /**
+     * Ensures that all roku-emitted beacons are entirely on their own lines
+     */
+    public ensureDebugPromptOnOwnLine(text: string) {
+        const regexp = /^((.*?)Brightscript\s+Debugger>\s*)(.*?)$/gm;
+        let match: RegExpExecArray;
+        const splitIndexes = [] as number[];
+        // eslint-disable-next-line no-cond-assign
+        while (match = regexp.exec(text)) {
+            const leadingAndBeaconText = match[1];
+            const leadingText = match[2];
+            const trailingText = match[3];
+            //if there is text before the beacon, split the line
+            if (leadingText.length > 0) {
+                splitIndexes.push(match.index + leadingText.length);
+            }
+            //if there is text after the beacon, split the line
+            if (trailingText.length > 0) {
+                splitIndexes.push(match.index + leadingAndBeaconText.length);
+            }
+        }
+
+        let result = text;
+        //inject newlines between each split index
+        for (let i = splitIndexes.length - 1; i >= 0; i--) {
+            const index = splitIndexes[i];
+            result = result.substring(0, index) + '\n' + result.substring(index);
+        }
+        return result;
+    }
+
+    /**
+     * Checks the supplied string for the "Brightscript Debugger>" prompt
+     * @param responseText
+     */
+    public checkForDebuggerPrompt(text: string) {
+        let match = /Brightscript\s+Debugger>\s*$/im.exec(text.trim());
+        return !!match;
+    }
+
+
     public filterGenericErrors(errors: BrightScriptDebugCompileError[]) {
         const specificErrors: Record<string, BrightScriptDebugCompileError> = {};
 
@@ -303,6 +345,22 @@ class Util {
             }
         }
     }
+
+    /*
+     * Look up the ip address for a hostname. This is cached for the lifetime of the app, or bypassed with the `skipCache` parameter
+     * @param host
+     * @param skipCache
+     * @returns
+     */
+    public async dnsLookup(host: string, skipCache = false) {
+        if (!this.dnsCache.has(host) || skipCache) {
+            const result = await dns.promises.lookup(host);
+            this.dnsCache.set(host, result.address ?? host);
+        }
+        return this.dnsCache.get(host);
+    }
+
+    private dnsCache = new Map<string, string>();
 }
 
 export function defer<T>() {

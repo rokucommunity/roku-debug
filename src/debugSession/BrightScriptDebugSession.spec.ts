@@ -79,7 +79,6 @@ describe('BrightScriptDebugSession', () => {
                 };
             },
             activate: () => Promise.resolve(),
-            exitActiveBrightscriptDebugger: () => Promise.resolve(),
             registerSourceLocator: (a, b) => { },
             setConsoleOutput: (a) => { },
             evaluate: () => { },

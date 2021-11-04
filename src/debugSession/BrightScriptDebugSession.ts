@@ -3,7 +3,7 @@ import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as request from 'request';
 import * as rokuDeploy from 'roku-deploy';
-import type { RokuDeploy } from 'roku-deploy';
+import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     DebugSession as BaseDebugSession,
     Handles,
@@ -135,6 +135,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
 
+        //do a DNS lookup for the host to fix issues with roku rejecting ECP
+        this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
+
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
 
@@ -161,8 +164,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
-            util.log(`Exiting any active brightscript debugger`);
-            await this.rokuAdapter.exitActiveBrightscriptDebugger();
+            //delete any previously installed channel
+            try {
+                util.log(`Deleting existing sideloaded channel (if there is one)`);
+                await this.rokuDeploy.deleteInstalledChannel(this.launchConfiguration as RokuDeployOptions);
+            } catch (error) {
+                util.logDebug('Error deleting previously installed channel. Probably not a big deal...', error);
+            }
+
+            //press the home button to ensure we're at the home screen
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
 
             //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
             this.rokuAdapter.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
@@ -256,7 +267,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             (this.launchConfiguration as any).remoteDebug = this.enableDebugProtocol;
 
             //publish the package to the target Roku
-            await this.rokuDeploy.publish(this.launchConfiguration as rokuDeploy.RokuDeployOptions);
+            await this.rokuDeploy.publish(this.launchConfiguration as RokuDeployOptions);
 
             if (this.enableDebugProtocol) {
                 //connect to the roku debug via sockets
@@ -870,7 +881,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
             let threads = await this.rokuAdapter.getThreads();
-            let threadId = threads[0].threadId;
+            let threadId = threads[0]?.threadId;
 
             this.clearState();
             let exceptionText = '';
@@ -885,7 +896,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.rokuAdapter.on('runtime-error', async (exception) => {
             let rokuAdapter = await this.getRokuAdapter();
             let threads = await rokuAdapter.getThreads();
-            let threadId = threads[0].threadId;
+            let threadId = threads[0]?.threadId;
             this.sendEvent(new StoppedEvent(StoppedEventReason.exception, threadId, exception.message));
         });
 
