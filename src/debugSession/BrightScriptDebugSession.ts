@@ -165,8 +165,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             try {
                 util.log(`Deleting existing sideloaded channel (if there is one)`);
                 await this.rokuDeploy.deleteInstalledChannel(this.launchConfiguration as RokuDeployOptions);
-            } catch (e) {
-                util.logDebug('Error deleting previously installed channel. Probably not a big deal...', e);
+            } catch (error) {
+                util.logDebug('Error deleting previously installed channel. Probably not a big deal...', error);
             }
 
             //press the home button to ensure we're at the home screen
