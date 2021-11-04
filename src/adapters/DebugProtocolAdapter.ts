@@ -48,6 +48,13 @@ export class DebugProtocolAdapter {
     private stackFramesCache: Record<number, StackFrame> = {};
     private cache = {};
 
+    /**
+     * Get the version of the protocol for the Roku device we're currently connected to.
+     */
+    public get activeProtocolVersion() {
+        return this.socketDebugger?.protocolVersion;
+    }
+
     public readonly supportsMultipleRuns = false;
 
     /**

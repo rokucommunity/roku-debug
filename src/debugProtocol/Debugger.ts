@@ -21,7 +21,7 @@ export class Debugger {
         return this.stopped;
     }
 
-    public supportedVersionRange = '=2.0.0';
+    public supportedVersionRange = '2.0.0||2.5.0';
 
     constructor(
         options: ConstructorOptions
@@ -405,7 +405,7 @@ export class Debugger {
             } else {
                 util.logDebug('not supported');
                 this.emit('protocol-version', {
-                    message: `Protocol Version ${this.protocolVersion} is not supported.\nIf you believe this is an error please open an issues at https://github.com/rokucommunity/roku-debug/issues`,
+                    message: `Protocol Version ${this.protocolVersion} is not supported.\nIf you believe this is an error please open an issue at https://github.com/rokucommunity/roku-debug/issues`,
                     errorCode: PROTOCOL_ERROR_CODES.NOT_SUPPORTED
                 });
                 this.shutdown('close');
