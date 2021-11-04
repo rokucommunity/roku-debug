@@ -14,6 +14,7 @@ import {
 } from '../adapters/TelnetAdapter';
 import { defer } from '../util';
 import type { SinonStub } from 'sinon';
+import type { LaunchConfiguration } from '../LaunchConfiguration';
 
 let sinon = sinonActual.createSandbox();
 let cwd = fileUtils.standardizePath(process.cwd());
@@ -35,6 +36,9 @@ describe('BrightScriptDebugSession', () => {
     let s: any;
 
     let rokuAdapter: any;
+    let launchConfiguration: LaunchConfiguration;
+    let initRequestArgs: DebugProtocol.InitializeRequestArguments;
+
     beforeEach(() => {
         sinon.restore();
 
@@ -48,6 +52,10 @@ describe('BrightScriptDebugSession', () => {
         (session as any).sendErrorResponse = (...args: string[]) => {
             throw new Error(args[2]);
         };
+        launchConfiguration = {} as any;
+        session['launchConfiguration'] = launchConfiguration;
+        initRequestArgs = {} as any;
+        session['initRequestArgs'] = initRequestArgs;
         //mock the rokuDeploy module with promises so we can have predictable tests
         session.rokuDeploy = <any>{
             prepublishToStaging: () => {
@@ -466,6 +474,7 @@ describe('BrightScriptDebugSession', () => {
         }
 
         it('ensures closing quote for hover', async () => {
+            initRequestArgs.supportsInvalidatedEvent = true;
             await expectResponse({
                 expression: `"Billy`,
                 context: 'hover'
