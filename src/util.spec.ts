@@ -323,4 +323,26 @@ describe('Util', () => {
         });
     });
 
+    describe('isPrintVarExpression', () => {
+        it('works for normal use cases', () => {
+            expect(util.isPrintVarExpression('print thing')).to.be.true;
+            expect(util.isPrintVarExpression(' print thing')).to.be.true;
+            expect(util.isPrintVarExpression('\tprint thing')).to.be.true;
+            expect(util.isPrintVarExpression('print a')).to.be.true;
+            expect(util.isPrintVarExpression('print a[1]')).to.be.true;
+            expect(util.isPrintVarExpression('print a.b')).to.be.true;
+            expect(util.isPrintVarExpression('print a["b"]')).to.be.true;
+            expect(util.isPrintVarExpression('print a.b["c"]')).to.be.true;
+            expect(util.isPrintVarExpression('print a["b"].c')).to.be.true;
+            //print shorthand works too
+            expect(util.isPrintVarExpression('?a')).to.be.true;
+        });
+
+        it('returns false for non simple expressions', () => {
+            expect(util.isPrintVarExpression('print a[someVariable]')).to.be.false;
+            expect(util.isPrintVarExpression('print a.b[someVar]')).to.be.false;
+            expect(util.isPrintVarExpression('a[1] = true')).to.be.false;
+            expect(util.isPrintVarExpression('doSomething()')).to.be.false;
+        });
+    });
 });

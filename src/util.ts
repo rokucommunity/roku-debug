@@ -361,6 +361,21 @@ class Util {
     }
 
     private dnsCache = new Map<string, string>();
+
+    /**
+     * Is this expression the `print` keyword followed by a variable expression (like `a.b` or `a['b'].c`)
+     * @param expression
+     */
+    public isPrintVarExpression(expression: string) {
+        expression = expression.trim().toLowerCase();
+        if (expression.startsWith('print') || expression.startsWith('?')) {
+            const parts = this.getVariablePath(expression.replace(/^(print|\?)/, ''));
+            if (parts?.length > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 export function defer<T>() {
