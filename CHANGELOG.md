@@ -6,7 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.8.5] - 2021-01-27
+## [0.8.6] - 2021-11-04
+### Changed
+ - upgrade to  [roku-deploy@3.5.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#352---2021-11-02) which fixed bugs introduced in roku-deploy v3.5.0.
+### Fixed
+ - telnet debugger to work better with RokuOS 10.5 and `run_as_process=1` projects, as well as some better detection of the `Brightscript Debugger>` prompt.
+ - fix ECP commands that would fail when using a hostname instead of an ip address.
+
+
+
+## [0.8.5] - 2021-10-27
 [0.8.4]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.4...v0.8.5
 ### Changed
  - additional logging to the "BrightScript Debug Server" output panel
