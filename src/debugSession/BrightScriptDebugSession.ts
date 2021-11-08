@@ -691,7 +691,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {
         util.logDebug('nextRequest');
-        await this.rokuAdapter.stepOver(args.threadId);
+        try {
+            await this.rokuAdapter.stepOver(args.threadId);
+        } catch (error) {
+            util.logDebug(`Error running 'BrightScriptDebugSession.nextRequest()'`, error);
+        }
         this.sendResponse(response);
     }
 
