@@ -194,13 +194,7 @@ describe('TelnetAdapter ', () => {
                 evaluateName: 'testNode["mynewfield"]',
                 type: 'roSGNode:ContentNode',
                 name: 'mynewfield',
-                children: [{
-                    children: [],
-                    evaluateName: 'testNode["mynewfield"].getChildren(-1,0)',
-                    highLevelType: 'array',
-                    name: '[[children]]',
-                    type: 'roArray'
-                }],
+                children: [],
                 highLevelType: 'object'
             }]);
         });
