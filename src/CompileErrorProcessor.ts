@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { util } from './util';
 
 export const GENERAL_XML_ERROR = 'General XML compilation error';
 
@@ -38,13 +39,12 @@ export class CompileErrorProcessor {
         }
 
         let newLines = responseText.split(/\r?\n/g);
-        // console.debug('processUnhandledLines: this.status ' + this.status);
         switch (this.status) {
             case CompileStatus.compiling:
             case CompileStatus.compileError:
                 this.endCompilingLine = this.getEndCompilingLine(newLines);
                 if (this.endCompilingLine !== -1) {
-                    console.debug('processUnhandledLines: entering state CompileStatus.running');
+                    util.logDebug('processUnhandledLines: entering state CompileStatus.running');
                     this.status = CompileStatus.running;
                     this.resetCompileErrorTimer(false);
                 } else {
@@ -53,6 +53,7 @@ export class CompileErrorProcessor {
                         //check to see if we've entered an error scenario
                         let hasError = /\berror\b/gi.test(responseText);
                         if (hasError) {
+                            util.logDebug('processUnhandledLines: entering state CompileStatus.compileError');
                             this.status = CompileStatus.compileError;
                         }
                     }
@@ -66,7 +67,7 @@ export class CompileErrorProcessor {
                 this.startCompilingLine = this.getStartingCompilingLine(newLines);
                 this.compilingLines = this.compilingLines.concat(newLines);
                 if (this.startCompilingLine !== -1) {
-                    console.debug('processUnhandledLines: entering state CompileStatus.compiling');
+                    util.logDebug('processUnhandledLines: entering state CompileStatus.compiling');
                     newLines.splice(0, this.startCompilingLine);
                     this.status = CompileStatus.compiling;
                     this.resetCompileErrorTimer(true);

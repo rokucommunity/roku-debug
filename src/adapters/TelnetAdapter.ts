@@ -125,6 +125,7 @@ export class TelnetAdapter {
     public isAtDebuggerPrompt = false;
 
     public async activate() {
+        util.logDebug('Activate TelnetAdapter');
         this.isActivated = true;
         await this.handleStartupIfReady();
     }
@@ -135,12 +136,14 @@ export class TelnetAdapter {
 
     private async handleStartupIfReady() {
         if (this.isActivated && this.isAppRunning) {
+            util.logDebug('Handling startup');
             this.emit('start');
 
             //if we are already sitting at a debugger prompt, we need to emit the first suspend event.
             //If not, then there are probably still messages being received, so let the normal handler
             //emit the suspend event when it's ready
             if (this.isAtDebuggerPrompt === true) {
+                util.logDebug('At debug prompt, so trigger suspend event');
                 let threads = await this.getThreads();
                 this.emit('suspend', threads[0]?.threadId);
             }
@@ -154,6 +157,8 @@ export class TelnetAdapter {
      * @param maxWaitMilliseconds
      */
     private settle(client: Socket, name: string, maxWaitMilliseconds = 400) {
+        const startTime = new Date();
+        util.logDebug('Waiting for telnet client to settle');
         return new Promise((resolve) => {
             let callCount = -1;
 
@@ -164,6 +169,7 @@ export class TelnetAdapter {
                     //if no other calls have been made since the timeout started, then the listener has settled
                     if (myCallCount === callCount) {
                         client.removeListener(name, handler);
+                        util.logDebug(`Telnet client has settled after ${new Date().getTime() - startTime.getTime()} milliseconds`);
                         resolve(callCount);
                     }
                 }, maxWaitMilliseconds);
@@ -175,7 +181,7 @@ export class TelnetAdapter {
         });
     }
 
-    public processBreakpoints(text: string): string | null {
+    private processBreakpoints(text: string) {
         let newLines = text.split(/\r?\n/g);
         for (const line of newLines) {
             //Running processing line
@@ -193,17 +199,18 @@ export class TelnetAdapter {
                 }
             }
         }
-        return text;
     }
 
     /**
      * Connect to the telnet session. This should be called before the channel is launched.
      */
     public async connect() {
+        util.logDebug('Establishing telnet connection');
         let deferred = defer();
         this.isInMicroDebugger = false;
         this.isNextBreakpointSkipped = false;
         try {
+            util.logDebug('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
             await rokuDeploy.pressHomeButton(this.host);
             let client: Socket = new net.Socket();
@@ -215,12 +222,12 @@ export class TelnetAdapter {
 
             //if the connection fails, reject the connect promise
             client.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message}`));
+                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message} `));
             });
 
             const settlePromise = this.settle(client, 'data');
             client.connect(8085, this.host, () => {
-                console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} +++++++++++`);
+                util.logDebug(`Telnet connection established to ${this.host}`);
                 this.connected = true;
                 this.emit('connected', this.connected);
             });
@@ -259,15 +266,16 @@ export class TelnetAdapter {
 
                 // short circuit after the output has been sent as console output
                 if (hasRuntimeError) {
-                    console.debug('hasRuntimeError!!');
+                    util.logDebugFenced('Detected runtime error in output', responseText);
                     this.isAtDebuggerPrompt = true;
                     return;
                 }
 
-                this.processUnhandledLines(responseText);
+                this.compileErrorProcessor.processUnhandledLines(responseText);
                 let match;
 
                 if (this.isAtCannotContinue(responseText)) {
+                    util.logDebug('is at cannot continue');
                     this.isAtDebuggerPrompt = true;
                     return;
                 }
@@ -277,6 +285,7 @@ export class TelnetAdapter {
                     // eslint-disable-next-line no-cond-assign
                     if (match = /\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
                         this.isAppRunning = true;
+                        util.logDebug('Running beacon detected');
                         void this.handleStartupIfReady();
                     }
 
@@ -288,18 +297,21 @@ export class TelnetAdapter {
 
                     //watch for debugger prompt output
                     if (util.checkForDebuggerPrompt(responseText)) {
+                        util.logDebugFenced('Debugger prompt detected in', responseText);
 
                         //if we are activated AND this is the first time seeing the debugger prompt since a continue/step action
                         if (this.isNextBreakpointSkipped) {
-                            console.log('this breakpoint is flagged to be skipped');
+                            util.logDebug('This debugger is flagged to be skipped');
                             this.isInMicroDebugger = false;
                             this.isNextBreakpointSkipped = false;
                             void this.requestPipeline.executeCommand('c', false, false, false);
                         } else {
                             if (this.isActivated && this.isAtDebuggerPrompt === false) {
                                 this.isAtDebuggerPrompt = true;
+                                util.logDebug('Sending the "suspend" event to the client');
                                 this.emit('suspend');
                             } else {
+                                util.logDebug('Skipping "suspend" event because we are already suspended');
                                 this.isAtDebuggerPrompt = true;
                             }
                         }
@@ -318,7 +330,9 @@ export class TelnetAdapter {
     }
 
     private beginAppExit() {
+        util.logDebug('Beginning app exit');
         this.compileErrorProcessor.compileErrorTimer = setTimeout(() => {
+            console.log('emitting app-exit');
             this.isAppRunning = false;
             this.emit('app-exit');
         }, 200);
@@ -360,24 +374,23 @@ export class TelnetAdapter {
         }
     }
 
-    private processUnhandledLines(responseText: string) {
-        this.compileErrorProcessor.processUnhandledLines(responseText);
-    }
-
     /**
      * Send command to step over
      */
     public stepOver() {
+        util.logDebug('stepOver');
         this.clearCache();
         return this.requestPipeline.executeCommand('over', false);
     }
 
     public stepInto() {
+        util.logDebug('stepInto');
         this.clearCache();
         return this.requestPipeline.executeCommand('step', false);
     }
 
     public stepOut() {
+        util.logDebug('stepOut');
         this.clearCache();
         return this.requestPipeline.executeCommand('out', false);
 
@@ -387,6 +400,7 @@ export class TelnetAdapter {
      * Tell the brightscript program to continue (i.e. resume program)
      */
     public continue() {
+        util.logDebug('continue');
         this.clearCache();
         return this.requestPipeline.executeCommand('c', false);
     }
@@ -395,6 +409,7 @@ export class TelnetAdapter {
      * Tell the brightscript program to pause (fall into debug mode)
      */
     public pause() {
+        util.logDebug('pause');
         this.clearCache();
         //send the kill signal, which breaks into debugger mode
         return this.requestPipeline.executeCommand('\x03;', false, true);
@@ -404,6 +419,7 @@ export class TelnetAdapter {
      * Clears the state, which means that everything will be retrieved fresh next time it is requested
      */
     public clearCache() {
+        util.logDebug('Clearing TelnetAdapter cache');
         this.cache = {};
         this.isAtDebuggerPrompt = false;
     }
@@ -413,6 +429,7 @@ export class TelnetAdapter {
      * @param command the command to execute. If the command does not start with `print` the command will be prefixed with `print ` because
      */
     public async evaluate(command: string) {
+        util.logDebug('evaluate ', { command });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot run evaluate: debugger is not paused');
         }
@@ -426,6 +443,7 @@ export class TelnetAdapter {
     }
 
     public async getStackTrace() {
+        util.logDebug('Get stack trace');
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get stack trace: debugger is not paused');
         }
@@ -474,7 +492,7 @@ export class TelnetAdapter {
      * Runs a regex to check if the target is an object and get the type if it is
      * @param value
      */
-    public getObjectType(value: string) {
+    private getObjectType(value: string) {
         const match = /<.*?:\s*(\w+\s*\:*\s*[\w\.]*)>/gi.exec(value);
         if (match) {
             return match[1];
@@ -496,6 +514,7 @@ export class TelnetAdapter {
      * @param scope
      */
     public async getScopeVariables(scope?: string) {
+        util.logDebug('getScopeVariables', { scope });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
@@ -525,6 +544,7 @@ export class TelnetAdapter {
      * @param expression
      */
     public async getVariable(expression: string) {
+        util.logDebug('getVariable', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
@@ -601,7 +621,7 @@ export class TelnetAdapter {
                         name: '[[children]]',
                         type: 'roArray',
                         highLevelType: 'array',
-                        evaluateName: `${expression}.getChildren(-1,0)`,
+                        evaluateName: `${expression}.getChildren(-1, 0)`,
                         children: []
                     };
                     children.push(nodeChildren);
@@ -655,7 +675,7 @@ export class TelnetAdapter {
      * In order to get around the `...` issue in printed arrays, `getVariable` now prints every value from an array or associative array in a for loop.
      * As such, we need to iterate over every printed result to produce the children array
      */
-    public getForLoopPrintedChildren(expression: string, data: string) {
+    private getForLoopPrintedChildren(expression: string, data: string) {
         let children = [] as EvaluateContainer[];
         let lines = data.split(/\r?\n/g);
         //if there are no lines, this is an empty object/array
@@ -918,7 +938,7 @@ export class TelnetAdapter {
             }
             return children;
         } catch (e) {
-            throw new Error(`Unable to parse BrightScript object: ${e.message}. Data: ${data}`);
+            throw new Error(`Unable to parse BrightScript object: ${JSON.stringify(e.message)}. Data: ${data}`);
         }
     }
 
@@ -978,11 +998,14 @@ export class TelnetAdapter {
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         try {
             if (this.cache[key]) {
+                util.logDebug(`resolve cache "${key}": already exists`);
+                return this.cache[key];
+            } else {
+                util.logDebug(`resolve cache "${key}": calling factory`);
+                const result = factory();
+                this.cache[key] = Promise.resolve<T>(result);
                 return this.cache[key];
             }
-            const result = factory();
-            this.cache[key] = Promise.resolve<T>(result);
-            return this.cache[key];
         } catch (e) {
             return Promise.reject(e);
         }
@@ -992,6 +1015,7 @@ export class TelnetAdapter {
      * Get a list of threads. The first thread in the list is the active thread
      */
     public async getThreads() {
+        util.logDebug('getThreads');
         if (!this.isAtDebuggerPrompt) {
             util.logDebug('Cannot get threads: debugger is not paused');
             return [];
@@ -1187,6 +1211,7 @@ export class RequestPipeline {
 
         this.client.addListener('data', (data) => {
             let responseText = data.toString();
+            util.logDebugFenced('Raw telnet data', responseText);
             const cumulative = lastPartialLine + responseText;
             //ensure all debugger prompts appear completely on their own line
             responseText = util.ensureDebugPromptOnOwnLine(responseText);
@@ -1236,6 +1261,11 @@ export class RequestPipeline {
     }
 
     /**
+     * Used to help with logging
+     */
+    private commandIdSequence = 0;
+
+    /**
      * Schedule a command to be run. Resolves with the result once the command finishes
      * @param commandFunction
      * @param waitForPrompt - if true, the promise will wait until we find a prompt, and return all output in between. If false, the promise will immediately resolve
@@ -1243,14 +1273,14 @@ export class RequestPipeline {
      * @param silent - if true, the command will be hidden from the output
      */
     public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
-        console.debug(`Execute command (and${waitForPrompt ? '' : ' don\'t'} wait for prompt):`, command);
+        const commandId = this.commandIdSequence++;
+        util.logDebug(`Command ${commandId} execute ${JSON.stringify(command)} and ${waitForPrompt ? '' : ' don\'t'} wait for prompt): \n`, command, '\n');
         return new Promise<string>((resolve, reject) => {
             let executeCommand = () => {
                 let commandText = `${command}\r\n`;
                 if (!silent) {
                     this.emit('console-output', command);
                 }
-                console.log(`TELNET WRITE: "${commandText}"`);
                 this.client.write(commandText);
                 if (waitForPrompt) {
                     // The act of executing this command means we are no longer at the debug prompt
@@ -1261,8 +1291,7 @@ export class RequestPipeline {
             let request = {
                 executeCommand: executeCommand,
                 onComplete: (data: string) => {
-                    console.debug(`Command finished (${waitForPrompt ? 'after waiting for prompt' : 'did not wait for prompt'}):`, command);
-                    console.debug('Data:', data);
+                    util.logDebugFenced(`Command ${commandId} execute ${JSON.stringify(command)} result`, data);
                     resolve(data);
                 },
                 waitForPrompt: waitForPrompt

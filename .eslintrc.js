@@ -143,10 +143,7 @@ module.exports = {
         'no-warning-comments': 'off',
         'object-curly-spacing': 'off',
         'object-property-newline': 'off',
-        'object-shorthand': [
-            'error',
-            'never'
-        ],
+        'object-shorthand': 'off',
         'one-var': [
             'error',
             'never'
