@@ -583,6 +583,16 @@ export class TelnetAdapter {
                     value = util.removeTrailingNewline(value);
                     //the array/associative array print is a loop of every value, so handle that
                     children = this.getForLoopPrintedChildren(expression, value);
+                    if (highLevelType === HighLevelType.array) {
+                        children.unshift({
+                            name: '[[length]]',
+                            value: children.length.toString(),
+                            type: 'integer',
+                            highLevelType: HighLevelType.primative,
+                            evaluateName: children.length.toString(),
+                            children: undefined
+                        } as EvaluateContainer);
+                    }
                 } else if (highLevelType === HighLevelType.object) {
                     children = this.getObjectChildren(expression, value.trim());
                 }
