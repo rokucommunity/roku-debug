@@ -463,10 +463,13 @@ export class TelnetAdapter {
      * Runs a regex to get the content between telnet commands
      * @param value
      */
-    public getExpressionDetails(value: string) {
+    private getExpressionDetails(value: string) {
         const match = /(.*?)\r?\nBrightscript Debugger>\s*/is.exec(value);
         if (match) {
-            return match[1];
+            //remove that pesky warning
+            let result = match[1];
+            result = result.replace(/^warning:\s*operation\s+may\s+not\s+be\s+interruptible.\s*\r?\n/i, '');
+            return result;
         }
     }
 

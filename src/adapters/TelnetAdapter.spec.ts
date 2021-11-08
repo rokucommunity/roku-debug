@@ -16,7 +16,7 @@ describe('TelnetAdapter ', () => {
 
     describe('getExpressionDetails', () => {
         it('correctly handles both types of line endings', () => {
-            expect(adapter.getExpressionDetails(
+            expect(adapter['getExpressionDetails'](
                 'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\r\n' +
                 'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld\r\n' +
                 '\r\n' +
@@ -24,6 +24,17 @@ describe('TelnetAdapter ', () => {
             )).to.equal((
                 'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\r\n' +
                 'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld\r\n'
+            ));
+        });
+
+        it('removes warning statements introduced in 10.5', () => {
+            expect(adapter['getExpressionDetails'](
+                'Warning: operation may not be interruptible.\r\n' +
+                'Invalid' +
+                '\r\n' +
+                'Brightscript Debugger>'
+            )).to.equal((
+                'Invalid'
             ));
         });
     });
