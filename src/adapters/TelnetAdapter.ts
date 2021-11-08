@@ -603,16 +603,16 @@ export class TelnetAdapter {
                     value = util.removeTrailingNewline(value);
                     //the array/associative array print is a loop of every value, so handle that
                     children = this.getForLoopPrintedChildren(expression, value);
-                    if (highLevelType === HighLevelType.array) {
-                        children.unshift({
-                            name: '[[length]]',
-                            value: children.length.toString(),
-                            type: 'integer',
-                            highLevelType: HighLevelType.primative,
-                            evaluateName: children.length.toString(),
-                            children: undefined
-                        } as EvaluateContainer);
-                    }
+                    children.push({
+                        name: '[[count]]',
+                        value: children.length.toString(),
+                        type: 'integer',
+                        highLevelType: HighLevelType.primative,
+                        evaluateName: children.length.toString(),
+                        presentationHint: 'virtual',
+                        keyType: KeyType.legacy,
+                        children: undefined
+                    } as EvaluateContainer);
                 } else if (highLevelType === HighLevelType.object) {
                     children = this.getObjectChildren(expression, value.trim());
                 }
@@ -634,6 +634,7 @@ export class TelnetAdapter {
                         name: '[[children]]',
                         type: 'roArray',
                         highLevelType: 'array',
+                        presentationHint: 'virtual',
                         evaluateName: `${expression}.getChildren(-1, 0)`,
                         children: []
                     };
@@ -642,27 +643,31 @@ export class TelnetAdapter {
 
                 //xml elements won't display on their own, so we need to create some sub elements
                 if (lowerExpressionType === 'roxmlelement') {
-                    //add a computed `[[children]]` property to allow expansion of node children
-                    children.push({
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: HighLevelType.array,
-                        evaluateName: `${expression}.GetChildNodes()`,
-                        children: []
-                    } as EvaluateContainer);
-
-                    children.push({
-                        name: '[[attributes]]',
-                        type: 'roArray',
-                        highLevelType: HighLevelType.array,
-                        evaluateName: `${expression}.GetAttributes()`,
-                        children: []
-                    } as EvaluateContainer);
 
                     //look up the element name right now
                     const container = await this.getVariable(`${expression}.GetName()`);
                     container.name = '[[name]]';
                     children.push(container);
+
+                    children.push({
+                        name: '[[attributes]]',
+                        type: 'roAssociativeArray',
+                        highLevelType: HighLevelType.array,
+                        evaluateName: `${expression}.GetAttributes()`,
+                        presentationHint: 'virtual',
+                        children: []
+                    } as EvaluateContainer);
+
+                    //add a computed `[[children]]` property to allow expansion of child elements
+                    children.push({
+                        name: '[[children]]',
+                        type: 'roArray',
+                        highLevelType: HighLevelType.array,
+                        evaluateName: `${expression}.GetChildNodes()`,
+                        presentationHint: 'virtual',
+                        children: []
+
+                    } as EvaluateContainer);
                 }
 
                 //if this item is an array or a list, add the item count to the end of the type
@@ -1149,6 +1154,7 @@ export interface EvaluateContainer {
     elementCount: number;
     highLevelType: HighLevelType;
     children: EvaluateContainer[];
+    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
 export enum KeyType {

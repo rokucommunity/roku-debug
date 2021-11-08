@@ -960,6 +960,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.type = result.type;
             v.evaluateName = result.evaluateName;
             v.frameId = frameId;
+            v.presentationHint = result.presentationHint ? { kind: result.presentationHint } : undefined;
 
             if (result.children) {
                 let childVariables = [];

@@ -10,6 +10,7 @@ import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
+import type { DebugProtocol } from 'vscode-debugprotocol';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -637,6 +638,7 @@ export interface EvaluateContainer {
     elementCount: number;
     highLevelType: HighLevelType;
     children: EvaluateContainer[];
+    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
 export enum KeyType {
