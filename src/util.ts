@@ -161,10 +161,10 @@ class Util {
                     stack: arg.stack.toString()
                 }, null, 4));
             } else {
-                messages.push(arg.toString());
+                messages.push(arg?.toString() ?? arg);
             }
         }
-        let text = messages.join(', ');
+        let text = messages.join('');
         if (this._debugSession) {
             this._debugSession.sendEvent(new DebugServerLogOutputEvent(`${timestamp} ${text}`));
         }
@@ -173,6 +173,15 @@ class Util {
         console.log(timestamp, ...args);
     }
 
+    /**
+     * Write a debug log entry, and wrap the data with dashes so it's clear where the output starts and stops
+     * @param message
+     * @param data
+     */
+    public logDebugFenced(message: string, data: string) {
+        const fence = '--------------------';
+        this.logDebug(message + ':', '\n', fence, '\n', data, '\n', fence);
+    }
     /**
      * Write to the standard brightscript output log so users can see it. (This also writes to the debug server output channel, and the console)
      * @param message

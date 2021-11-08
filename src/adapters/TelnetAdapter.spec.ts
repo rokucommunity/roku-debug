@@ -41,16 +41,16 @@ describe('TelnetAdapter ', () => {
 
     describe('getHighLevelTypeDetails', () => {
         it('works', () => {
-            expect(adapter.getObjectType('<Component: roAssociativeArray>')).to.equal('roAssociativeArray');
-            expect(adapter.getObjectType('<Component: roInvalid>')).to.equal('roInvalid');
-            expect(adapter.getObjectType('<Component: roSGNode:ContentNode>')).to.equal('roSGNode:ContentNode');
+            expect(adapter['getObjectType']('<Component: roAssociativeArray>')).to.equal('roAssociativeArray');
+            expect(adapter['getObjectType']('<Component: roInvalid>')).to.equal('roInvalid');
+            expect(adapter['getObjectType']('<Component: roSGNode:ContentNode>')).to.equal('roSGNode:ContentNode');
         });
     });
 
     // disable:no-trailing-whitespace disable for this test because trailing whitespace matters
     describe('getForLoopPrintedChildren', () => {
         it('finds the proper number of children', () => {
-            expect(adapter.getForLoopPrintedChildren('arr', `
+            expect(adapter['getForLoopPrintedChildren']('arr', `
                 vscode_is_string:falsetrue
                 vscode_is_string:falsefalse
                 vscode_is_string:truecat
@@ -60,50 +60,50 @@ describe('TelnetAdapter ', () => {
             `).length).to.equal(6);
         });
         it('handles basic arrays', () => {
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Float:vscode_type_stop vscode_is_string:false 1.1 `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:Float:vscode_type_stop vscode_is_string:false 1.1 `)[0]).to.deep.include(<EvaluateContainer>{
                 name: '0',
                 evaluateName: 'arr[0]',
                 type: 'Float',
                 value: '1.1'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsetrue`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsetrue`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'Boolean',
                 value: 'true'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsefalse`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:Boolean:vscode_type_stop vscode_is_string:falsefalse`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'Boolean',
                 value: 'false'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueTrailingSpace `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueTrailingSpace `)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"TrailingSpace "'
             });
             //empty string
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '""'
             });
             //whitespace-only string
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true `)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true `)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '" "'
             });
         });
 
         it('handles newlines in strings', () => {
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true\n`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true\n`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"\n"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueRoku\n`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueRoku\n`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"Roku\n"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:true\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"\nRoku"'
             });
-            expect(adapter.getForLoopPrintedChildren('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueRoku\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
+            expect(adapter['getForLoopPrintedChildren']('arr', `vscode_type_start:String:vscode_type_stop vscode_is_string:trueRoku\nRoku`)[0]).to.deep.include(<EvaluateContainer>{
                 type: 'String',
                 value: '"Roku\nRoku"'
             });
@@ -111,7 +111,7 @@ describe('TelnetAdapter ', () => {
 
         it('skips empty lines', () => {
             //not sure when this would happen in reality, but test it just in case
-            expect(adapter.getForLoopPrintedChildren('testNode', `
+            expect(adapter['getForLoopPrintedChildren']('testNode', `
                 vscode_key_start:focusable:vscode_key_stop vscode_is_string:falsefalse
 
                 vscode_key_start:id:vscode_key_stop vscode_is_string:true
@@ -123,7 +123,7 @@ describe('TelnetAdapter ', () => {
         });
 
         it('does not include an extra newline for the last item when it is a string', () => {
-            const variables = adapter.getForLoopPrintedChildren('testNode',
+            const variables = adapter['getForLoopPrintedChildren']('testNode',
                 'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\n' +
                 'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld'
             );
@@ -132,7 +132,7 @@ describe('TelnetAdapter ', () => {
         });
 
         it('handles nodes with nested arrays', () => {
-            const variables = adapter.getForLoopPrintedChildren('testNode', dedent`
+            const variables = adapter['getForLoopPrintedChildren']('testNode', dedent`
                 vscode_key_start:change:vscode_key_stop vscode_is_string:false<Component: roAssociativeArray> =
                 {
                     Index1: 0
