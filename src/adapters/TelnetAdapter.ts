@@ -766,17 +766,6 @@ export class TelnetAdapter {
                 //we have reached the end of the collection. scrap children because they need evaluated in a separate call to compute their types
                 child.children = [];
 
-                if (isRoSGNode) {
-                    let nodeChildrenProperty = <EvaluateContainer>{
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: 'array',
-                        evaluateName: `${child.evaluateName}.getChildren(-1,0)`,
-                        children: []
-                    };
-                    child.children.push(nodeChildrenProperty);
-                }
-
                 //this if block must pre-seek the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
             } else if (objectType === 'roInvalid') {
                 child.highLevelType = HighLevelType.uninitialized;
