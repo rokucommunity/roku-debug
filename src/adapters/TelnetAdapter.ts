@@ -645,11 +645,12 @@ export class TelnetAdapter {
 
                 //xml elements won't display on their own, so we need to create some sub elements
                 if (lowerExpressionType === 'roxmlelement') {
-
-                    //look up the element name right now
-                    const container = await this.getVariable(`${expression}.GetName()`);
-                    container.name = '[[name]]';
-                    children.push(container);
+                    children.push({
+                        //look up the name of the xml element
+                        ...await this.getVariable(`${expression}.GetName()`),
+                        name: '[[name]]',
+                        presentationHint: 'virtual'
+                    });
 
                     children.push({
                         name: '[[attributes]]',
