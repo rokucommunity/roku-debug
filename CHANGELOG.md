@@ -6,7 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.8.6] - 2021-11-04
+## [0.8.7](https://github.com/rokucommunity/brighterscript/compare/v0.8.6...v0.8.7 - 2021-11-11
+### Changed
+ - added lots of logging for help troubleshooting issues in roku-debug. ([#56](https://github.com/rokucommunity/roku-debug/pull/56))
+### Fixed
+ - Don't delete dev channel during launch, as this clears the registry. ([#58](https://github.com/rokucommunity/roku-debug/pull/58))
+
+
+
+## [0.8.6](https://github.com/rokucommunity/brighterscript/compare/v0.8.5...v0.8.6 - 2021-11-04
 ### Changed
  - upgrade to  [roku-deploy@3.5.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#352---2021-11-02) which fixed bugs introduced in roku-deploy v3.5.0.
 ### Fixed
