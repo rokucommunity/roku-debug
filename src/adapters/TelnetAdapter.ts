@@ -484,9 +484,11 @@ export class TelnetAdapter {
     private getExpressionDetails(value: string) {
         const match = /(.*?)\r?\nBrightscript Debugger>\s*/is.exec(value);
         if (match) {
-            //remove that pesky warning
             let result = match[1];
+            //remove that pesky "may not be interruptible" warning
             result = result.replace(/^warning:\s*operation\s+may\s+not\s+be\s+interruptible.\s*\r?\n/i, '');
+            //remove the "Thread attached" messages
+            result = result.replace(/^Thread attached: pkg:\/.*?\(\d+\).*?$/m, '');
             return result;
         }
     }
@@ -1299,7 +1301,7 @@ export class RequestPipeline {
             let request = {
                 executeCommand: executeCommand,
                 onComplete: (data: string) => {
-                    util.logDebugFenced(`Command ${commandId} execute ${JSON.stringify(command)} result`, data);
+                    util.logDebugFenced(`Command ${commandId} result`, data);
                     resolve(data);
                 },
                 waitForPrompt: waitForPrompt

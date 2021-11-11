@@ -37,6 +37,22 @@ describe('TelnetAdapter ', () => {
                 'Invalid'
             ));
         });
+
+        it('Removes "thread attached" messages', () => {
+            expect(adapter['getExpressionDetails']([
+                'Warning: operation may not be interruptible.',
+                'roAssociativeArray',
+                '',
+                'Brightscript Debugger> ',
+                '',
+                'Thread attached: pkg:/source/main.brs(6)                 screen.show()',
+                '',
+                '',
+                ''
+            ].join('\r\n')).trim()).to.equal((
+                'roAssociativeArray'
+            ));
+        });
     });
 
     describe('getHighLevelTypeDetails', () => {
