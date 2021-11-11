@@ -161,14 +161,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
-            //delete any previously installed channel
-            try {
-                util.log(`Deleting existing sideloaded channel (if there is one)`);
-                await this.rokuDeploy.deleteInstalledChannel(this.launchConfiguration as RokuDeployOptions);
-            } catch (error) {
-                util.logDebug('Error deleting previously installed channel. Probably not a big deal...', error);
-            }
-
             //press the home button to ensure we're at the home screen
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
 
