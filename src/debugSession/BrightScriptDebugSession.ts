@@ -884,6 +884,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
+            util.logDebug('DebugSession: received "suspend" event');
             let threads = await this.rokuAdapter.getThreads();
             let threadId = threads[0]?.threadId;
 
