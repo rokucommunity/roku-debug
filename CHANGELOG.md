@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.8.5] - 2021-10-27
-[0.8.4]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.4...v0.8.5
+[0.8.5]: https://github.com/RokuCommunity/roku-debug/compare/v0.8.4...v0.8.5
 ### Changed
  - additional logging to the "BrightScript Debug Server" output panel
  - upgrade to  [roku-deploy@3.5.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#350---2021-10-27)  which adds the ability to use negated non-rootDir top-level 
