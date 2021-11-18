@@ -135,12 +135,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //register the debug output log transport writer
         debugServerLogOutputEventTransport.setWriter((message: LogMessage) => {
-            const thing = message.logger.formatMessage(message, true);
-            const evt = new DebugServerLogOutputEvent(
-                thing
-            );
-            this.sendEvent(evt
-
+            this.sendEvent(
+                new DebugServerLogOutputEvent(
+                    message.logger.formatMessage(message, false)
+                )
             );
         });
     }
