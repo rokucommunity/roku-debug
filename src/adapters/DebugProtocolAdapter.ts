@@ -10,6 +10,7 @@ import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
+import { logger } from '../logging';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -34,6 +35,8 @@ export class DebugProtocolAdapter {
             this.emit('rendezvous', output);
         });
     }
+
+    private logger = logger.createLogger(`[${DebugProtocolAdapter.name}]`);
 
     public connected: boolean;
 
@@ -210,14 +213,14 @@ export class DebugProtocolAdapter {
 
             this.connected = await this.socketDebugger.connect();
 
-            util.logDebug(`Closing telnet connection used for compile errors`);
+            this.logger.log(`Closing telnet connection used for compile errors`);
             if (this.compileClient) {
                 this.compileClient.removeAllListeners();
                 this.compileClient.destroy();
                 this.compileClient = undefined;
             }
 
-            util.logDebug(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
+            this.logger.log(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
             this.emit('connected', this.connected);
 
             // Listen for the app exit event
@@ -271,7 +274,7 @@ export class DebugProtocolAdapter {
             });
 
             this.compileClient.connect(8085, this.host, () => {
-                util.logDebug(`+++++++++++ CONNECTED TO DEVICE ${this.host} VIA TELNET FOR COMPILE INFO +++++++++++`);
+                this.logger.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} VIA TELNET FOR COMPILE INFO +++++++++++`);
             });
 
             await this.settle(this.compileClient, 'data');

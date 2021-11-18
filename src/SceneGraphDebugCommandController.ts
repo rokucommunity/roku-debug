@@ -1,4 +1,4 @@
-import { util } from './util';
+import { logger } from './logging';
 
 // eslint-disable-next-line
 const Telnet = require('telnet-client');
@@ -14,6 +14,8 @@ export class SceneGraphDebugCommandController {
     private timeout = 5000;
     private port = 8080;
     private maxBufferLength = 5242880;
+
+    private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);
 
     public async connect() {
         this.removeConnection();
@@ -226,7 +228,7 @@ export class SceneGraphDebugCommandController {
      */
     public async exec(command: string): Promise<SceneGraphCommandResponse> {
         let response = this.getBlankResponseObject(command);
-        util.logDebug(`Running: ${command}`);
+        this.logger.log(`Running: ${command}`);
 
         // Set up a short lived connection if a long lived one has not beed started
         let closeConnectionAfterCommand = !this.connection;
@@ -268,7 +270,7 @@ export class SceneGraphDebugCommandController {
                     // Asking the host to close is much faster then running our own connections destroy
                     await this.connection.exec('quit', { shellPrompt: 'Quit command received, exiting.' });
                 } catch (error) {
-                    util.logDebug(`Error quitting SceneGraphDebugCommand ${error}`);
+                    this.logger.log(`Error quitting SceneGraphDebugCommand ${error}`);
                 }
                 this.removeConnection();
             } catch (error) {

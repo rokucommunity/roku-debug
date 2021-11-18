@@ -34,17 +34,21 @@ import {
     RendezvousEvent,
     CompileFailureEvent,
     StoppedEventReason,
-    ChanperfEvent
+    ChanperfEvent,
+    DebugServerLogOutputEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
+import type { Logger, LogMessage } from '../logging';
+import { logger, debugServerLogOutputEventTransport, fileTransport } from '../logging';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
         super();
+
         // this debugger uses one-based lines and columns
         this.setDebuggerLinesStartAt1(true);
         this.setDebuggerColumnsStartAt1(true);
@@ -57,6 +61,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
     }
+
+    public logger = logger.createLogger(`[${BrightScriptDebugSession.name}]`);
 
     public fileManager: FileManager;
 
@@ -104,6 +110,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // we request them early by sending an 'initializeRequest' to the frontend.
         // The frontend will end the configuration sequence by calling 'configurationDone' request.
         this.sendEvent(new InitializedEvent());
+
         response.body = response.body || {};
 
         // This debug adapter implements the configurationDoneRequest.
@@ -125,10 +132,27 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         response.body.supportsLogPoints = true;
 
         this.sendResponse(response);
+
+        //register the debug output log transport writer
+        debugServerLogOutputEventTransport.setWriter((message: LogMessage) => {
+            const thing = message.logger.formatMessage(message, true);
+            const evt = new DebugServerLogOutputEvent(
+                thing
+            );
+            this.sendEvent(evt
+
+            );
+        });
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         this.launchConfiguration = config;
+
+        if (this.launchConfiguration.debugLogPath) {
+            fileTransport.setLogFilePath(this.launchConfiguration.debugLogPath);
+        } else {
+            logger.removeTransport(fileTransport);
+        }
 
         this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
 
@@ -141,7 +165,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
 
         let error: Error;
-        util.logDebug('Packaging and deploying to roku');
+        this.logger.log('Packaging and deploying to roku');
         try {
             //build the main project and all component libraries at the same time
             await Promise.all([
@@ -234,7 +258,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchConfiguration.stopDebuggerOnAppExit is true' : ''}`;
                     message += ' - shutting down debug session';
 
-                    util.logDebug(message);
+                    this.logger.log(message);
                     this.sendEvent(new LogOutputEvent(message));
                     if (this.rokuAdapter) {
                         void this.rokuAdapter.destroy();
@@ -245,7 +269,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     this.sendEvent(new TerminatedEvent());
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
-                    util.logDebug(message);
+                    this.logger.log(message);
                     this.sendEvent(new LogOutputEvent(message));
                 }
             });
@@ -256,7 +280,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             (this.launchConfiguration as any).remoteDebug = this.enableDebugProtocol;
 
             //publish the package to the target Roku
-            await this.rokuDeploy.publish(this.launchConfiguration as RokuDeployOptions);
+            await this.rokuDeploy.publish(this.launchConfiguration as any as RokuDeployOptions);
 
             if (this.enableDebugProtocol) {
                 //connect to the roku debug via sockets
@@ -269,13 +293,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (!error) {
                 if (this.rokuAdapter.connected) {
                     // Host connection was established before the main public process was completed
-                    util.logDebug(`deployed to Roku@${this.launchConfiguration.host}`);
+                    this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
                     this.sendResponse(response);
                 } else {
                     // Main public process was completed but we are still waiting for a connection to the host
                     this.rokuAdapter.on('connected', (status) => {
                         if (status) {
-                            util.logDebug(`deployed to Roku@${this.launchConfiguration.host}`);
+                            this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
                             this.sendResponse(response);
                         }
                     });
@@ -492,7 +516,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments) {
-        util.logDebug('sourceRequest');
+        this.logger.log('sourceRequest');
         let old = this.sendResponse;
         this.sendResponse = function sendResponse(...args) {
             old.apply(this, args);
@@ -502,7 +526,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
-        util.logDebug('configurationDoneRequest');
+        this.logger.log('configurationDoneRequest');
     }
 
     /**
@@ -537,11 +561,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     protected exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {
-        util.logDebug('exceptionInfoRequest');
+        this.logger.log('exceptionInfoRequest');
     }
 
     protected async threadsRequest(response: DebugProtocol.ThreadsResponse) {
-        util.logDebug('threadsRequest');
+        this.logger.log('threadsRequest');
         //wait for the roku adapter to load
         await this.getRokuAdapter();
 
@@ -557,7 +581,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 );
             }
         } else {
-            util.logDebug('Skipped getting threads because the RokuAdapter is not accepting input at this time.');
+            this.logger.log('Skipped getting threads because the RokuAdapter is not accepting input at this time.');
         }
 
         response.body = {
@@ -569,7 +593,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
         try {
-            util.logDebug('stackTraceRequest');
+            this.logger.log('stackTraceRequest');
             let frames = [];
 
             if (this.rokuAdapter.isAtDebuggerPrompt) {
@@ -596,7 +620,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             debugFrame.functionIdentifier = functionName;
                         }
                     } catch (e) {
-                        util.logDebug(e, sourceLocation, debugFrame);
+                        this.logger.log(e, sourceLocation, debugFrame);
                     }
 
                     let frame = new StackFrame(
@@ -609,7 +633,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     frames.push(frame);
                 }
             } else {
-                util.logDebug('Skipped calculating stacktrace because the RokuAdapter is not accepting input at this time');
+                this.logger.log('Skipped calculating stacktrace because the RokuAdapter is not accepting input at this time');
             }
             response.body = {
                 stackFrames: frames,
@@ -617,7 +641,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             };
             this.sendResponse(response);
         } catch (e) {
-            util.logDebug(e);
+            this.logger.log(e);
         }
     }
 
@@ -655,24 +679,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             };
             this.sendResponse(response);
         } catch (e) {
-            util.logDebug(e);
+            this.logger.log(e);
         }
     }
 
     protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {
-        util.logDebug('continueRequest');
+        this.logger.log('continueRequest');
         await this.rokuAdapter.continue();
         this.sendResponse(response);
     }
 
     protected async pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments) {
-        util.logDebug('pauseRequest');
+        this.logger.log('pauseRequest');
         await this.rokuAdapter.pause();
         this.sendResponse(response);
     }
 
     protected reverseContinueRequest(response: DebugProtocol.ReverseContinueResponse, args: DebugProtocol.ReverseContinueArguments) {
-        util.logDebug('reverseContinueRequest');
+        this.logger.log('reverseContinueRequest');
         this.sendResponse(response);
     }
 
@@ -682,32 +706,32 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param args
      */
     protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {
-        util.logDebug('nextRequest');
+        this.logger.log('nextRequest');
         await this.rokuAdapter.stepOver(args.threadId);
         this.sendResponse(response);
     }
 
     protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
-        util.logDebug('stepInRequest');
+        this.logger.log('stepInRequest');
         await this.rokuAdapter.stepInto(args.threadId);
         this.sendResponse(response);
     }
 
     protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments) {
-        util.logDebug('stepOutRequest');
+        this.logger.log('stepOutRequest');
         await this.rokuAdapter.stepOut(args.threadId);
         this.sendResponse(response);
     }
 
     protected stepBackRequest(response: DebugProtocol.StepBackResponse, args: DebugProtocol.StepBackArguments) {
-        util.logDebug('stepBackRequest');
+        this.logger.log('stepBackRequest');
 
         this.sendResponse(response);
     }
 
     public async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
         try {
-            util.logDebug(`variablesRequest: ${JSON.stringify(args)}`);
+            this.logger.log(`variablesRequest: ${JSON.stringify(args)}`);
 
             let childVariables: AugmentedVariable[] = [];
             //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
@@ -749,11 +773,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     variables: childVariables
                 };
             } else {
-                util.logDebug('Skipped getting variables because the RokuAdapter is not accepting input at this time');
+                this.logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
             }
             this.sendResponse(response);
         } catch (e) {
-            util.logDebug(e);
+            this.logger.log(e);
         }
     }
 
@@ -831,14 +855,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         }
                     }
                 } else {
-                    util.logDebug('Skipped evaluate request because RokuAdapter is not accepting requests at this time');
+                    this.logger.log('Skipped evaluate request because RokuAdapter is not accepting requests at this time');
                 }
             } finally {
                 deferred.resolve();
             }
             this.sendResponse(response);
         } catch (e) {
-            util.logDebug(e);
+            this.logger.log(e);
         }
     }
 

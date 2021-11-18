@@ -1,5 +1,6 @@
 import type { FileEntry } from 'roku-deploy';
 import type { DebugProtocol } from 'vscode-debugprotocol';
+import type { LogLevel } from './logging';
 
 /**
  * This interface should always match the schema found in the mock-debug extension manifest.
@@ -163,6 +164,16 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * This should generally be set to "${cwd}/.roku-deploy-staging", but that's ultimately up to the debug client.
      */
     stagingFolderPath?: string;
+
+    /**
+     * What level of debug logging should be performed in the debug session
+     */
+    logLevel: LogLevel;
+
+    /**
+     * Path to where the debug logs should be written. If omitted, no debug logging will be done
+     */
+    debugLogPath: string;
 }
 
 export interface ComponentLibraryConfiguration {

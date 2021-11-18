@@ -140,54 +140,21 @@ class Util {
         return bufferReader.readStringNT();
     }
 
+    public fence(data: string) {
+        const fence = '--------------------';
+        return `\n${fence}\n${data}\n${fence}\n`;
+    }
+
     /**
      * A reference to the current debug session. Used for logging, and set in the debug session constructor
      */
     public _debugSession: BrightScriptDebugSession;
 
     /**
-     * Send debug server messages to the BrightScript Debug Log channel, as well as writing to console.debug
-     */
-    public logDebug(...args: any[]) {
-        args = Array.isArray(args) ? args : [];
-        let timestamp = `[${dateFormat(new Date(), 'HH:mm:ss.l')}]`;
-        let messages = [];
-
-        for (let arg of args) {
-            if (arg instanceof Error) {
-                messages.push(JSON.stringify({
-                    message: arg.message,
-                    name: arg.name,
-                    stack: arg.stack.toString()
-                }, null, 4));
-            } else {
-                messages.push(arg?.toString() ?? arg);
-            }
-        }
-        let text = messages.join('');
-        if (this._debugSession) {
-            this._debugSession.sendEvent(new DebugServerLogOutputEvent(`${timestamp} ${text}`));
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        console.log(timestamp, ...args);
-    }
-
-    /**
-     * Write a debug log entry, and wrap the data with dashes so it's clear where the output starts and stops
-     * @param message
-     * @param data
-     */
-    public logDebugFenced(message: string, data: string) {
-        const fence = '--------------------';
-        this.logDebug(message + ':', '\n', fence, '\n', data, '\n', fence);
-    }
-    /**
      * Write to the standard brightscript output log so users can see it. (This also writes to the debug server output channel, and the console)
      * @param message
      */
     public log(message: string) {
-        this.logDebug(message);
         if (this._debugSession) {
             this._debugSession.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
         }
