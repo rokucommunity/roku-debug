@@ -112,14 +112,14 @@ export class Debugger {
     }
 
     public async connect(): Promise<boolean> {
-        this.logger.log('start - SocketDebugger');
+        this.logger.log('connect', this.options);
         const debugSetupEnd = 'total socket debugger setup time';
         console.time(debugSetupEnd);
 
         // Create a new TCP client.`
         this.controllerClient = new Net.Socket();
         // Send a connection request to the server.
-        this.logger.log('port', this.options.controllerPort, 'host', this.options.host);
+
         this.controllerClient.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
             // If there is no error, the server has accepted the request and created a new
             // socket dedicated to us.
@@ -133,6 +133,7 @@ export class Debugger {
         });
 
         this.controllerClient.on('data', (buffer) => {
+            this.logger
             if (this.unhandledData) {
                 this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
             } else {
@@ -143,13 +144,13 @@ export class Debugger {
         });
 
         this.controllerClient.on('end', () => {
-            this.logger.log('Requested an end to the TCP connection');
+            this.logger.log('TCP connection closed');
             this.shutdown('app-exit');
         });
 
         // Don't forget to catch error, for your own sake.
-        this.controllerClient.once('error', (err) => {
-            console.error(`Error: ${err}`);
+        this.controllerClient.once('error', (error) => {
+            console.error(`TCP connection error`, error);
             this.shutdown('close');
         });
 

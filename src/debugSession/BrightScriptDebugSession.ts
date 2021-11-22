@@ -290,11 +290,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             if (!error) {
                 if (this.rokuAdapter.connected) {
-                    // Host connection was established before the main public process was completed
+                    this.logger.info('Host connection was established before the main public process was completed');
                     this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
                     this.sendResponse(response);
                 } else {
-                    // Main public process was completed but we are still waiting for a connection to the host
+                    this.logger.info('Main public process was completed but we are still waiting for a connection to the host');
                     this.rokuAdapter.on('connected', (status) => {
                         if (status) {
                             this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
@@ -617,8 +617,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             }
                             debugFrame.functionIdentifier = functionName;
                         }
-                    } catch (e) {
-                        this.logger.log(e, sourceLocation, debugFrame);
+                    } catch (error) {
+                        this.logger.error('Error correcting function identifier case', { error, sourceLocation, debugFrame });
                     }
 
                     let frame = new StackFrame(
@@ -638,12 +638,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 totalFrames: frames.length
             };
             this.sendResponse(response);
-        } catch (e) {
-            this.logger.log(e);
+        } catch (error) {
+            this.logger.error('Error getting stacktrace', { error, args });
         }
     }
 
     protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
+        this.logger.log('scopesRequest', { args });
         try {
             const scopes = new Array<Scope>();
 
@@ -676,8 +677,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 scopes: scopes
             };
             this.sendResponse(response);
-        } catch (e) {
-            this.logger.log(e);
+        } catch (error) {
+            this.logger.error('Error getting scopes', { error, args });
         }
     }
 
@@ -729,7 +730,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
         try {
-            this.logger.log(`variablesRequest: ${JSON.stringify(args)}`);
+            this.logger.log('variablesRequest', { args });
 
             let childVariables: AugmentedVariable[] = [];
             //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
@@ -774,8 +775,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
             }
             this.sendResponse(response);
-        } catch (e) {
-            this.logger.log(e);
+        } catch (error) {
+            this.logger.error('Error during variablesRequest', error, { args });
         }
     }
 
@@ -859,8 +860,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 deferred.resolve();
             }
             this.sendResponse(response);
-        } catch (e) {
-            this.logger.log(e);
+        } catch (error) {
+            this.logger.error('Error during variables request', error);
         }
     }
 

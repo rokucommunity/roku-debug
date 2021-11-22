@@ -145,7 +145,7 @@ export class TelnetAdapter {
             //If not, then there are probably still messages being received, so let the normal handler
             //emit the suspend event when it's ready
             if (this.isAtDebuggerPrompt === true) {
-                this.logger.log('At debug prompt, so trigger suspend event');
+                this.logger.log(`At debug prompt, so trigger the 'suspend' event`);
                 let threads = await this.getThreads();
                 this.emit('suspend', threads[0]?.threadId);
             }
@@ -287,7 +287,7 @@ export class TelnetAdapter {
                     // eslint-disable-next-line no-cond-assign
                     if (match = /\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
                         this.isAppRunning = true;
-                        this.logger.log('Running beacon detected');
+                        this.logger.log('Running beacon detected', { responseText });
                         void this.handleStartupIfReady();
                     }
 
@@ -334,7 +334,7 @@ export class TelnetAdapter {
     private beginAppExit() {
         this.logger.log('Beginning app exit');
         this.compileErrorProcessor.compileErrorTimer = setTimeout(() => {
-            console.log('emitting app-exit');
+            this.logger.info('emitting app-exit');
             this.isAppRunning = false;
             this.emit('app-exit');
         }, 200);
@@ -421,7 +421,7 @@ export class TelnetAdapter {
      * Clears the state, which means that everything will be retrieved fresh next time it is requested
      */
     public clearCache() {
-        this.logger.log('Clearing TelnetAdapter cache');
+        this.logger.info('Clearing TelnetAdapter cache');
         this.cache = {};
         this.isAtDebuggerPrompt = false;
     }
@@ -445,7 +445,7 @@ export class TelnetAdapter {
     }
 
     public async getStackTrace() {
-        this.logger.log('Get stack trace');
+        this.logger.log(TelnetAdapter.prototype.getStackTrace.name);
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get stack trace: debugger is not paused');
         }
@@ -1000,10 +1000,10 @@ export class TelnetAdapter {
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         try {
             if (this.cache[key]) {
-                this.logger.log(`resolve cache "${key}": already exists`);
+                this.logger.debug(`resolve cache "${key}": already exists`);
                 return this.cache[key];
             } else {
-                this.logger.log(`resolve cache "${key}": calling factory`);
+                this.logger.debug(`resolve cache "${key}": calling factory`);
                 const result = factory();
                 this.cache[key] = Promise.resolve<T>(result);
                 return this.cache[key];
@@ -1215,7 +1215,7 @@ export class RequestPipeline {
 
         this.client.addListener('data', (data) => {
             let responseText = data.toString();
-            this.logger.log('Raw telnet data', util.fence(responseText));
+            this.logger.debug('Raw telnet data', util.fence(responseText));
             const cumulative = lastPartialLine + responseText;
             //ensure all debugger prompts appear completely on their own line
             responseText = util.ensureDebugPromptOnOwnLine(responseText);
@@ -1278,7 +1278,8 @@ export class RequestPipeline {
      */
     public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
         const commandId = this.commandIdSequence++;
-        this.logger.log(`Command ${commandId} execute ${JSON.stringify(command)} and ${waitForPrompt ? '' : ' don\'t'} wait for prompt): \n`, command, '\n');
+        const logger = this.logger.createLogger(`[Command ${this.commandIdSequence++}]`);
+        logger.debug(`execute`, { command, waitForPrompt });
         return new Promise<string>((resolve, reject) => {
             let executeCommand = () => {
                 let commandText = `${command}\r\n`;
@@ -1295,7 +1296,7 @@ export class RequestPipeline {
             let request = {
                 executeCommand: executeCommand,
                 onComplete: (data: string) => {
-                    this.logger.log(`Command ${commandId} execute ${JSON.stringify(command)} result`, util.fence(data));
+                    logger.debug(`execute result`, { command, waitForPrompt }, 'data:', util.fence(data));
                     resolve(data);
                 },
                 waitForPrompt: waitForPrompt

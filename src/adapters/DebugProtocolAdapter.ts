@@ -220,7 +220,7 @@ export class DebugProtocolAdapter {
                 this.compileClient = undefined;
             }
 
-            this.logger.log(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
+            this.logger.log(`Connected to device`, { host: this.host, connected: this.connected });
             this.emit('connected', this.connected);
 
             // Listen for the app exit event
@@ -270,23 +270,28 @@ export class DebugProtocolAdapter {
 
             //if the connection fails, reject the connect promise
             this.compileClient.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message}`));
+                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message} `));
             });
-
+            this.logger.info('Connecting via telnet to gether compile info', { host: this.host });
             this.compileClient.connect(8085, this.host, () => {
-                this.logger.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} VIA TELNET FOR COMPILE INFO +++++++++++`);
+                this.logger.log(`Connected via telnet to gather compile info`, { host: this.host });
             });
 
+            this.logger.debug('Waiting for the compile client to settle');
             await this.settle(this.compileClient, 'data');
+            this.logger.debug('Compile client has settled');
 
             let lastPartialLine = '';
             this.compileClient.on('data', (buffer) => {
                 let responseText = buffer.toString();
+                this.logger.info('CompileClient received data', { responseText });
                 if (!responseText.endsWith('\n')) {
+                    this.logger.debug('Buffer was split');
                     // buffer was split, save the partial line
                     lastPartialLine += responseText;
                 } else {
                     if (lastPartialLine) {
+                        this.logger.debug('Previous response was split, so merging last response with this one', { lastPartialLine, responseText });
                         // there was leftover lines, join the partial lines back together
                         responseText = lastPartialLine + responseText;
                         lastPartialLine = '';
@@ -411,7 +416,7 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot request variable without a corresponding frame');
         }
 
-        return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
+        return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex} `, async () => {
             let variablePath = this.getVariablePath(expression);
             let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 

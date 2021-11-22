@@ -27,15 +27,16 @@ export class SceneGraphDebugCommandController {
             connection.on('close', () => {
                 this.removeConnection();
             });
-
-            await connection.connect({
+            const config = {
                 host: this.host,
                 port: this.port,
                 shellPrompt: this.shellPrompt,
                 echoLines: this.echoLines,
                 timeout: this.timeout,
                 maxBufferLength: this.maxBufferLength
-            });
+            };
+            this.logger.debug('Establishing telnet connection', config);
+            await connection.connect(config);
             this.connection = connection;
         } catch (e) {
             throw new Error((e as Error).message);
@@ -228,11 +229,12 @@ export class SceneGraphDebugCommandController {
      */
     public async exec(command: string): Promise<SceneGraphCommandResponse> {
         let response = this.getBlankResponseObject(command);
-        this.logger.log(`Running: ${command}`);
+        this.logger.log(`Running SceneGraphDebugger command`, { command });
 
         // Set up a short lived connection if a long lived one has not beed started
         let closeConnectionAfterCommand = !this.connection;
         if (closeConnectionAfterCommand) {
+            this.logger.trace('Opening new connection');
             try {
                 await this.connect();
             } catch (error) {
@@ -244,6 +246,7 @@ export class SceneGraphDebugCommandController {
         if (this.connection) {
             try {
                 response.result.rawResponse = await this.connection.exec(command);
+                this.logger.debug('Command complete', { command });
             } catch (error) {
                 response.error = error;
             }
@@ -251,6 +254,7 @@ export class SceneGraphDebugCommandController {
 
         // Close the connection if we opened a short lived one
         if (closeConnectionAfterCommand) {
+            this.logger.trace('Closing connection');
             await this.end();
         }
 
@@ -270,7 +274,7 @@ export class SceneGraphDebugCommandController {
                     // Asking the host to close is much faster then running our own connections destroy
                     await this.connection.exec('quit', { shellPrompt: 'Quit command received, exiting.' });
                 } catch (error) {
-                    this.logger.log(`Error quitting SceneGraphDebugCommand ${error}`);
+                    this.logger.error(`There was a problem quitting the SceneGraphDebugCommand connection`, error);
                 }
                 this.removeConnection();
             } catch (error) {

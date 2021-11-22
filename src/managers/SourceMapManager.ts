@@ -41,13 +41,12 @@ export class SourceMapManager {
     public async getSourceMap(sourceMapPath: string) {
         let key = s`${sourceMapPath.toLowerCase()}`;
         if (this.cache[key] === undefined) {
-            let parsedSourceMap: RawSourceMap;
             if (await fsExtra.pathExists(sourceMapPath)) {
                 try {
                     let contents = (await fsExtra.readFile(sourceMapPath)).toString();
                     this.set(sourceMapPath, contents);
                 } catch (e) {
-                    this.logger.log(`Error loading or parsing source map for '${sourceMapPath}'`, e);
+                    this.logger.error(`Error loading or parsing source map for '${sourceMapPath}'`, e);
                 }
             }
         }
@@ -155,8 +154,8 @@ export class SourceMapManager {
                         });
                     }
                 }
-            } catch (e) {
-                this.logger.log(new Error('Error converting source location to staging location'), e);
+            } catch (error) {
+                this.logger.error('Error converting source location to staging location', { error });
             }
         }));
         return locations;

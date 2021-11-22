@@ -46,7 +46,7 @@ export class CompileErrorProcessor {
             case CompileStatus.compileError:
                 this.endCompilingLine = this.getEndCompilingLine(newLines);
                 if (this.endCompilingLine !== -1) {
-                    this.logger.log('processUnhandledLines: entering state CompileStatus.running');
+                    this.logger.debug('[processUnhandledLines] entering state CompileStatus.running');
                     this.status = CompileStatus.running;
                     this.resetCompileErrorTimer(false);
                 } else {
@@ -55,7 +55,7 @@ export class CompileErrorProcessor {
                         //check to see if we've entered an error scenario
                         let hasError = /\berror\b/gi.test(responseText);
                         if (hasError) {
-                            this.logger.log('processUnhandledLines: entering state CompileStatus.compileError');
+                            this.logger.debug('[processUnhandledLines] entering state CompileStatus.compileError');
                             this.status = CompileStatus.compileError;
                         }
                     }
@@ -69,7 +69,7 @@ export class CompileErrorProcessor {
                 this.startCompilingLine = this.getStartingCompilingLine(newLines);
                 this.compilingLines = this.compilingLines.concat(newLines);
                 if (this.startCompilingLine !== -1) {
-                    this.logger.log('processUnhandledLines: entering state CompileStatus.compiling');
+                    this.logger.debug('[processUnhandledLines] entering state CompileStatus.compiling');
                     newLines.splice(0, this.startCompilingLine);
                     this.status = CompileStatus.compiling;
                     this.resetCompileErrorTimer(true);
