@@ -43,7 +43,7 @@ import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { Logger, LogMessage } from '../logging';
-import { logger, debugServerLogOutputEventTransport, fileTransport } from '../logging';
+import { logger, debugServerLogOutputEventTransport } from '../logging';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -158,16 +158,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //set the logLevel provided by the launch config
         if (this.launchConfiguration.logLevel) {
             logger.logLevel = this.launchConfiguration.logLevel;
-        }
-
-        if (this.launchConfiguration.debugLogPath) {
-            //clear the log
-            if (this.launchConfiguration.debugLogClearOnLaunch) {
-                fsExtra.outputFileSync(this.launchConfiguration.debugLogPath, '');
-            }
-            fileTransport.setLogFilePath(this.launchConfiguration.debugLogPath);
-        } else {
-            logger.removeTransport(fileTransport);
         }
 
         this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;

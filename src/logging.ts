@@ -1,9 +1,7 @@
-import logger, { FileTransport } from '@rokucommunity/logger';
+import { FileTransport, default as defaultLogger } from '@rokucommunity/logger';
 import { QueuedTransport } from '@rokucommunity/logger/dist/transports/QueuedTransport';
 
-export const fileTransport = new FileTransport();
-//add transport immediately so we can queue log entries
-logger.addTransport(fileTransport);
+const logger = defaultLogger.createLogger('[roku-debug]');
 
 export const debugServerLogOutputEventTransport = new QueuedTransport();
 //add transport immediately so we can queue log entries
