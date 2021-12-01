@@ -268,7 +268,7 @@ export class TelnetAdapter {
 
                 // short circuit after the output has been sent as console output
                 if (hasRuntimeError) {
-                    this.logger.log('Detected runtime error in output', util.fence(responseText));
+                    this.logger.log('Detected runtime error in output', { responseText });
                     this.isAtDebuggerPrompt = true;
                     return;
                 }
@@ -299,7 +299,7 @@ export class TelnetAdapter {
 
                     //watch for debugger prompt output
                     if (util.checkForDebuggerPrompt(responseText)) {
-                        this.logger.log('Debugger prompt detected in', util.fence(responseText));
+                        this.logger.log('Debugger prompt detected in', { responseText });
 
                         //if we are activated AND this is the first time seeing the debugger prompt since a continue/step action
                         if (this.isNextBreakpointSkipped) {
@@ -546,7 +546,8 @@ export class TelnetAdapter {
      * @param expression
      */
     public async getVariable(expression: string) {
-        this.logger.log('getVariable', { expression });
+        const logger = this.logger.createLogger(' getVariable');
+        logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
@@ -586,8 +587,10 @@ export class TelnetAdapter {
 
             let match = this.getExpressionDetails(data);
             if (match !== undefined) {
+                logger.info('expression details', { match, data });
                 let value = match;
                 if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
+
                     value = value.trim().replace(/--string-wrap--/g, '');
                     //add an escape character in front of any existing quotes
                     value = value.replace(/"/g, '\\"');
@@ -668,6 +671,7 @@ export class TelnetAdapter {
                     highLevelType: highLevelType,
                     children: children
                 };
+                logger.info('end', { container });
                 return container;
             }
         });
@@ -1215,7 +1219,7 @@ export class RequestPipeline {
 
         this.client.addListener('data', (data) => {
             let responseText = data.toString();
-            this.logger.debug('Raw telnet data', util.fence(responseText));
+            this.logger.debug('Raw telnet data', { data: responseText });
             const cumulative = lastPartialLine + responseText;
             //ensure all debugger prompts appear completely on their own line
             responseText = util.ensureDebugPromptOnOwnLine(responseText);
@@ -1277,7 +1281,6 @@ export class RequestPipeline {
      * @param silent - if true, the command will be hidden from the output
      */
     public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
-        const commandId = this.commandIdSequence++;
         const logger = this.logger.createLogger(`[Command ${this.commandIdSequence++}]`);
         logger.debug(`execute`, { command, waitForPrompt });
         return new Promise<string>((resolve, reject) => {
@@ -1296,7 +1299,7 @@ export class RequestPipeline {
             let request = {
                 executeCommand: executeCommand,
                 onComplete: (data: string) => {
-                    logger.debug(`execute result`, { command, waitForPrompt }, 'data:', util.fence(data));
+                    logger.debug(`execute result`, { command, waitForPrompt, data });
                     resolve(data);
                 },
                 waitForPrompt: waitForPrompt

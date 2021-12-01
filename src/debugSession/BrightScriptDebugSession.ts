@@ -64,6 +64,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public logger = logger.createLogger(`[${BrightScriptDebugSession.name}]`);
 
+    /**
+     * A sequence used to help identify log statements for requests
+     */
+    private idCounter = 1;
+
     public fileManager: FileManager;
 
     public projectManager: ProjectManager;
@@ -106,6 +111,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * to interrogate the features the debug adapter provides.
      */
     public initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
+        this.logger.log('initializeRequest');
+
         // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
         // we request them early by sending an 'initializeRequest' to the frontend.
         // The frontend will end the configuration sequence by calling 'configurationDone' request.
@@ -141,12 +148,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 )
             );
         });
+        this.logger.log('initializeRequest finished');
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
+        this.logger.log('[launchRequest] begin');
         this.launchConfiguration = config;
 
+        //set the logLevel provided by the launch config
+        if (this.launchConfiguration.logLevel) {
+            logger.logLevel = this.launchConfiguration.logLevel;
+        }
+
         if (this.launchConfiguration.debugLogPath) {
+            //clear the log
+            if (this.launchConfiguration.debugLogClearOnLaunch) {
+                fsExtra.outputFileSync(this.launchConfiguration.debugLogPath, '');
+            }
             fileTransport.setLogFilePath(this.launchConfiguration.debugLogPath);
         } else {
             logger.removeTransport(fileTransport);
@@ -163,7 +181,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
 
         let error: Error;
-        this.logger.log('Packaging and deploying to roku');
+        this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
             //build the main project and all component libraries at the same time
             await Promise.all([
@@ -256,7 +274,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchConfiguration.stopDebuggerOnAppExit is true' : ''}`;
                     message += ' - shutting down debug session';
 
-                    this.logger.log(message);
+                    this.logger.log('on app-exit', message);
                     this.sendEvent(new LogOutputEvent(message));
                     if (this.rokuAdapter) {
                         void this.rokuAdapter.destroy();
@@ -267,7 +285,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     this.sendEvent(new TerminatedEvent());
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
-                    this.logger.log(message);
+                    this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
                 }
             });
@@ -317,6 +335,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 //request adapter to send errors (even empty) before ending the session
                 await this.rokuAdapter.sendErrors();
             }
+            this.logger.error('Error. Shutting down.', e);
             this.shutdown();
             return;
         }
@@ -644,7 +663,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
-        this.logger.log('scopesRequest', { args });
+        const logger = this.logger.createLogger(`scopesRequest ${this.idCounter}`);
+        logger.info('begin', { args });
         try {
             const scopes = new Array<Scope>();
 
@@ -676,9 +696,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             response.body = {
                 scopes: scopes
             };
+            logger.debug('send response', { response });
             this.sendResponse(response);
+            logger.info('end');
         } catch (error) {
-            this.logger.error('Error getting scopes', { error, args });
+            logger.error('Error getting scopes', { error, args });
         }
     }
 
@@ -705,32 +727,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param args
      */
     protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {
-        this.logger.log('nextRequest');
+        this.logger.log('[nextRequest] begin');
         await this.rokuAdapter.stepOver(args.threadId);
         this.sendResponse(response);
+        this.logger.info('[nextRequest] end');
     }
 
     protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
-        this.logger.log('stepInRequest');
+        this.logger.log('[stepInRequest]');
         await this.rokuAdapter.stepInto(args.threadId);
         this.sendResponse(response);
+        this.logger.info('[stepInRequest] end');
     }
 
     protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments) {
-        this.logger.log('stepOutRequest');
+        this.logger.log('[stepOutRequest] begin');
         await this.rokuAdapter.stepOut(args.threadId);
         this.sendResponse(response);
+        this.logger.info('[stepOutRequest] end');
     }
 
     protected stepBackRequest(response: DebugProtocol.StepBackResponse, args: DebugProtocol.StepBackArguments) {
-        this.logger.log('stepBackRequest');
-
+        this.logger.log('[stepBackRequest] begin');
         this.sendResponse(response);
+        this.logger.info('[stepBackRequest] end');
     }
 
     public async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
+        const logger = this.logger.createLogger('[variablesRequest]');
         try {
-            this.logger.log('variablesRequest', { args });
+            logger.log('begin', { args });
 
             let childVariables: AugmentedVariable[] = [];
             //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
@@ -772,11 +798,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     variables: childVariables
                 };
             } else {
-                this.logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
+                logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
             }
             this.sendResponse(response);
+            logger.info('end');
         } catch (error) {
-            this.logger.error('Error during variablesRequest', error, { args });
+            logger.error('Error during variablesRequest', error, { args });
         }
     }
 
@@ -903,6 +930,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
+            this.logger.info('received "suspend" event from adapter');
             let threads = await this.rokuAdapter.getThreads();
             let threadId = threads[0]?.threadId;
 

@@ -407,6 +407,8 @@ export class DebugProtocolAdapter {
      * @param expression
      */
     public async getVariable(expression: string, frameId: number, withChildren = true) {
+        const logger = this.logger.createLogger(' getVariable');
+        logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }

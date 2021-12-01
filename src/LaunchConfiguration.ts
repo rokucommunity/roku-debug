@@ -171,9 +171,14 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     logLevel: LogLevel;
 
     /**
-     * Path to where the debug logs should be written. If omitted, no debug logging will be done
+     * Path to where the debug logs should be written. If omitted, no file debug logging will be done (has no effect on the "BrightScript Debug Log" output channel)
      */
     debugLogPath: string;
+
+    /**
+      * Should the debug file log be cleared on launch? Only applicable if debugLogPath is set
+      */
+    debugLogClearOnLaunch: boolean;
 }
 
 export interface ComponentLibraryConfiguration {

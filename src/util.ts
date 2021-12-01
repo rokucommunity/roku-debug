@@ -140,11 +140,6 @@ class Util {
         return bufferReader.readStringNT();
     }
 
-    public fence(data: string) {
-        const fence = '--------------------';
-        return `\n${fence}\n${data}\n${fence}\n`;
-    }
-
     /**
      * A reference to the current debug session. Used for logging, and set in the debug session constructor
      */
