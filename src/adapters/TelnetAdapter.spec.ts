@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import type { EvaluateContainer } from './TelnetAdapter';
 import { TelnetAdapter, RequestPipeline } from './TelnetAdapter';
 import * as dedent from 'dedent';
-import { HighLevelType } from './DebugProtocolAdapter';
+import { HighLevelType } from '../interfaces';
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
