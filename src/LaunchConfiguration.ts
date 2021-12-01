@@ -1,3 +1,4 @@
+import { AddressInfo } from 'net';
 import type { FileEntry } from 'roku-deploy';
 import type { DebugProtocol } from 'vscode-debugprotocol';
 import type { LogLevel } from './logging';
@@ -41,6 +42,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * An object of bs_const values to be updated in the manifest before side loading.
      */
     bsConst?: Record<string, boolean>;
+
     /**
      * Port to access component libraries.
      */
@@ -166,18 +168,9 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     stagingFolderPath?: string;
 
     /**
-     * What level of debug logging should be performed in the debug session
+     * What level of debug server's internal logging should be performed in the debug session
      */
     logLevel: LogLevel;
-
-    /**
-     * Path to where the debug logs should be written. If omitted, no debug logging will be done
-     */
-    debugLogPath: string;
-    /**
-     * Should the debug file log be cleared on launch? Only applicable if debugLogPath is set
-     */
-    debugLogClearOnLaunch: boolean;
 }
 
 export interface ComponentLibraryConfiguration {

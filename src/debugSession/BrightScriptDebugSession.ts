@@ -42,8 +42,8 @@ import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
-import type { LogMessage } from '../logging';
-import { logger, debugServerLogOutputEventTransport, fileTransport } from '../logging';
+import type { Logger, LogMessage } from '../logging';
+import { logger, debugServerLogOutputEventTransport } from '../logging';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -157,16 +157,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //set the logLevel provided by the launch config
         if (this.launchConfiguration.logLevel) {
             logger.logLevel = this.launchConfiguration.logLevel;
-        }
-
-        if (this.launchConfiguration.debugLogPath) {
-            //clear the log
-            if (this.launchConfiguration.debugLogClearOnLaunch) {
-                fsExtra.outputFileSync(this.launchConfiguration.debugLogPath, '');
-            }
-            fileTransport.setLogFilePath(this.launchConfiguration.debugLogPath);
-        } else {
-            logger.removeTransport(fileTransport);
         }
 
         this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
@@ -699,7 +689,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.sendResponse(response);
             logger.info('end');
         } catch (error) {
-            this.logger.error('Error getting scopes', { error, args });
+            logger.error('Error getting scopes', { error, args });
         }
     }
 
@@ -726,36 +716,39 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param args
      */
     protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {
-        this.logger.log('nextRequest');
+        this.logger.log('[nextRequest] begin');
         try {
             await this.rokuAdapter.stepOver(args.threadId);
+            this.logger.info('[nextRequest] end');
         } catch (error) {
-            this.logger.error(`Error running '${BrightScriptDebugSession.prototype.nextRequest.name}()'`, error);
+            this.logger.error(`[nextRequest] Error running '${BrightScriptDebugSession.prototype.nextRequest.name}()'`, error);
         }
-        this.sendResponse(response);
     }
 
     protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
-        this.logger.log('stepInRequest');
+        this.logger.log('[stepInRequest]');
         await this.rokuAdapter.stepInto(args.threadId);
         this.sendResponse(response);
+        this.logger.info('[stepInRequest] end');
     }
 
     protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments) {
-        this.logger.log('stepOutRequest');
+        this.logger.log('[stepOutRequest] begin');
         await this.rokuAdapter.stepOut(args.threadId);
         this.sendResponse(response);
+        this.logger.info('[stepOutRequest] end');
     }
 
     protected stepBackRequest(response: DebugProtocol.StepBackResponse, args: DebugProtocol.StepBackArguments) {
-        this.logger.log('stepBackRequest');
-
+        this.logger.log('[stepBackRequest] begin');
         this.sendResponse(response);
+        this.logger.info('[stepBackRequest] end');
     }
 
     public async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
+        const logger = this.logger.createLogger('[variablesRequest]');
         try {
-            this.logger.log('variablesRequest', { args });
+            logger.log('begin', { args });
 
             let childVariables: AugmentedVariable[] = [];
             //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
@@ -797,11 +790,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     variables: childVariables
                 };
             } else {
-                this.logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
+                logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
             }
             this.sendResponse(response);
+            logger.info('end');
         } catch (error) {
-            this.logger.error('Error during variablesRequest', error, { args });
+            logger.error('Error during variablesRequest', error, { args });
         }
     }
 

@@ -269,7 +269,7 @@ export class TelnetAdapter {
 
                 // short circuit after the output has been sent as console output
                 if (hasRuntimeError) {
-                    this.logger.log('Detected runtime error in output', util.fence(responseText));
+                    this.logger.log('Detected runtime error in output', { responseText });
                     this.isAtDebuggerPrompt = true;
                     return;
                 }
@@ -300,7 +300,7 @@ export class TelnetAdapter {
 
                     //watch for debugger prompt output
                     if (util.checkForDebuggerPrompt(responseText)) {
-                        this.logger.log('Debugger prompt detected in', util.fence(responseText));
+                        this.logger.log('Debugger prompt detected in', { responseText });
 
                         //if we are activated AND this is the first time seeing the debugger prompt since a continue/step action
                         if (this.isNextBreakpointSkipped) {
@@ -1244,7 +1244,7 @@ export class RequestPipeline {
             //discard any "thread attached" output
             //if we found the "thread attached" message, consume it up to (and including) the next debugger prompt
 
-            let { allResponseText, wasRemoved } = this.removeThreadAttached(allResponseText);
+            // let { allResponseText, wasRemoved } = this.removeThreadAttached(allResponseText);
 
             let foundDebuggerPrompt = util.checkForDebuggerPrompt(allResponseText);
 
@@ -1275,9 +1275,6 @@ export class RequestPipeline {
         });
     }
 
-    /**
-     * 
-     */
     private removeThreadAttached(text: string) {
         //remove the "Thread attached" messages
         const result = text.replace(/^Thread attached: pkg:\/.*?\(\d+\).*?$/m, '');
@@ -1300,7 +1297,6 @@ export class RequestPipeline {
      * @param silent - if true, the command will be hidden from the output
      */
     public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
-        const commandId = this.commandIdSequence++;
         const logger = this.logger.createLogger(`[Command ${this.commandIdSequence++}]`);
         logger.debug(`execute`, { command, waitForPrompt });
         return new Promise<string>((resolve, reject) => {
@@ -1319,7 +1315,7 @@ export class RequestPipeline {
             let request = {
                 executeCommand: executeCommand,
                 onComplete: (data: string) => {
-                    logger.debug(`execute result`, { command, waitForPrompt }, 'data:', util.fence(data));
+                    logger.debug(`execute result`, { command, waitForPrompt, data });
                     resolve(data);
                 },
                 waitForPrompt: waitForPrompt
