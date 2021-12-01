@@ -12,6 +12,7 @@ import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { defer, util } from '../util';
 import { logger } from '../logging';
+import { HighLevelType } from '../interfaces';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -489,8 +490,6 @@ export class TelnetAdapter {
             let result = match[1];
             //remove that pesky "may not be interruptible" warning
             result = result.replace(/^warning:\s*operation\s+may\s+not\s+be\s+interruptible.\s*\r?\n/i, '');
-            //remove the "Thread attached" messages
-            result = result.replace(/^Thread attached: pkg:\/.*?\(\d+\).*?$/m, '');
             return result;
         }
     }
@@ -551,147 +550,153 @@ export class TelnetAdapter {
      * @param expression
      */
     public async getVariable(expression: string) {
-        this.logger.log('getVariable', { expression });
+        const logger = this.logger.createLogger(' getVariable');
+        logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
-        return this.resolve(`variable: ${expression}`, async () => {
-            let expressionType = await this.getVariableType(expression);
+        let expressionType = await this.getVariableType(expression);
 
-            let lowerExpressionType = expressionType ? expressionType.toLowerCase() : null;
+        let lowerExpressionType = expressionType ? expressionType.toLowerCase() : null;
 
-            let data: string;
-            //if the expression type is a string, we need to wrap the expression in quotes BEFORE we run the print so we can accurately capture the full string value
+        let data: string;
+        //if the expression type is a string, we need to wrap the expression in quotes BEFORE we run the print so we can accurately capture the full string value
+        if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
+            data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, true);
+
+            //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
+        } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
+            const command = [
+                `for each vscodeLoopItem in ${expression} : print ` +
+                `   "vscode_type_start:" + type(vscodeLoopItem) + ":vscode_type_stop "`,
+                `   "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString"))`,
+                `   vscodeLoopItem :` +
+                ` end for`
+            ].join(';');
+            data = await this.requestPipeline.executeCommand(command, true);
+        } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
+            const command = [
+                `for each vscodeLoopKey in ${expression}.keys(): print` +
+                `   "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop "`,
+                `   "vscode_type_start:" + type(${expression}[vscodeLoopKey]) + ":vscode_type_stop "`,
+                `   "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString"))`,
+                `   ${expression}[vscodeLoopKey] :` +
+                ' end for'
+            ].join(';');
+            data = await this.requestPipeline.executeCommand(command, true);
+        } else {
+            data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
+        }
+
+        let match = this.getExpressionDetails(data);
+        if (typeof match !== 'string') {
+            logger.log('Unable to get expression details from', { data });
+        } else {
+            logger.info('expression details', { match, data });
+            let value = match;
             if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
-                data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, true);
+                value = value.trim().replace(/--string-wrap--/g, '');
+                //add an escape character in front of any existing quotes
+                value = value.replace(/"/g, '\\"');
+                //wrap the string value with literal quote marks
+                value = '"' + value + '"';
+            }
+            let highLevelType = this.getHighLevelType(expressionType);
 
-                //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
-            } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
-                const command = [
-                    `for each vscodeLoopItem in ${expression} : print ` +
-                    `   "vscode_type_start:" + type(vscodeLoopItem) + ":vscode_type_stop "`,
-                    `   "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString"))`,
-                    `   vscodeLoopItem :` +
-                    ` end for`
-                ].join(';');
-                data = await this.requestPipeline.executeCommand(command, true);
-            } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
-                const command = [
-                    `for each vscodeLoopKey in ${expression}.keys(): print` +
-                    `   "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop "`,
-                    `   "vscode_type_start:" + type(${expression}[vscodeLoopKey]) + ":vscode_type_stop "`,
-                    `   "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString"))`,
-                    `   ${expression}[vscodeLoopKey] :` +
-                    ' end for'
-                ].join(';');
-                data = await this.requestPipeline.executeCommand(command, true);
-            } else {
-                data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
+            let children: EvaluateContainer[];
+            if (highLevelType === HighLevelType.array || ['roassociativearray', 'rosgnode', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
+                //the print statment will always have 1 trailing newline, so remove that.
+                value = util.removeTrailingNewline(value);
+                //the array/associative array print is a loop of every value, so handle that
+                children = this.getForLoopPrintedChildren(expression, value);
+                children.push({
+                    name: '[[count]]',
+                    value: children.length.toString(),
+                    type: 'integer',
+                    highLevelType: HighLevelType.primative,
+                    evaluateName: children.length.toString(),
+                    presentationHint: 'virtual',
+                    keyType: KeyType.legacy,
+                    children: undefined
+                } as EvaluateContainer);
+            } else if (highLevelType === HighLevelType.object) {
+                children = this.getObjectChildren(expression, value.trim());
+            } else if (highLevelType === HighLevelType.unknown) {
+                logger.warn('there was an issue evaluating this variable', { expression });
+                value = '<UNKNOWN>';
             }
 
-            let match = this.getExpressionDetails(data);
-            if (match !== undefined) {
-                let value = match;
-                if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
-                    value = value.trim().replace(/--string-wrap--/g, '');
-                    //add an escape character in front of any existing quotes
-                    value = value.replace(/"/g, '\\"');
-                    //wrap the string value with literal quote marks
-                    value = '"' + value + '"';
-                }
-                let highLevelType = this.getHighLevelType(expressionType);
-
-                let children: EvaluateContainer[];
-                if (highLevelType === HighLevelType.array || ['roassociativearray', 'rosgnode', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
-                    //the print statment will always have 1 trailing newline, so remove that.
-                    value = util.removeTrailingNewline(value);
-                    //the array/associative array print is a loop of every value, so handle that
-                    children = this.getForLoopPrintedChildren(expression, value);
-                    children.push({
-                        name: '[[count]]',
-                        value: children.length.toString(),
-                        type: 'integer',
-                        highLevelType: HighLevelType.primative,
-                        evaluateName: children.length.toString(),
-                        presentationHint: 'virtual',
-                        keyType: KeyType.legacy,
-                        children: undefined
-                    } as EvaluateContainer);
-                } else if (highLevelType === HighLevelType.object) {
-                    children = this.getObjectChildren(expression, value.trim());
-                }
-
-                if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
-                    return {
-                        name: expression,
-                        value: util.removeTrailingNewline(value),
-                        type: expressionType,
-                        highLevelType: HighLevelType.primative,
-                        evaluateName: expression,
-                        children: []
-                    } as EvaluateContainer;
-                }
-
-                //add a computed `[[children]]` property to allow expansion of node children
-                if (lowerExpressionType === 'rosgnode') {
-                    let nodeChildren = <EvaluateContainer>{
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: 'array',
-                        presentationHint: 'virtual',
-                        evaluateName: `${expression}.getChildren(-1, 0)`,
-                        children: []
-                    };
-                    children.push(nodeChildren);
-                }
-
-                //xml elements won't display on their own, so we need to create some sub elements
-                if (lowerExpressionType === 'roxmlelement') {
-                    children.push({
-                        //look up the name of the xml element
-                        ...await this.getVariable(`${expression}.GetName()`),
-                        name: '[[name]]',
-                        presentationHint: 'virtual'
-                    });
-
-                    children.push({
-                        name: '[[attributes]]',
-                        type: 'roAssociativeArray',
-                        highLevelType: HighLevelType.array,
-                        evaluateName: `${expression}.GetAttributes()`,
-                        presentationHint: 'virtual',
-                        children: []
-                    } as EvaluateContainer);
-
-                    //add a computed `[[children]]` property to allow expansion of child elements
-                    children.push({
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: HighLevelType.array,
-                        evaluateName: `${expression}.GetChildNodes()`,
-                        presentationHint: 'virtual',
-                        children: []
-
-                    } as EvaluateContainer);
-                }
-
-                //if this item is an array or a list, add the item count to the end of the type
-                if (highLevelType === HighLevelType.array) {
-                    //TODO re-enable once we find how to refresh watch/variables panel, since lazy loaded arrays can't show a length
-                    //expressionType += `(${children.length})`;
-                }
-
-                let container = <EvaluateContainer>{
+            if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
+                return {
                     name: expression,
-                    evaluateName: expression,
+                    value: util.removeTrailingNewline(value),
                     type: expressionType,
-                    value: value.trim(),
-                    highLevelType: highLevelType,
-                    children: children
-                };
-                return container;
+                    highLevelType: HighLevelType.primative,
+                    evaluateName: expression,
+                    children: []
+                } as EvaluateContainer;
             }
-        });
+
+            //add a computed `[[children]]` property to allow expansion of node children
+            if (lowerExpressionType === 'rosgnode') {
+                let nodeChildren = <EvaluateContainer>{
+                    name: '[[children]]',
+                    type: 'roArray',
+                    highLevelType: 'array',
+                    presentationHint: 'virtual',
+                    evaluateName: `${expression}.getChildren(-1, 0)`,
+                    children: []
+                };
+                children.push(nodeChildren);
+            }
+
+            //xml elements won't display on their own, so we need to create some sub elements
+            if (lowerExpressionType === 'roxmlelement') {
+                children.push({
+                    //look up the name of the xml element
+                    ...await this.getVariable(`${expression}.GetName()`),
+                    name: '[[name]]',
+                    presentationHint: 'virtual'
+                });
+
+                children.push({
+                    name: '[[attributes]]',
+                    type: 'roAssociativeArray',
+                    highLevelType: HighLevelType.array,
+                    evaluateName: `${expression}.GetAttributes()`,
+                    presentationHint: 'virtual',
+                    children: []
+                } as EvaluateContainer);
+
+                //add a computed `[[children]]` property to allow expansion of child elements
+                children.push({
+                    name: '[[children]]',
+                    type: 'roArray',
+                    highLevelType: HighLevelType.array,
+                    evaluateName: `${expression}.GetChildNodes()`,
+                    presentationHint: 'virtual',
+                    children: []
+
+                } as EvaluateContainer);
+            }
+
+            //if this item is an array or a list, add the item count to the end of the type
+            if (highLevelType === HighLevelType.array) {
+                //TODO re-enable once we find how to refresh watch/variables panel, since lazy loaded arrays can't show a length
+                //expressionType += `(${children.length})`;
+            }
+
+            let container = <EvaluateContainer>{
+                name: expression,
+                evaluateName: expression,
+                type: expressionType,
+                value: value.trim(),
+                highLevelType: highLevelType,
+                children: children
+            };
+            logger.info('end', { container });
+            return container;
+        }
     }
 
     /**
@@ -960,7 +965,7 @@ export class TelnetAdapter {
      */
     private getHighLevelType(expressionType: string) {
         if (!expressionType) {
-            throw new Error(`Unknown expression type: ${expressionType}`);
+            return HighLevelType.unknown;
         }
 
         expressionType = expressionType.toLowerCase();
@@ -987,19 +992,17 @@ export class TelnetAdapter {
             throw new Error('Cannot get variable type: debugger is not paused');
         }
         expression = `Type(${expression})`;
-        return this.resolve(`${expression}`, async () => {
-            let data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
+        let data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
 
-            let match = this.getExpressionDetails(data);
-            if (match) {
-                let typeValue: string = match;
-                //remove whitespace
-                typeValue = typeValue.trim();
-                return typeValue;
-            } else {
-                return null;
-            }
-        });
+        let match = this.getExpressionDetails(data);
+        if (match) {
+            let typeValue: string = match;
+            //remove whitespace
+            typeValue = typeValue.trim();
+            return typeValue;
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -1141,14 +1144,6 @@ export enum EventName {
     suspend = 'suspend'
 }
 
-export enum HighLevelType {
-    primative = 'primative',
-    array = 'array',
-    function = 'function',
-    object = 'object',
-    uninitialized = 'uninitialized'
-}
-
 export interface EvaluateContainer {
     name: string;
     evaluateName: string;
@@ -1226,7 +1221,7 @@ export class RequestPipeline {
 
         this.client.addListener('data', (data) => {
             let responseText = data.toString();
-            this.logger.debug('Raw telnet data', util.fence(responseText));
+            this.logger.debug('Raw telnet data', { data: responseText });
             const cumulative = lastPartialLine + responseText;
             //ensure all debugger prompts appear completely on their own line
             responseText = util.ensureDebugPromptOnOwnLine(responseText);
@@ -1245,6 +1240,11 @@ export class RequestPipeline {
             //forward all raw console output
             this.emit('console-output', responseText);
             allResponseText += responseText;
+
+            //discard any "thread attached" output
+            //if we found the "thread attached" message, consume it up to (and including) the next debugger prompt
+
+            let { allResponseText, wasRemoved } = this.removeThreadAttached(allResponseText);
 
             let foundDebuggerPrompt = util.checkForDebuggerPrompt(allResponseText);
 
@@ -1273,6 +1273,18 @@ export class RequestPipeline {
                 }
             }
         });
+    }
+
+    /**
+     * 
+     */
+    private removeThreadAttached(text: string) {
+        //remove the "Thread attached" messages
+        const result = text.replace(/^Thread attached: pkg:\/.*?\(\d+\).*?$/m, '');
+        return {
+            text: result,
+            wasRemoved: result.length !== text.length
+        };
     }
 
     /**

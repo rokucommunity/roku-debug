@@ -42,7 +42,7 @@ import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
-import type { Logger, LogMessage } from '../logging';
+import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport, fileTransport } from '../logging';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
@@ -63,6 +63,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     public logger = logger.createLogger(`[${BrightScriptDebugSession.name}]`);
+
+    /**
+     * A sequence used to help identify log statements for requests
+     */
+    private idCounter = 1;
 
     public fileManager: FileManager;
 
@@ -106,6 +111,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * to interrogate the features the debug adapter provides.
      */
     public initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
+        this.logger.log('initializeRequest');
         // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
         // we request them early by sending an 'initializeRequest' to the frontend.
         // The frontend will end the configuration sequence by calling 'configurationDone' request.
@@ -141,12 +147,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 )
             );
         });
+        this.logger.log('initializeRequest finished');
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
+        this.logger.log('[launchRequest] begin');
         this.launchConfiguration = config;
 
+        //set the logLevel provided by the launch config
+        if (this.launchConfiguration.logLevel) {
+            logger.logLevel = this.launchConfiguration.logLevel;
+        }
+
         if (this.launchConfiguration.debugLogPath) {
+            //clear the log
+            if (this.launchConfiguration.debugLogClearOnLaunch) {
+                fsExtra.outputFileSync(this.launchConfiguration.debugLogPath, '');
+            }
             fileTransport.setLogFilePath(this.launchConfiguration.debugLogPath);
         } else {
             logger.removeTransport(fileTransport);
@@ -163,7 +180,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
 
         let error: Error;
-        this.logger.log('Packaging and deploying to roku');
+        this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
             //build the main project and all component libraries at the same time
             await Promise.all([
@@ -256,7 +273,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchConfiguration.stopDebuggerOnAppExit is true' : ''}`;
                     message += ' - shutting down debug session';
 
-                    this.logger.log(message);
+                    this.logger.log('on app-exit', message);
                     this.sendEvent(new LogOutputEvent(message));
                     if (this.rokuAdapter) {
                         void this.rokuAdapter.destroy();
@@ -267,7 +284,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     this.sendEvent(new TerminatedEvent());
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
-                    this.logger.log(message);
+                    this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
                 }
             });
@@ -317,6 +334,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 //request adapter to send errors (even empty) before ending the session
                 await this.rokuAdapter.sendErrors();
             }
+            this.logger.error('Error. Shutting down.', e);
             this.shutdown();
             return;
         }
@@ -644,7 +662,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
-        this.logger.log('scopesRequest', { args });
+        const logger = this.logger.createLogger(`scopesRequest ${this.idCounter}`);
+        logger.info('begin', { args });
         try {
             const scopes = new Array<Scope>();
 
@@ -676,7 +695,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             response.body = {
                 scopes: scopes
             };
+            logger.debug('send response', { response });
             this.sendResponse(response);
+            logger.info('end');
         } catch (error) {
             this.logger.error('Error getting scopes', { error, args });
         }
@@ -969,6 +990,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v = new Variable(result.name, result.type, refId, 0, result.children?.length ?? 0);
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'function') {
+                    v = new Variable(result.name, result.value);
+                } else {
                     v = new Variable(result.name, result.value);
                 }
             }

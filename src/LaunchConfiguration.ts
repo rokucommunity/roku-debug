@@ -174,6 +174,10 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * Path to where the debug logs should be written. If omitted, no debug logging will be done
      */
     debugLogPath: string;
+    /**
+     * Should the debug file log be cleared on launch? Only applicable if debugLogPath is set
+     */
+    debugLogClearOnLaunch: boolean;
 }
 
 export interface ComponentLibraryConfiguration {

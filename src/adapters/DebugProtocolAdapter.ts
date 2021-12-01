@@ -11,6 +11,7 @@ import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer } from '../util';
 import { logger } from '../logging';
+import type { HighLevelType } from '../interfaces';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -625,14 +626,6 @@ export interface StackFrame {
 
 export enum EventName {
     suspend = 'suspend'
-}
-
-export enum HighLevelType {
-    primative = 'primative',
-    array = 'array',
-    function = 'function',
-    object = 'object',
-    uninitialized = 'uninitialized'
 }
 
 export interface EvaluateContainer {
