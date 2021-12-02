@@ -261,7 +261,7 @@ class Util {
     private dnsCache = new Map<string, string>();
 
     /**
-     * Sleep for the given milliseconds
+     * Sleep for the given number of milliseconds
      * @param milliseconds
      * @returns
      */
