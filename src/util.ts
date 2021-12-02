@@ -259,6 +259,12 @@ class Util {
     }
 
     private dnsCache = new Map<string, string>();
+
+    public sleep(ms: number) {
+        return new Promise((resolve) => {
+            setTimeout(resolve, ms);
+        });
+    }
 }
 
 export function defer<T>() {
