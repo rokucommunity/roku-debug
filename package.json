@@ -85,6 +85,7 @@
         "brighterscript": "^0.41.2",
         "dateformat": "^4.6.3",
         "eol": "^0.9.1",
+        "eventemitter3": "^4.0.7",
         "find-in-files": "^0.5.0",
         "fs-extra": "^10.0.0",
         "natural-orderby": "^2.0.3",
