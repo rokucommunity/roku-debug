@@ -1,6 +1,7 @@
 import type { Socket } from 'net';
 import * as EventEmitter from 'eventemitter3';
 import { util } from '../util';
+import { logger } from '../logging';
 
 export class TelnetRequestPipeline {
     constructor(
@@ -8,6 +9,8 @@ export class TelnetRequestPipeline {
     ) {
         this.connect();
     }
+
+    private logger = logger.createLogger(`[${TelnetRequestPipeline.name}]`);
 
     private requests: RequestPipelineRequest[] = [];
     private isAtDebuggerPrompt = false;
@@ -42,7 +45,7 @@ export class TelnetRequestPipeline {
 
         this.client.addListener('data', (data) => {
             let responseText = data.toString();
-            util.logDebugFenced('Raw telnet data', responseText);
+            this.logger.debug('Raw telnet data', { data: responseText });
             const cumulative = lastPartialLine + responseText;
             //ensure all debugger prompts appear completely on their own line
             responseText = util.ensureDebugPromptOnOwnLine(responseText);
@@ -104,8 +107,8 @@ export class TelnetRequestPipeline {
      * @param silent - if true, the command will be hidden from the output
      */
     public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
-        const commandId = this.commandIdSequence++;
-        util.logDebug(`Command ${commandId} execute ${JSON.stringify(command)} and ${waitForPrompt ? '' : ' don\'t'} wait for prompt): \n`, command, '\n');
+        const logger = this.logger.createLogger(`[Command ${this.commandIdSequence++}]`);
+        logger.debug(`execute`, { command, waitForPrompt });
         return new Promise<string>((resolve, reject) => {
             let executeCommand = () => {
                 let commandText = `${command}\r\n`;
@@ -122,7 +125,7 @@ export class TelnetRequestPipeline {
             let request = {
                 executeCommand: executeCommand,
                 onComplete: (data: string) => {
-                    util.logDebugFenced(`Command ${commandId} execute ${JSON.stringify(command)} result`, data);
+                    logger.debug(`execute result`, { command, waitForPrompt, data });
                     resolve(data);
                 },
                 waitForPrompt: waitForPrompt

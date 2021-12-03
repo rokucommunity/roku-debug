@@ -2,11 +2,13 @@ import * as fsExtra from 'fs-extra';
 import { util } from '../util';
 import type { Range, Position } from 'brighterscript';
 import { util as bscUtil } from 'brighterscript';
+import { logger } from '../logging';
 
 /**
  * Unifies access to source files across the whole project
  */
 export class FileManager {
+    private logger = logger.createLogger(`[${FileManager.name}]`);
     /**
      * A map of file lines, indexed by file path
      * Store all paths in lower case since Roku is case-insensitive
@@ -27,7 +29,7 @@ export class FileManager {
                 fileInfo.functionInfo = this.getFunctionInfo(fileInfo.lines);
                 fileInfo.functionNameMap = this.getFunctionNameMap(fileContents);
             } catch (e) {
-                util.logDebug(`Error loading file: '${filePath}'`, JSON.stringify(e));
+                this.logger.log(`Error loading file: '${filePath}'`, JSON.stringify(e));
             }
             this.cache[lowerFilePath] = fileInfo;
         }
