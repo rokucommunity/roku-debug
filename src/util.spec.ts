@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
-
+import * as dedent from 'dedent';
 import { util } from './util';
 let sinon = sinonActual.createSandbox();
 
@@ -259,6 +259,44 @@ describe('Util', () => {
             ];
             const actual = util.filterGenericErrors([err1, err2, err3, err4]);
             expect(actual).to.deep.equal(expected);
+        });
+    });
+
+    describe('removeThreadAttachedText', () => {
+        it('removes when found', () => {
+            expect(
+                dedent(util.removeThreadAttachedText(`
+                    Thread attached: pkg:/source/main.brs(6)                 screen.show()
+
+                    Brightscript Debugger> ID    Location                                Source Code
+                    0    pkg:/source/main.brs(6)                 screen.show()
+                    1*   pkg:/components/MainScene.brs(6)        STOP
+                    *selected
+
+                    Brightscript Debugger>  
+                `))
+            ).to.eql(dedent`
+                ID    Location                                Source Code
+                0    pkg:/source/main.brs(6)                 screen.show()
+                1*   pkg:/components/MainScene.brs(6)        STOP
+                *selected
+
+                Brightscript Debugger>  
+            `);
+        });
+
+        it('does not change unmatched text', () => {
+            const text = `
+                ID    Location                                Source Code
+                0    pkg:/source/main.brs(6)                 screen.show()
+                1*   pkg:/components/MainScene.brs(6)        STOP
+                *selected
+
+                Brightscript Debugger> 
+            `;
+            expect(
+                util.removeThreadAttachedText(text)
+            ).to.eql(text);
         });
     });
 });

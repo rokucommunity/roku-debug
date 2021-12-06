@@ -4,18 +4,19 @@ import { util } from '../util';
 import { logger } from '../logging';
 
 export class TelnetRequestPipeline {
-    constructor(
-        private client: Socket
+    public constructor(
+        public client: Socket
     ) {
-        this.connect();
+
     }
 
     private logger = logger.createLogger(`[${TelnetRequestPipeline.name}]`);
 
     private requests: RequestPipelineRequest[] = [];
+
     private isAtDebuggerPrompt = false;
 
-    private get isProcessing() {
+    public get isProcessing() {
         return this.currentRequest !== undefined;
     }
 
@@ -27,71 +28,105 @@ export class TelnetRequestPipeline {
 
     private emitter = new EventEmitter();
 
-    public on(eventName: 'console-output' | 'unhandled-console-output', handler: (data: string) => void);
-    public on(eventName: string, handler: (data: string) => void) {
+    public on(eventName: 'console-output', handler: (data: string) => void);
+    public on(eventName: 'unhandled-console-output', handler: (data: string) => void);
+    public on(eventName: string, handler: (data: any) => void) {
         this.emitter.on(eventName, handler);
         return () => {
             this.emitter.removeListener(eventName, handler);
         };
     }
 
-    private emit(eventName: 'console-output' | 'unhandled-console-output', data: string) {
-        this.emitter.emit(eventName, data);
+    private emit(eventName: 'console-output', data: string);
+    private emit(eventName: 'unhandled-console-output', data: string);
+    private emit(eventName: string, data: any) {
+        //run the event on next tick to avoid timing issues
+        process.nextTick(() => {
+            this.emitter.emit(eventName, data);
+        });
     }
 
-    private connect() {
-        let allResponseText = '';
-        let lastPartialLine = '';
-
+    /**
+     * Start listening for future incoming data from the client
+     */
+    public connect() {
         this.client.addListener('data', (data) => {
-            let responseText = data.toString();
-            this.logger.debug('Raw telnet data', { data: responseText });
-            const cumulative = lastPartialLine + responseText;
-            //ensure all debugger prompts appear completely on their own line
-            responseText = util.ensureDebugPromptOnOwnLine(responseText);
-            if (!cumulative.endsWith('\n') && !util.checkForDebuggerPrompt(cumulative)) {
-                // buffer was split and was not the result of a prompt, save the partial line
-                lastPartialLine += responseText;
-                return;
-            }
-
-            if (lastPartialLine) {
-                // there was leftover lines, join the partial lines back together
-                responseText = lastPartialLine + responseText;
-                lastPartialLine = '';
-            }
-
-            //forward all raw console output
-            this.emit('console-output', responseText);
-            allResponseText += responseText;
-
-            let foundDebuggerPrompt = util.checkForDebuggerPrompt(allResponseText);
-
-            //if we are not processing, immediately broadcast the latest data
-            if (!this.isProcessing) {
-                this.emit('unhandled-console-output', allResponseText);
-                allResponseText = '';
-
-                if (foundDebuggerPrompt) {
-                    this.isAtDebuggerPrompt = true;
-                    if (this.hasRequests) {
-                        // There are requests waiting to be processed
-                        this.process();
-                    }
-                }
-            } else {
-                //if responseText produced a prompt, return the responseText
-                if (foundDebuggerPrompt) {
-                    //resolve the command's promise (if it cares)
-                    this.isAtDebuggerPrompt = true;
-                    this.currentRequest.onComplete(allResponseText);
-                    allResponseText = '';
-                    this.currentRequest = undefined;
-                    //try to run the next request
-                    this.process();
-                }
-            }
+            this.handleData(data.toString());
         });
+    }
+
+    /**
+     * Any data that has not yet been fully processed. This could be a partial response
+     * during a command execute, or a message split across multiple telnet terminals
+     */
+    private unhandledText = '';
+
+    private handleData(data: string) {
+        const logger = this.logger.createLogger(`[${TelnetRequestPipeline.prototype.handleData.name}]`);
+        logger.debug('Raw telnet data', { data }, util.fence(data));
+
+        //forward all raw console output to listeners
+        this.emit('console-output', data);
+
+        this.unhandledText += data;
+
+        //ensure all debugger prompts appear completely on their own line
+        this.unhandledText = util.ensureDebugPromptOnOwnLine(this.unhandledText);
+
+        //discard all the "thread attached" messages as we find
+        this.unhandledText = util.removeThreadAttachedText(this.unhandledText);
+
+        //we are at a debugger prompt if the last text we received was "Brightscript Debugger>"
+        this.isAtDebuggerPrompt = util.endsWithDebuggerPrompt(this.unhandledText);
+        if (this.isProcessing) {
+            this.handleDataForIsProcessing();
+        } else {
+            //emit the unhandled text
+            this.emit('unhandled-console-output', this.unhandledText);
+            this.unhandledText = '';
+        }
+    }
+
+    private handleDataForIsProcessing() {
+        //get the first response
+        const match = /Brightscript Debugger>\s*/is.exec(this.unhandledText);
+        if (match) {
+            const response = this.cleanResponse(
+                this.unhandledText.substring(0, match.index)
+            );
+
+            logger.debug('Found response before the first "Brightscript Debugger>" prompt', { response, allText: this.unhandledText });
+            //remove the response from the unhandled text
+            this.unhandledText = this.unhandledText.substring(match.index + match[0].length);
+
+            //emit the remaining unhandled text
+            if (this.unhandledText?.length > 0) {
+                this.emit('unhandled-console-output', this.unhandledText);
+            }
+            //clear the unhandled text
+            this.unhandledText = '';
+
+            //return the response to the current request
+            this.currentRequest.onComplete(response);
+            //run a new request (if there are any)
+
+            this.currentRequest = undefined;
+            this.process();
+        } else {
+            // no prompt found, wait for more data from the device
+        }
+    }
+
+    /**
+     * Remove garbage from the response
+     */
+    private cleanResponse(text: string) {
+        text = text
+            .trim()
+            //remove that pesky "may not be interruptible" warning
+            .replace(/^warning:\s*operation\s+may\s+not\s+be\s+interruptible.\s*\r?\n/i, '')
+            .trim();
+        return text;
     }
 
     /**
@@ -125,7 +160,7 @@ export class TelnetRequestPipeline {
             let request = {
                 executeCommand: executeCommand,
                 onComplete: (data: string) => {
-                    logger.debug(`execute result`, { command, waitForPrompt, data });
+                    logger.debug(`execute result`, { command, waitForPrompt, data }, data ? util.fence(data) : '');
                     resolve(data);
                 },
                 waitForPrompt: waitForPrompt
@@ -157,6 +192,7 @@ export class TelnetRequestPipeline {
      * Internal request processing function
      */
     private process() {
+        //return if we're already processing or if we have no requests
         if (this.isProcessing || !this.hasRequests) {
             return;
         }
