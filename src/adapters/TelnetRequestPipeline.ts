@@ -135,10 +135,8 @@ export class TelnetRequestPipeline {
      */
     private cleanResponse(text: string) {
         text = text
-            .trim()
             //remove that pesky "may not be interruptible" warning
-            .replace(/^warning:\s*operation\s+may\s+not\s+be\s+interruptible.\s*\r?\n/i, '')
-            .trim();
+            .replace(/[ \t]*warning:\s*operation\s+may\s+not\s+be\s+interruptible.[ \t]*\r?\n?/i, '');
         return text;
     }
 

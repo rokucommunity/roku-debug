@@ -66,7 +66,8 @@ describe('RequestPipeline', () => {
         expect(
             await pipeline.executeCommand('doSomething', true)
         ).to.eql(
-            'some text'
+            //we force debugger prompts onto their own line, so the leading space before prompt and the injected newline should be here too
+            'some text \n'
         );
     });
 
@@ -79,7 +80,8 @@ describe('RequestPipeline', () => {
         expect(
             await pipeline.executeCommand('doSomething', true)
         ).to.eql(
-            'some text'
+            //we force debugger prompts onto their own line, so the leading space before prompt and the injected newline should be here too
+            'some text \n'
         );
     });
 
@@ -89,38 +91,38 @@ describe('RequestPipeline', () => {
         expect(
             await pipeline.executeCommand('get response', true)
         ).to.eql(
-            'response 1'
+            'response 1\n'
         );
     });
 
     it('only returns the data from before the first debugger prompt', async () => {
         handleData(prompt);
-        socket.messageQueue.push(`
-            response 1
-            Brightscript Debugger>
-            response 2
-            Brightscript Debugger>
-        `);
+        socket.messageQueue.push(
+            'response 1\n' +
+            'Brightscript Debugger>\n' +
+            'response 2\n' +
+            'Brightscript Debugger>'
+        );
 
         //should get the first response, and the second should be discarded
-        expect(
+        expect(dedent(
             await pipeline.executeCommand('get response', true)
-        ).to.eql(
+        )).to.eql(
             'response 1'
         );
 
-        socket.messageQueue.push(`
-            response 3
-            Brightscript Debugger>
-            response 4
-            Brightscript Debugger>
-        `);
+        socket.messageQueue.push(
+            'response 3\n' +
+            'Brightscript Debugger>\n' +
+            'response 4\n' +
+            'Brightscript Debugger>\n'
+        );
 
         //since "response 2 was discarded", we should be given "response 3"
         expect(
             await pipeline.executeCommand('get response', true)
         ).to.eql(
-            'response 3'
+            'response 3\n'
         );
     });
 
@@ -130,7 +132,7 @@ describe('RequestPipeline', () => {
         expect(
             await pipeline.executeCommand('print type(true)', true)
         ).to.eql(
-            'boolean'
+            '\nboolean\n'
         );
 
         //small timeout to let the remaining logging be emitted
@@ -154,7 +156,7 @@ describe('RequestPipeline', () => {
         expect(
             await pipeline.executeCommand('print type(true)', true)
         ).to.eql(
-            'boolean'
+            '\nboolean\n'
         );
 
         //small timeout to let the remaining logging be emitted
@@ -186,7 +188,7 @@ describe('RequestPipeline', () => {
                 await pipeline.executeCommand('commandDoesNotMatter', true)
             ).to.equal(
                 'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\r\n' +
-                'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld'
+                'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld\r\n\r\n'
             );
         });
 
@@ -202,7 +204,7 @@ describe('RequestPipeline', () => {
             expect(
                 await pipeline.executeCommand('commandDoesNotMatter', true)
             ).to.equal(
-                'Invalid'
+                'Invalid\r\n'
             );
         });
 
@@ -223,7 +225,7 @@ describe('RequestPipeline', () => {
             expect(
                 await pipeline.executeCommand('commandDoesNotMatter', true)
             ).to.equal(
-                'roAssociativeArray'
+                'roAssociativeArray\r\n\r\n'
             );
         });
     });

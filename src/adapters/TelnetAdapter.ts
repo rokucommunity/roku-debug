@@ -453,7 +453,7 @@ export class TelnetAdapter {
         }
         return this.resolve('stackTrace', async () => {
             //perform a request to load the stack trace
-            let responseText = await this.requestPipeline.executeCommand('bt', true);
+            let responseText = (await this.requestPipeline.executeCommand('bt', true)).trim();
             let regexp = /#(\d+)\s+(?:function|sub)\s+([\$\w\d]+).*\s+file\/line:\s+(.*)\((\d+)\)/ig;
             let matches: RegExpExecArray;
             let frames: StackFrame[] = [];
@@ -516,7 +516,7 @@ export class TelnetAdapter {
             let vars = [] as string[];
 
             data = await this.requestPipeline.executeCommand(`var`, true);
-            let splitData = data.split('\n');
+            let splitData = data.trim().split('\n');
 
             for (const line of splitData) {
                 let match: RegExpExecArray;
@@ -576,6 +576,8 @@ export class TelnetAdapter {
         }
 
         logger.info('expression details', { data });
+        //remove excess whitespace
+        data = data.trim();
         if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
             data = data.trim().replace(/--string-wrap--/g, '');
             //add an escape character in front of any existing quotes
@@ -1014,7 +1016,7 @@ export class TelnetAdapter {
         return this.resolve('threads', async () => {
             let data = await this.requestPipeline.executeCommand('threads', true);
 
-            let dataString = data.toString();
+            let dataString = data.toString().trim();
             let matches = /^\s+(\d+\*)\s+(.*)\((\d+)\)\s+(.*)/gm.exec(dataString);
             let threads: Thread[] = [];
             if (matches) {
@@ -1068,7 +1070,7 @@ export class TelnetAdapter {
         if (this.requestPipeline) {
             let commandsExecuted = 0;
             do {
-                let data = await this.requestPipeline.executeCommand(`exit`, false);
+                await this.requestPipeline.executeCommand(`exit`, false);
                 // This seems to work without the delay but I wonder about slower devices
                 // await setTimeout[Object.getOwnPropertySymbols(setTimeout)[0]](100);
                 commandsExecuted++;
