@@ -78,12 +78,25 @@ export class TelnetRequestPipeline {
 
         //we are at a debugger prompt if the last text we received was "Brightscript Debugger>"
         this.isAtDebuggerPrompt = util.endsWithDebuggerPrompt(this.unhandledText);
+
         if (this.isProcessing) {
             this.handleDataForIsProcessing();
         } else {
-            //emit the unhandled text
+            this.handleDataForNotIsProcessing();
+        }
+    }
+
+    private handleDataForNotIsProcessing() {
+        if (
+            //ends with newline
+            /\n\s*/.exec(this.unhandledText) ||
+            //we're at a debugger prompt
+            this.isAtDebuggerPrompt
+        ) {
             this.emit('unhandled-console-output', this.unhandledText);
             this.unhandledText = '';
+        } else {
+            // buffer was split and was not the result of a prompt, save the partial line and wait for more output
         }
     }
 

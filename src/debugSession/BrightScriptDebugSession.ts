@@ -723,6 +723,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } catch (error) {
             this.logger.error(`[nextRequest] Error running '${BrightScriptDebugSession.prototype.nextRequest.name}()'`, error);
         }
+        this.sendResponse(response);
     }
 
     protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
@@ -986,6 +987,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } else if (result.highLevelType === 'function') {
                     v = new Variable(result.name, result.value);
                 } else {
+                    //all other cases, but mostly for HighLevelType.unknown
                     v = new Variable(result.name, result.value);
                 }
             }

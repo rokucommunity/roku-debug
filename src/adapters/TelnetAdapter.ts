@@ -968,15 +968,17 @@ export class TelnetAdapter {
      * Get the type of the provided expression
      * @param expression
      */
-    public async getVariableType(expression) {
+    public async getVariableType(expression: string) {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get variable type: debugger is not paused');
         }
         expression = `Type(${expression})`;
-        let data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
+        return this.resolve(`${expression}`, async () => {
+            let data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
 
-        //remove whitespace
-        return data?.trim() ?? null;
+            //remove whitespace
+            return data?.trim() ?? null;
+        });
     }
 
     /**
