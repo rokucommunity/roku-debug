@@ -1,5 +1,7 @@
+import { AddressInfo } from 'net';
 import type { FileEntry } from 'roku-deploy';
 import type { DebugProtocol } from 'vscode-debugprotocol';
+import type { LogLevel } from './logging';
 
 /**
  * This interface should always match the schema found in the mock-debug extension manifest.
@@ -40,6 +42,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * An object of bs_const values to be updated in the manifest before side loading.
      */
     bsConst?: Record<string, boolean>;
+
     /**
      * Port to access component libraries.
      */
@@ -163,6 +166,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * This should generally be set to "${cwd}/.roku-deploy-staging", but that's ultimately up to the debug client.
      */
     stagingFolderPath?: string;
+
+    /**
+     * What level of debug server's internal logging should be performed in the debug session
+     */
+    logLevel: LogLevel;
 }
 
 export interface ComponentLibraryConfiguration {

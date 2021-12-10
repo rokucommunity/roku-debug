@@ -10,6 +10,7 @@ import type { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
+import { logger } from '../logging';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -35,6 +36,8 @@ export class ProjectManager {
     public launchConfiguration: {
         enableSourceMaps?: boolean;
     };
+
+    private logger = logger.createLogger(`[${ProjectManager.name}]`);
 
     public mainProject: Project;
     public componentLibraryProjects = [] as ComponentLibraryProject[];
@@ -256,6 +259,8 @@ export class Project {
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
 
+    private logger = logger.createLogger(`[${ProjectManager.name}]`);
+
     public async stage() {
         let rd = new rokuDeploy.RokuDeploy();
         if (!this.fileMappings) {
@@ -374,7 +379,7 @@ export class Project {
         }
         try {
             await fsExtra.copy(this.raleTrackerTaskFileLocation, s`${this.stagingFolderPath}/components/TrackerTask.xml`);
-            util.logDebug('Tracker task successfully injected');
+            this.logger.log('Tracker task successfully injected');
             // Search for the tracker task entry injection point
             const trackerReplacementResult = await replaceInFile({
                 files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
@@ -426,7 +431,7 @@ export class Project {
                     promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
                 }
                 await Promise.all(promises);
-                util.logDebug('RDB OnDeviceComponent successfully injected');
+                this.logger.log('RDB OnDeviceComponent successfully injected');
             }
 
             // Search for the tracker task entry injection point

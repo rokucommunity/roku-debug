@@ -35,10 +35,18 @@ describe('BrightScriptDebugSession', () => {
     //session of type any so we can do private-ish things
     let s: any;
 
-    let rokuAdapter: any;
     let launchConfiguration: LaunchConfiguration;
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
+    let rokuAdapter: any = {
+        on: () => {
+            return () => {
+            };
+        },
+        activate: () => Promise.resolve(),
+        registerSourceLocator: (a, b) => { },
+        setConsoleOutput: (a) => { }
+    };
     beforeEach(() => {
         sinon.restore();
 

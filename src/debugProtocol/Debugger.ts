@@ -13,9 +13,11 @@ import {
 } from './responses';
 import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
-import { util } from '../util';
+import { logger } from '../logging';
 
 export class Debugger {
+
+    private logger = logger.createLogger(`[debugProtocol/${Debugger.name}]`);
 
     public get isStopped(): boolean {
         return this.stopped;
@@ -110,27 +112,28 @@ export class Debugger {
     }
 
     public async connect(): Promise<boolean> {
-        util.logDebug('start - SocketDebugger');
+        this.logger.log('connect', this.options);
         const debugSetupEnd = 'total socket debugger setup time';
         console.time(debugSetupEnd);
 
         // Create a new TCP client.`
         this.controllerClient = new Net.Socket();
         // Send a connection request to the server.
-        util.logDebug('port', this.options.controllerPort, 'host', this.options.host);
+
         this.controllerClient.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
             // If there is no error, the server has accepted the request and created a new
             // socket dedicated to us.
-            util.logDebug('TCP connection established with the server.');
+            this.logger.log('TCP connection established with the server.');
 
             // The client can also receive data from the server by reading from its socket.
             // The client can now send data to the server by writing to its socket.
             let buffer = new SmartBuffer({ size: Buffer.byteLength(Debugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(Debugger.DEBUGGER_MAGIC).toBuffer();
-            util.logDebug('Sending magic to server');
+            this.logger.log('Sending magic to server');
             this.controllerClient.write(buffer);
         });
 
         this.controllerClient.on('data', (buffer) => {
+            this.logger
             if (this.unhandledData) {
                 this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
             } else {
@@ -141,13 +144,13 @@ export class Debugger {
         });
 
         this.controllerClient.on('end', () => {
-            util.logDebug('Requested an end to the TCP connection');
+            this.logger.log('TCP connection closed');
             this.shutdown('app-exit');
         });
 
         // Don't forget to catch error, for your own sake.
-        this.controllerClient.once('error', (err) => {
-            console.error(`Error: ${err}`);
+        this.controllerClient.once('error', (error) => {
+            console.error(`TCP connection error`, error);
             this.shutdown('close');
         });
 
@@ -385,25 +388,25 @@ export class Debugger {
     private verifyHandshake(debuggerHandshake: HandshakeResponse): boolean {
         const magicIsValid = (Debugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
         if (magicIsValid) {
-            util.logDebug('Magic is valid.');
+            this.logger.log('Magic is valid.');
             this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion].join('.');
-            util.logDebug('Protocol Version:', this.protocolVersion);
+            this.logger.log('Protocol Version:', this.protocolVersion);
             let handshakeVerified = true;
 
             if (semver.satisfies(this.protocolVersion, this.supportedVersionRange)) {
-                util.logDebug('supported');
+                this.logger.log('supported');
                 this.emit('protocol-version', {
                     message: `Protocol Version ${this.protocolVersion} is supported!`,
                     errorCode: PROTOCOL_ERROR_CODES.SUPPORTED
                 });
             } else if (semver.gtr(this.protocolVersion, this.supportedVersionRange)) {
-                util.logDebug('not tested');
+                this.logger.log('not tested');
                 this.emit('protocol-version', {
                     message: `Protocol Version ${this.protocolVersion} has not been tested and my not work as intended.\nPlease open any issues you have with this version to https://github.com/rokucommunity/roku-debug/issues`,
                     errorCode: PROTOCOL_ERROR_CODES.NOT_TESTED
                 });
             } else {
-                util.logDebug('not supported');
+                this.logger.log('not supported');
                 this.emit('protocol-version', {
                     message: `Protocol Version ${this.protocolVersion} is not supported.\nIf you believe this is an error please open an issue at https://github.com/rokucommunity/roku-debug/issues`,
                     errorCode: PROTOCOL_ERROR_CODES.NOT_SUPPORTED
@@ -415,7 +418,7 @@ export class Debugger {
             this.emit('handshake-verified', handshakeVerified);
             return handshakeVerified;
         } else {
-            util.logDebug('Closing connection due to bad debugger magic', debuggerHandshake.magic);
+            this.logger.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
             this.emit('handshake-verified', false);
             this.shutdown('close');
             return false;
@@ -426,10 +429,10 @@ export class Debugger {
         // Create a new TCP client.
         this.ioClient = new Net.Socket();
         // Send a connection request to the server.
-        util.logDebug('Connect to IO Port: port', connectIoPortResponse.data, 'host', this.options.host);
+        this.logger.log('Connect to IO Port: port', connectIoPortResponse.data, 'host', this.options.host);
         this.ioClient.connect({ port: connectIoPortResponse.data, host: this.options.host }, () => {
             // If there is no error, the server has accepted the request
-            util.logDebug('TCP connection established with the IO Port.');
+            this.logger.log('TCP connection established with the IO Port.');
             this.connectedToIoPort = true;
 
             let lastPartialLine = '';
@@ -451,13 +454,13 @@ export class Debugger {
 
             this.ioClient.on('end', () => {
                 this.ioClient.end();
-                util.logDebug('Requested an end to the IO connection');
+                this.logger.log('Requested an end to the IO connection');
             });
 
             // Don't forget to catch error, for your own sake.
             this.ioClient.once('error', (err) => {
                 this.ioClient.end();
-                util.logDebug(`Error: ${err}`);
+                this.logger.log(`Error: ${err}`);
             });
 
             this.emit('connected', true);
@@ -471,7 +474,7 @@ export class Debugger {
 
         if (update.updateType === 'ALL_THREADS_STOPPED') {
             if (!this.firstRunContinueFired && !this.options.stopOnEntry) {
-                util.logDebug('Sending first run continue command');
+                this.logger.log('Sending first run continue command');
                 await this.continue();
                 this.firstRunContinueFired = true;
             } else if (stopReason === 'RUNTIME_ERROR' || stopReason === 'BREAK' || stopReason === 'STOP_STATEMENT') {

@@ -147,39 +147,10 @@ class Util {
     public _debugSession: BrightScriptDebugSession;
 
     /**
-     * Send debug server messages to the BrightScript Debug Log channel, as well as writing to console.debug
-     */
-    public logDebug(...args: any[]) {
-        args = Array.isArray(args) ? args : [];
-        let timestamp = `[${dateFormat(new Date(), 'HH:mm:ss.l')}]`;
-        let messages = [];
-
-        for (let arg of args) {
-            if (arg instanceof Error) {
-                messages.push(JSON.stringify({
-                    message: arg.message,
-                    name: arg.name,
-                    stack: arg.stack.toString()
-                }, null, 4));
-            } else {
-                messages.push(arg.toString());
-            }
-        }
-        let text = messages.join(', ');
-        if (this._debugSession) {
-            this._debugSession.sendEvent(new DebugServerLogOutputEvent(`${timestamp} ${text}`));
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        console.log(timestamp, ...args);
-    }
-
-    /**
      * Write to the standard brightscript output log so users can see it. (This also writes to the debug server output channel, and the console)
      * @param message
      */
     public log(message: string) {
-        this.logDebug(message);
         if (this._debugSession) {
             this._debugSession.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
         }
@@ -375,6 +346,12 @@ class Util {
             }
         }
         return false;
+    }
+
+    public sleep(ms: number) {
+        return new Promise((resolve) => {
+            setTimeout(resolve, ms);
+        });
     }
 }
 

@@ -1,6 +1,6 @@
 {
     "name": "roku-debug",
-    "version": "0.8.5",
+    "version": "0.8.7",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
@@ -82,15 +82,17 @@
         "typescript": "^4.4.4"
     },
     "dependencies": {
+        "@rokucommunity/logger": "^0.1.0",
         "brighterscript": "^0.41.2",
         "dateformat": "^4.6.3",
         "eol": "^0.9.1",
+        "eventemitter3": "^4.0.7",
         "find-in-files": "^0.5.0",
         "fs-extra": "^10.0.0",
         "natural-orderby": "^2.0.3",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
-        "roku-deploy": "^3.5.0",
+        "roku-deploy": "^3.5.2",
         "semver": "^7.3.5",
         "serialize-error": "^8.1.0",
         "smart-buffer": "^4.2.0",

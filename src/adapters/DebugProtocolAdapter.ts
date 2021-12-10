@@ -10,6 +10,7 @@ import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
+import { logger } from '../logging';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -34,6 +35,8 @@ export class DebugProtocolAdapter {
             this.emit('rendezvous', output);
         });
     }
+
+    private logger = logger.createLogger(`[${DebugProtocolAdapter.name}]`);
 
     public connected: boolean;
 
@@ -217,14 +220,14 @@ export class DebugProtocolAdapter {
 
             this.connected = await this.socketDebugger.connect();
 
-            util.logDebug(`Closing telnet connection used for compile errors`);
+            this.logger.log(`Closing telnet connection used for compile errors`);
             if (this.compileClient) {
                 this.compileClient.removeAllListeners();
                 this.compileClient.destroy();
                 this.compileClient = undefined;
             }
 
-            util.logDebug(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
+            this.logger.log(`Connected to device`, { host: this.host, connected: this.connected });
             this.emit('connected', this.connected);
 
             // Listen for the app exit event
@@ -274,23 +277,28 @@ export class DebugProtocolAdapter {
 
             //if the connection fails, reject the connect promise
             this.compileClient.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message}`));
+                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message} `));
             });
-
+            this.logger.info('Connecting via telnet to gether compile info', { host: this.host });
             this.compileClient.connect(8085, this.host, () => {
-                util.logDebug(`+++++++++++ CONNECTED TO DEVICE ${this.host} VIA TELNET FOR COMPILE INFO +++++++++++`);
+                this.logger.log(`Connected via telnet to gather compile info`, { host: this.host });
             });
 
+            this.logger.debug('Waiting for the compile client to settle');
             await this.settle(this.compileClient, 'data');
+            this.logger.debug('Compile client has settled');
 
             let lastPartialLine = '';
             this.compileClient.on('data', (buffer) => {
                 let responseText = buffer.toString();
+                this.logger.info('CompileClient received data', { responseText });
                 if (!responseText.endsWith('\n')) {
+                    this.logger.debug('Buffer was split');
                     // buffer was split, save the partial line
                     lastPartialLine += responseText;
                 } else {
                     if (lastPartialLine) {
+                        this.logger.debug('Previous response was split, so merging last response with this one', { lastPartialLine, responseText });
                         // there was leftover lines, join the partial lines back together
                         responseText = lastPartialLine + responseText;
                         lastPartialLine = '';
@@ -412,6 +420,8 @@ export class DebugProtocolAdapter {
      * @param expression
      */
     public async getVariable(expression: string, frameId: number, withChildren = true) {
+        const logger = this.logger.createLogger(' getVariable');
+        logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
