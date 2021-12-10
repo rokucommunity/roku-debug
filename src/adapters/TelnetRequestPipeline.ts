@@ -2,6 +2,7 @@ import type { Socket } from 'net';
 import * as EventEmitter from 'eventemitter3';
 import { util } from '../util';
 import { logger } from '../logging';
+import { Deferred } from 'brighterscript';
 
 export class TelnetRequestPipeline {
     public constructor(
@@ -79,6 +80,14 @@ export class TelnetRequestPipeline {
         //we are at a debugger prompt if the last text we received was "Brightscript Debugger>"
         this.isAtDebuggerPrompt = util.endsWithDebuggerPrompt(this.unhandledText);
 
+        if (!this.isAtDebuggerPrompt && util.endsWithThreadAttachedText(this.unhandledText)) {
+            //GIANT HACK!
+            this.logger.log('Thread attached was possibly missing trailing debug prompt. Print an empty string which forces another debugger prompt.');
+            this.client.write('print ""\r\n');
+            //nothing more to do, let next call handle it.
+            return;
+        }
+
         if (this.isProcessing) {
             this.handleDataForIsProcessing();
         } else {
@@ -153,50 +162,59 @@ export class TelnetRequestPipeline {
      * @param silent - if true, the command will be hidden from the output
      */
     public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
-        const logger = this.logger.createLogger(`[Command ${this.commandIdSequence++}]`);
-        logger.debug(`execute`, { command, waitForPrompt });
-        return new Promise<string>((resolve, reject) => {
-            let executeCommand = () => {
-                let commandText = `${command}\r\n`;
-                if (!silent) {
-                    this.emit('console-output', command);
-                }
-                this.client.write(commandText);
-                if (waitForPrompt) {
-                    // The act of executing this command means we are no longer at the debug prompt
-                    this.isAtDebuggerPrompt = false;
-                }
-            };
+        const commandId = this.commandIdSequence++;
+        const logger = this.logger.createLogger(`[Command ${commandId}]`);
+        logger.debug(`execute`, { command: command, waitForPrompt });
+        let request = {
+            deferred: new Deferred<string>(),
+            id: commandId,
+            waitForPrompt,
+            forceExecute,
+            silent,
+            commandText: command,
+            executeCommand: () => {
+                try {
+                    let commandText = `${command}\r\n`;
+                    if (!silent) {
+                        this.emit('console-output', command);
+                    }
 
-            let request = {
-                executeCommand: executeCommand,
-                onComplete: (data: string) => {
-                    logger.debug(`execute result`, { command, waitForPrompt, data }, data ? util.fence(data) : '');
-                    resolve(data);
-                },
-                waitForPrompt: waitForPrompt
-            };
+                    this.client.write(commandText);
 
-            if (!waitForPrompt) {
-                if (!this.isProcessing || forceExecute) {
-                    //fire and forget the command
-                    request.executeCommand();
-                    //the command doesn't care about the output, resolve it immediately
-                    request.onComplete(undefined);
-                } else {
-                    // Skip this request as the device is not ready to accept the command or it can not be run at any time
+                    if (waitForPrompt) {
+                        // The act of executing this command means we are no longer at the debug prompt
+                        this.isAtDebuggerPrompt = false;
+                    }
+                } catch (e) {
+                    logger.error('Error executing command', e);
+                    request.deferred.reject(new Error('Error executing command'));
                 }
-            } else {
-                this.requests.push(request);
-                if (this.isAtDebuggerPrompt) {
-                    //start processing since we are already at a debug prompt (safe to call multiple times)
-                    this.process();
-                } else {
-                    // do not run the command until the device is at a debug prompt.
-                    // this will be detected in the data listener in the connect function
-                }
+            },
+            onComplete: (data: string) => {
+                logger.debug(`execute result`, { ...request, data }, data ? util.fence(data) : '');
+                request.deferred.resolve(data);
             }
-        });
+        };
+
+        if (!waitForPrompt) {
+            if (!this.isProcessing || forceExecute) {
+                logger.debug('fire and forget the command');
+                request.executeCommand();
+                //the command doesn't care about the output, resolve it immediately
+                request.onComplete(undefined);
+            } else {
+                logger.debug('Skip this request as the device is not ready to accept the command or it can not be run at any time', { command: command });
+            }
+        } else {
+            this.requests.push(request);
+            if (this.isAtDebuggerPrompt) {
+                logger.debug('start processing since we are already at a debug prompt (safe to call multiple times)');
+                this.process();
+            } else {
+                logger.debug('Do not run the command until the device is at a debug prompt.');
+            }
+        }
+        return request.deferred.promise;
     }
 
     /**
@@ -205,11 +223,13 @@ export class TelnetRequestPipeline {
     private process() {
         //return if we're already processing or if we have no requests
         if (this.isProcessing || !this.hasRequests) {
+            this.logger.log('do not process, because', { isProcessing: this.isProcessing, hasRequests: this.hasRequests });
             return;
         }
 
         //get the oldest command
         let nextRequest = this.requests.shift();
+        this.logger.log('Process the next request', { remainingRequests: this.requests.length, nextRequest });
         this.currentRequest = nextRequest;
 
         //run the request. the data listener will handle launching the next request once this one has finished processing

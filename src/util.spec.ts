@@ -298,5 +298,55 @@ describe('Util', () => {
                 util.removeThreadAttachedText(text)
             ).to.eql(text);
         });
+
+        it('matches truncated file paths', () => {
+            const text = `
+                Thread attached: ...Modules/MainMenu/MainMenu.brs(309)   renderTracking = m.top.renderTracking
+                
+                Brightscript Debugger>
+            `;
+            expect(
+                util.removeThreadAttachedText('')
+                //removes it all
+            ).to.eql('');
+        });
+    });
+
+    describe('endsWithThreadAttachedText', () => {
+        it('matches single line', () => {
+            expect(
+                util.endsWithThreadAttachedText(`Thread attached: pkg:/source/main.brs(6)                 screen.show()`)
+            ).to.be.true;
+        });
+
+        it('matches for leading whitespace line', () => {
+            expect(
+                util.endsWithThreadAttachedText(`\n\r\n   Thread attached: pkg:/source/main.brs(6)                 screen.show()`)
+            ).to.be.true;
+        });
+
+        it('matches for leading data', () => {
+            expect(
+                util.endsWithThreadAttachedText(`some stuff...\r\n   Thread attached: pkg:/source/main.brs(6)                 screen.show()`)
+            ).to.be.true;
+        });
+
+        it('matches for trailing whitespace', () => {
+            expect(
+                util.endsWithThreadAttachedText(`Thread attached: pkg:/source/main.brs(6)                 screen.show()\r\n   `)
+            ).to.be.true;
+        });
+
+        it('does not match when stuff comes after', () => {
+            expect(
+                util.endsWithThreadAttachedText(`Thread attached: pkg:/source/main.brs(6)                 screen.show()\r\n   Brightscript Debugger>\r\n`)
+            ).to.be.false;
+        });
+
+        it('works for special case', () => {
+            expect(
+                util.endsWithThreadAttachedText('Thread attached: ...Modules/MainMenu/MainMenu.brs(309)   renderTracking = m.top.renderTracking\r\n\r\n')
+            ).to.be.true;
+        });
     });
 });

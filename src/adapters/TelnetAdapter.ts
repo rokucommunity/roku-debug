@@ -320,6 +320,7 @@ export class TelnetAdapter {
                             }
                         }
                     } else {
+                        this.logger.debug('responseText does not end with debugger prompt. isAtDebuggerPrompt = false', { responseText });
                         this.isAtDebuggerPrompt = false;
                     }
                 }
@@ -537,7 +538,7 @@ export class TelnetAdapter {
      * @param expression
      */
     public async getVariable(expression: string) {
-        const logger = this.logger.createLogger(' getVariable');
+        const logger = this.logger.createLogger('[getVariable]');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');

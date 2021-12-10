@@ -793,8 +793,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } else {
                 logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
             }
+            logger.info('end', { response });
             this.sendResponse(response);
-            logger.info('end');
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });
         }
