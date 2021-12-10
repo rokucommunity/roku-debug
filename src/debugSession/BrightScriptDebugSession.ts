@@ -803,6 +803,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private evaluateRequestPromise = Promise.resolve();
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
+        if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
+            const expression = args.expression.replace(/^\s*>\s*/, '');
+            this.logger.log('Sending raw telnet command...I hope you know what you\'re doing', { expression });
+            (this.rokuAdapter as TelnetAdapter).requestPipeline.client.write(`${expression}\r\n`);
+            //clear the current request so future requests can run
+            // ((this.rokuAdapter as TelnetAdapter).requestPipeline as any).currentRequest = undefined;
+            this.sendResponse(response);
+            return;
+        }
+
         try {
             let deferred = defer<any>();
 

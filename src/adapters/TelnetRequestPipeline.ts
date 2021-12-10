@@ -179,7 +179,11 @@ export class TelnetRequestPipeline {
                         this.emit('console-output', command);
                     }
 
-                    this.client.write(commandText);
+                    if (commandText.startsWith('for each vscodeLoopKey in request[\"context\"].keys()')) {
+                        console.log('aaa');
+                    } else {
+                        this.client.write(commandText);
+                    }
 
                     if (waitForPrompt) {
                         // The act of executing this command means we are no longer at the debug prompt
