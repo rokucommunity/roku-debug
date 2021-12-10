@@ -187,7 +187,7 @@ export class TelnetRequestPipeline {
                     }
                 } catch (e) {
                     logger.error('Error executing command', e);
-                    request.deferred.reject(new Error('Error executing command'));
+                    request.deferred.reject('Error executing command');
                 }
             },
             onComplete: (data: string) => {
