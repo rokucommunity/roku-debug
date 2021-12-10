@@ -23,7 +23,8 @@ export class Debugger {
         return this.stopped;
     }
 
-    public supportedVersionRange = '2.0.0||2.5.0';
+    //TODO fix this, we need to support a range of versions, and that logic happens lower down.
+    public supportedVersionRange = '2.0.0';
 
     constructor(
         options: ConstructorOptions
@@ -178,8 +179,8 @@ export class Debugger {
         return result;
     }
 
-    public async pause() {
-        if (!this.stopped) {
+    public async pause(force = false) {
+        if (!this.stopped || force) {
             return this.makeRequest<Response>(new SmartBuffer({ size: 12 }), COMMANDS.STOP);
         }
     }
@@ -287,8 +288,7 @@ export class Debugger {
                     resolve(data);
                 }
             });
-
-            this.controllerClient.write(buffer.toBuffer());
+            this.controllerClient?.write(buffer.toBuffer());
         });
     }
 
