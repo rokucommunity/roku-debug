@@ -804,11 +804,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
         if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
+            this.clearState();
             const expression = args.expression.replace(/^\s*>\s*/, '');
-            this.logger.log('Sending raw telnet command...I hope you know what you\'re doing', { expression });
+            this.logger.log('Sending raw telnet command...I sure hope you know what you\'re doing', { expression });
             (this.rokuAdapter as TelnetAdapter).requestPipeline.client.write(`${expression}\r\n`);
-            //clear the current request so future requests can run
-            // ((this.rokuAdapter as TelnetAdapter).requestPipeline as any).currentRequest = undefined;
             this.sendResponse(response);
             return;
         }
@@ -871,7 +870,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             await this.rokuAdapter.stepOut(-1);
 
                         } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
-                            await (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, false);
+                            await (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, { waitForPrompt: false, insertAtFront: true });
 
                         } else {
                             const promise = this.rokuAdapter.evaluate(args.expression);

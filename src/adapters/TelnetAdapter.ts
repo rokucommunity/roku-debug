@@ -308,7 +308,7 @@ export class TelnetAdapter {
                             this.logger.log('This debugger is flagged to be skipped');
                             this.isInMicroDebugger = false;
                             this.isNextBreakpointSkipped = false;
-                            void this.requestPipeline.executeCommand('c', false, false, false);
+                            void this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
                         } else {
                             if (this.isActivated && this.isAtDebuggerPrompt === false) {
                                 this.isAtDebuggerPrompt = true;
@@ -385,19 +385,19 @@ export class TelnetAdapter {
     public stepOver() {
         this.logger.log('stepOver');
         this.clearCache();
-        return this.requestPipeline.executeCommand('over', false);
+        return this.requestPipeline.executeCommand('over', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepInto() {
         this.logger.log('stepInto');
         this.clearCache();
-        return this.requestPipeline.executeCommand('step', false);
+        return this.requestPipeline.executeCommand('step', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepOut() {
         this.logger.log('stepOut');
         this.clearCache();
-        return this.requestPipeline.executeCommand('out', false);
+        return this.requestPipeline.executeCommand('out', { waitForPrompt: false, insertAtFront: true });
 
     }
 
@@ -407,7 +407,7 @@ export class TelnetAdapter {
     public continue() {
         this.logger.log('continue');
         this.clearCache();
-        return this.requestPipeline.executeCommand('c', false);
+        return this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
     }
 
     /**
@@ -416,8 +416,8 @@ export class TelnetAdapter {
     public pause() {
         this.logger.log('pause');
         this.clearCache();
-        //send the kill signal, which breaks into debugger mode
-        return this.requestPipeline.executeCommand('\x03;', false, true);
+        //send the kill signal, which breaks into debugger mode. This gets written immediately, regardless of debugger prompt status.
+        this.requestPipeline.write('\x03;');
     }
 
     /**
@@ -441,7 +441,7 @@ export class TelnetAdapter {
         //clear the cache (we don't know what command the user entered)
         this.clearCache();
         //don't wait for the output...we don't know what command the user entered
-        let responseText = await this.requestPipeline.executeCommand(command, true);
+        let responseText = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
         //we know that if we got a response, we are back at a debugger prompt
         this.isAtDebuggerPrompt = true;
         return responseText;
@@ -454,7 +454,7 @@ export class TelnetAdapter {
         }
         return this.resolve('stackTrace', async () => {
             //perform a request to load the stack trace
-            let responseText = (await this.requestPipeline.executeCommand('bt', true)).trim();
+            let responseText = (await this.requestPipeline.executeCommand('bt', { waitForPrompt: true })).trim();
             let regexp = /#(\d+)\s+(?:function|sub)\s+([\$\w\d]+).*\s+file\/line:\s+(.*)\((\d+)\)/ig;
             let matches: RegExpExecArray;
             let frames: StackFrame[] = [];
@@ -516,7 +516,7 @@ export class TelnetAdapter {
             let data: string;
             let vars = [] as string[];
 
-            data = await this.requestPipeline.executeCommand(`var`, true);
+            data = await this.requestPipeline.executeCommand(`var`, { waitForPrompt: true });
             let splitData = data.trim().split('\n');
 
             for (const line of splitData) {
@@ -550,7 +550,7 @@ export class TelnetAdapter {
         let data: string;
         //if the expression type is a string, we need to wrap the expression in quotes BEFORE we run the print so we can accurately capture the full string value
         if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
-            data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, true);
+            data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, { waitForPrompt: true });
 
             //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
         } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
@@ -561,7 +561,7 @@ export class TelnetAdapter {
                 `   vscodeLoopItem :` +
                 ` end for`
             ].join(';');
-            data = await this.requestPipeline.executeCommand(command, true);
+            data = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
         } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
             const command = [
                 `for each vscodeLoopKey in ${expression}.keys(): print` +
@@ -571,9 +571,9 @@ export class TelnetAdapter {
                 `   ${expression}[vscodeLoopKey] :` +
                 ' end for'
             ].join(';');
-            data = await this.requestPipeline.executeCommand(command, true);
+            data = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
         } else {
-            data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
+            data = await this.requestPipeline.executeCommand(`print ${expression}`, { waitForPrompt: true });
         }
 
         logger.info('expression details', { data });
@@ -977,7 +977,7 @@ export class TelnetAdapter {
         }
         expression = `Type(${expression})`;
         return this.resolve(`${expression}`, async () => {
-            let data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
+            let data = await this.requestPipeline.executeCommand(`print ${expression}`, { waitForPrompt: true });
 
             //remove whitespace
             return data?.trim() ?? null;
@@ -1015,7 +1015,7 @@ export class TelnetAdapter {
             return [];
         }
         return this.resolve('threads', async () => {
-            let data = await this.requestPipeline.executeCommand('threads', true);
+            let data = await this.requestPipeline.executeCommand('threads', { waitForPrompt: true });
 
             let dataString = data.toString().trim();
             let matches = /^\s+(\d+\*)\s+(.*)\((\d+)\)\s+(.*)/gm.exec(dataString);
@@ -1062,21 +1062,6 @@ export class TelnetAdapter {
         this.emitter = undefined;
         //needs to be async to match the DebugProtocolAdapter implementation
         return Promise.resolve();
-    }
-
-    /**
-     * Make sure any active Brightscript Debugger threads are exited
-     */
-    public async exitActiveBrightscriptDebugger() {
-        if (this.requestPipeline) {
-            let commandsExecuted = 0;
-            do {
-                await this.requestPipeline.executeCommand(`exit`, false);
-                // This seems to work without the delay but I wonder about slower devices
-                // await setTimeout[Object.getOwnPropertySymbols(setTimeout)[0]](100);
-                commandsExecuted++;
-            } while (commandsExecuted < 10);
-        }
     }
 
     // #region Rendezvous Tracker pass though functions

@@ -1,7 +1,8 @@
 import type { Socket } from 'net';
 import * as EventEmitter from 'eventemitter3';
 import { util } from '../util';
-import { logger } from '../logging';
+import type { Logger } from '../logging';
+import { createLogger } from '../logging';
 import { Deferred } from 'brighterscript';
 
 export class TelnetRequestPipeline {
@@ -11,21 +12,21 @@ export class TelnetRequestPipeline {
 
     }
 
-    private logger = logger.createLogger(`[${TelnetRequestPipeline.name}]`);
+    private logger = createLogger(`[${TelnetRequestPipeline.name}]`);
 
-    private requests: RequestPipelineRequest[] = [];
+    private commands: Command[] = [];
 
-    private isAtDebuggerPrompt = false;
+    public isAtDebuggerPrompt = false;
 
     public get isProcessing() {
-        return this.currentRequest !== undefined;
+        return this.activeCommand !== undefined;
     }
 
-    private get hasRequests() {
-        return this.requests.length > 0;
+    private get hasCommands() {
+        return this.commands.length > 0;
     }
 
-    private currentRequest: RequestPipelineRequest = undefined;
+    private activeCommand: Command = undefined;
 
     private emitter = new EventEmitter();
 
@@ -38,9 +39,9 @@ export class TelnetRequestPipeline {
         };
     }
 
-    private emit(eventName: 'console-output', data: string);
-    private emit(eventName: 'unhandled-console-output', data: string);
-    private emit(eventName: string, data: any) {
+    public emit(eventName: 'console-output', data: string);
+    public emit(eventName: 'unhandled-console-output', data: string);
+    public emit(eventName: string, data: any) {
         //run the event on next tick to avoid timing issues
         process.nextTick(() => {
             this.emitter.emit(eventName, data);
@@ -60,7 +61,7 @@ export class TelnetRequestPipeline {
      * Any data that has not yet been fully processed. This could be a partial response
      * during a command execute, or a message split across multiple telnet terminals
      */
-    private unhandledText = '';
+    public unhandledText = '';
 
     private handleData(data: string) {
         const logger = this.logger.createLogger(`[${TelnetRequestPipeline.prototype.handleData.name}]`);
@@ -89,14 +90,8 @@ export class TelnetRequestPipeline {
         }
 
         if (this.isProcessing) {
-            this.handleDataForIsProcessing();
-        } else {
-            this.handleDataForNotIsProcessing();
-        }
-    }
-
-    private handleDataForNotIsProcessing() {
-        if (
+            this.activeCommand.handleData(this);
+        } else if (
             //ends with newline
             /\n\s*/.exec(this.unhandledText) ||
             //we're at a debugger prompt
@@ -107,46 +102,16 @@ export class TelnetRequestPipeline {
         } else {
             // buffer was split and was not the result of a prompt, save the partial line and wait for more output
         }
-    }
-
-    private handleDataForIsProcessing() {
-        //get the first response
-        const match = /Brightscript Debugger>\s*/is.exec(this.unhandledText);
-        if (match) {
-            const response = this.cleanResponse(
-                this.unhandledText.substring(0, match.index)
-            );
-
-            logger.debug('Found response before the first "Brightscript Debugger>" prompt', { response, allText: this.unhandledText });
-            //remove the response from the unhandled text
-            this.unhandledText = this.unhandledText.substring(match.index + match[0].length);
-
-            //emit the remaining unhandled text
-            if (this.unhandledText?.length > 0) {
-                this.emit('unhandled-console-output', this.unhandledText);
-            }
-            //clear the unhandled text
-            this.unhandledText = '';
-
-            //return the response to the current request
-            this.currentRequest.onComplete(response);
-            //run a new request (if there are any)
-
-            this.currentRequest = undefined;
-            this.process();
-        } else {
-            // no prompt found, wait for more data from the device
-        }
+        //we can safely try to execute next command. if we're ready, it'll execute. if not, it'll wait.
+        this.executeNextCommand();
     }
 
     /**
-     * Remove garbage from the response
+     * Send a command to the device immediately, without waiting for a response, and without worrying about
+     * whether we are currently at a debugger prompt. (This is mostly used for "pause" commands")
      */
-    private cleanResponse(text: string) {
-        text = text
-            //remove that pesky "may not be interruptible" warning
-            .replace(/[ \t]*warning:\s*operation\s+may\s+not\s+be\s+interruptible.[ \t]*\r?\n?/i, '');
-        return text;
+    public write(commandText: string) {
+        this.client.write(`${commandText}\r\n`);
     }
 
     /**
@@ -155,89 +120,72 @@ export class TelnetRequestPipeline {
     private commandIdSequence = 0;
 
     /**
-     * Schedule a command to be run. Resolves with the result once the command finishes
-     * @param commandFunction
-     * @param waitForPrompt - if true, the promise will wait until we find a prompt, and return all output in between. If false, the promise will immediately resolve
-     * @param forceExecute - if true, it is assumed the command can be run at any time and will be executed immediately
-     * @param silent - if true, the command will be hidden from the output
+     * Schedule a command to be run. Resolves with the result once the command finishes.
      */
-    public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
-        const commandId = this.commandIdSequence++;
-        const logger = this.logger.createLogger(`[Command ${commandId}]`);
-        logger.debug(`execute`, { command: command, waitForPrompt });
-        let request = {
-            deferred: new Deferred<string>(),
-            id: commandId,
-            waitForPrompt,
-            forceExecute,
-            silent,
-            commandText: command,
-            executeCommand: () => {
-                try {
-                    let commandText = `${command}\r\n`;
-                    if (!silent) {
-                        this.emit('console-output', command);
-                    }
+    public executeCommand(commandText: string, options: {
+        waitForPrompt: boolean;
+        /**
+         * Should the command be inserted at the front? This means it will be the next command to execute
+         */
+        insertAtFront?: boolean;
+    }) {
+        const command = new Command(
+            commandText,
+            options?.waitForPrompt ?? true,
+            this.logger,
+            this.commandIdSequence++
+        );
+        const logger = command.logger;
+        logger.debug(`execute`, { command: command, options });
 
-                    if (commandText.startsWith('for each vscodeLoopKey in request[\"context\"].keys()')) {
-                        console.log('aaa');
-                    } else {
-                        this.client.write(commandText);
-                    }
-
-                    if (waitForPrompt) {
-                        // The act of executing this command means we are no longer at the debug prompt
-                        this.isAtDebuggerPrompt = false;
-                    }
-                } catch (e) {
-                    logger.error('Error executing command', e);
-                    request.deferred.reject('Error executing command');
-                }
-            },
-            onComplete: (data: string) => {
-                logger.debug(`execute result`, { ...request, data }, data ? util.fence(data) : '');
-                request.deferred.resolve(data);
-            }
-        };
-
-        if (!waitForPrompt) {
-            if (!this.isProcessing || forceExecute) {
-                logger.debug('fire and forget the command');
-                request.executeCommand();
-                //the command doesn't care about the output, resolve it immediately
-                request.onComplete(undefined);
-            } else {
-                logger.debug('Skip this request as the device is not ready to accept the command or it can not be run at any time', { command: command });
-            }
+        if (options?.insertAtFront) {
+            this.commands.unshift(command);
         } else {
-            this.requests.push(request);
-            if (this.isAtDebuggerPrompt) {
-                logger.debug('start processing since we are already at a debug prompt (safe to call multiple times)');
-                this.process();
-            } else {
-                logger.debug('Do not run the command until the device is at a debug prompt.');
-            }
+            this.commands.push(command);
         }
-        return request.deferred.promise;
+
+        //when this command completes, execute the next one
+        command.promise.finally(() => {
+            this.executeNextCommand();
+        });
+
+        //trigger an execute if not currently executing
+        this.executeNextCommand();
+
+        return command.promise;
     }
 
     /**
-     * Internal request processing function
+     * Executes the next command if no commands are running. If a command is running, exits immediately as that command will call this function again when it's finished.
      */
-    private process() {
-        //return if we're already processing or if we have no requests
-        if (this.isProcessing || !this.hasRequests) {
-            this.logger.log('do not process, because', { isProcessing: this.isProcessing, hasRequests: this.hasRequests });
-            return;
+    public executeNextCommand() {
+        const logger = this.logger.createLogger('[executeNextCommand]');
+        logger.debug('begin');
+
+        //if the current command is finished processing, clear the variable
+        if (this.activeCommand?.isCompleted) {
+            logger.debug('Clear activeCommand because it is completed');
+            this.activeCommand = undefined;
         }
 
-        //get the oldest command
-        let nextRequest = this.requests.shift();
-        this.logger.log('Process the next request', { remainingRequests: this.requests.length, nextRequest });
-        this.currentRequest = nextRequest;
+        if (this.commands.length === 0) {
+            return logger.info('No commands to process');
+        }
 
-        //run the request. the data listener will handle launching the next request once this one has finished processing
-        nextRequest.executeCommand();
+        if (this.isProcessing) {
+            return logger.info('A command is already processing');
+        }
+
+        //we can only execute commands when we're at a debugger prompt. If we're not, then we'll wait until the next chunk of incoming data to try again to execute the command
+        if (this.isAtDebuggerPrompt) {
+
+            //get the next command from the queue
+            this.activeCommand = this.commands.shift();
+            logger.log('Process the next command', { remainingCommands: this.commands.length, activeCommand: this.activeCommand });
+
+            //run the command. the on('data') event will handle launching the next command once this one has finished processing
+            this.activeCommand.execute(this);
+        }
     }
 
     public destroy() {
@@ -247,8 +195,97 @@ export class TelnetRequestPipeline {
     }
 }
 
-interface RequestPipelineRequest {
-    executeCommand: () => void;
-    onComplete: (data: string) => void;
-    waitForPrompt: boolean;
+class Command {
+    public constructor(
+        public commandText: string,
+        /**
+         * Should this command wait for the next prompt?
+         */
+        public waitForPrompt: boolean,
+        logger: Logger,
+        public id: number
+    ) {
+        this.logger = logger.createLogger(`[Command ${this.id}]`);
+    }
+
+    public logger: Logger;
+
+    private deferred = new Deferred<string>();
+
+    /**
+     * Promise that completes when the command is finished
+     */
+    public get promise() {
+        return this.deferred.promise;
+    }
+
+    public get isCompleted() {
+        return this.deferred.isCompleted;
+    }
+
+    public execute(pipeline: TelnetRequestPipeline) {
+        try {
+            let commandText = `${this.commandText}\r\n`;
+            pipeline.emit('console-output', commandText);
+
+            if (commandText.startsWith('for each vscodeLoopKey in request[\"context\"].keys()')) {
+                pipeline.client.write(commandText);
+            } else {
+                pipeline.client.write(commandText);
+            }
+
+            if (this.waitForPrompt) {
+                // The act of executing this command means we are no longer at the debug prompt
+                pipeline.isAtDebuggerPrompt = false;
+            }
+        } catch (e) {
+            this.logger.error('Error executing command', e);
+            this.deferred.reject('Error executing command');
+        }
+    }
+
+    /**
+     * Remove garbage from the response
+     */
+    private removeJunk(text: string) {
+        text = text
+            //remove that pesky "may not be interruptible" warning
+            .replace(/[ \t]*warning:\s*operation\s+may\s+not\s+be\s+interruptible.[ \t]*\r?\n?/i, '');
+        return text;
+    }
+
+
+    public handleData(pipeline: TelnetRequestPipeline) {
+        if (this.deferred.isCompleted) {
+            console.log('stop here');
+        }
+        //get the first response
+        const match = /Brightscript Debugger>\s*/is.exec(pipeline.unhandledText);
+        if (match) {
+            const response = this.removeJunk(
+                pipeline.unhandledText.substring(0, match.index)
+            );
+
+            this.logger.debug('Found response before the first "Brightscript Debugger>" prompt', { response, allText: pipeline.unhandledText });
+            //remove the response from the unhandled text
+            pipeline.unhandledText = pipeline.unhandledText.substring(match.index + match[0].length);
+
+            //emit the remaining unhandled text
+            if (pipeline.unhandledText?.length > 0) {
+                pipeline.emit('unhandled-console-output', pipeline.unhandledText);
+            }
+            //clear the unhandled text
+            pipeline.unhandledText = '';
+
+            this.logger.debug(`execute result`, { commandText: this.commandText, response });
+            if (!this.deferred.isCompleted) {
+                this.logger.debug('resolving promise', { response });
+                this.deferred.resolve(response);
+            } else {
+                this.logger.error('Command already completed', { response, commandText: this.commandText, stacktrace: new Error().stack });
+            }
+        } else {
+            // no prompt found, wait for more data from the device
+        }
+    }
 }
