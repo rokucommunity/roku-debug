@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.9.0](https://github.com/rokucommunity/brighterscript/compare/v0.8.7...v0.9.0) - 2021-12-17
+### Added
+ - use @rokucommunity/logger package for logging. Adds many new log messages at various debug levels. ([#61](https://github.com/rokucommunity/roku-debug/pull/61))
+    - add `logLevel` launch configuration variable
+ - Ability to inspect node children through the `[[children]]` virtual property ([#57](https://github.com/rokucommunity/roku-debug/pull/57))
+ - `[[length]]` virtual property for all variables that support it.  ([#57](https://github.com/rokucommunity/roku-debug/pull/57))
+### Fixed
+ - Several telnet debugging issues related to the 10.5 Roku OS release. ([#57](https://github.com/rokucommunity/roku-debug/pull/57))
+
+
+
 ## [0.8.7](https://github.com/rokucommunity/brighterscript/compare/v0.8.6...v0.8.7) - 2021-11-11
 ### Changed
  - added lots of logging for help troubleshooting issues in roku-debug. ([#56](https://github.com/rokucommunity/roku-debug/pull/56))
