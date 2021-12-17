@@ -133,6 +133,7 @@ export class TelnetRequestPipeline {
             commandText,
             options?.waitForPrompt ?? true,
             this.logger,
+            this,
             this.commandIdSequence++
         );
         const logger = command.logger;
@@ -184,7 +185,7 @@ export class TelnetRequestPipeline {
             logger.log('Process the next command', { remainingCommands: this.commands.length, activeCommand: this.activeCommand });
 
             //run the command. the on('data') event will handle launching the next command once this one has finished processing
-            this.activeCommand.execute(this);
+            this.activeCommand.execute();
         }
     }
 
@@ -203,6 +204,7 @@ class Command {
          */
         public waitForPrompt: boolean,
         logger: Logger,
+        public pipeline: TelnetRequestPipeline,
         public id: number
     ) {
         this.logger = logger.createLogger(`[Command ${this.id}]`);
@@ -223,20 +225,16 @@ class Command {
         return this.deferred.isCompleted;
     }
 
-    public execute(pipeline: TelnetRequestPipeline) {
+    public execute() {
         try {
             let commandText = `${this.commandText}\r\n`;
-            pipeline.emit('console-output', commandText);
+            this.pipeline.emit('console-output', commandText);
 
-            if (commandText.startsWith('for each vscodeLoopKey in request[\"context\"].keys()')) {
-                pipeline.client.write(commandText);
-            } else {
-                pipeline.client.write(commandText);
-            }
+            this.pipeline.client.write(commandText);
 
             if (this.waitForPrompt) {
                 // The act of executing this command means we are no longer at the debug prompt
-                pipeline.isAtDebuggerPrompt = false;
+                this.pipeline.isAtDebuggerPrompt = false;
             }
         } catch (e) {
             this.logger.error('Error executing command', e);
