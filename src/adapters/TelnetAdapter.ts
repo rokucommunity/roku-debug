@@ -11,6 +11,7 @@ import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { defer, util } from '../util';
 import { logger } from '../logging';
+import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
 
 /**
@@ -238,6 +239,7 @@ export class TelnetAdapter {
 
             //hook up the pipeline to the socket
             this.requestPipeline = new TelnetRequestPipeline(client);
+            this.requestPipeline.connect();
 
             //forward all raw console output
             this.requestPipeline.on('console-output', (output) => {
@@ -298,7 +300,7 @@ export class TelnetAdapter {
                     }
 
                     //watch for debugger prompt output
-                    if (util.checkForDebuggerPrompt(responseText)) {
+                    if (util.endsWithDebuggerPrompt(responseText)) {
                         this.logger.log('Debugger prompt detected in', { responseText });
 
                         //if we are activated AND this is the first time seeing the debugger prompt since a continue/step action
@@ -306,7 +308,7 @@ export class TelnetAdapter {
                             this.logger.log('This debugger is flagged to be skipped');
                             this.isInMicroDebugger = false;
                             this.isNextBreakpointSkipped = false;
-                            void this.requestPipeline.executeCommand('c', false, false, false);
+                            void this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
                         } else {
                             if (this.isActivated && this.isAtDebuggerPrompt === false) {
                                 this.isAtDebuggerPrompt = true;
@@ -318,6 +320,7 @@ export class TelnetAdapter {
                             }
                         }
                     } else {
+                        this.logger.debug('responseText does not end with debugger prompt. isAtDebuggerPrompt = false', { responseText });
                         this.isAtDebuggerPrompt = false;
                     }
                 }
@@ -382,19 +385,19 @@ export class TelnetAdapter {
     public stepOver() {
         this.logger.log('stepOver');
         this.clearCache();
-        return this.requestPipeline.executeCommand('over', false);
+        return this.requestPipeline.executeCommand('over', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepInto() {
         this.logger.log('stepInto');
         this.clearCache();
-        return this.requestPipeline.executeCommand('step', false);
+        return this.requestPipeline.executeCommand('step', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepOut() {
         this.logger.log('stepOut');
         this.clearCache();
-        return this.requestPipeline.executeCommand('out', false);
+        return this.requestPipeline.executeCommand('out', { waitForPrompt: false, insertAtFront: true });
 
     }
 
@@ -404,7 +407,7 @@ export class TelnetAdapter {
     public continue() {
         this.logger.log('continue');
         this.clearCache();
-        return this.requestPipeline.executeCommand('c', false);
+        return this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
     }
 
     /**
@@ -413,8 +416,8 @@ export class TelnetAdapter {
     public pause() {
         this.logger.log('pause');
         this.clearCache();
-        //send the kill signal, which breaks into debugger mode
-        return this.requestPipeline.executeCommand('\x03;', false, true);
+        //send the kill signal, which breaks into debugger mode. This gets written immediately, regardless of debugger prompt status.
+        this.requestPipeline.write('\x03;');
     }
 
     /**
@@ -438,7 +441,7 @@ export class TelnetAdapter {
         //clear the cache (we don't know what command the user entered)
         this.clearCache();
         //don't wait for the output...we don't know what command the user entered
-        let responseText = await this.requestPipeline.executeCommand(command, true);
+        let responseText = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
         //we know that if we got a response, we are back at a debugger prompt
         this.isAtDebuggerPrompt = true;
         return responseText;
@@ -451,7 +454,7 @@ export class TelnetAdapter {
         }
         return this.resolve('stackTrace', async () => {
             //perform a request to load the stack trace
-            let responseText = await this.requestPipeline.executeCommand('bt', true);
+            let responseText = (await this.requestPipeline.executeCommand('bt', { waitForPrompt: true })).trim();
             let regexp = /#(\d+)\s+(?:function|sub)\s+([\$\w\d]+).*\s+file\/line:\s+(.*)\((\d+)\)/ig;
             let matches: RegExpExecArray;
             let frames: StackFrame[] = [];
@@ -477,17 +480,6 @@ export class TelnetAdapter {
             //if we didn't find frames yet, then there's not much more we can do...
             return frames;
         });
-    }
-
-    /**
-     * Runs a regex to get the content between telnet commands
-     * @param value
-     */
-    public getExpressionDetails(value: string) {
-        const match = /(.*?)\r?\nBrightscript Debugger>\s*/is.exec(value);
-        if (match) {
-            return match[1];
-        }
     }
 
     /**
@@ -524,8 +516,8 @@ export class TelnetAdapter {
             let data: string;
             let vars = [] as string[];
 
-            data = await this.requestPipeline.executeCommand(`var`, true);
-            let splitData = data.split('\n');
+            data = await this.requestPipeline.executeCommand(`var`, { waitForPrompt: true });
+            let splitData = data.trim().split('\n');
 
             for (const line of splitData) {
                 let match: RegExpExecArray;
@@ -546,135 +538,149 @@ export class TelnetAdapter {
      * @param expression
      */
     public async getVariable(expression: string) {
-        const logger = this.logger.createLogger(' getVariable');
+        const logger = this.logger.createLogger('[getVariable]');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
-        return this.resolve(`variable: ${expression}`, async () => {
-            let expressionType = await this.getVariableType(expression);
+        let expressionType = await this.getVariableType(expression);
 
-            let lowerExpressionType = expressionType ? expressionType.toLowerCase() : null;
+        let lowerExpressionType = expressionType ? expressionType.toLowerCase() : null;
 
-            let data: string;
-            //if the expression type is a string, we need to wrap the expression in quotes BEFORE we run the print so we can accurately capture the full string value
-            if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
-                data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, true);
+        let data: string;
+        //if the expression type is a string, we need to wrap the expression in quotes BEFORE we run the print so we can accurately capture the full string value
+        if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
+            data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, { waitForPrompt: true });
 
-                //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
-            } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
-                const command = [
-                    `for each vscodeLoopItem in ${expression} : print ` +
-                    `   "vscode_type_start:" + type(vscodeLoopItem) + ":vscode_type_stop "`,
-                    `   "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString"))`,
-                    `   vscodeLoopItem :` +
-                    ` end for`
-                ].join(';');
-                data = await this.requestPipeline.executeCommand(command, true);
-            } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
-                const command = [
-                    `for each vscodeLoopKey in ${expression}.keys(): print` +
-                    `   "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop "`,
-                    `   "vscode_type_start:" + type(${expression}[vscodeLoopKey]) + ":vscode_type_stop "`,
-                    `   "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString"))`,
-                    `   ${expression}[vscodeLoopKey] :` +
-                    ' end for'
-                ].join(';');
-                data = await this.requestPipeline.executeCommand(command, true);
-            } else {
-                data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
-            }
+            //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
+        } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
+            const command = [
+                `for each vscodeLoopItem in ${expression} : print ` +
+                `   "vscode_type_start:" + type(vscodeLoopItem) + ":vscode_type_stop "`,
+                `   "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString"))`,
+                `   vscodeLoopItem :` +
+                ` end for`
+            ].join(';');
+            data = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
+        } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
+            const command = [
+                `for each vscodeLoopKey in ${expression}.keys(): print` +
+                `   "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop "`,
+                `   "vscode_type_start:" + type(${expression}[vscodeLoopKey]) + ":vscode_type_stop "`,
+                `   "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString"))`,
+                `   ${expression}[vscodeLoopKey] :` +
+                ' end for'
+            ].join(';');
+            data = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
+        } else {
+            data = await this.requestPipeline.executeCommand(`print ${expression}`, { waitForPrompt: true });
+        }
 
-            let match = this.getExpressionDetails(data);
-            if (match !== undefined) {
-                logger.info('expression details', { match, data });
-                let value = match;
-                if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
+        logger.info('expression details', { data });
+        //remove excess whitespace
+        data = data.trim();
+        if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
+            data = data.trim().replace(/--string-wrap--/g, '');
+            //add an escape character in front of any existing quotes
+            data = data.replace(/"/g, '\\"');
+            //wrap the string value with literal quote marks
+            data = '"' + data + '"';
+        }
+        let highLevelType = this.getHighLevelType(expressionType);
 
-                    value = value.trim().replace(/--string-wrap--/g, '');
-                    //add an escape character in front of any existing quotes
-                    value = value.replace(/"/g, '\\"');
-                    //wrap the string value with literal quote marks
-                    value = '"' + value + '"';
-                }
-                let highLevelType = this.getHighLevelType(expressionType);
+        let children: EvaluateContainer[];
+        if (highLevelType === HighLevelType.array || ['roassociativearray', 'rosgnode', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
+            //the print statment will always have 1 trailing newline, so remove that.
+            data = util.removeTrailingNewline(data);
+            //the array/associative array print is a loop of every value, so handle that
+            children = this.getForLoopPrintedChildren(expression, data);
+            children.push({
+                name: '[[count]]',
+                value: children.length.toString(),
+                type: 'integer',
+                highLevelType: HighLevelType.primative,
+                evaluateName: children.length.toString(),
+                presentationHint: 'virtual',
+                keyType: KeyType.legacy,
+                children: undefined
+            } as EvaluateContainer);
+        } else if (highLevelType === HighLevelType.object) {
+            children = this.getObjectChildren(expression, data.trim());
+        } else if (highLevelType === HighLevelType.unknown) {
+            logger.warn('there was an issue evaluating this variable', { expression });
+            data = '<UNKNOWN>';
+        }
 
-                let children: EvaluateContainer[];
-                if (highLevelType === HighLevelType.array || ['roassociativearray', 'rosgnode', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
-                    //the print statment will always have 1 trailing newline, so remove that.
-                    value = util.removeTrailingNewline(value);
-                    //the array/associative array print is a loop of every value, so handle that
-                    children = this.getForLoopPrintedChildren(expression, value);
-                } else if (highLevelType === HighLevelType.object) {
-                    children = this.getObjectChildren(expression, value.trim());
-                }
+        if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
+            return {
+                name: expression,
+                value: util.removeTrailingNewline(data),
+                type: expressionType,
+                highLevelType: HighLevelType.primative,
+                evaluateName: expression,
+                children: []
+            } as EvaluateContainer;
+        }
 
-                if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
-                    return {
-                        name: expression,
-                        value: util.removeTrailingNewline(value),
-                        type: expressionType,
-                        highLevelType: HighLevelType.primative,
-                        evaluateName: expression,
-                        children: []
-                    } as EvaluateContainer;
-                }
+        //add a computed `[[children]]` property to allow expansion of node children
+        if (lowerExpressionType === 'rosgnode') {
+            let nodeChildren = <EvaluateContainer>{
+                name: '[[children]]',
+                type: 'roArray',
+                highLevelType: 'array',
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.getChildren(-1, 0)`,
+                children: []
+            };
+            children.push(nodeChildren);
+        }
 
-                //add a computed `[[children]]` property to allow expansion of node children
-                if (lowerExpressionType === 'rosgnode') {
-                    let nodeChildren = <EvaluateContainer>{
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: 'array',
-                        evaluateName: `${expression}.getChildren(-1, 0)`,
-                        children: []
-                    };
-                    children.push(nodeChildren);
-                }
+        //xml elements won't display on their own, so we need to create some sub elements
+        if (lowerExpressionType === 'roxmlelement') {
+            children.push({
+                //look up the name of the xml element
+                ...await this.getVariable(`${expression}.GetName()`),
+                name: '[[name]]',
+                presentationHint: 'virtual'
+            });
 
-                //xml elements won't display on their own, so we need to create some sub elements
-                if (lowerExpressionType === 'roxmlelement') {
-                    //add a computed `[[children]]` property to allow expansion of node children
-                    children.push({
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: HighLevelType.array,
-                        evaluateName: `${expression}.GetChildNodes()`,
-                        children: []
-                    } as EvaluateContainer);
+            children.push({
+                name: '[[attributes]]',
+                type: 'roAssociativeArray',
+                highLevelType: HighLevelType.array,
+                evaluateName: `${expression}.GetAttributes()`,
+                presentationHint: 'virtual',
+                children: []
+            } as EvaluateContainer);
 
-                    children.push({
-                        name: '[[attributes]]',
-                        type: 'roArray',
-                        highLevelType: HighLevelType.array,
-                        evaluateName: `${expression}.GetAttributes()`,
-                        children: []
-                    } as EvaluateContainer);
+            //add a computed `[[children]]` property to allow expansion of child elements
+            children.push({
+                name: '[[children]]',
+                type: 'roArray',
+                highLevelType: HighLevelType.array,
+                evaluateName: `${expression}.GetChildNodes()`,
+                presentationHint: 'virtual',
+                children: []
 
-                    //look up the element name right now
-                    const container = await this.getVariable(`${expression}.GetName()`);
-                    container.name = '[[name]]';
-                    children.push(container);
-                }
+            } as EvaluateContainer);
+        }
 
-                //if this item is an array or a list, add the item count to the end of the type
-                if (highLevelType === HighLevelType.array) {
-                    //TODO re-enable once we find how to refresh watch/variables panel, since lazy loaded arrays can't show a length
-                    //expressionType += `(${children.length})`;
-                }
+        //if this item is an array or a list, add the item count to the end of the type
+        if (highLevelType === HighLevelType.array) {
+            //TODO re-enable once we find how to refresh watch/variables panel, since lazy loaded arrays can't show a length
+            //expressionType += `(${children.length})`;
+        }
 
-                let container = <EvaluateContainer>{
-                    name: expression,
-                    evaluateName: expression,
-                    type: expressionType,
-                    value: value.trim(),
-                    highLevelType: highLevelType,
-                    children: children
-                };
-                logger.info('end', { container });
-                return container;
-            }
-        });
+        let container = <EvaluateContainer>{
+            name: expression,
+            evaluateName: expression,
+            type: expressionType,
+            value: data.trim(),
+            highLevelType: highLevelType,
+            children: children
+        };
+        logger.info('end', { container });
+        return container;
     }
 
     /**
@@ -788,17 +794,6 @@ export class TelnetAdapter {
                 }
                 //we have reached the end of the collection. scrap children because they need evaluated in a separate call to compute their types
                 child.children = [];
-
-                if (isRoSGNode) {
-                    let nodeChildrenProperty = <EvaluateContainer>{
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: 'array',
-                        evaluateName: `${child.evaluateName}.getChildren(-1,0)`,
-                        children: []
-                    };
-                    child.children.push(nodeChildrenProperty);
-                }
 
                 //this if block must pre-seek the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
             } else if (objectType === 'roInvalid') {
@@ -954,7 +949,7 @@ export class TelnetAdapter {
      */
     private getHighLevelType(expressionType: string) {
         if (!expressionType) {
-            throw new Error(`Unknown expression type: ${expressionType}`);
+            return HighLevelType.unknown;
         }
 
         expressionType = expressionType.toLowerCase();
@@ -976,23 +971,16 @@ export class TelnetAdapter {
      * Get the type of the provided expression
      * @param expression
      */
-    public async getVariableType(expression) {
+    public async getVariableType(expression: string) {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get variable type: debugger is not paused');
         }
         expression = `Type(${expression})`;
         return this.resolve(`${expression}`, async () => {
-            let data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
+            let data = await this.requestPipeline.executeCommand(`print ${expression}`, { waitForPrompt: true });
 
-            let match = this.getExpressionDetails(data);
-            if (match) {
-                let typeValue: string = match;
-                //remove whitespace
-                typeValue = typeValue.trim();
-                return typeValue;
-            } else {
-                return null;
-            }
+            //remove whitespace
+            return data?.trim() ?? null;
         });
     }
 
@@ -1027,9 +1015,9 @@ export class TelnetAdapter {
             return [];
         }
         return this.resolve('threads', async () => {
-            let data = await this.requestPipeline.executeCommand('threads', true);
+            let data = await this.requestPipeline.executeCommand('threads', { waitForPrompt: true });
 
-            let dataString = data.toString();
+            let dataString = data.toString().trim();
             let matches = /^\s+(\d+\*)\s+(.*)\((\d+)\)\s+(.*)/gm.exec(dataString);
             let threads: Thread[] = [];
             if (matches) {
@@ -1076,21 +1064,6 @@ export class TelnetAdapter {
         return Promise.resolve();
     }
 
-    /**
-     * Make sure any active Brightscript Debugger threads are exited
-     */
-    public async exitActiveBrightscriptDebugger() {
-        if (this.requestPipeline) {
-            let commandsExecuted = 0;
-            do {
-                let data = await this.requestPipeline.executeCommand(`exit`, false);
-                // This seems to work without the delay but I wonder about slower devices
-                // await setTimeout[Object.getOwnPropertySymbols(setTimeout)[0]](100);
-                commandsExecuted++;
-            } while (commandsExecuted < 10);
-        }
-    }
-
     // #region Rendezvous Tracker pass though functions
     /**
      * Passes the debug functions used to locate the client files and lines to the RendezvousTracker
@@ -1135,14 +1108,6 @@ export enum EventName {
     suspend = 'suspend'
 }
 
-export enum HighLevelType {
-    primative = 'primative',
-    array = 'array',
-    function = 'function',
-    object = 'object',
-    uninitialized = 'uninitialized'
-}
-
 export interface EvaluateContainer {
     name: string;
     evaluateName: string;
@@ -1153,6 +1118,7 @@ export interface EvaluateContainer {
     elementCount: number;
     highLevelType: HighLevelType;
     children: EvaluateContainer[];
+    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
 export enum KeyType {

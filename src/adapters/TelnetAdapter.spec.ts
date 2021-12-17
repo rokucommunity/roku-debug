@@ -2,30 +2,13 @@ import { expect } from 'chai';
 import type { EvaluateContainer } from './TelnetAdapter';
 import { TelnetAdapter } from './TelnetAdapter';
 import * as dedent from 'dedent';
-import { HighLevelType } from './DebugProtocolAdapter';
+import { HighLevelType } from '../interfaces';
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
 
     beforeEach(() => {
         adapter = new TelnetAdapter('127.0.0.1');
-    });
-
-    afterEach(() => {
-    });
-
-    describe('getExpressionDetails', () => {
-        it('correctly handles both types of line endings', () => {
-            expect(adapter['getExpressionDetails'](
-                'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\r\n' +
-                'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld\r\n' +
-                '\r\n' +
-                'Brightscript Debugger>'
-            )).to.equal((
-                'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\r\n' +
-                'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld\r\n'
-            ));
-        });
     });
 
     describe('getHighLevelTypeDetails', () => {
@@ -183,13 +166,7 @@ describe('TelnetAdapter ', () => {
                 evaluateName: 'testNode["mynewfield"]',
                 type: 'roSGNode:ContentNode',
                 name: 'mynewfield',
-                children: [{
-                    children: [],
-                    evaluateName: 'testNode["mynewfield"].getChildren(-1,0)',
-                    highLevelType: 'array',
-                    name: '[[children]]',
-                    type: 'roArray'
-                }],
+                children: [],
                 highLevelType: 'object'
             }]);
         });

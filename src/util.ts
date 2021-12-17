@@ -218,14 +218,38 @@ class Util {
     }
 
     /**
-     * Checks the supplied string for the "Brightscript Debugger>" prompt
+     * Does the string end with the "Brightscript Debugger>" prompt?
      * @param responseText
      */
-    public checkForDebuggerPrompt(text: string) {
+    public endsWithDebuggerPrompt(text: string) {
         let match = /Brightscript\s+Debugger>\s*$/im.exec(text.trim());
         return !!match;
     }
 
+    /**
+     * Does the string end with the "thread attached......" text, ignoring trailing whitespace.
+     * explanation: https://regex101.com/r/pN6grB/1
+     */
+    public endsWithThreadAttachedText(text: string) {
+        if (/thread\s+attached\s*:.*?\(\d*\).*?[\r\n\s]*$/i.exec(text)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Remove those pesky "Thread attached" messages and the debugger prompt following them.
+     * explanation: https://regex101.com/r/OwAWdw/4
+     */
+    public removeThreadAttachedText(text: string) {
+        const match = /^([\r\n\s]*thread\s+attached\s*:.*?\(\d*\).*?[\r\n\s]*brightscript\s*debugger>\s*)+/i.exec(text);
+        if (match) {
+            return text.substring(match[0].length);
+        } else {
+            return text;
+        }
+    }
 
     public filterGenericErrors(errors: BrightScriptDebugCompileError[]) {
         const specificErrors: Record<string, BrightScriptDebugCompileError> = {};
@@ -260,10 +284,20 @@ class Util {
 
     private dnsCache = new Map<string, string>();
 
-    public sleep(ms: number) {
-        return new Promise((resolve) => {
-            setTimeout(resolve, ms);
+    /**
+     * Sleep for the given number of milliseconds
+     * @param milliseconds
+     * @returns
+     */
+    public sleep(milliseconds: number) {
+        return new Promise(resolve => {
+            setTimeout(resolve, milliseconds);
         });
+    }
+
+    public fence(data: string) {
+        const fence = '--------------------';
+        return `\n${fence}\n${data}\n${fence}\n`;
     }
 }
 
