@@ -2,6 +2,8 @@ import { TelnetRequestPipeline } from './TelnetRequestPipeline';
 import { util } from '../util';
 import { expect } from 'chai';
 import dedent = require('dedent');
+import { logger } from '../logging';
+import { clean } from '../testHelpers.spec';
 
 const prompt = 'Brightscript Debugger>';
 
@@ -43,6 +45,7 @@ describe('RequestPipeline', () => {
     };
 
     beforeEach(() => {
+        logger.logLevel = 'off';
         consoleOutput = '';
         unhandledConsoleOutput = '';
         socket.listeners = [];
@@ -64,7 +67,7 @@ describe('RequestPipeline', () => {
             'ript Debugger>'
         ]);
         expect(
-            await pipeline.executeCommand('doSomething', true)
+            await pipeline.executeCommand('doSomething', { waitForPrompt: true })
         ).to.eql(
             //we force debugger prompts onto their own line, so the leading space before prompt and the injected newline should be here too
             'some text \n'
@@ -78,7 +81,7 @@ describe('RequestPipeline', () => {
             ' Brightscript Debugger>'
         ]);
         expect(
-            await pipeline.executeCommand('doSomething', true)
+            await pipeline.executeCommand('doSomething', { waitForPrompt: true })
         ).to.eql(
             //we force debugger prompts onto their own line, so the leading space before prompt and the injected newline should be here too
             'some text \n'
@@ -89,7 +92,7 @@ describe('RequestPipeline', () => {
         handleData(prompt);
         socket.messageQueue.push('response 1\nBrightscript Debugger>');
         expect(
-            await pipeline.executeCommand('get response', true)
+            await pipeline.executeCommand('get response', { waitForPrompt: true })
         ).to.eql(
             'response 1\n'
         );
@@ -106,7 +109,7 @@ describe('RequestPipeline', () => {
 
         //should get the first response, and the second should be discarded
         expect(dedent(
-            await pipeline.executeCommand('get response', true)
+            await pipeline.executeCommand('get response', { waitForPrompt: true })
         )).to.eql(
             'response 1'
         );
@@ -120,7 +123,7 @@ describe('RequestPipeline', () => {
 
         //since "response 2 was discarded", we should be given "response 3"
         expect(
-            await pipeline.executeCommand('get response', true)
+            await pipeline.executeCommand('get response', { waitForPrompt: true })
         ).to.eql(
             'response 3\n'
         );
@@ -130,7 +133,7 @@ describe('RequestPipeline', () => {
         handleData(`log message 1\n${prompt}`);
         socket.messageQueue.push(`\nboolean\n${prompt}`);
         expect(
-            await pipeline.executeCommand('print type(true)', true)
+            await pipeline.executeCommand('print type(true)', { waitForPrompt: true })
         ).to.eql(
             '\nboolean\n'
         );
@@ -138,13 +141,13 @@ describe('RequestPipeline', () => {
         //small timeout to let the remaining logging be emitted
         await util.sleep(10);
 
-        expect(consoleOutput).to.eql(dedent`
+        expect(clean(consoleOutput)).to.eql(clean`
             log message 1
             ${prompt}print type(true)
             boolean
             ${prompt}
         `);
-        expect(unhandledConsoleOutput).to.eql(dedent`
+        expect(unhandledConsoleOutput).to.eql(clean`
             log message 1
             ${prompt}
         `);
@@ -154,7 +157,7 @@ describe('RequestPipeline', () => {
         handleData(`log message 1\n${prompt}`);
         socket.messageQueue.push(`\nboolean\n${prompt}`);
         expect(
-            await pipeline.executeCommand('print type(true)', true)
+            await pipeline.executeCommand('print type(true)', { waitForPrompt: true })
         ).to.eql(
             '\nboolean\n'
         );
@@ -162,13 +165,13 @@ describe('RequestPipeline', () => {
         //small timeout to let the remaining logging be emitted
         await util.sleep(10);
 
-        expect(consoleOutput).to.eql(dedent`
+        expect(clean(consoleOutput)).to.eql(clean`
             log message 1
             ${prompt}print type(true)
             boolean
             ${prompt}
         `);
-        expect(unhandledConsoleOutput).to.eql(dedent`
+        expect(unhandledConsoleOutput).to.eql(clean`
             log message 1
             ${prompt}
         `);
@@ -185,7 +188,7 @@ describe('RequestPipeline', () => {
                 'Brightscript Debugger>'
             ]);
             expect(
-                await pipeline.executeCommand('commandDoesNotMatter', true)
+                await pipeline.executeCommand('commandDoesNotMatter', { waitForPrompt: true })
             ).to.equal(
                 'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\r\n' +
                 'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld\r\n\r\n'
@@ -202,7 +205,7 @@ describe('RequestPipeline', () => {
                 'Brightscript Debugger>'
             ]);
             expect(
-                await pipeline.executeCommand('commandDoesNotMatter', true)
+                await pipeline.executeCommand('commandDoesNotMatter', { waitForPrompt: true })
             ).to.equal(
                 'Invalid\r\n'
             );
@@ -223,7 +226,7 @@ describe('RequestPipeline', () => {
                 ''
             ].join('\r\n'));
             expect(
-                await pipeline.executeCommand('commandDoesNotMatter', true)
+                await pipeline.executeCommand('commandDoesNotMatter', { waitForPrompt: true })
             ).to.equal(
                 'roAssociativeArray\r\n\r\n'
             );
