@@ -63,14 +63,27 @@ export class TelnetRequestPipeline {
      */
     public unhandledText = '';
 
+    /**
+     * Stores split telnet messages for next call to `handleData`
+     */
+    private buffer = '';
+
     private handleData(data: string) {
         const logger = this.logger.createLogger(`[${TelnetRequestPipeline.prototype.handleData.name}]`);
         logger.debug('Raw telnet data', { data }, util.fence(data));
 
-        //forward all raw console output to listeners
-        this.emit('console-output', data);
+        this.buffer += data;
+        //if the buffer was split, wait for more incoming data
+        if (!this.buffer.endsWith('\n') && !util.endsWithDebuggerPrompt(this.buffer) && !util.endsWithThreadAttachedText(this.buffer)) {
+            logger.debug('Buffer was split. Wait for more incoming data before proceeding', { buffer: this.buffer });
+            return;
+        }
 
-        this.unhandledText += data;
+        //forward all raw console output to listeners
+        this.emit('console-output', this.buffer);
+
+        this.unhandledText += this.buffer;
+        this.buffer = '';
 
         //ensure all debugger prompts appear completely on their own line
         this.unhandledText = util.ensureDebugPromptOnOwnLine(this.unhandledText);
@@ -100,7 +113,7 @@ export class TelnetRequestPipeline {
             this.emit('unhandled-console-output', this.unhandledText);
             this.unhandledText = '';
         } else {
-            // buffer was split and was not the result of a prompt, save the partial line and wait for more output
+            // wait for more incoming data
         }
         //we can safely try to execute next command. if we're ready, it'll execute. if not, it'll wait.
         this.executeNextCommand();

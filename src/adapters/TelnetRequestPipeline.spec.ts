@@ -4,6 +4,7 @@ import { expect } from 'chai';
 import dedent = require('dedent');
 import { logger } from '../logging';
 import { clean } from '../testHelpers.spec';
+import { Deferred } from 'brighterscript';
 
 const prompt = 'Brightscript Debugger>';
 
@@ -230,6 +231,28 @@ describe('RequestPipeline', () => {
             ).to.equal(
                 'roAssociativeArray\r\n\r\n'
             );
+        });
+
+        it('joins split log messages together', async () => {
+            socket.messageQueue.push();
+            const outputEvents = [] as string[];
+            const deferred = new Deferred();
+            //there should be 2 events
+            pipeline.on('console-output', (data) => {
+                outputEvents.push(data);
+                if (outputEvents.length === 2) {
+                    deferred.resolve();
+                }
+            });
+            handleData('1');
+            handleData('2\r\n');
+            handleData('3');
+            handleData('4\r\n');
+            await deferred.promise;
+            expect(outputEvents).to.eql([
+                '12\r\n',
+                '34\r\n'
+            ]);
         });
     });
 
