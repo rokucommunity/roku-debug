@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.9.1](https://github.com/rokucommunity/brighterscript/compare/v0.9.0...v0.9.1) - 2022-01-05
+### Fixed
+ - issue where `"consoleOutput": "full"` shows no output when `enableDebugProtocol === true`. ([#65](https://github.com/rokucommunity/roku-debug/pull/65))
+
+
+
 ## [0.9.0](https://github.com/rokucommunity/brighterscript/compare/v0.8.7...v0.9.0) - 2021-12-17
 ### Added
  - use @rokucommunity/logger package for logging. Adds many new log messages at various debug levels. ([#61](https://github.com/rokucommunity/roku-debug/pull/61))
