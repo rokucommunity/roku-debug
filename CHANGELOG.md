@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.9.2](https://github.com/rokucommunity/brighterscript/compare/v0.9.1...v0.9.2) - 2022-01-12
+### Fixed
+ - bug with telnet debug session related to fire-and-forget commands like `step`, `continue`, etc. This was causing the debug session to stall frequently. ([#64](https://github.com/rokucommunity/roku-debug/pull/64))
+ - combine telnet output that was split due to buffer sizes ([#64](https://github.com/rokucommunity/roku-debug/pull/64))
+
+
+
 ## [0.9.1](https://github.com/rokucommunity/brighterscript/compare/v0.9.0...v0.9.1) - 2022-01-05
 ### Fixed
  - issue where `"consoleOutput": "full"` shows no output when `enableDebugProtocol === true`. ([#65](https://github.com/rokucommunity/roku-debug/pull/65))
