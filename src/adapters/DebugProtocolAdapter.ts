@@ -185,24 +185,27 @@ export class DebugProtocolAdapter {
             stopOnEntry: this.stopOnEntry
         });
         try {
-            // Emit IO output from the debugger.
+            // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.socketDebugger.on('io-output', async (responseText) => {
                 if (responseText) {
                     responseText = this.chanperfTracker.processLog(responseText);
                     responseText = await this.rendezvousTracker.processLog(responseText);
                     this.emit('unhandled-console-output', responseText);
+                    this.emit('console-output', responseText);
                 }
             });
 
-            // Emit IO output from the debugger.
+            // Emit IO from the debugger.
             this.socketDebugger.on('protocol-version', (data: ProtocolVersionDetails) => {
                 if (data.errorCode === PROTOCOL_ERROR_CODES.SUPPORTED) {
                     this.emit('console-output', data.message);
                 } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_TESTED) {
                     this.emit('unhandled-console-output', data.message);
+                    this.emit('console-output', data.message);
                 } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_SUPPORTED) {
                     this.emit('unhandled-console-output', data.message);
+                    this.emit('console-output', data.message);
                 }
             });
 
