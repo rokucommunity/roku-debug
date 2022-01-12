@@ -63,14 +63,27 @@ export class TelnetRequestPipeline {
      */
     public unhandledText = '';
 
+    /**
+     * Stores split telnet messages for next call to `handleData`
+     */
+    private buffer = '';
+
     private handleData(data: string) {
         const logger = this.logger.createLogger(`[${TelnetRequestPipeline.prototype.handleData.name}]`);
         logger.debug('Raw telnet data', { data }, util.fence(data));
 
-        //forward all raw console output to listeners
-        this.emit('console-output', data);
+        this.buffer += data;
+        //if the buffer was split, wait for more incoming data
+        if (!this.buffer.endsWith('\n') && !util.endsWithDebuggerPrompt(this.buffer) && !util.endsWithThreadAttachedText(this.buffer)) {
+            logger.debug('Buffer was split. Wait for more incoming data before proceeding', { buffer: this.buffer });
+            return;
+        }
 
-        this.unhandledText += data;
+        //forward all raw console output to listeners
+        this.emit('console-output', this.buffer);
+
+        this.unhandledText += this.buffer;
+        this.buffer = '';
 
         //ensure all debugger prompts appear completely on their own line
         this.unhandledText = util.ensureDebugPromptOnOwnLine(this.unhandledText);
@@ -100,7 +113,7 @@ export class TelnetRequestPipeline {
             this.emit('unhandled-console-output', this.unhandledText);
             this.unhandledText = '';
         } else {
-            // buffer was split and was not the result of a prompt, save the partial line and wait for more output
+            // wait for more incoming data
         }
         //we can safely try to execute next command. if we're ready, it'll execute. if not, it'll wait.
         this.executeNextCommand();
@@ -181,11 +194,18 @@ export class TelnetRequestPipeline {
         if (this.isAtDebuggerPrompt) {
 
             //get the next command from the queue
-            this.activeCommand = this.commands.shift();
-            logger.log('Process the next command', { remainingCommands: this.commands.length, activeCommand: this.activeCommand });
+            const command = this.commands.shift();
+            logger.log('Process the next command', { remainingCommands: this.commands.length, activeCommand: command });
 
+            //if the active command does NOT want to wait for a prompt, then remove it as the active command so it doesn't consume incoming telnet
+            if (command.waitForPrompt) {
+                logger.log('waitForCommand is true, so set as active command');
+                this.activeCommand = command;
+            } else {
+                logger.log('waitForCommand is false, so do not set as active command');
+            }
             //run the command. the on('data') event will handle launching the next command once this one has finished processing
-            this.activeCommand.execute();
+            command.execute();
         }
     }
 
@@ -232,10 +252,13 @@ class Command {
 
             this.pipeline.client.write(commandText);
 
-            if (this.waitForPrompt) {
-                // The act of executing this command means we are no longer at the debug prompt
-                this.pipeline.isAtDebuggerPrompt = false;
+            //if we're not waiting for a prompt, immediately resolve this command
+            if (!this.waitForPrompt) {
+                this.deferred.resolve(null);
             }
+
+            // The act of executing this command means we are no longer at the debug prompt
+            this.pipeline.isAtDebuggerPrompt = false;
         } catch (e) {
             this.logger.error('Error executing command', e);
             this.deferred.reject('Error executing command');
