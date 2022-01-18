@@ -8,13 +8,11 @@ import { DebugSession } from 'vscode-debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
 import type { EvaluateContainer } from '../adapters/TelnetAdapter';
-import {
-    HighLevelType,
-    PrimativeType
-} from '../adapters/TelnetAdapter';
+import { PrimativeType } from '../adapters/TelnetAdapter';
 import { defer } from '../util';
-import type { SinonStub } from 'sinon';
+import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
+import type { SinonStub } from 'sinon';
 
 let sinon = sinonActual.createSandbox();
 let cwd = fileUtils.standardizePath(process.cwd());

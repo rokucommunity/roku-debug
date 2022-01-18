@@ -9,8 +9,9 @@ import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
-import { defer, util } from '../util';
+import { util, defer } from '../util';
 import { logger } from '../logging';
+import type { HighLevelType } from '../interfaces';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -191,24 +192,27 @@ export class DebugProtocolAdapter {
             stopOnEntry: this.stopOnEntry
         });
         try {
-            // Emit IO output from the debugger.
+            // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.socketDebugger.on('io-output', async (responseText) => {
                 if (responseText) {
                     responseText = this.chanperfTracker.processLog(responseText);
                     responseText = await this.rendezvousTracker.processLog(responseText);
                     this.emit('unhandled-console-output', responseText);
+                    this.emit('console-output', responseText);
                 }
             });
 
-            // Emit IO output from the debugger.
+            // Emit IO from the debugger.
             this.socketDebugger.on('protocol-version', (data: ProtocolVersionDetails) => {
                 if (data.errorCode === PROTOCOL_ERROR_CODES.SUPPORTED) {
                     this.emit('console-output', data.message);
                 } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_TESTED) {
                     this.emit('unhandled-console-output', data.message);
+                    this.emit('console-output', data.message);
                 } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_SUPPORTED) {
                     this.emit('unhandled-console-output', data.message);
+                    this.emit('console-output', data.message);
                 }
             });
 
@@ -623,14 +627,6 @@ export enum EventName {
     suspend = 'suspend'
 }
 
-export enum HighLevelType {
-    primative = 'primative',
-    array = 'array',
-    function = 'function',
-    object = 'object',
-    uninitialized = 'uninitialized'
-}
-
 export interface EvaluateContainer {
     name: string;
     evaluateName: string;
@@ -641,6 +637,7 @@ export interface EvaluateContainer {
     elementCount: number;
     highLevelType: HighLevelType;
     children: EvaluateContainer[];
+    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
 export enum KeyType {

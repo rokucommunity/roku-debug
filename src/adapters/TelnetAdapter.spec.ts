@@ -2,16 +2,13 @@ import { expect } from 'chai';
 import type { EvaluateContainer } from './TelnetAdapter';
 import { TelnetAdapter } from './TelnetAdapter';
 import * as dedent from 'dedent';
-import { HighLevelType } from './DebugProtocolAdapter';
+import { HighLevelType } from '../interfaces';
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
 
     beforeEach(() => {
         adapter = new TelnetAdapter('127.0.0.1');
-    });
-
-    afterEach(() => {
     });
 
     describe('getHighLevelTypeDetails', () => {
@@ -169,13 +166,7 @@ describe('TelnetAdapter ', () => {
                 evaluateName: 'testNode["mynewfield"]',
                 type: 'roSGNode:ContentNode',
                 name: 'mynewfield',
-                children: [{
-                    children: [],
-                    evaluateName: 'testNode["mynewfield"].getChildren(-1,0)',
-                    highLevelType: 'array',
-                    name: '[[children]]',
-                    type: 'roArray'
-                }],
+                children: [],
                 highLevelType: 'object'
             }]);
         });

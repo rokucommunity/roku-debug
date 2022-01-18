@@ -115,7 +115,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
         this.initRequestArgs = args;
         this.logger.log('initializeRequest');
-
         // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
         // we request them early by sending an 'initializeRequest' to the frontend.
         // The frontend will end the configuration sequence by calling 'configurationDone' request.
@@ -721,9 +720,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {
         this.logger.log('[nextRequest] begin');
-        await this.rokuAdapter.stepOver(args.threadId);
+        try {
+            await this.rokuAdapter.stepOver(args.threadId);
+            this.logger.info('[nextRequest] end');
+        } catch (error) {
+            this.logger.error(`[nextRequest] Error running '${BrightScriptDebugSession.prototype.nextRequest.name}()'`, error);
+        }
         this.sendResponse(response);
-        this.logger.info('[nextRequest] end');
     }
 
     protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
@@ -793,8 +796,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } else {
                 logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
             }
+            logger.info('end', { response });
             this.sendResponse(response);
-            logger.info('end');
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });
         }
@@ -804,6 +807,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
         let deferred = defer<any>();
+        if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
+            this.clearState();
+            const expression = args.expression.replace(/^\s*>\s*/, '');
+            this.logger.log('Sending raw telnet command...I sure hope you know what you\'re doing', { expression });
+            (this.rokuAdapter as TelnetAdapter).requestPipeline.client.write(`${expression}\r\n`);
+            this.sendResponse(response);
+            return deferred.promise;
+        }
+
         try {
             this.evaluateRequestPromise = this.evaluateRequestPromise.then(() => {
                 return deferred.promise;
@@ -981,6 +993,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'function') {
                     v = new Variable(result.name, result.value);
+                } else {
+                    //all other cases, but mostly for HighLevelType.unknown
+                    v = new Variable(result.name, result.value);
                 }
             }
 
@@ -988,6 +1003,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.evaluateName = result.evaluateName;
             v.frameId = frameId;
             v.type = result.type;
+            v.presentationHint = result.presentationHint ? { kind: result.presentationHint } : undefined;
 
             if (result.children) {
                 let childVariables = [];
