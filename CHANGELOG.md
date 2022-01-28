@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.9.3](https://github.com/rokucommunity/roku-debug/compare/v0.9.2...v0.9.3) - 2022-01-28
+### Changed
+ - upgrade to [brighterscript@0.43.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0430---2022-01-28).
+
+
+
 ## [0.9.2](https://github.com/rokucommunity/roku-debug/compare/v0.9.1...v0.9.2) - 2022-01-12
 ### Fixed
  - bug with telnet debug session related to fire-and-forget commands like `step`, `continue`, etc. This was causing the debug session to stall frequently. ([#64](https://github.com/rokucommunity/roku-debug/pull/64))
