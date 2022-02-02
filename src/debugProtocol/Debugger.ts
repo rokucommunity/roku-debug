@@ -14,6 +14,7 @@ import {
 import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../logging';
+import { HandshakeResponseV3 } from './responses/HandshakeResponseV3';
 
 export class Debugger {
 
@@ -41,6 +42,7 @@ export class Debugger {
     public scriptTitle: string;
     public handshakeComplete = false;
     public connectedToIoPort = false;
+    public watchPacketLength = false;
     public protocolVersion: string;
     public primaryThread: number;
     public stackFrameIndex: number;
@@ -350,7 +352,12 @@ export class Debugger {
             }
 
         } else {
-            let debuggerHandshake = new HandshakeResponse(unhandledData);
+            let debuggerHandshake: HandshakeResponse | HandshakeResponseV3;
+            debuggerHandshake = new HandshakeResponseV3(unhandledData);
+            if (!debuggerHandshake.success) {
+                debuggerHandshake = new HandshakeResponse(unhandledData);
+            }
+
             if (debuggerHandshake.success) {
                 this.handshakeComplete = true;
                 this.verifyHandshake(debuggerHandshake);
@@ -380,6 +387,9 @@ export class Debugger {
             this.logger.log('Magic is valid.');
             this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion].join('.');
             this.logger.log('Protocol Version:', this.protocolVersion);
+
+            this.watchPacketLength = debuggerHandshake.watchPacketLength;
+
             let handshakeVerified = true;
 
             if (semver.satisfies(this.protocolVersion, this.supportedVersionRange)) {

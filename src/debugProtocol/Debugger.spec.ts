@@ -6,6 +6,7 @@ import { SmartBuffer } from 'smart-buffer';
 import { util } from '../util';
 import { MockDebugProtocolServer } from './MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
+import { createHandShakeResponse, createHandShakeResponseV3 } from './responses/responseCreationHelpers.spec';
 const sinon = createSandbox();
 
 describe('debugProtocol Debugger', () => {
@@ -65,6 +66,49 @@ describe('debugProtocol Debugger', () => {
             expect(
                 await bsDebugger.once('handshake-verified')
             ).to.be.false;
+        });
+    });
+
+    describe('parseUnhandledData', () => {
+        it('handles legacy handshake', () => {
+            let mockResponse = createHandShakeResponse({
+                magic: Debugger.DEBUGGER_MAGIC,
+                major: 1,
+                minor: 0,
+                patch: 0
+            });
+
+            bsDebugger['unhandledData'] = mockResponse.toBuffer();
+
+            expect(bsDebugger.watchPacketLength).to.be.equal(false);
+            expect(bsDebugger.handshakeComplete).to.be.equal(false);
+
+            expect(bsDebugger['parseUnhandledData'](bsDebugger['unhandledData'])).to.be.equal(true);
+
+            expect(bsDebugger.watchPacketLength).to.be.equal(false);
+            expect(bsDebugger.handshakeComplete).to.be.equal(true);
+            expect(bsDebugger['unhandledData'].byteLength).to.be.equal(0);
+        });
+
+        it('handles v3 handshake', () => {
+            let mockResponse = createHandShakeResponseV3({
+                magic: Debugger.DEBUGGER_MAGIC,
+                major: 3,
+                minor: 0,
+                patch: 0,
+                revisionTimeStamp: Date.now()
+            });
+
+            bsDebugger['unhandledData'] = mockResponse.toBuffer();
+
+            expect(bsDebugger.watchPacketLength).to.be.equal(false);
+            expect(bsDebugger.handshakeComplete).to.be.equal(false);
+
+            expect(bsDebugger['parseUnhandledData'](bsDebugger['unhandledData'])).to.be.equal(true);
+
+            expect(bsDebugger.watchPacketLength).to.be.equal(true);
+            expect(bsDebugger.handshakeComplete).to.be.equal(true);
+            expect(bsDebugger['unhandledData'].byteLength).to.be.equal(0);
         });
     });
 });
