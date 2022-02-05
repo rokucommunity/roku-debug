@@ -79,7 +79,6 @@ export class VariableInfo {
             }
 
             // Pull out the variable data based on the type if that type returns a value
-            let value: any;
             switch (this.variableType) {
                 case 'Interface':
                 case 'Object':
@@ -128,9 +127,13 @@ export class VariableInfo {
                     this.value = 'Unknown';
                     this.success = true;
                     break;
-                default:
+                case 'AA':
                     this.value = null;
                     this.success = true;
+                    break;
+                default:
+                    this.value = null;
+                    this.success = false;
             }
         }
     }
