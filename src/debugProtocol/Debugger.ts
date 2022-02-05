@@ -12,6 +12,7 @@ import {
     ProtocolEvent,
     ProtocolEventV3,
     StackTraceResponse,
+    StackTraceResponseV3,
     ThreadsResponse,
     UndefinedResponse,
     UpdateThreadsResponse,
@@ -295,6 +296,7 @@ export class Debugger {
             let packetLength = debuggerRequestResponse.packetLength;
             let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
 
+            console.log('incoming data', debuggerRequestResponse)
             if (debuggerRequestResponse.success) {
                 if (debuggerRequestResponse.requestId > this.totalRequests) {
                     this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);
@@ -336,7 +338,10 @@ export class Debugger {
                         case COMMANDS.VARIABLES:
                             return this.checkResponse(new VariableResponse(slicedBuffer), buffer, packetLength);
                         case COMMANDS.STACKTRACE:
-                            return this.checkResponse(new StackTraceResponse(slicedBuffer), buffer, packetLength);
+                            return this.checkResponse(
+                                packetLength ? new StackTraceResponseV3(slicedBuffer) : new StackTraceResponse(slicedBuffer),
+                                buffer,
+                                packetLength);
                         case COMMANDS.THREADS:
                             return this.checkResponse(new ThreadsResponse(slicedBuffer), buffer, packetLength);
                         default:
@@ -371,7 +376,6 @@ export class Debugger {
     }
 
     private removedProcessedBytes(responseHandler: {requestId: number, readOffset: number}, unhandledData: Buffer, packetLength = 0) {
-        console.log(responseHandler);
         if (responseHandler.requestId > 0 && this.activeRequests[responseHandler.requestId]) {
             delete this.activeRequests[responseHandler.requestId];
         }
@@ -379,6 +383,7 @@ export class Debugger {
         this.emit('data', responseHandler);
 
         this.unhandledData = unhandledData.slice(packetLength ? packetLength : responseHandler.readOffset);
+        console.log(this.unhandledData.length, responseHandler);
         this.parseUnhandledData(this.unhandledData);
     }
 
