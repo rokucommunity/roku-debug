@@ -12,11 +12,11 @@ export class ConnectIOPortResponse {
 
                 // Updates will always have an id of zero because we didn't ask for this information
                 if (this.requestId === 0) {
-                    this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()]; // error_code
-                    this.updateType = UPDATE_TYPES[bufferReader.readUInt32LE()]; // update_type
+                    this.errorCode = bufferReader.readUInt32LE(); // error_code
+                    this.updateType = bufferReader.readUInt32LE(); // update_type
 
                     // Only handle IO port events in this class
-                    if (this.updateType === 'IO_PORT_OPENED') {
+                    if (this.updateType === UPDATE_TYPES.IO_PORT_OPENED) {
                         this.data = bufferReader.readUInt32LE(); // data
                         this.readOffset = bufferReader.readOffset;
                         this.success = true;
@@ -32,7 +32,7 @@ export class ConnectIOPortResponse {
 
     // response fields
     public requestId = -1;
-    public errorCode: string;
-    public updateType: string;
+    public errorCode = -1;
+    public updateType = -1;
     public data = -1;
 }

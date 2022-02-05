@@ -1,5 +1,6 @@
+/* eslint-disable no-bitwise */
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES, VARIABLE_FLAGS, VARIABLE_TYPES } from '../Constants';
+import { VARIABLE_FLAGS, VARIABLE_TYPES } from '../Constants';
 import { util } from '../../util';
 
 export class VariableResponse {
@@ -13,7 +14,7 @@ export class VariableResponse {
 
                 // Any request id less then one is an update and we should not process it here
                 if (this.requestId > 0) {
-                    this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
+                    this.errorCode = bufferReader.readUInt32LE();
                     this.numVariables = bufferReader.readUInt32LE();
 
                     // iterate over each variable in the buffer data and create a Variable Info object
@@ -38,7 +39,7 @@ export class VariableResponse {
 
     // response fields
     public requestId = -1;
-    public errorCode: string;
+    public errorCode = -1;
     public numVariables = -1;
     public variables = [] as VariableInfo[];
 }
@@ -47,12 +48,15 @@ export class VariableInfo {
 
     constructor(bufferReader: SmartBuffer) {
         if (bufferReader.length >= 13) {
-            // Determine the different variable properties
             let bitwiseMask = bufferReader.readUInt8();
-            for (const property in VARIABLE_FLAGS) {
-                // eslint-disable-next-line no-bitwise
-                this[property] = (bitwiseMask & VARIABLE_FLAGS[property]) > 0;
-            }
+
+            // Determine the different variable properties
+            this.isChildKey = (bitwiseMask & VARIABLE_FLAGS.isChildKey) > 0;
+            this.isConst = (bitwiseMask & VARIABLE_FLAGS.isConst) > 0;
+            this.isContainer = (bitwiseMask & VARIABLE_FLAGS.isContainer) > 0;
+            this.isNameHere = (bitwiseMask & VARIABLE_FLAGS.isNameHere) > 0;
+            this.isRefCounted = (bitwiseMask & VARIABLE_FLAGS.isRefCounted) > 0;
+            this.isValueHere = (bitwiseMask & VARIABLE_FLAGS.isValueHere) > 0;
 
             this.variableType = VARIABLE_TYPES[bufferReader.readUInt8()];
 

@@ -5,6 +5,7 @@ import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import type { VariableInfo } from '../debugProtocol/responses';
 import { VariableResponse } from '../debugProtocol/responses';
+import { ERROR_CODES } from '..';
 const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
@@ -42,7 +43,7 @@ describe('DebugProtocolAdapter', () => {
 
         beforeEach(() => {
             response = new VariableResponse(Buffer.alloc(5));
-            response.errorCode = 'OK';
+            response.errorCode = ERROR_CODES.OK;
             variables = [];
             sinon.stub(adapter as any, 'getStackTraceById').returns({});
             sinon.stub(socketDebugger, 'getVariables').callsFake(() => {

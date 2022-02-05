@@ -14,7 +14,7 @@ export class StackTraceResponse {
 
                 // Any request id less then one is an update and we should not process it here
                 if (this.requestId > 0) {
-                    this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
+                    this.errorCode = bufferReader.readUInt32LE();
                     this.stackSize = bufferReader.readUInt32LE();
 
                     for (let i = 0; i < this.stackSize; i++) {
@@ -38,7 +38,7 @@ export class StackTraceResponse {
 
     // response fields
     public requestId = -1;
-    public errorCode: string;
+    public errorCode = -1;
     public stackSize = -1;
     public entries = [];
 }

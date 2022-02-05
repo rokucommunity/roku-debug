@@ -6,7 +6,9 @@ import { SmartBuffer } from 'smart-buffer';
 import { util } from '../util';
 import { MockDebugProtocolServer } from './MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
-import { createHandShakeResponse, createHandShakeResponseV3 } from './responses/responseCreationHelpers.spec';
+import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from './responses/responseCreationHelpers.spec';
+import { HandshakeResponseV3, ProtocolEventV3 } from './responses';
+import { ERROR_CODES, UPDATE_TYPES } from './Constants';
 const sinon = createSandbox();
 
 describe('debugProtocol Debugger', () => {
@@ -109,6 +111,43 @@ describe('debugProtocol Debugger', () => {
             expect(bsDebugger.watchPacketLength).to.be.equal(true);
             expect(bsDebugger.handshakeComplete).to.be.equal(true);
             expect(bsDebugger['unhandledData'].byteLength).to.be.equal(0);
+        });
+
+        it('handles events after handshake', () => {
+            let handshake = createHandShakeResponseV3({
+                magic: Debugger.DEBUGGER_MAGIC,
+                major: 3,
+                minor: 0,
+                patch: 0,
+                revisionTimeStamp: Date.now()
+            });
+
+            let protocolEvent = createProtocolEventV3({
+                requestId: 0,
+                errorCode: ERROR_CODES.CANT_CONTINUE,
+                updateType: UPDATE_TYPES.ALL_THREADS_STOPPED
+            });
+
+            let mockResponse = new SmartBuffer();
+            mockResponse.writeBuffer(handshake.toBuffer());
+            mockResponse.writeBuffer(protocolEvent.toBuffer());
+
+            bsDebugger['unhandledData'] = mockResponse.toBuffer();
+
+            const stub = sinon.stub(bsDebugger as any, 'removedProcessedBytes').callThrough();
+
+            expect(bsDebugger.watchPacketLength).to.be.equal(false);
+            expect(bsDebugger.handshakeComplete).to.be.equal(false);
+
+            expect(bsDebugger['parseUnhandledData'](bsDebugger['unhandledData'])).to.be.equal(true);
+
+            expect(bsDebugger.watchPacketLength).to.be.equal(true);
+            expect(bsDebugger.handshakeComplete).to.be.equal(true);
+            expect(bsDebugger['unhandledData'].byteLength).to.be.equal(0);
+
+            let calls = stub.getCalls();
+            expect(calls[0].args[0]).instanceOf(HandshakeResponseV3);
+            expect(calls[1].args[0]).instanceOf(ProtocolEventV3);
         });
     });
 });

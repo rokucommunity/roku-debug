@@ -41,6 +41,7 @@ export class HandshakeResponseV3 {
     public watchPacketLength = true; // this will always be false for the new protocol versions
     public success = false;
     public readOffset = 0;
+    public requestId = 0;
 
     // response fields
     public magic: string;

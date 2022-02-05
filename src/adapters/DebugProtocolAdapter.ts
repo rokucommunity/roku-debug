@@ -8,7 +8,7 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { ERROR_CODES, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer } from '../util';
 import { logger } from '../logging';
 import type { HighLevelType } from '../interfaces';
@@ -426,7 +426,7 @@ export class DebugProtocolAdapter {
             let variablePath = this.getVariablePath(expression);
             let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
-            if (response.errorCode === 'OK') {
+            if (response.errorCode === ERROR_CODES.OK) {
                 let mainContainer: EvaluateContainer;
                 let children: EvaluateContainer[] = [];
                 let firstHandled = false;

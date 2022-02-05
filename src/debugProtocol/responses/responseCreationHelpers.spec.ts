@@ -1,11 +1,12 @@
 import { SmartBuffer } from 'smart-buffer';
+import type { ERROR_CODES, UPDATE_TYPES } from '../Constants';
 
 
 interface Handshake {
-    magic?: string;
-    major?: number;
-    minor?: number;
-    patch?: number;
+    magic: string;
+    major: number;
+    minor: number;
+    patch: number;
 }
 
 export function createHandShakeResponse(handshake: Handshake): SmartBuffer {
@@ -50,3 +51,48 @@ export function createHandShakeResponseV3(handshake: HandshakeV3, extraBufferDat
     return buffer;
 }
 
+interface ProtocolEvent {
+    requestId: number;
+    errorCode: ERROR_CODES;
+    updateType?: UPDATE_TYPES;
+}
+
+export function createProtocolEvent(protocolEvent: ProtocolEvent, extraBufferData?: Buffer): SmartBuffer {
+    let buffer = new SmartBuffer();
+    buffer.writeUInt32LE(protocolEvent.requestId); // request_id
+    buffer.writeUInt32LE(protocolEvent.errorCode); // error_code
+
+    // If this is an update type make sure to add the update type value
+    if (protocolEvent.requestId === 0) {
+        buffer.writeInt32LE(protocolEvent.updateType); // update_type
+    }
+
+    // write any extra data for testing
+    if (extraBufferData) {
+        buffer.writeBuffer(extraBufferData);
+    }
+
+    return buffer;
+}
+
+export function createProtocolEventV3(protocolEvent: ProtocolEvent, extraBufferData?: Buffer): SmartBuffer {
+    let buffer = new SmartBuffer();
+    buffer.writeUInt32LE(protocolEvent.requestId); // request_id
+    buffer.writeUInt32LE(protocolEvent.errorCode); // error_code
+
+    // If this is an update type make sure to add the update type value
+    if (protocolEvent.requestId === 0) {
+        buffer.writeInt32LE(protocolEvent.updateType); // update_type
+    }
+
+    // write any extra data for testing
+    if (extraBufferData) {
+        buffer.writeBuffer(extraBufferData);
+    }
+
+    return addPacketLength(buffer);
+}
+
+function addPacketLength(buffer: SmartBuffer): SmartBuffer {
+    return buffer.insertUInt32LE(buffer.length + 4, 0); // packet_length - The size of the packet to be sent.
+}
