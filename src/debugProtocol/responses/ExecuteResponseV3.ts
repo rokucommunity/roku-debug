@@ -1,28 +1,23 @@
 import { SmartBuffer } from 'smart-buffer';
+import { util } from '../../util';
 
 export class ExecuteResponseV3 {
     constructor(buffer: Buffer) {
         // The smallest a request response can be
         if (buffer.byteLength >= 12) {
             try {
-                throw new Error('TODO');
                 let bufferReader = SmartBuffer.fromBuffer(buffer);
-                this.packetLength = bufferReader.readUInt32LE(); // packet_length
                 this.requestId = bufferReader.readUInt32LE(); // request_id
                 this.errorCode = bufferReader.readUInt32LE(); // error_code
+                this.executeSuccess = bufferReader.readUInt8() !== 0; //execute_success
+                this.runtimeStopCode = bufferReader.readUInt8(); //runtime_stop_code
 
-                if (bufferReader.length < this.packetLength) {
-                    throw new Error(`Incomplete packet. Bytes received: ${bufferReader.length}/${this.packetLength}`);
-                }
+                this.compileErrors = new ExecuteErrors(bufferReader);
+                this.runtimeErrors = new ExecuteErrors(bufferReader);
+                this.otherErrors = new ExecuteErrors(bufferReader);
 
-                // Any request id less then one is an update and we should not process it here
-                if (this.requestId > 0) {
-                    this.readOffset = bufferReader.readOffset;
-                } else if (this.requestId === 0) {
-                    this.updateType = bufferReader.readUInt32LE();
-                }
+                this.success = this.compileErrors.success && this.runtimeErrors.success && this.otherErrors.success;
                 this.readOffset = bufferReader.readOffset;
-                this.success = true;
             } catch (error) {
                 // Could not parse
             }
@@ -30,11 +25,36 @@ export class ExecuteResponseV3 {
     }
     public success = false;
     public readOffset = 0;
+    /**
+     * true if code ran and completed without    errors, false otherwise
+     */
+    public executeSuccess = false;
+    public runtimeStopCode: number;
+
+    public compileErrors: ExecuteErrors;
+    public runtimeErrors: ExecuteErrors;
+    public otherErrors: ExecuteErrors;
 
     // response fields
-    public packetLength = 0;
     public requestId = -1;
-    public updateType = -1;
     public errorCode = -1;
-    public data = -1;
+}
+
+class ExecuteErrors {
+    public constructor(bufferReader: SmartBuffer) {
+        if (bufferReader.length >= 8) {
+            const errorCount = bufferReader.readUInt32LE();
+            for (let i = 0; i < errorCount; i++) {
+                const message = util.readStringNT(bufferReader)
+                if (message) {
+                    this.messages.push(message);
+                }
+            }
+            this.success = this.messages.length === errorCount;
+        }
+    }
+
+    public success = false;
+
+    public messages: string[] = [];
 }

@@ -195,7 +195,7 @@ export class DebugProtocolAdapter {
             // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.socketDebugger.on('io-output', async (responseText) => {
-                if (responseText) {
+                if (typeof responseText === 'string') {
                     responseText = this.chanperfTracker.processLog(responseText);
                     responseText = await this.rendezvousTracker.processLog(responseText);
                     this.emit('unhandled-console-output', responseText);
@@ -379,7 +379,7 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot execute command without a corresponding frame');
         }
         this.logger.log('evaluate ', { command, frameId });
-        // Pipe all evaluate requests though as a variable request as evaluate is not available at the moment.
+      
         const response = await this.socketDebugger.executeCommand(command, frame.frameIndex, frame.threadIndex);
         this.logger.info('evaluate response', { command, response });
         return undefined;
