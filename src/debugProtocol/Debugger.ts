@@ -279,24 +279,33 @@ export class Debugger {
         };
 
         return new Promise<T>((resolve, reject) => {
-            let disconnect = this.on('data', (data) => {
+            let unsubscribe = this.on('data', (data) => {
                 if (data.requestId === requestId) {
-                    disconnect();
+                    unsubscribe();
                     resolve(data);
                 }
             });
 
-            this.controllerClient.write(buffer.toBuffer());
+            if (this.controllerClient) {
+                this.controllerClient.write(buffer.toBuffer());
+            } else {
+                throw new Error(`Controller connection was closed - Command: ${COMMANDS[command]}`);
+            }
         });
     }
 
     private parseUnhandledData(buffer: Buffer): boolean {
+        if (buffer.length < 1) {
+            // short circuit if the buffer is empty
+            return false;
+        }
+
         if (this.handshakeComplete) {
             let debuggerRequestResponse = this.watchPacketLength ? new ProtocolEventV3(buffer) : new ProtocolEvent(buffer);
             let packetLength = debuggerRequestResponse.packetLength;
             let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
 
-            console.log('incoming data', debuggerRequestResponse)
+            console.log('incoming data - ', `bytes: ${buffer.length}`, debuggerRequestResponse)
             if (debuggerRequestResponse.success) {
                 if (debuggerRequestResponse.requestId > this.totalRequests) {
                     this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);

@@ -521,6 +521,7 @@ export class DebugProtocolAdapter {
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         if (this.cache[key]) {
+            this.logger.log('return cashed response', key, this.cache[key]);
             return this.cache[key];
         }
         this.cache[key] = Promise.resolve<T>(factory());
