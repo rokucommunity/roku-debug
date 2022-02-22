@@ -2,7 +2,7 @@ import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
 import { util } from '../../util';
 
-export class StackTraceResponse {
+export class StackTraceResponseV3 {
 
     constructor(buffer: Buffer) {
         // The smallest a stacktrace request response can be
@@ -17,7 +17,7 @@ export class StackTraceResponse {
                     this.stackSize = bufferReader.readUInt32LE();
 
                     for (let i = 0; i < this.stackSize; i++) {
-                        let stackEntry = new StackEntry(bufferReader);
+                        let stackEntry = new StackEntryV3(bufferReader);
                         if (stackEntry.success) {
                             // All the necessary stack entry data was present. Push to the entries array.
                             this.entries.push(stackEntry);
@@ -42,13 +42,13 @@ export class StackTraceResponse {
     public entries = [];
 }
 
-export class StackEntry {
+export class StackEntryV3 {
 
     constructor(bufferReader: SmartBuffer) {
         this.lineNumber = bufferReader.readUInt32LE();
         // NOTE: this is documented as being function name then file name but it is being returned by the device backwards.
-        this.fileName = util.readStringNT(bufferReader);
         this.functionName = util.readStringNT(bufferReader);
+        this.fileName = util.readStringNT(bufferReader);
 
         let fileExtension = path.extname(this.fileName).toLowerCase();
         // NOTE:Make sure we have a full valid path (?? can be valid because the device might not know the file).

@@ -8,8 +8,8 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
-import { util, defer } from '../util';
+import { ERROR_CODES, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { defer, util } from '../util';
 import { logger } from '../logging';
 import type { HighLevelType } from '../interfaces';
 
@@ -440,7 +440,7 @@ export class DebugProtocolAdapter {
         let variablePath = expression === '' ? [] : util.getVariablePath(expression);
         let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
-        if (response.errorCode === 'OK') {
+        if (response.errorCode === ERROR_CODES.OK) {
             let mainContainer: EvaluateContainer;
             let children: EvaluateContainer[] = [];
             let firstHandled = false;
@@ -517,6 +517,7 @@ export class DebugProtocolAdapter {
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         if (this.cache[key]) {
+            this.logger.log('return cashed response', key, this.cache[key]);
             return this.cache[key];
         }
         this.cache[key] = Promise.resolve<T>(factory());
