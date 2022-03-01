@@ -230,11 +230,10 @@ export class Debugger {
     }
 
     public async threads() {
-        let result;
         if (this.stopped) {
-            result = this.makeRequest<ThreadsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
+            let result = await this.makeRequest<ThreadsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
             if (result.errorCode === ERROR_CODES.OK) {
-                for (let i = 0; i < result.threadCount; i++) {
+                for (let i = 0; i < result.threadsCount; i++) {
                     let thread = result.threads[i];
                     if (thread.isPrimary) {
                         this.primaryThread = i;

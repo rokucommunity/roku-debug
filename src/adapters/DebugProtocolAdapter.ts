@@ -240,6 +240,7 @@ export class DebugProtocolAdapter {
             });
 
             this.socketDebugger.on('suspend', (data) => {
+                this.clearCache();
                 this.emit('suspend', data);
             });
 
