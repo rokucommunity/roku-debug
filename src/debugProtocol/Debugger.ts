@@ -332,6 +332,7 @@ export class Debugger {
                 }
 
                 if (debuggerRequestResponse.updateType > 0) {
+                    this.logger.log('Update Type:',UPDATE_TYPES[debuggerRequestResponse.updateType])
                     switch (debuggerRequestResponse.updateType) {
                         case UPDATE_TYPES.IO_PORT_OPENED:
                             return this.connectToIoPort(new ConnectIOPortResponse(slicedBuffer), buffer, packetLength);
@@ -350,6 +351,7 @@ export class Debugger {
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }
                 } else {
+                    this.logger.log('Command Type:', COMMANDS[this.activeRequests[debuggerRequestResponse.requestId].commandType])
                     switch (this.activeRequests[debuggerRequestResponse.requestId].commandType) {
                         case COMMANDS.STOP:
                         case COMMANDS.CONTINUE:

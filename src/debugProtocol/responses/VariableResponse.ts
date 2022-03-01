@@ -128,6 +128,7 @@ export class VariableInfo {
                     this.success = true;
                     break;
                 case 'AA':
+                case 'Array':
                     this.value = null;
                     this.success = true;
                     break;
