@@ -379,7 +379,7 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot execute command without a corresponding frame');
         }
         this.logger.log('evaluate ', { command, frameId });
-      
+
         const response = await this.socketDebugger.executeCommand(command, frame.frameIndex, frame.threadIndex);
         this.logger.info('evaluate response', { command, response });
         return undefined;
@@ -437,6 +437,7 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot request variable without a corresponding frame');
         }
 
+        logger.log(`Expression:`, expression);
         let variablePath = expression === '' ? [] : util.getVariablePath(expression);
         let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
@@ -494,7 +495,7 @@ export class DebugProtocolAdapter {
                     let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
                     container.name = pathAddition.toString();
                     if (mainContainer.evaluateName) {
-                        container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
+                        container.evaluateName = `${mainContainer.evaluateName}.["${pathAddition}"]`;
                     } else {
                         container.evaluateName = pathAddition.toString();
                     }
