@@ -17,8 +17,8 @@
         "type": "git",
         "url": "https://github.com/rokucommunity/roku-debug"
     },
-    "author": "",
-    "license": "ISC",
+    "author": "RokuCommunity",
+    "license": "MIT",
     "mocha": {
         "require": [
             "source-map-support/register",
