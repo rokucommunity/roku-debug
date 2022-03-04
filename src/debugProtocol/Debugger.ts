@@ -32,8 +32,8 @@ export class Debugger {
         return this.stopped;
     }
 
-    //TODO fix this, we need to support a range of versions, and that logic happens lower down.
-    public supportedVersionRange = '2.0.0';
+    // The highest tested version of the protocol we support.
+    public supportedVersionRange = '3.0.0';
 
     constructor(
         options: ConstructorOptions
