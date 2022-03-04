@@ -12,7 +12,7 @@ import { ERROR_CODES, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
-import type { HighLevelType } from '../interfaces';
+import type { HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -47,6 +47,7 @@ export class DebugProtocolAdapter {
      * If that fails we retry in lower case. This flag is used to drive that logic switching
      */
     private enableVariablesLowerCaseRetry = true;
+    private supportsExecuteCommand: boolean;
     private compileClient: Socket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
@@ -225,6 +226,7 @@ export class DebugProtocolAdapter {
                 // Due to casing issues with variables on protocol version * and under we first need to try the request in the supplied case.
                 // If that fails we retry in lower case.
                 this.enableVariablesLowerCaseRetry = semver.satisfies(this.activeProtocolVersion, '*');
+                this.supportsExecuteCommand = semver.satisfies(this.activeProtocolVersion, '>=3.0.0');
             });
 
             // Listen for the close event
@@ -381,20 +383,37 @@ export class DebugProtocolAdapter {
      * @param command
      * @returns the output of the command (if possible)
      */
-    public async evaluate(command: string, frameId: number = this.socketDebugger.primaryThread): Promise<string> {
-        if (!this.isAtDebuggerPrompt) {
-            throw new Error('Cannot run evaluate: debugger is not paused');
-        }
+    public async evaluate(command: string, frameId: number = this.socketDebugger.primaryThread): Promise<RokuAdapterEvaluateResponse> {
+        if (this.supportsExecuteCommand) {
+            if (!this.isAtDebuggerPrompt) {
+                throw new Error('Cannot run evaluate: debugger is not paused');
+            }
 
-        let frame = this.getStackTraceById(frameId);
-        if (!frame) {
-            throw new Error('Cannot execute command without a corresponding frame');
-        }
-        this.logger.log('evaluate ', { command, frameId });
+            let frame = this.getStackTraceById(frameId);
+            if (!frame) {
+                throw new Error('Cannot execute command without a corresponding frame');
+            }
+            this.logger.log('evaluate ', { command, frameId });
 
-        const response = await this.socketDebugger.executeCommand(command, frame.frameIndex, frame.threadIndex);
-        this.logger.info('evaluate response', { command, response });
-        return undefined;
+            const response = await this.socketDebugger.executeCommand(command, frame.frameIndex, frame.threadIndex);
+            this.logger.info('evaluate response', { command, response });
+            if (response.executeSuccess) {
+                return {
+                    message: undefined,
+                    type: 'message'
+                };
+            } else {
+                return {
+                    message: response.compileErrors.messages[0] ?? response.runtimeErrors.messages[0] ?? response.otherErrors.messages[0] ?? 'Unknown error executing command',
+                    type: 'error'
+                };
+            }
+        } else {
+            return {
+                message: `Execute commands are not supported on debug protocol: ${this.activeProtocolVersion}, v3.0.0 or greater is required.`,
+                type: 'error'
+            };
+        }
     }
 
     public async getStackTrace(threadId: number = this.socketDebugger.primaryThread) {

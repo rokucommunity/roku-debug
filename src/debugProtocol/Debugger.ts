@@ -274,7 +274,7 @@ export class Debugger {
             buffer.writeUInt32LE(threadIndex); // thread_index
             buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
             buffer.writeStringNT(sourceCode); // source_code
-            return this.makeRequest<Response>(buffer, COMMANDS.EXECUTE, sourceCode);
+            return this.makeRequest<ExecuteResponseV3>(buffer, COMMANDS.EXECUTE, sourceCode);
         }
     }
 

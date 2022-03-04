@@ -42,10 +42,10 @@ export class ExecuteResponseV3 {
 
 class ExecuteErrors {
     public constructor(bufferReader: SmartBuffer) {
-        if (bufferReader.length >= 8) {
+        if (bufferReader.length >= 4) {
             const errorCount = bufferReader.readUInt32LE();
             for (let i = 0; i < errorCount; i++) {
-                const message = util.readStringNT(bufferReader)
+                const message = util.readStringNT(bufferReader);
                 if (message) {
                     this.messages.push(message);
                 }

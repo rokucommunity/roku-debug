@@ -9,3 +9,8 @@ export enum HighLevelType {
      */
     unknown = 'unknown'
 }
+
+export interface RokuAdapterEvaluateResponse {
+    type: 'message' | 'error';
+    message: string;
+}

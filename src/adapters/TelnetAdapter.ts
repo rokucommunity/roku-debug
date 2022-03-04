@@ -11,6 +11,7 @@ import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { defer, util } from '../util';
 import { logger } from '../logging';
+import type { RokuAdapterEvaluateResponse } from '../interfaces';
 import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
 
@@ -438,7 +439,7 @@ export class TelnetAdapter {
      * Execute a command directly on the roku. Returns the output of the command.
      * @param command the command to execute. If the command does not start with `print` the command will be prefixed with `print ` because
      */
-    public async evaluate(command: string) {
+    public async evaluate(command: string): Promise<RokuAdapterEvaluateResponse> {
         this.logger.log('evaluate ', { command });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot run evaluate: debugger is not paused');
@@ -449,7 +450,10 @@ export class TelnetAdapter {
         let responseText = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
         //we know that if we got a response, we are back at a debugger prompt
         this.isAtDebuggerPrompt = true;
-        return responseText;
+        return {
+            message: responseText,
+            type: 'message'
+        };
     }
 
     public async getStackTrace() {

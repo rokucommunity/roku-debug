@@ -43,7 +43,7 @@ import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
-import type { Logger, LogMessage } from '../logging';
+import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
@@ -863,25 +863,31 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //run an `evaluate` call
                 } else {
                     if (this.enableDebugProtocol) {
-
                         const isPrintVar = util.isPrintVarExpression(args.expression);
-                        // if()
-                        // if((this.rokuAdapter as DebugProtocolAdapter).activeProtocolVersion
                     }
-                    const output = util.trimDebugPrompt(
-                        await this.rokuAdapter.evaluate(args.expression, args.frameId)
-                    );
-                    //clear variable cache since this action could have side-effects
-                    this.clearState();
-                    this.sendInvalidatedEvent(null, args.frameId);
-                    //if the adapter captured output (probably only telnet), print it to the vscode debug console
-                    if (typeof output === 'string') {
-                        this.sendEvent(new OutputEvent(output, 'stdio'));
+
+                    if (args.context === 'repl') {
+                        let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
+
+                        commandResults.message = util.trimDebugPrompt(commandResults.message);
+                        //clear variable cache since this action could have side-effects
+                        this.clearState();
+                        this.sendInvalidatedEvent(null, args.frameId);
+                        //if the adapter captured output (probably only telnet), print it to the vscode debug console
+                        if (typeof commandResults.message === 'string') {
+                            this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
+                        }
+
+                        response.body = {
+                            result: 'invalid',
+                            variablesReference: 0
+                        };
+                    } else {
+                        response.body = {
+                            result: 'invalid',
+                            variablesReference: 0
+                        };
                     }
-                    response.body = {
-                        result: 'invalid',
-                        variablesReference: 0
-                    };
                 }
             }
         } catch (error) {
