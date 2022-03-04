@@ -11,6 +11,7 @@ import type { SourceLocation } from '../managers/LocationManager';
 import { ERROR_CODES, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
+import * as semver from 'semver';
 import type { HighLevelType } from '../interfaces';
 
 /**
@@ -41,6 +42,11 @@ export class DebugProtocolAdapter {
 
     public connected: boolean;
 
+    /**
+     *  Due to casing issues with variables on some versions of the protocol we first need to try the request in the supplied case.
+     * If that fails we retry in lower case. This flag is used to drive that logic switching
+     */
+    private enableVariablesLowerCaseRetry = true;
     private compileClient: Socket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
@@ -214,6 +220,11 @@ export class DebugProtocolAdapter {
                     this.emit('unhandled-console-output', data.message);
                     this.emit('console-output', data.message);
                 }
+
+                // TODO: Update once we know the exact version this issue was fixed in.
+                // Due to casing issues with variables on protocol version * and under we first need to try the request in the supplied case.
+                // If that fails we retry in lower case.
+                this.enableVariablesLowerCaseRetry = semver.satisfies(this.activeProtocolVersion, '*');
             });
 
             // Listen for the close event
@@ -440,7 +451,20 @@ export class DebugProtocolAdapter {
 
         logger.log(`Expression:`, expression);
         let variablePath = expression === '' ? [] : util.getVariablePath(expression);
+
+        // Temporary workaround related to casing issues over the protocol
+        if (this.enableVariablesLowerCaseRetry && variablePath?.length > 0) {
+            variablePath[0] = variablePath[0].toLowerCase();
+        }
+
         let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+
+        if (this.enableVariablesLowerCaseRetry && response.errorCode !== ERROR_CODES.OK) {
+            // Temporary workaround related to casing issues over the protocol
+            logger.log(`Retrying expression as lower case:`, expression);
+            variablePath = expression === '' ? [] : util.getVariablePath(expression?.toLowerCase());
+            response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+        }
 
         if (response.errorCode === ERROR_CODES.OK) {
             let mainContainer: EvaluateContainer;
