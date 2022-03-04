@@ -103,5 +103,8 @@
         "vscode-debugadapter": "^1.49.0",
         "vscode-debugprotocol": "^1.49.0",
         "vscode-languageserver": "^6.1.1"
+    },
+    "optionalDependencies": {
+        "fsevents": "~2.3.1"
     }
 }
