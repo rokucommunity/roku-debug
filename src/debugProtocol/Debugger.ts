@@ -33,7 +33,7 @@ export class Debugger {
     }
 
     // The highest tested version of the protocol we support.
-    public supportedVersionRange = '3.0.0';
+    public supportedVersionRange = '<=3.0.0';
 
     constructor(
         options: ConstructorOptions
