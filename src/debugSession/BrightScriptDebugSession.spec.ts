@@ -464,6 +464,10 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             evalStub = sinon.stub(rokuAdapter, 'evaluate').callsFake((args) => {
                 console.log('called with', args);
+                return {
+                    message: undefined,
+                    type: 'message'
+                };
             });
             getVarStub = sinon.stub(rokuAdapter, 'getVariable').callsFake(() => {
                 return Promise.resolve(getVarValue);
@@ -489,7 +493,7 @@ describe('BrightScriptDebugSession', () => {
                 variablesReference: 0
             });
             console.log('checking calls');
-            expect(evalStub.calledWith(`"Billy"`, frameId)).to.be.true;
+            expect(evalStub.getCall(0)?.args[0]).equal('"Billy"');
         });
 
         it('skips when not at debugger prompt', async () => {

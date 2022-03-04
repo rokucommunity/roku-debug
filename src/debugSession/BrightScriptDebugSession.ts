@@ -866,7 +866,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         const isPrintVar = util.isPrintVarExpression(args.expression);
                     }
 
-                    if (args.context === 'repl') {
+                    if (args.context === 'repl' || !this.enableDebugProtocol) {
                         let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
 
                         commandResults.message = util.trimDebugPrompt(commandResults.message);

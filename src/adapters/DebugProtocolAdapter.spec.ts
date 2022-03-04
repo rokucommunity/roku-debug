@@ -61,8 +61,8 @@ describe('DebugProtocolAdapter', () => {
             expect(
                 vars?.children.map(x => x.evaluateName)
             ).to.eql([
-                'person.name',
-                'person.age'
+                'person.["name"]',
+                'person.["age"]'
             ]);
         });
 
