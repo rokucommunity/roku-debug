@@ -222,7 +222,7 @@ export class DebugProtocolAdapter {
                     this.emit('console-output', data.message);
                 }
 
-                // TODO: Update once we know the exact version this issue was fixed in.
+                // TODO: Update once we know the exact version of the debug protocol this issue was fixed in.
                 // Due to casing issues with variables on protocol version * and under we first need to try the request in the supplied case.
                 // If that fails we retry in lower case.
                 this.enableVariablesLowerCaseRetry = semver.satisfies(this.activeProtocolVersion, '*');
