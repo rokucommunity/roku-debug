@@ -60,7 +60,7 @@ export class TelnetAdapter {
     public readonly supportsMultipleRuns = true;
 
     /**
-     * Does this adapter support the `execute` (known as `eval` in telnet)
+     * Does this adapter support the `execute` command (known as `eval` in telnet)
      */
     public supportsExecute = true;
 
