@@ -808,7 +808,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private evaluateRequestPromise = Promise.resolve();
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
-        let deferred = defer<any>();
+        let deferred = defer<void>();
         if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
             this.clearState();
             const expression = args.expression.replace(/^\s*>\s*/, '');
