@@ -776,7 +776,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } else {
                     //find the variable with this reference
                     let v = this.variables[args.variablesReference];
-                    logger.log('variable', { v });
+                    logger.log('variable', v);
                     //query for child vars if we haven't done it yet.
                     if (v.childVariables.length === 0) {
                         let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
