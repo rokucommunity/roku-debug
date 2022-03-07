@@ -43,7 +43,7 @@ export class DebugProtocolAdapter {
     public connected: boolean;
 
     /**
-     *  Due to casing issues with variables on some versions of the protocol we first need to try the request in the supplied case.
+     *  Due to casing issues with the variables request on some versions of the debug protocol, we first need to try the request in the supplied case.
      * If that fails we retry in lower case. This flag is used to drive that logic switching
      */
     private enableVariablesLowerCaseRetry = true;
