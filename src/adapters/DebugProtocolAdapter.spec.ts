@@ -5,7 +5,7 @@ import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import type { VariableInfo } from '../debugProtocol/responses';
 import { VariableResponse } from '../debugProtocol/responses';
-import { ERROR_CODES } from '..';
+import { ERROR_CODES } from './../debugProtocol/Constants';
 const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
