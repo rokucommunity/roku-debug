@@ -829,7 +829,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             if (!this.rokuAdapter.isAtDebuggerPrompt) {
-                throw new Error('Skipped evaluate request because RokuAdapter is not accepting requests at this time');
+                let message = 'Skipped evaluate request because RokuAdapter is not accepting requests at this time';
+                if (args.context === 'repl') {
+                    this.sendEvent(new OutputEvent(message, 'stderr'));
+                    response.body = {
+                        result: 'invalid',
+                        variablesReference: 0
+                    };
+                } else {
+                    throw new Error(message);
+                }
 
                 //is at debugger prompt
             } else {
