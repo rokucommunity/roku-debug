@@ -1037,7 +1037,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private clearState() {
         //erase all cached variables
         this.variables = {};
-        this.variables = {};
     }
 
     /**
