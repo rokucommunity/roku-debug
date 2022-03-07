@@ -26,7 +26,7 @@ describe('DebugProtocolAdapter', () => {
             response = new VariableResponse(Buffer.alloc(5));
             response.errorCode = ERROR_CODES.OK;
             variables = [];
-            sinon.stub(adapter as any, 'getStackTraceById').returns({});
+            sinon.stub(adapter as any, 'getStackFrameById').returns({});
             sinon.stub(socketDebugger, 'getVariables').callsFake(() => {
                 response.variables = variables as any;
                 return Promise.resolve(response);

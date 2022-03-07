@@ -391,13 +391,13 @@ export class DebugProtocolAdapter {
                 throw new Error('Cannot run evaluate: debugger is not paused');
             }
 
-            let frame = this.getStackTraceById(frameId);
-            if (!frame) {
+            let stackFrame = this.getStackFrameById(frameId);
+            if (!stackFrame) {
                 throw new Error('Cannot execute command without a corresponding frame');
             }
             this.logger.log('evaluate ', { command, frameId });
 
-            const response = await this.socketDebugger.executeCommand(command, frame.frameIndex, frame.threadIndex);
+            const response = await this.socketDebugger.executeCommand(command, stackFrame.frameIndex, stackFrame.threadIndex);
             this.logger.info('evaluate response', { command, response });
             if (response.executeSuccess) {
                 return {
@@ -428,7 +428,7 @@ export class DebugProtocolAdapter {
             let stackTraceData: any = await this.socketDebugger.stackTrace(threadId);
             for (let i = 0; i < stackTraceData.stackSize; i++) {
                 let frameData = stackTraceData.entries[i];
-                let frame: StackFrame = {
+                let stackFrame: StackFrame = {
                     frameId: this.nextFrameId++,
                     frameIndex: stackTraceData.stackSize - i - 1, // frame index is the reverse of the returned order.
                     threadIndex: threadId,
@@ -438,15 +438,15 @@ export class DebugProtocolAdapter {
                     // eslint-disable-next-line no-nested-ternary
                     functionIdentifier: this.cleanUpFunctionName(i === 0 ? (frameData.functionName) ? frameData.functionName : thread.functionName : frameData.functionName)
                 };
-                this.stackFramesCache[frame.frameId] = frame;
-                frames.push(frame);
+                this.stackFramesCache[stackFrame.frameId] = stackFrame;
+                frames.push(stackFrame);
             }
 
             return frames;
         });
     }
 
-    private getStackTraceById(frameId: number): StackFrame {
+    private getStackFrameById(frameId: number): StackFrame {
         return this.stackFramesCache[frameId];
     }
 
@@ -465,7 +465,7 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
 
-        let frame = this.getStackTraceById(frameId);
+        let frame = this.getStackFrameById(frameId);
         if (!frame) {
             throw new Error('Cannot request variable without a corresponding frame');
         }
