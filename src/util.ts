@@ -285,23 +285,6 @@ class Util {
     /**
      * Get the keys for a given variable expression, or undefined if the expression doesn't make sense.
      */
-    public getVariablePathOld(expression: string): string[] {
-        // Regex 101 link for match examples: https://regex101.com/r/KNKfHP/8
-        let regexp = /(?:\[\"(.*?)\"\]|([a-z_][a-z0-9_\$%!#]*)|\[([0-9]*)\]|\.([0-9]+))/gi;
-        let match: RegExpMatchArray;
-        let variablePath = [];
-
-        // eslint-disable-next-line no-cond-assign
-        while (match = regexp.exec(expression)) {
-            // match 1: strings between quotes - this["that"]
-            // match 2: any valid brightscript viable format
-            // match 3: array/list access via index - this[0]
-            // match 3: array/list access via dot notation (not valid in code but returned as part of the VS Code flow) - this.0
-            variablePath.push(match[1] ?? match[2] ?? match[3] ?? match[4]);
-        }
-        return variablePath;
-    }
-
     public getVariablePath(expression: string): string[] {
         //HACK: assign to a variable so it turns into a valid expression, then we'll look at the right-hand-side
         const parser = Parser.parse(`__rokuDebugVar = ${expression}`);
