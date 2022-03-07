@@ -1,5 +1,6 @@
 import { ProtocolEvent } from './ProtocolEvent';
-import { createProtocolEvent } from './responseCreationHelpers.spec';
+import { createHandShakeResponse, createProtocolEvent } from './responseCreationHelpers.spec';
+import { Debugger } from '../Debugger';
 import { expect } from 'chai';
 import { createSandbox } from 'sinon';
 import { ERROR_CODES, UPDATE_TYPES } from '../Constants';
@@ -35,37 +36,15 @@ describe('ProtocolEvent', () => {
         expect(protocolEvent.success).to.be.equal(true);
     });
 
-    // it('Fails when buffer is incomplete', () => {
-    //     let mockResponse = createHandShakeResponse({
-    //         magic: Debugger.DEBUGGER_MAGIC,
-    //         major: 1,
-    //         minor: 0,
-    //         patch: 0
-    //     });
+    it('Fails when buffer is incomplete', () => {
+        let mockResponse = createHandShakeResponse({
+            magic: Debugger.DEBUGGER_MAGIC,
+            major: 1,
+            minor: 0,
+            patch: 0
+        });
 
-    //     let handshake = new HandshakeResponse(mockResponse.toBuffer().slice(-3));
-    //     expect(handshake.success).to.equal(false);
-    // });
-
-    // it('Fails when the protocol version is equal to or greater then 3.0.0', () => {
-    //     let mockResponseV3 = createHandShakeResponse({
-    //         magic: Debugger.DEBUGGER_MAGIC,
-    //         major: 3,
-    //         minor: 0,
-    //         patch: 0
-    //     });
-
-    //     let handshakeV3 = new HandshakeResponse(mockResponseV3.toBuffer());
-    //     expect(handshakeV3.success).to.equal(false);
-
-    //     let mockResponseV301 = createHandShakeResponse({
-    //         magic: Debugger.DEBUGGER_MAGIC,
-    //         major: 3,
-    //         minor: 0,
-    //         patch: 1
-    //     });
-
-    //     let handshakeV301 = new HandshakeResponse(mockResponseV301.toBuffer());
-    //     expect(handshakeV301.success).to.equal(false);
-    // });
+        let protocolEvent = new ProtocolEvent(mockResponse.toBuffer().slice(-3));
+        expect(protocolEvent.success).to.equal(false);
+    });
 });
