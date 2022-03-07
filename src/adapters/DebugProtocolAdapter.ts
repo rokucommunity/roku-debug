@@ -223,9 +223,11 @@ export class DebugProtocolAdapter {
                 }
 
                 // TODO: Update once we know the exact version of the debug protocol this issue was fixed in.
-                // Due to casing issues with variables on protocol version * and under we first need to try the request in the supplied case.
+                // Due to casing issues with variables on protocol version <FUTURE_VERSION> and under we first need to try the request in the supplied case.
                 // If that fails we retry in lower case.
                 this.enableVariablesLowerCaseRetry = semver.satisfies(this.activeProtocolVersion, '*');
+                // While execute was added as a command in 2.1.0. It has shortcoming that prevented us for leveraging the command.
+                // This was mostly addressed in the 3.0.0 release to the point where we were comfortable adding support for the command.
                 this.supportsExecuteCommand = semver.satisfies(this.activeProtocolVersion, '>=3.0.0');
             });
 
