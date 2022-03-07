@@ -539,7 +539,7 @@ export class DebugProtocolAdapter {
                     let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
                     container.name = pathAddition.toString();
                     if (mainContainer.evaluateName) {
-                        container.evaluateName = `${mainContainer.evaluateName}.["${pathAddition}"]`;
+                        container.evaluateName = `${mainContainer.evaluateName}["${pathAddition}"]`;
                     } else {
                         container.evaluateName = pathAddition.toString();
                     }
