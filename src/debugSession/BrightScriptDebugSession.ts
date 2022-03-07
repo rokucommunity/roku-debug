@@ -760,7 +760,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (this.rokuAdapter.isAtDebuggerPrompt) {
                 const reference = this.variableHandles.get(args.variablesReference);
                 if (reference) {
-                    logger.log('reference', { reference });
+                    logger.log('reference', reference);
                     // NOTE: Legacy telnet support for local vars
                     if (this.launchConfiguration.enableVariablesPanel) {
                         const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
