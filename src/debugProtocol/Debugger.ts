@@ -317,7 +317,7 @@ export class Debugger {
             let packetLength = debuggerRequestResponse.packetLength;
             let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
 
-            console.log('incoming data - ', `bytes: ${buffer.length}`, debuggerRequestResponse)
+            this.logger.log('incoming data - ', `bytes: ${buffer.length}`, debuggerRequestResponse)
             if (debuggerRequestResponse.success) {
                 if (debuggerRequestResponse.requestId > this.totalRequests) {
                     this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);
@@ -325,7 +325,7 @@ export class Debugger {
                 }
 
                 if (debuggerRequestResponse.errorCode !== ERROR_CODES.OK) {
-                    console.error(debuggerRequestResponse.errorCode, debuggerRequestResponse);
+                    this.logger.error(debuggerRequestResponse.errorCode, debuggerRequestResponse);
                     this.removedProcessedBytes(debuggerRequestResponse, buffer, packetLength);
                     return true;
                 }
