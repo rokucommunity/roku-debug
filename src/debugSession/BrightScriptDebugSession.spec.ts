@@ -501,7 +501,10 @@ describe('BrightScriptDebugSession', () => {
             await expectResponse({
                 context: 'repl',
                 expression: 'print "hello"'
-            }, undefined);
+            }, {
+                result: 'invalid',
+                variablesReference: 0
+            });
         });
 
         it('caches results', async () => {
