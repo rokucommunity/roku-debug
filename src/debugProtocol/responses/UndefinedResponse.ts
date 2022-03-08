@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES, UPDATE_TYPES } from '../Constants';
+import { UPDATE_TYPES } from '../Constants';
 
 export class UndefinedResponse {
 
@@ -12,11 +12,11 @@ export class UndefinedResponse {
 
                 // Updates will always have an id of zero because we didn't ask for this information
                 if (this.requestId === 0) {
-                    this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
-                    this.updateType = UPDATE_TYPES[bufferReader.readUInt32LE()];
+                    this.errorCode = bufferReader.readUInt32LE();
+                    this.updateType = bufferReader.readUInt32LE();
 
                     // Only handle undefined events in this class
-                    if (this.updateType === 'UNDEF') {
+                    if (this.updateType === UPDATE_TYPES.UNDEF) {
                         this.data = bufferReader.readUInt8();
                         this.readOffset = bufferReader.readOffset;
                         this.success = true;
@@ -32,7 +32,7 @@ export class UndefinedResponse {
 
     // response fields
     public requestId = -1;
-    public errorCode: string;
-    public updateType: string;
+    public errorCode = -1;
+    public updateType = -1;
     public data = -1;
 }

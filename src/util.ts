@@ -6,7 +6,8 @@ import * as url from 'url';
 import type { SmartBuffer } from 'smart-buffer';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
-import type { Position, Range } from 'brighterscript';
+import type { AssignmentStatement, Position, Range } from 'brighterscript';
+import { DiagnosticSeverity, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 import { serializeError } from 'serialize-error';
@@ -269,6 +270,61 @@ class Util {
     }
 
     /**
+     * Removes the trailing `Brightscript Debugger>` prompt if present. If not present, returns original value
+     * @param value
+     */
+    public trimDebugPrompt(value: string) {
+        const match = /(.*?)\r?\nBrightscript Debugger>\s*/is.exec(value);
+        if (match) {
+            return match[1];
+        } else {
+            return value;
+        }
+    }
+
+    /**
+     * Get the keys for a given variable expression, or undefined if the expression doesn't make sense.
+     */
+    public getVariablePath(expression: string): string[] {
+        //HACK: assign to a variable so it turns into a valid expression, then we'll look at the right-hand-side
+        const parser = Parser.parse(`__rokuDebugVar = ${expression}`);
+        if (
+            //quit if there are parse errors
+            parser.diagnostics.find(x => x.severity === DiagnosticSeverity.Error) ||
+            //quit if there are zero statements or more than one statement
+            parser.ast.statements.length !== 1
+        ) {
+            return undefined;
+        }
+        let value = (parser.ast.statements[0] as AssignmentStatement).value;
+
+        const parts = [] as string[];
+        while (value) {
+            if (isVariableExpression(value)) {
+                parts.unshift(value.name.text);
+                return parts;
+            } else if (isDottedGetExpression(value)) {
+                parts.unshift(value.name.text);
+                value = value.obj;
+            } else if (isIndexedGetExpression(value)) {
+                if (isLiteralExpression(value.index)) {
+                    parts.unshift(
+                        //remove leading and trailing quotes (won't hurt for numeric literals)
+                        value.index.token.text?.replace(/^"/, '').replace(/"$/, '')
+                    );
+                } else {
+                    //if we found a non-literal value, this entire variable path is NOT a true variable path
+                    return;
+                }
+                value = value.obj;
+            } else {
+                //not valid
+                return;
+            }
+        }
+    }
+
+    /*
      * Look up the ip address for a hostname. This is cached for the lifetime of the app, or bypassed with the `skipCache` parameter
      * @param host
      * @param skipCache
@@ -285,6 +341,21 @@ class Util {
     private dnsCache = new Map<string, string>();
 
     /**
+     * Is this expression the `print` keyword followed by a variable expression (like `a.b` or `a['b'].c`)
+     * @param expression
+     */
+    public isPrintVarExpression(expression: string) {
+        expression = expression.trim().toLowerCase();
+        if (expression.startsWith('print') || expression.startsWith('?')) {
+            const parts = this.getVariablePath(expression.replace(/^(print|\?)/, ''));
+            if (parts?.length > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /*
      * Sleep for the given number of milliseconds
      * @param milliseconds
      * @returns

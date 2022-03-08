@@ -8,6 +8,7 @@ import {
     DebugSession as BaseDebugSession,
     Handles,
     InitializedEvent,
+    InvalidatedEvent,
     OutputEvent,
     Scope,
     Source,
@@ -42,7 +43,7 @@ import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
-import type { Logger, LogMessage } from '../logging';
+import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
@@ -105,12 +106,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private launchConfiguration: LaunchConfiguration;
+    private initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
     /**
      * The 'initialize' request is the first request called by the frontend
      * to interrogate the features the debug adapter provides.
      */
     public initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
+        this.initRequestArgs = args;
         this.logger.log('initializeRequest');
         // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
         // we request them early by sending an 'initializeRequest' to the frontend.
@@ -757,6 +760,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (this.rokuAdapter.isAtDebuggerPrompt) {
                 const reference = this.variableHandles.get(args.variablesReference);
                 if (reference) {
+                    logger.log('reference', reference);
                     // NOTE: Legacy telnet support for local vars
                     if (this.launchConfiguration.enableVariablesPanel) {
                         const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
@@ -772,6 +776,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } else {
                     //find the variable with this reference
                     let v = this.variables[args.variablesReference];
+                    logger.log('variable', v);
                     //query for child vars if we haven't done it yet.
                     if (v.childVariables.length === 0) {
                         let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
@@ -803,95 +808,105 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private evaluateRequestPromise = Promise.resolve();
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
+        let deferred = defer<void>();
         if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
             this.clearState();
             const expression = args.expression.replace(/^\s*>\s*/, '');
             this.logger.log('Sending raw telnet command...I sure hope you know what you\'re doing', { expression });
             (this.rokuAdapter as TelnetAdapter).requestPipeline.client.write(`${expression}\r\n`);
             this.sendResponse(response);
-            return;
+            return deferred.promise;
         }
 
         try {
-            let deferred = defer<any>();
-
             this.evaluateRequestPromise = this.evaluateRequestPromise.then(() => {
                 return deferred.promise;
             });
 
-            //fix vscode bug that excludes closing quotemark sometimes.
+            //fix vscode hover bug that excludes closing quotemark sometimes.
             if (args.context === 'hover') {
                 args.expression = util.ensureClosingQuote(args.expression);
             }
 
-            try {
-
-                if (this.rokuAdapter.isAtDebuggerPrompt) {
-                    if (['hover', 'watch'].includes(args.context) || args.expression.toLowerCase().trim().startsWith('print ')) {
-                        //if this command has the word print in front of it, remove that word
-                        let expression = args.expression.replace(/^print/i, '').trim();
-                        let refId = this.getEvaluateRefId(expression, args.frameId);
-                        let v: AugmentedVariable;
-                        //if we already looked this item up, return it
-                        if (this.variables[refId]) {
-                            v = this.variables[refId];
-                        } else {
-                            let result = await this.rokuAdapter.getVariable(expression.toLowerCase(), args.frameId, true);
-                            if (!result) {
-                                console.error(`bad variable request ${expression}`);
-                                return;
-                            }
-                            v = this.getVariableFromResult(result, args.frameId);
-                            //TODO - testing something, remove later
-                            // eslint-disable-next-line camelcase
-                            v.request_seq = response.request_seq;
-                            v.frameId = args.frameId;
-                        }
-                        response.body = {
-                            result: v.value,
-                            type: v.type,
-                            variablesReference: v.variablesReference,
-                            namedVariables: v.namedVariables || 0,
-                            indexedVariables: v.indexedVariables || 0
-                        };
-                    } else if (args.context === 'repl' && !this.enableDebugProtocol) {
-                        let lowerExpression = args.expression.toLowerCase().trim();
-
-                        if (['cont', 'c'].includes(lowerExpression)) {
-                            await this.rokuAdapter.continue();
-
-                        } else if (lowerExpression === 'over') {
-                            await this.rokuAdapter.stepOver(-1);
-
-                        } else if (['step', 's', 't'].includes(lowerExpression)) {
-                            await this.rokuAdapter.stepInto(-1);
-
-                        } else if (lowerExpression === 'out') {
-                            await this.rokuAdapter.stepOut(-1);
-
-                        } else if (['down', 'd', 'exit', 'thread', 'th', 'up', 'u'].includes(lowerExpression)) {
-                            await (this.rokuAdapter as TelnetAdapter).requestPipeline.executeCommand(args.expression, { waitForPrompt: false, insertAtFront: true });
-
-                        } else {
-                            const promise = this.rokuAdapter.evaluate(args.expression);
-                            response.body = <any>{
-                                result: await promise
-                            };
-                            // //print the output to the screen
-                            // this.sendEvent(new OutputEvent(result, 'stdout'));
-                            // TODO: support var? maybe?
-                        }
-                    }
+            if (!this.rokuAdapter.isAtDebuggerPrompt) {
+                let message = 'Skipped evaluate request because RokuAdapter is not accepting requests at this time';
+                if (args.context === 'repl') {
+                    this.sendEvent(new OutputEvent(message, 'stderr'));
+                    response.body = {
+                        result: 'invalid',
+                        variablesReference: 0
+                    };
                 } else {
-                    this.logger.log('Skipped evaluate request because RokuAdapter is not accepting requests at this time');
+                    throw new Error(message);
                 }
-            } finally {
-                deferred.resolve();
+
+                //is at debugger prompt
+            } else {
+                const variablePath = util.getVariablePath(args.expression);
+                //if we found a variable path (e.g. ['a', 'b', 'c']) then do a variable lookup because it's faster and more widely supported than `evaluate`
+                if (variablePath) {
+                    let refId = this.getEvaluateRefId(args.expression, args.frameId);
+                    let v: AugmentedVariable;
+                    //if we already looked this item up, return it
+                    if (this.variables[refId]) {
+                        v = this.variables[refId];
+                    } else {
+                        let result = await this.rokuAdapter.getVariable(args.expression, args.frameId, true);
+                        if (!result) {
+                            throw new Error(`bad variable request "${args.expression}"`);
+                        }
+                        v = this.getVariableFromResult(result, args.frameId);
+                        //TODO - testing something, remove later
+                        // eslint-disable-next-line camelcase
+                        v.request_seq = response.request_seq;
+                        v.frameId = args.frameId;
+                    }
+                    response.body = {
+                        result: v.value,
+                        type: v.type,
+                        variablesReference: v.variablesReference,
+                        namedVariables: v.namedVariables || 0,
+                        indexedVariables: v.indexedVariables || 0
+                    };
+
+                    //run an `evaluate` call
+                } else {
+                    if (this.enableDebugProtocol) {
+                        const isPrintVar = util.isPrintVarExpression(args.expression);
+                    }
+
+                    if (args.context === 'repl' || !this.enableDebugProtocol) {
+                        let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
+
+                        commandResults.message = util.trimDebugPrompt(commandResults.message);
+                        //clear variable cache since this action could have side-effects
+                        this.clearState();
+                        this.sendInvalidatedEvent(null, args.frameId);
+                        //if the adapter captured output (probably only telnet), print it to the vscode debug console
+                        if (typeof commandResults.message === 'string') {
+                            this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
+                        }
+
+                        response.body = {
+                            result: 'invalid',
+                            variablesReference: 0
+                        };
+                    } else {
+                        response.body = {
+                            result: 'invalid',
+                            variablesReference: 0
+                        };
+                    }
+                }
             }
-            this.sendResponse(response);
         } catch (error) {
             this.logger.error('Error during variables request', error);
         }
+        //
+        try {
+            this.sendResponse(response);
+        } catch { }
+        deferred.resolve();
     }
 
     /**
@@ -1004,6 +1019,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.type = result.type;
             v.evaluateName = result.evaluateName;
             v.frameId = frameId;
+            v.type = result.type;
             v.presentationHint = result.presentationHint ? { kind: result.presentationHint } : undefined;
 
             if (result.children) {
@@ -1018,6 +1034,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return v;
     }
 
+
     private getEvaluateRefId(expression: string, frameId: number) {
         let evaluateRefId = `${expression}-${frameId}`;
         if (!this.evaluateRefIdLookup[evaluateRefId]) {
@@ -1029,6 +1046,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private clearState() {
         //erase all cached variables
         this.variables = {};
+    }
+
+    /**
+     * Tells the client to re-request all variables because we've invalidated them
+     * @param threadId
+     * @param stackFrameId
+     */
+    private sendInvalidatedEvent(threadId?: number, stackFrameId?: number) {
+        //if the client supports this request, send it
+        if (this.initRequestArgs.supportsInvalidatedEvent) {
+            this.sendEvent(new InvalidatedEvent(['variables'], threadId, stackFrameId));
+        }
     }
 
     /**
