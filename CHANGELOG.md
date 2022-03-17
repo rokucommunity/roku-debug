@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.10.1](https://github.com/rokucommunity/roku-debug/compare/v0.10.0...v0.10.1) - 2022-03-17
+### Changed
+ - upgrade to  [roku-deploy@3.5.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#354---2022-03-17)
+    - fixes significant performance issues during globbing. ([roku-deploy#86](https://github.com/rokucommunity/roku-deploy/pull/86))
+ - upgrade to [brighterscript@0.5.6](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0456---2022-03-17)
+
+
+
 ## [0.10.0](https://github.com/rokucommunity/roku-debug/compare/v0.9.4...v0.10.0) - 2022-03-08
 ### Added
  - support for roku debug protocol v3.0.0
