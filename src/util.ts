@@ -370,6 +370,18 @@ class Util {
         const fence = '--------------------';
         return `\n${fence}\n${data}\n${fence}\n`;
     }
+
+    public formatTime(ms: number) {
+        const allocate = msUnit => {
+            const units = Math.trunc(ms / msUnit);
+            ms -= units * msUnit;
+            return units;
+        };
+        const hours = allocate(3600000);
+        const minutes = allocate(60000);
+        const seconds = allocate(1000);
+        return `${hours > 0 ? hours + 'h' : ''}${minutes > 0 ? minutes + 'm' : ''}${seconds > 0 ? seconds + 's' : ''}${ms > 0 ? ms + 'ms' : ''}`;
+    }
 }
 
 export function defer<T>() {

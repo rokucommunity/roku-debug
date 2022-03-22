@@ -175,11 +175,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let error: Error;
         this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
+            const start = Date.now();
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
                 this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
+            this.logger.log(`Packaging projects took: ${(util.formatTime(Date.now() - start))}`);
 
             util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
