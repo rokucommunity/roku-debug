@@ -1,5 +1,5 @@
 import * as Net from 'net';
-import * as EventEmitter from 'events';
+import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
 import type {
     ThreadAttached,
@@ -212,13 +212,14 @@ export class Debugger {
     }
 
     private async step(stepType: STEP_TYPE, threadId: number): Promise<ProtocolEvent> {
+        this.logger.log('[step]', { stepType: STEP_TYPE[stepType], threadId, stopped: this.stopped });
         let buffer = new SmartBuffer({ size: 17 });
         buffer.writeUInt32LE(threadId); // thread_index
         buffer.writeUInt8(stepType); // step_type
         if (this.stopped) {
             this.stopped = false;
-            let stepResult: any = await this.makeRequest<ProtocolEvent>(buffer, COMMANDS.STEP);
-            if (stepResult.errorCode === 'OK') {
+            let stepResult = await this.makeRequest<ProtocolEvent>(buffer, COMMANDS.STEP);
+            if (stepResult.errorCode === ERROR_CODES.OK) {
                 // this.stopped = true;
                 // this.emit('suspend');
             } else {
@@ -331,7 +332,7 @@ export class Debugger {
                 }
 
                 if (debuggerRequestResponse.updateType > 0) {
-                    this.logger.log('Update Type:',UPDATE_TYPES[debuggerRequestResponse.updateType])
+                    this.logger.log('Update Type:', UPDATE_TYPES[debuggerRequestResponse.updateType])
                     switch (debuggerRequestResponse.updateType) {
                         case UPDATE_TYPES.IO_PORT_OPENED:
                             return this.connectToIoPort(new ConnectIOPortResponse(slicedBuffer), buffer, packetLength);
@@ -392,10 +393,12 @@ export class Debugger {
         return false;
     }
 
-    private checkResponse(responseClass: { requestId: number, readOffset: number, success: boolean }, unhandledData: Buffer, packetLength = 0): boolean {
+    private checkResponse(responseClass: { requestId: number, readOffset: number, success: boolean }, unhandledData: Buffer, packetLength = 0) {
         if (responseClass.success) {
             this.removedProcessedBytes(responseClass, unhandledData, packetLength);
             return true;
+        } else if (packetLength > 0 && unhandledData.length >= packetLength) {
+            this.removedProcessedBytes(responseClass, unhandledData, packetLength);
         }
         return false;
     }

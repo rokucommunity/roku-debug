@@ -237,18 +237,6 @@ export class DebugProtocolAdapter {
                 this.beginAppExit();
             });
 
-            this.connected = await this.socketDebugger.connect();
-
-            this.logger.log(`Closing telnet connection used for compile errors`);
-            if (this.compileClient) {
-                this.compileClient.removeAllListeners();
-                this.compileClient.destroy();
-                this.compileClient = undefined;
-            }
-
-            this.logger.log(`Connected to device`, { host: this.host, connected: this.connected });
-            this.emit('connected', this.connected);
-
             // Listen for the app exit event
             this.socketDebugger.on('app-exit', () => {
                 this.emit('app-exit');
@@ -270,6 +258,18 @@ export class DebugProtocolAdapter {
             this.socketDebugger.on('cannot-continue', () => {
                 this.emit('cannot-continue');
             });
+
+            this.connected = await this.socketDebugger.connect();
+
+            this.logger.log(`Closing telnet connection used for compile errors`);
+            if (this.compileClient) {
+                this.compileClient.removeAllListeners();
+                this.compileClient.destroy();
+                this.compileClient = undefined;
+            }
+
+            this.logger.log(`Connected to device`, { host: this.host, connected: this.connected });
+            this.emit('connected', this.connected);
 
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();
@@ -425,7 +425,7 @@ export class DebugProtocolAdapter {
         return this.resolve(`stack trace for thread ${threadId}`, async () => {
             let thread = await this.getThreadByThreadId(threadId);
             let frames: StackFrame[] = [];
-            let stackTraceData: any = await this.socketDebugger.stackTrace(threadId);
+            let stackTraceData = await this.socketDebugger.stackTrace(threadId);
             for (let i = 0; i < stackTraceData.stackSize; i++) {
                 let frameData = stackTraceData.entries[i];
                 let stackFrame: StackFrame = {
@@ -503,7 +503,8 @@ export class DebugProtocolAdapter {
                 }
 
                 if (variableType === 'Subtyped_Object') {
-                    let parts = variable.value.split('; ');
+                    //subtyped objects can only have string values
+                    let parts = (variable.value as string).split('; ');
                     variableType = `${parts[0]} (${parts[1]})`;
                 } else if (variableType === 'AA') {
                     variableType = 'AssociativeArray';
@@ -580,7 +581,7 @@ export class DebugProtocolAdapter {
         }
         return this.resolve('threads', async () => {
             let threads: Thread[] = [];
-            let threadsData: any = await this.socketDebugger.threads();
+            let threadsData = await this.socketDebugger.threads();
 
             for (let i = 0; i < threadsData.threadsCount; i++) {
                 let threadInfo = threadsData.threads[i];
