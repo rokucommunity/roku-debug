@@ -218,7 +218,7 @@ export class Debugger {
         if (this.stopped) {
             this.stopped = false;
             let stepResult: any = await this.makeRequest<ProtocolEvent>(buffer, COMMANDS.STEP);
-            if (stepResult.errorCode === 'OK') {
+            if (stepResult.errorCode === ERROR_CODES.OK) {
                 // this.stopped = true;
                 // this.emit('suspend');
             } else {
