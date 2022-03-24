@@ -237,18 +237,6 @@ export class DebugProtocolAdapter {
                 this.beginAppExit();
             });
 
-            this.connected = await this.socketDebugger.connect();
-
-            this.logger.log(`Closing telnet connection used for compile errors`);
-            if (this.compileClient) {
-                this.compileClient.removeAllListeners();
-                this.compileClient.destroy();
-                this.compileClient = undefined;
-            }
-
-            this.logger.log(`Connected to device`, { host: this.host, connected: this.connected });
-            this.emit('connected', this.connected);
-
             // Listen for the app exit event
             this.socketDebugger.on('app-exit', () => {
                 this.emit('app-exit');
@@ -270,6 +258,18 @@ export class DebugProtocolAdapter {
             this.socketDebugger.on('cannot-continue', () => {
                 this.emit('cannot-continue');
             });
+
+            this.connected = await this.socketDebugger.connect();
+
+            this.logger.log(`Closing telnet connection used for compile errors`);
+            if (this.compileClient) {
+                this.compileClient.removeAllListeners();
+                this.compileClient.destroy();
+                this.compileClient = undefined;
+            }
+
+            this.logger.log(`Connected to device`, { host: this.host, connected: this.connected });
+            this.emit('connected', this.connected);
 
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();
