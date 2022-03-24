@@ -425,7 +425,7 @@ export class DebugProtocolAdapter {
         return this.resolve(`stack trace for thread ${threadId}`, async () => {
             let thread = await this.getThreadByThreadId(threadId);
             let frames: StackFrame[] = [];
-            let stackTraceData: any = await this.socketDebugger.stackTrace(threadId);
+            let stackTraceData = await this.socketDebugger.stackTrace(threadId);
             for (let i = 0; i < stackTraceData.stackSize; i++) {
                 let frameData = stackTraceData.entries[i];
                 let stackFrame: StackFrame = {
@@ -503,7 +503,8 @@ export class DebugProtocolAdapter {
                 }
 
                 if (variableType === 'Subtyped_Object') {
-                    let parts = variable.value.split('; ');
+                    //subtyped objects can only have string values
+                    let parts = (variable.value as string).split('; ');
                     variableType = `${parts[0]} (${parts[1]})`;
                 } else if (variableType === 'AA') {
                     variableType = 'AssociativeArray';
@@ -580,7 +581,7 @@ export class DebugProtocolAdapter {
         }
         return this.resolve('threads', async () => {
             let threads: Thread[] = [];
-            let threadsData: any = await this.socketDebugger.threads();
+            let threadsData = await this.socketDebugger.threads();
 
             for (let i = 0; i < threadsData.threadsCount; i++) {
                 let threadInfo = threadsData.threads[i];

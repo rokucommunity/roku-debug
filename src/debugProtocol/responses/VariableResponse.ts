@@ -154,5 +154,5 @@ export class VariableInfo {
     public refCount = -1;
     public keyType: string;
     public elementCount = -1;
-    public value: any;
+    public value: number | string | boolean | bigint | null;
 }

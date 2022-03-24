@@ -218,7 +218,7 @@ export class Debugger {
         buffer.writeUInt8(stepType); // step_type
         if (this.stopped) {
             this.stopped = false;
-            let stepResult: any = await this.makeRequest<ProtocolEvent>(buffer, COMMANDS.STEP);
+            let stepResult = await this.makeRequest<ProtocolEvent>(buffer, COMMANDS.STEP);
             if (stepResult.errorCode === ERROR_CODES.OK) {
                 // this.stopped = true;
                 // this.emit('suspend');
