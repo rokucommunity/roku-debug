@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.10.2](https://github.com/rokucommunity/roku-debug/compare/v0.10.1...v0.10.2) - 2022-03-25
+### Added
+ - zip timing message during startup
+### Fixed
+ - bug with protocol step command killing the app ([#70](https://github.com/rokucommunity/roku-debug/pull/70))
+ - event flow on protocol debugger startup ([#70](https://github.com/rokucommunity/roku-debug/pull/70))
+ - Fix bug cleaning up packet lengths for v3 ([#70](https://github.com/rokucommunity/roku-debug/pull/70))
+
+
+
 ## [0.10.1](https://github.com/rokucommunity/roku-debug/compare/v0.10.0...v0.10.1) - 2022-03-17
 ### Changed
  - upgrade to  [roku-deploy@3.5.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#354---2022-03-17)
