@@ -11,13 +11,14 @@ export class SceneGraphDebugCommandController {
 
     private shellPrompt = /^>$/img;
     private echoLines = 0;
-    private timeout = 5000;
+    public timeout = 5000;
+    public execTimeout = 2000;
     private port = 8080;
     private maxBufferLength = 5242880;
 
     private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);
 
-    public async connect() {
+    public async connect(options: { execTimeout?: number; timeout?: number } = {}) {
         this.removeConnection();
 
         try {
@@ -33,7 +34,9 @@ export class SceneGraphDebugCommandController {
                 shellPrompt: this.shellPrompt,
                 echoLines: this.echoLines,
                 timeout: this.timeout,
-                maxBufferLength: this.maxBufferLength
+                execTimeout: this.execTimeout,
+                maxBufferLength: this.maxBufferLength,
+                ...options
             };
             this.logger.debug('Establishing telnet connection', config);
             await connection.connect(config);
@@ -147,7 +150,8 @@ export class SceneGraphDebugCommandController {
      * @param {string[]} keys A list of keys to press in sequence
      */
     public async press(keys: string[]): Promise<SceneGraphCommandResponse> {
-        return this.exec(`press ${keys.join(', ')}`);
+        // Add 1 second per character to the max execution timeout because roku is really slow......
+        return this.exec(`press ${keys.join(', ')}`, { execTimeout: this.execTimeout + (keys.length * 1000) });
     }
 
 
@@ -216,7 +220,8 @@ export class SceneGraphDebugCommandController {
      * @param text string to be sent to the device.
      */
     public async type(text: string): Promise<SceneGraphCommandResponse> {
-        return this.exec(`type ${text}`);
+        // Add 1 second per character to the max execution timeout because roku is really slow......
+        return this.exec(`type ${text}`, { execTimeout: this.execTimeout + (text.length * 1000) });
     }
 
 
@@ -227,7 +232,7 @@ export class SceneGraphDebugCommandController {
      * In this case once the command has been executed we will then close the connection.
      * @param {string} command command to be run.
      */
-    public async exec(command: string): Promise<SceneGraphCommandResponse> {
+    public async exec(command: string, options: { execTimeout?: number; timeout?: number } = {}): Promise<SceneGraphCommandResponse> {
         let response = this.getBlankResponseObject(command);
         this.logger.log(`Running SceneGraphDebugger command`, { command });
 
@@ -236,7 +241,7 @@ export class SceneGraphDebugCommandController {
         if (closeConnectionAfterCommand) {
             this.logger.trace('Opening new connection');
             try {
-                await this.connect();
+                await this.connect(options);
             } catch (error) {
                 response.error = error;
             }
@@ -245,7 +250,7 @@ export class SceneGraphDebugCommandController {
         // Send the commend if we have a connection
         if (this.connection) {
             try {
-                response.result.rawResponse = await this.connection.exec(command);
+                response.result.rawResponse = await this.connection.exec(command, options);
                 this.logger.debug('Command complete', { command });
             } catch (error) {
                 response.error = error;

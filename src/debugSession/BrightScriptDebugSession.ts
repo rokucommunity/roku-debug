@@ -881,18 +881,27 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
 
                         commandResults.message = util.trimDebugPrompt(commandResults.message);
-                        //clear variable cache since this action could have side-effects
-                        this.clearState();
-                        this.sendInvalidatedEvent(null, args.frameId);
+                        if (args.context !== 'watch') {
+                            //clear variable cache since this action could have side-effects
+                            this.clearState();
+                            this.sendInvalidatedEvent(null, args.frameId);
+                        }
                         //if the adapter captured output (probably only telnet), print it to the vscode debug console
                         if (typeof commandResults.message === 'string') {
                             this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
                         }
 
-                        response.body = {
-                            result: 'invalid',
-                            variablesReference: 0
-                        };
+                        if (this.enableDebugProtocol || (typeof commandResults.message !== 'string')) {
+                            response.body = {
+                                result: 'invalid',
+                                variablesReference: 0
+                            };
+                        } else {
+                            response.body = {
+                                result: commandResults.message === '\r\n' ? 'invalid' : commandResults.message,
+                                variablesReference: 0
+                            };
+                        }
                     } else {
                         response.body = {
                             result: 'invalid',
