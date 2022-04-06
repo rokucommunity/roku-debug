@@ -26,6 +26,7 @@ export class DebugProtocolAdapter {
         this.chanperfTracker = new ChanperfTracker();
         this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
+        this.connected = false;
 
         // watch for chanperf events
         this.chanperfTracker.on('chanperf', (output) => {
@@ -616,6 +617,9 @@ export class DebugProtocolAdapter {
         }
     }
 
+    public removeAllListeners() {
+        this.emitter?.removeAllListeners();
+    }
     /**
      * Disconnect from the telnet session and unset all objects
      */

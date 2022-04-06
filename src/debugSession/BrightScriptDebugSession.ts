@@ -125,6 +125,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // This debug adapter implements the configurationDoneRequest.
         response.body.supportsConfigurationDoneRequest = true;
 
+        /** The debug adapter supports the 'restart' request. In this case a client should not implement 'restart' by terminating and relaunching the adapter but by calling the RestartRequest. */
+        response.body.supportsRestartRequest = true;
+
         // make VS Code to use 'evaluate' when hovering over source
         response.body.supportsEvaluateForHovers = true;
 
@@ -188,7 +191,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.createRokuAdapter(this.launchConfiguration.host);
             if (!this.enableDebugProtocol) {
                 //connect to the roku debug via telnet
-                await this.connectRokuAdapter();
+                if (!this.rokuAdapter.connected) {
+                    await this.connectRokuAdapter();
+                }
             } else {
                 await (this.rokuAdapter as DebugProtocolAdapter).watchCompileOutput();
             }
@@ -943,6 +948,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } else {
             this.rokuAdapter = new TelnetAdapter(host, this.launchConfiguration.enableDebuggerAutoRecovery);
         }
+    }
+
+    protected async restartRequest(response: DebugProtocol.RestartResponse, args: DebugProtocol.RestartArguments, request?: DebugProtocol.Request) {
+        this.logger.log('[restartRequest] begin');
+        if (this.rokuAdapter) {
+            if (!this.enableDebugProtocol) {
+                this.rokuAdapter.removeAllListeners();
+            }
+            await this.rokuAdapter.destroy();
+            this.rokuAdapterDeferred = defer();
+        }
+        //return to the home screen
+        if (!this.enableDebugProtocol) {
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+        }
+        await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }
 
     /**
