@@ -620,6 +620,7 @@ export class DebugProtocolAdapter {
     public removeAllListeners() {
         this.emitter?.removeAllListeners();
     }
+    
     /**
      * Disconnect from the telnet session and unset all objects
      */

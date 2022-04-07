@@ -125,7 +125,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // This debug adapter implements the configurationDoneRequest.
         response.body.supportsConfigurationDoneRequest = true;
 
-        /** The debug adapter supports the 'restart' request. In this case a client should not implement 'restart' by terminating and relaunching the adapter but by calling the RestartRequest. */
+        // The debug adapter supports the 'restart' request. In this case a client should not implement 'restart' by terminating and relaunching the adapter but by calling the RestartRequest.
         response.body.supportsRestartRequest = true;
 
         // make VS Code to use 'evaluate' when hovering over source
@@ -958,10 +958,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             await this.rokuAdapter.destroy();
             this.rokuAdapterDeferred = defer();
-        }
-        //return to the home screen
-        if (!this.enableDebugProtocol) {
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
         }
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }
