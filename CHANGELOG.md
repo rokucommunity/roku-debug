@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.4](https://github.com/rokucommunity/roku-debug/compare/v0.10.3...v0.10.4) - 2022-04-07
+### Fixed
+ - stability issues when restarting an existing debug session ([#74](https://github.com/rokucommunity/roku-debug/pull/74))
+
+
 
 ## [0.10.3](https://github.com/rokucommunity/roku-debug/compare/v0.10.2...v0.10.3) - 2022-04-07
 ### Changed
