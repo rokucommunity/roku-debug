@@ -1059,7 +1059,7 @@ export class TelnetAdapter {
     public removeAllListeners() {
         this.emitter?.removeAllListeners();
     }
-    
+
     /**
      * Disconnect from the telnet session and unset all objects
      */
