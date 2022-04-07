@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.10.3](https://github.com/rokucommunity/roku-debug/compare/v0.10.2...v0.10.3) - 2022-04-07
+### Changed
+ - upgrade to [brighterscript@0.5.6](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0456---2022-03-17)
+### Fixed
+ - issue where the `type` and `keys` commands would time out. ([#73](https://github.com/rokucommunity/roku-debug/pull/73))
+ - possible fix for [#72](https://github.com/rokucommunity/roku-debug/issues/72) ([#73](https://github.com/rokucommunity/roku-debug/pull/73))
+
+
+
 ## [0.10.2](https://github.com/rokucommunity/roku-debug/compare/v0.10.1...v0.10.2) - 2022-03-25
 ### Added
  - zip timing message during startup
