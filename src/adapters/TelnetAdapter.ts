@@ -23,6 +23,7 @@ export class TelnetAdapter {
         private host: string,
         private enableDebuggerAutoRecovery: boolean = false
     ) {
+        this.connected = false;
         this.emitter = new EventEmitter();
         this.debugStartRegex = /BrightScript Micro Debugger\./ig;
         this.debugEndRegex = /Brightscript Debugger>/ig;
@@ -1053,6 +1054,10 @@ export class TelnetAdapter {
             }
             return threads;
         });
+    }
+
+    public removeAllListeners() {
+        this.emitter?.removeAllListeners();
     }
 
     /**
