@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+
+## [0.10.5](https://github.com/rokucommunity/roku-debug/compare/v0.10.4...v0.10.5) - 2022-04-13
+### Changed
+ - upgrade to [roku-deploy@3.6.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#360---2022-04-13)
+ - upgrade to [brighterscript@0.48.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0480---2022-04-13)
+   - language support for native BrightScript optional chaining ([#546](https://github.com/rokucommunity/brighterscript/pull/546))
+
+
+
 ## [0.10.4](https://github.com/rokucommunity/roku-debug/compare/v0.10.3...v0.10.4) - 2022-04-07
 ### Fixed
  - stability issues when restarting an existing debug session ([#74](https://github.com/rokucommunity/roku-debug/pull/74))
@@ -13,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.3](https://github.com/rokucommunity/roku-debug/compare/v0.10.2...v0.10.3) - 2022-04-07
 ### Changed
- - upgrade to [brighterscript@0.5.6](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0456---2022-03-17)
+ - upgrade to [brighterscript@0.47.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0472---2022-04-07)
 ### Fixed
  - issue where the `type` and `keys` commands would time out. ([#73](https://github.com/rokucommunity/roku-debug/pull/73))
  - possible fix for [#72](https://github.com/rokucommunity/roku-debug/issues/72) ([#73](https://github.com/rokucommunity/roku-debug/pull/73))
