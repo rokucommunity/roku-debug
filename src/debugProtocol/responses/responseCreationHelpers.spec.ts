@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { ERROR_CODES, UPDATE_TYPES } from '../Constants';
-
+import type { BreakpointInfo } from './ListBreakpointsResponse';
 
 interface Handshake {
     magic: string;
@@ -95,4 +95,52 @@ export function createProtocolEventV3(protocolEvent: ProtocolEvent, extraBufferD
 
 function addPacketLength(buffer: SmartBuffer): SmartBuffer {
     return buffer.insertUInt32LE(buffer.length + 4, 0); // packet_length - The size of the packet to be sent.
+}
+
+/**
+ * Create a buffer for `ListBreakpointsResponse`
+ */
+export function createListBreakpointsResponse(params: { requestId?: number; errorCode?: number; num_breakpoints?: number; breakpoints?: Partial<BreakpointInfo>[]; extraBufferData?: Buffer }): SmartBuffer {
+    let buffer = new SmartBuffer();
+
+    writeIfSet(params.requestId, x => buffer.writeUInt32LE(x));
+    writeIfSet(params.errorCode, x => buffer.writeUInt32LE(x));
+
+    buffer.writeUInt32LE(params.num_breakpoints ?? params.breakpoints?.length ?? 0); // num_breakpoints
+    for (const breakpoint of params?.breakpoints ?? []) {
+        writeIfSet(breakpoint.breakpointId, x => buffer.writeUInt32LE(x));
+        writeIfSet(breakpoint.errorCode, x => buffer.writeUInt32LE(x));
+        writeIfSet(breakpoint.hitCount, x => buffer.writeUInt32LE(x));
+    }
+
+    // write any extra data for testing
+    writeIfSet(params.extraBufferData, x => buffer.writeBuffer(x));
+
+    return addPacketLength(buffer);
+}
+
+/**
+ * If the value is undefined or null, skip the callback.
+ * All other values will cause the callback to be called
+ */
+function writeIfSet<T, R>(value: T, writer: (x: T) => R, defaultValue?: T) {
+    if (
+        //if we have a value
+        (value !== undefined && value !== null) ||
+        //we don't have a value, but we have a default value
+        (defaultValue !== undefined && defaultValue !== null)
+    ) {
+        return writer(value);
+    }
+}
+
+/**
+ * Build a buffer of `byteCount` size and fill it with random data
+ */
+export function getRandomBuffer(byteCount: number) {
+    const result = new SmartBuffer();
+    for (let i = 0; i < byteCount; i++) {
+        result.writeUInt32LE(i);
+    }
+    return result.toBuffer();
 }

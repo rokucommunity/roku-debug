@@ -5,7 +5,7 @@ export class ListBreakpointsResponse {
 
     constructor(buffer: Buffer) {
         // The minimum size of a request
-        if (buffer?.byteLength >= 4) {
+        if (buffer?.byteLength >= 12) {
             try {
                 let bufferReader = SmartBuffer.fromBuffer(buffer);
                 this.requestId = bufferReader.readUInt32LE(); // request_id
@@ -18,10 +18,8 @@ export class ListBreakpointsResponse {
                     // build the list of BreakpointInfo
                     for (let i = 0; i < this.numBreakpoints; i++) {
                         let breakpointInfo = new BreakpointInfo(bufferReader);
-                        if (breakpointInfo.success) {
-                            // All the necessary data was present, so keep this item
-                            this.breakpoints.push(breakpointInfo);
-                        }
+                        // All the necessary data was present, so keep this item
+                        this.breakpoints.push(breakpointInfo);
                     }
 
                     this.readOffset = bufferReader.readOffset;
@@ -48,7 +46,7 @@ export class BreakpointInfo {
         // breakpoint_id - The ID assigned to the breakpoint. An ID greater than 0 indicates an active breakpoint. An ID of 0 denotes that the breakpoint has an error.
         this.breakpointId = bufferReader.readUInt32LE();
         // error_code - Indicates whether the breakpoint was successfully returned.
-        this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
+        this.errorCode = bufferReader.readUInt32LE();
 
         if (this.breakpointId > 0) {
             // This argument is only present if the breakpoint_id is valid.
@@ -63,6 +61,12 @@ export class BreakpointInfo {
     }
     public success = false;
     public breakpointId: number;
-    public errorCode: string;
+    public errorCode: number;
+    /**
+     * The textual description of the error code
+     */
+    public get errorText() {
+        return ERROR_CODES[this.errorCode];
+    }
     public hitCount: number;
 }
