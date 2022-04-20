@@ -1,13 +1,7 @@
-import { HandshakeResponseV3 } from './HandshakeResponseV3';
-import { Debugger } from '../Debugger';
-import { createHandShakeResponseV3, createListBreakpointsResponse, getRandomBuffer } from './responseCreationHelpers.spec';
+import { createListBreakpointsResponse, getRandomBuffer } from './responseCreationHelpers.spec';
 import { expect } from 'chai';
-import { createSandbox } from 'sinon';
-import { SmartBuffer } from 'smart-buffer';
 import { ListBreakpointsResponse } from './ListBreakpointsResponse';
 import { ERROR_CODES } from '../Constants';
-import { ErrorCodes } from 'vscode-languageserver';
-const sinon = createSandbox();
 
 describe('ListBreakpointsResponse', () => {
     let response: ListBreakpointsResponse;
