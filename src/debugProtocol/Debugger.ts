@@ -23,6 +23,9 @@ import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../logging';
 import { ERROR_CODES, UPDATE_TYPES } from '..';
 import { ExecuteResponseV3 } from './responses/ExecuteResponseV3';
+import { ListBreakpointsResponse } from './responses/ListBreakpointsResponse';
+import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
+import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 
 export class Debugger {
 
@@ -144,7 +147,6 @@ export class Debugger {
         });
 
         this.controllerClient.on('data', (buffer) => {
-            this.logger
             if (this.unhandledData) {
                 this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
             } else {
@@ -279,6 +281,36 @@ export class Debugger {
         }
     }
 
+    public async addBreakpoints(breakpoints: BreakpointSpec[]): Promise<AddBreakpointsResponse> {
+        if (breakpoints?.length > 0) {
+            let buffer = new SmartBuffer();
+            buffer.writeUInt32LE(breakpoints.length); // num_breakpoints - The number of breakpoints in the breakpoints array.
+            breakpoints.forEach((breakpoint) => {
+                buffer.writeStringNT(breakpoint.filePath); // file_path - The path of the source file where the breakpoint is to be inserted.
+                buffer.writeUInt32LE(breakpoint.lineNumber); // line_number - The line number in the channel application code where the breakpoint is to be executed.
+                buffer.writeUInt32LE(breakpoint.hitCount ?? 0); // ignore_count - The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
+            });
+            return this.makeRequest<AddBreakpointsResponse>(buffer, COMMANDS.ADD_BREAKPOINTS);
+        }
+        return new AddBreakpointsResponse(null);
+    }
+
+    public async listBreakpoints(): Promise<ListBreakpointsResponse> {
+        return this.makeRequest<ListBreakpointsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.LIST_BREAKPOINTS);
+    }
+
+    public async removeBreakpoints(breakpointIds: number[]): Promise<RemoveBreakpointsResponse> {
+        if (breakpointIds?.length > 0) {
+            let buffer = new SmartBuffer();
+            buffer.writeUInt32LE(breakpointIds.length); // num_breakpoints - The number of breakpoints in the breakpoints array.
+            breakpointIds.forEach((breakpointId) => {
+                buffer.writeUInt32LE(breakpointId); // breakpoint_ids - An array of breakpoint IDs representing the breakpoints to be removed.
+            });
+            return this.makeRequest<RemoveBreakpointsResponse>(buffer, COMMANDS.REMOVE_BREAKPOINTS);
+        }
+        return new RemoveBreakpointsResponse(null);
+    }
+
     private async makeRequest<T>(buffer: SmartBuffer, command: COMMANDS, extraData?) {
         this.totalRequests++;
         let requestId = this.totalRequests;
@@ -361,6 +393,12 @@ export class Debugger {
                             return true;
                         case COMMANDS.EXECUTE:
                             return this.checkResponse(new ExecuteResponseV3(slicedBuffer), buffer, packetLength);
+                        case COMMANDS.ADD_BREAKPOINTS:
+                            return this.checkResponse(new AddBreakpointsResponse(slicedBuffer), buffer, packetLength);
+                        case COMMANDS.LIST_BREAKPOINTS:
+                            return this.checkResponse(new ListBreakpointsResponse(slicedBuffer), buffer, packetLength);
+                        case COMMANDS.REMOVE_BREAKPOINTS:
+                            return this.checkResponse(new RemoveBreakpointsResponse(slicedBuffer), buffer, packetLength);
                         case COMMANDS.VARIABLES:
                             return this.checkResponse(new VariableResponse(slicedBuffer), buffer, packetLength);
                         case COMMANDS.STACKTRACE:
@@ -552,6 +590,22 @@ export interface ProtocolVersionDetails {
     message: string;
     errorCode: PROTOCOL_ERROR_CODES;
 }
+
+export interface BreakpointSpec {
+    /**
+     * The path of the source file where the breakpoint is to be inserted.
+     */
+    filePath: string;
+    /**
+     * The (1-based) line number in the channel application code where the breakpoint is to be executed.
+     */
+    lineNumber: number;
+    /**
+     * The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
+     */
+    hitCount?: number;
+}
+
 
 export interface ConstructorOptions {
     /**
