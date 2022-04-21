@@ -42,7 +42,6 @@ export class FileManager {
         let functionStack = [] as FunctionInfo[];
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             let line = lines[lineIndex];
-            let functionName: string;
             let openers = [
                 //function declaration
                 /^\s*(?:public|private|protected)?\s*(?:override)?\s*(?:sub|function)\s+([a-z0-9_]+)/gim,
@@ -56,7 +55,6 @@ export class FileManager {
             for (let opener of openers) {
                 let match = opener.exec(line);
                 if (match) {
-                    functionName = match[1];
                     functionStack.push({
                         name: match[1],
                         children: [],

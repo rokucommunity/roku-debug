@@ -2,9 +2,7 @@ import { ProtocolEvent } from './ProtocolEvent';
 import { createHandShakeResponse, createProtocolEvent } from './responseCreationHelpers.spec';
 import { Debugger } from '../Debugger';
 import { expect } from 'chai';
-import { createSandbox } from 'sinon';
 import { ERROR_CODES, UPDATE_TYPES } from '../Constants';
-const sinon = createSandbox();
 
 describe('ProtocolEvent', () => {
     it('Handles a Protocol update events', () => {

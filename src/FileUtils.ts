@@ -3,7 +3,6 @@ import * as fsExtra from 'fs-extra';
 import * as glob from 'glob';
 import * as path from 'path';
 import { promisify } from 'util';
-import { util } from './util';
 import * as rokuDeploy from 'roku-deploy';
 const globp = promisify(glob);
 

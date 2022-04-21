@@ -1,5 +1,5 @@
 
-import { assert, expect } from 'chai';
+import { expect } from 'chai';
 import { Debugger } from '../debugProtocol/Debugger';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';

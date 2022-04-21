@@ -89,8 +89,6 @@ export class ComponentLibraryServer {
         // print possible IP addresses that may be the users local ip
         let ifaces = os.networkInterfaces();
         for (const ifname of Object.keys(ifaces)) {
-            let alias = 0;
-
             for (const iface of ifaces[ifname]) {
                 if (iface.family !== 'IPv4' || iface.internal !== false) {
                     // skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses

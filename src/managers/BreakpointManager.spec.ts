@@ -557,13 +557,12 @@ describe('BreakpointManager', () => {
             function n(line, col, txt) {
                 return new SourceNode(line, col, srcPath, txt);
             }
-            let src =
-                'sub main()\n' +
-                '\n' +
-                '    print 1\n' +
-                '\n' +
-                'end function';
-
+            //here's the sample code we are testing
+            /**
+                sub main()
+                    print 1
+                end function
+            */
             //remove empty newlines
             let chunks = [
                 n(1, 0, 'sub'), ' ', n(1, 4, 'main'), n(1, 8, '('), n(1, 9, ')'), '\n',

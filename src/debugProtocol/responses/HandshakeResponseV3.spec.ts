@@ -2,9 +2,7 @@ import { HandshakeResponseV3 } from './HandshakeResponseV3';
 import { Debugger } from '../Debugger';
 import { createHandShakeResponseV3 } from './responseCreationHelpers.spec';
 import { expect } from 'chai';
-import { createSandbox } from 'sinon';
 import { SmartBuffer } from 'smart-buffer';
-const sinon = createSandbox();
 
 describe('HandshakeResponseV3', () => {
     it('Handles a handshake response', () => {

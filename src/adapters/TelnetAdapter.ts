@@ -283,7 +283,6 @@ export class TelnetAdapter {
                 }
 
                 this.compileErrorProcessor.processUnhandledLines(responseText);
-                let match;
 
                 if (this.isAtCannotContinue(responseText)) {
                     this.logger.log('is at cannot continue');
@@ -294,7 +293,7 @@ export class TelnetAdapter {
                 if (this.isActivated) {
                     //watch for the start of the program
                     // eslint-disable-next-line no-cond-assign
-                    if (match = /\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
+                    if (/\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
                         this.isAppRunning = true;
                         this.logger.log('Running beacon detected', { responseText });
                         void this.handleStartupIfReady();
@@ -302,7 +301,7 @@ export class TelnetAdapter {
 
                     //watch for the end of the program
                     // eslint-disable-next-line no-cond-assign
-                    if (match = /\[beacon.report\] \|AppExitComplete/i.exec(responseText.trim())) {
+                    if (/\[beacon.report\] \|AppExitComplete/i.exec(responseText.trim())) {
                         this.beginAppExit();
                     }
 
@@ -828,53 +827,6 @@ export class TelnetAdapter {
         }
         let sortedChildren = orderBy(children, ['name']);
         return sortedChildren;
-    }
-
-    /**
-     * Get all of the children of an array or list
-     */
-    private getArrayOrListChildren(expression: string, data: string): EvaluateContainer[] {
-        let collectionEnd: string;
-
-        //this function can handle roArray and roList objects, but we need to know which it is
-        if (data.startsWith('<Component: roList>')) {
-            collectionEnd = ')';
-
-            //array
-        } else {
-            collectionEnd = ']';
-        }
-        let children = [] as EvaluateContainer[];
-        //split by newline. the array contents start at index 2
-        let lines = data.split(/\r?\n/g);
-        let arrayIndex = 0;
-        for (let i = 2; i < lines.length; i++) {
-            let line = lines[i].trim();
-            if (line === collectionEnd) {
-                return children;
-            }
-            let child = <EvaluateContainer>{
-                name: arrayIndex.toString(),
-                evaluateName: `${expression}[${arrayIndex}]`,
-                children: []
-            };
-
-            //if the line is an object, array or function
-            let match = this.getObjectType(line);
-            if (match) {
-                let type = match;
-                child.type = type;
-                child.highLevelType = this.getHighLevelType(type);
-                child.value = type;
-            } else {
-                child.type = this.getPrimativeTypeFromValue(line);
-                child.value = line;
-                child.highLevelType = HighLevelType.primative;
-            }
-            children.push(child);
-            arrayIndex++;
-        }
-        throw new Error('Unable to parse BrightScript array');
     }
 
     private getPrimativeTypeFromValue(value: string): PrimativeType {

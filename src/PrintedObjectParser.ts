@@ -59,10 +59,6 @@ export class PrintedObjectParser {
         return result;
     }
 
-    private hasKey() {
-        return !!this.key;
-    }
-
     private hasValue() {
         return !!this.value;
     }

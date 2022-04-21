@@ -1,9 +1,6 @@
 import { Debugger } from './Debugger';
-import * as net from 'net';
 import { expect } from 'chai';
-import { EventEmitter } from 'events';
 import { SmartBuffer } from 'smart-buffer';
-import { util } from '../util';
 import { MockDebugProtocolServer } from './MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
 import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from './responses/responseCreationHelpers.spec';
@@ -44,7 +41,7 @@ describe('debugProtocol Debugger', () => {
 
         it('validates magic from server on connect', async () => {
             const magicAction = roku.waitForMagic();
-            const action = roku.sendHandshakeResponse(magicAction.promise);
+            roku.sendHandshakeResponse(magicAction.promise);
 
             void bsDebugger.connect();
 
@@ -57,8 +54,8 @@ describe('debugProtocol Debugger', () => {
         });
 
         it('throws on magic mismatch', async () => {
-            const magicAction = roku.waitForMagic();
-            const action = roku.sendHandshakeResponse('not correct magic');
+            roku.waitForMagic();
+            roku.sendHandshakeResponse('not correct magic');
 
             void bsDebugger.connect();
 
