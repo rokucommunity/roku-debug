@@ -29,7 +29,7 @@ import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse
 
 export class Debugger {
 
-    private logger = logger.createLogger(`[debugProtocol/${Debugger.name}]`);
+    private logger = logger.createLogger(`[${Debugger.name}]`);
 
     public get isStopped(): boolean {
         return this.stopped;
@@ -449,7 +449,7 @@ export class Debugger {
         this.emit('data', responseHandler);
 
         this.unhandledData = unhandledData.slice(packetLength ? packetLength : responseHandler.readOffset);
-        console.log(this.unhandledData.length, responseHandler);
+        this.logger.debug('[raw]', (responseHandler as any)?.constructor?.name ?? '', responseHandler);
         this.parseUnhandledData(this.unhandledData);
     }
 
