@@ -188,6 +188,7 @@ module.exports = {
             '@typescript-eslint/no-unused-vars-experimental': 'off',
             '@typescript-eslint/dot-notation': 'off',
             'github/array-foreach': 'off',
+            'camelcase': 'off',
             'new-cap': 'off',
             'no-shadow': 'off',
             'func-names': 'off'
