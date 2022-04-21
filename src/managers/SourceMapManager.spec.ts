@@ -1,7 +1,6 @@
+import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import { standardizePath as s } from '../FileUtils';
-import { SourceNode, SourceMapConsumer } from 'source-map';
-import { expect } from 'chai';
 import { SourceMapManager } from './SourceMapManager';
 let tmpPath = s`${process.cwd()}/.tmp`;
 describe('SourceMapManager', () => {
@@ -13,6 +12,7 @@ describe('SourceMapManager', () => {
         fsExtra.removeSync(tmpPath);
     });
     it('constructs', () => {
-        const mgr = new SourceMapManager();
+        const manager = new SourceMapManager();
+        expect(manager).to.exist;
     });
 });

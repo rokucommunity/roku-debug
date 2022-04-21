@@ -1,5 +1,4 @@
 import * as fsExtra from 'fs-extra';
-import { util } from '../util';
 import type { RawSourceMap } from 'source-map';
 import { SourceMapConsumer } from 'source-map';
 import { standardizePath as s, fileUtils } from '../FileUtils';

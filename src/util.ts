@@ -1,11 +1,10 @@
-import * as dateFormat from 'dateformat';
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as net from 'net';
 import * as url from 'url';
 import type { SmartBuffer } from 'smart-buffer';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
-import { DebugServerLogOutputEvent, LogOutputEvent } from './debugSession/Events';
+import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
 import { DiagnosticSeverity, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';

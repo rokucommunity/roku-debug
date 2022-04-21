@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events';
-import { util } from './util';
 import { logger } from './logging';
 
 export const GENERAL_XML_ERROR = 'General XML compilation error';

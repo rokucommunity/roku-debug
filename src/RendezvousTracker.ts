@@ -79,7 +79,7 @@ export class RendezvousTracker {
             let match = /\[sg\.node\.(BLOCK|UNBLOCK)\s{0,}\] Rendezvous\[(\d+)\](?:\s\w+\n|\s\w{2}\s(.*)\((\d+)\)|[\s\w]+(\d+\.\d+)+|\s\w+)/g.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/In0t7d/6
             if (match) {
-                let [fullMatch, type, id, fileName, lineNumber, duration] = match;
+                let [, type, id, fileName, lineNumber, duration] = match;
                 if (type === 'BLOCK') {
                     // detected the start of a rendezvous event
                     this.rendezvousBlocks[id] = {

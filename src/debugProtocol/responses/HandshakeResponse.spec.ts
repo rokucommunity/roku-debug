@@ -2,8 +2,6 @@ import { HandshakeResponse } from './HandshakeResponse';
 import { Debugger } from '../Debugger';
 import { createHandShakeResponse } from './responseCreationHelpers.spec';
 import { expect } from 'chai';
-import { createSandbox } from 'sinon';
-const sinon = createSandbox();
 
 describe('HandshakeResponse', () => {
     it('Handles a handshake response', () => {

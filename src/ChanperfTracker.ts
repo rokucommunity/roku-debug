@@ -60,7 +60,7 @@ export class ChanperfTracker {
             let infoAvailableMatch = /channel:\smem=([0-9]+)kib{[a-z]+=([0-9]+),[a-z]+=([0-9]+),[a-z]+=([0-9]+)(,[a-z]+=([0-9]+))?},\%cpu=([0-9]+){[a-z]+=([0-9]+),[a-z]+=([0-9]+)}/gmi.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/3HKIO0/2
             if (infoAvailableMatch) {
-                let [fullMatch, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, swapFullMatch, swapMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = infoAvailableMatch;
+                let [, totalMemKib, anonMemKib, fileMemKib, sharedMemKib, , swapMemKib, totalCpuUsage, userCpuUsage, sysCpuUsage] = infoAvailableMatch;
                 chanperfEventData = this.createNewChanperfEventData();
                 chanperfEventData.error = null;
 

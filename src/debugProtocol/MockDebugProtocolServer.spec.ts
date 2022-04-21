@@ -93,10 +93,6 @@ export class MockDebugProtocolServer {
     }
 }
 
-interface ConstructorOptions {
-    controllerPort?: number;
-}
-
 class Client {
     constructor(
         public socket: net.Socket

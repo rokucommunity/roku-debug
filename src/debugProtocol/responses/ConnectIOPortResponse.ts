@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES, UPDATE_TYPES } from '../Constants';
+import { UPDATE_TYPES } from '../Constants';
 
 export class ConnectIOPortResponse {
 

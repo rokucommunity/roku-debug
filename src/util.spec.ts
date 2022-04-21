@@ -12,8 +12,6 @@ import * as dedent from 'dedent';
 import { util } from './util';
 let sinon = sinonActual.createSandbox();
 
-const rootDir = path.normalize(path.dirname(__dirname));
-
 beforeEach(() => {
     sinon.restore();
 });
@@ -390,7 +388,7 @@ describe('Util', () => {
                 Brightscript Debugger>
             `;
             expect(
-                util.removeThreadAttachedText('')
+                util.removeThreadAttachedText(text)
                 //removes it all
             ).to.eql('');
         });

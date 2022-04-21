@@ -1,4 +1,3 @@
-import { AddressInfo } from 'net';
 import type { FileEntry } from 'roku-deploy';
 import type { DebugProtocol } from 'vscode-debugprotocol';
 import type { LogLevel } from './logging';

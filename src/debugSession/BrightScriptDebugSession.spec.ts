@@ -30,8 +30,6 @@ describe('BrightScriptDebugSession', () => {
     });
 
     let session: BrightScriptDebugSession;
-    //session of type any so we can do private-ish things
-    let s: any;
 
     let launchConfiguration: LaunchConfiguration;
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
@@ -50,7 +48,6 @@ describe('BrightScriptDebugSession', () => {
 
         try {
             session = new BrightScriptDebugSession();
-            s = session;
         } catch (e) {
             console.log(e);
         }

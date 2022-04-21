@@ -22,10 +22,6 @@ export class TelnetRequestPipeline {
         return this.activeCommand !== undefined;
     }
 
-    private get hasCommands() {
-        return this.commands.length > 0;
-    }
-
     private activeCommand: Command = undefined;
 
     private emitter = new EventEmitter();

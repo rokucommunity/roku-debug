@@ -37,8 +37,6 @@ export class ProjectManager {
         enableSourceMaps?: boolean;
     };
 
-    private logger = logger.createLogger(`[${ProjectManager.name}]`);
-
     public mainProject: Project;
     public componentLibraryProjects = [] as ComponentLibraryProject[];
 
@@ -152,19 +150,6 @@ export class ProjectManager {
             //+1 to select the first line of the function
             line: sourceLocation.lineNumber + 1
         });
-    }
-
-    /**
-     * Given a path to a file in some staging directory, find the project that file belongs to
-     */
-    private getProjectForStagingFile(stagingFilePath: string) {
-        let lowerStagingFilePath = stagingFilePath.toLowerCase();
-        let projects = [this.mainProject, ...this.componentLibraryProjects];
-        for (let project of projects) {
-            if (lowerStagingFilePath.startsWith(project.stagingFolderPath.toLowerCase())) {
-                return project;
-            }
-        }
     }
 
     /**
