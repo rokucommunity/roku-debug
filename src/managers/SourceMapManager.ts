@@ -1,14 +1,17 @@
 import * as fsExtra from 'fs-extra';
-import { util } from '../util';
 import type { RawSourceMap } from 'source-map';
 import { SourceMapConsumer } from 'source-map';
 import { standardizePath as s, fileUtils } from '../FileUtils';
 import * as path from 'path';
 import type { SourceLocation } from './LocationManager';
+import { logger } from '../logging';
+
 /**
  * Unifies access to source files across the whole project
  */
 export class SourceMapManager {
+
+    private logger = logger.createLogger(`[${SourceMapManager.name}]`);
     /**
     * Store all paths in lower case since Roku is case-insensitive.
     * If the file existed, but something failed during parsing, this will be set to null.
@@ -37,13 +40,12 @@ export class SourceMapManager {
     public async getSourceMap(sourceMapPath: string) {
         let key = s`${sourceMapPath.toLowerCase()}`;
         if (this.cache[key] === undefined) {
-            let parsedSourceMap: RawSourceMap;
             if (await fsExtra.pathExists(sourceMapPath)) {
                 try {
                     let contents = (await fsExtra.readFile(sourceMapPath)).toString();
                     this.set(sourceMapPath, contents);
                 } catch (e) {
-                    util.logDebug(`Error loading or parsing source map for '${sourceMapPath}'`, e);
+                    this.logger.error(`Error loading or parsing source map for '${sourceMapPath}'`, e);
                 }
             }
         }
@@ -151,8 +153,8 @@ export class SourceMapManager {
                         });
                     }
                 }
-            } catch (e) {
-                util.logDebug(new Error('Error converting source location to staging location'), e);
+            } catch (error) {
+                this.logger.error('Error converting source location to staging location', { error });
             }
         }));
         return locations;

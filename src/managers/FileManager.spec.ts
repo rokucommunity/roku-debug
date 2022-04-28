@@ -1,6 +1,6 @@
 import { FileManager } from './FileManager';
 import { expect } from 'chai';
-import { Range } from 'vscode-languageserver';
+import { util as bscUtil } from 'brighterscript';
 import { createSandbox } from 'sinon';
 import * as fsExtra from 'fs-extra';
 
@@ -32,11 +32,11 @@ describe('FileManager', () => {
             ).to.eql([{
                 name: 'Func1',
                 children: [],
-                range: Range.create(1, 0, 2, Number.MAX_SAFE_INTEGER)
+                range: bscUtil.createRange(1, 0, 2, Number.MAX_SAFE_INTEGER)
             }, {
                 name: 'Sub1',
                 children: [],
-                range: Range.create(3, 0, 4, Number.MAX_SAFE_INTEGER)
+                range: bscUtil.createRange(3, 0, 4, Number.MAX_SAFE_INTEGER)
             }]);
         });
 
@@ -60,24 +60,24 @@ describe('FileManager', () => {
                 )
             ).to.eql([{
                 name: 'main',
-                range: Range.create(1, 0, 12, Number.MAX_SAFE_INTEGER),
+                range: bscUtil.createRange(1, 0, 12, Number.MAX_SAFE_INTEGER),
                 children: [{
                     name: 'speak',
                     children: [],
-                    range: Range.create(3, 0, 4, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(3, 0, 4, Number.MAX_SAFE_INTEGER)
                 }, {
                     name: 'sayHi',
                     children: [],
-                    range: Range.create(5, 0, 6, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(5, 0, 6, Number.MAX_SAFE_INTEGER)
                 }, {
                     name: 'doSomething',
                     children: [],
-                    range: Range.create(8, 0, 9, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(8, 0, 9, Number.MAX_SAFE_INTEGER)
                 }, {
                     //complex assignments are hard, so capture the function but skip the name
                     name: undefined,
                     children: [],
-                    range: Range.create(10, 0, 11, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(10, 0, 11, Number.MAX_SAFE_INTEGER)
                 }]
             }]);
         });
@@ -114,52 +114,52 @@ describe('FileManager', () => {
                 {
                     name: 'doSomething',
                     children: [],
-                    range: Range.create(2, 0, 3, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(2, 0, 3, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_private',
                     children: [],
-                    range: Range.create(4, 0, 5, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(4, 0, 5, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_public',
                     children: [],
-                    range: Range.create(6, 0, 7, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(6, 0, 7, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_public_override',
                     children: [],
-                    range: Range.create(8, 0, 9, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(8, 0, 9, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_override',
                     children: [],
-                    range: Range.create(10, 0, 11, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(10, 0, 11, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_sub',
                     children: [],
-                    range: Range.create(12, 0, 13, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(12, 0, 13, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_private_sub',
                     children: [],
-                    range: Range.create(14, 0, 15, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(14, 0, 15, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_public_sub',
                     children: [],
-                    range: Range.create(16, 0, 17, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(16, 0, 17, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_public_override_sub',
                     children: [],
-                    range: Range.create(18, 0, 19, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(18, 0, 19, Number.MAX_SAFE_INTEGER)
                 },
                 {
                     name: 'doSomething_override_sub',
                     children: [],
-                    range: Range.create(20, 0, 21, Number.MAX_SAFE_INTEGER)
+                    range: bscUtil.createRange(20, 0, 21, Number.MAX_SAFE_INTEGER)
                 }
             ]);
         });
@@ -185,7 +185,7 @@ describe('FileManager', () => {
             ).to.eql([{
                 name: 'main',
                 children: [],
-                range: Range.create(1, 0, 12, Number.MAX_SAFE_INTEGER)
+                range: bscUtil.createRange(1, 0, 12, Number.MAX_SAFE_INTEGER)
             }]);
         });
 

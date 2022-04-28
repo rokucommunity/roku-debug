@@ -1,11 +1,7 @@
-import * as eol from 'eol';
-import * as EventEmitter from 'events';
 import { orderBy } from 'natural-orderby';
-import type { Socket } from 'net';
-import * as net from 'net';
+import * as EventEmitter from 'eventemitter3';
+import { Socket } from 'net';
 import * as rokuDeploy from 'roku-deploy';
-
-import { defer } from '../debugSession/BrightScriptDebugSession';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
@@ -13,8 +9,12 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { util } from '../util';
-import type { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
+import { defer, util } from '../util';
+import { logger } from '../logging';
+import type { RokuAdapterEvaluateResponse } from '../interfaces';
+import { HighLevelType } from '../interfaces';
+import { TelnetRequestPipeline } from './TelnetRequestPipeline';
+import { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -24,6 +24,7 @@ export class TelnetAdapter {
         private host: string,
         private enableDebuggerAutoRecovery: boolean = false
     ) {
+        this.connected = false;
         this.emitter = new EventEmitter();
         this.debugStartRegex = /BrightScript Micro Debugger\./ig;
         this.debugEndRegex = /Brightscript Debugger>/ig;
@@ -43,10 +44,11 @@ export class TelnetAdapter {
         });
     }
 
+    public logger = logger.createLogger(`[${TelnetAdapter.name}]`);
     public connected: boolean;
 
     private compileErrorProcessor: CompileErrorProcessor;
-    public requestPipeline: RequestPipeline;
+    public requestPipeline: TelnetRequestPipeline;
     private emitter: EventEmitter;
     private isNextBreakpointSkipped = false;
     private isInMicroDebugger: boolean;
@@ -58,6 +60,11 @@ export class TelnetAdapter {
     private cache = {};
 
     public readonly supportsMultipleRuns = true;
+
+    /**
+     * Does this adapter support the `execute` command (known as `eval` in telnet)
+     */
+    public supportsExecute = true;
 
     /**
      * Subscribe to various events
@@ -129,6 +136,7 @@ export class TelnetAdapter {
     public isAtDebuggerPrompt = false;
 
     public async activate() {
+        this.logger.log('Activate TelnetAdapter');
         this.isActivated = true;
         await this.handleStartupIfReady();
     }
@@ -139,14 +147,16 @@ export class TelnetAdapter {
 
     private async handleStartupIfReady() {
         if (this.isActivated && this.isAppRunning) {
+            this.logger.log('Handling startup');
             this.emit('start');
 
             //if we are already sitting at a debugger prompt, we need to emit the first suspend event.
             //If not, then there are probably still messages being received, so let the normal handler
             //emit the suspend event when it's ready
             if (this.isAtDebuggerPrompt === true) {
+                this.logger.log(`At debug prompt, so trigger the 'suspend' event`);
                 let threads = await this.getThreads();
-                this.emit('suspend', threads[0].threadId);
+                this.emit('suspend', threads[0]?.threadId);
             }
         }
     }
@@ -162,20 +172,23 @@ export class TelnetAdapter {
      * @param maxWaitMilliseconds
      */
     private settle(client: Socket, name: string, maxWaitMilliseconds = 400) {
+        const startTime = new Date();
+        this.logger.log('Waiting for telnet client to settle');
         return new Promise((resolve) => {
             let callCount = -1;
 
-            function handler() {
+            const handler = () => {
                 callCount++;
                 let myCallCount = callCount;
                 setTimeout(() => {
                     //if no other calls have been made since the timeout started, then the listener has settled
                     if (myCallCount === callCount) {
                         client.removeListener(name, handler);
+                        this.logger.log(`Telnet client has settled after ${new Date().getTime() - startTime.getTime()} milliseconds`);
                         resolve(callCount);
                     }
                 }, maxWaitMilliseconds);
-            }
+            };
 
             client.addListener(name, handler);
             //call the handler immediately so we have a timeout
@@ -183,44 +196,39 @@ export class TelnetAdapter {
         });
     }
 
-    public processBreakpoints(text): string | null {
-        let newLines = eol.split(text);
+    private processBreakpoints(text: string) {
+        let newLines = text.split(/\r?\n/g);
         for (const line of newLines) {
-            console.log('Running processing line; ', line);
+            //Running processing line
             if (this.debugStartRegex.exec(line)) {
-                console.log('start MicroDebugger block');
+                //start MicroDebugger block
                 this.isInMicroDebugger = true;
                 this.isNextBreakpointSkipped = false;
             } else if (this.isInMicroDebugger && this.debugEndRegex.exec(line)) {
-                console.log('ended MicroDebugger block');
+                //ended MicroDebugger block
                 this.isInMicroDebugger = false;
             } else if (this.isInMicroDebugger) {
                 if (this.enableDebuggerAutoRecovery && line.startsWith('Break in ')) {
-                    console.log('this block is a break: skipping it');
+                    //this block is a break: skipping it
                     this.isNextBreakpointSkipped = true;
                 }
             }
         }
-        return text;
     }
 
     /**
      * Connect to the telnet session. This should be called before the channel is launched.
      */
     public async connect() {
+        this.logger.log('Establishing telnet connection');
         let deferred = defer();
         this.isInMicroDebugger = false;
         this.isNextBreakpointSkipped = false;
         try {
+            this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
             await rokuDeploy.pressHomeButton(this.host);
-            let client: Socket = new net.Socket();
-
-            client.connect(8085, this.host, () => {
-                console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} +++++++++++`);
-                this.connected = true;
-                this.emit('connected', this.connected);
-            });
+            let client: Socket = new Socket();
 
             //listen for the close event
             client.addListener('close', (err, data) => {
@@ -229,13 +237,21 @@ export class TelnetAdapter {
 
             //if the connection fails, reject the connect promise
             client.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message}`));
+                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message} `));
             });
 
-            await this.settle(client, 'data');
+            const settlePromise = this.settle(client, 'data');
+            client.connect(8085, this.host, () => {
+                this.logger.log(`Telnet connection established to ${this.host}`);
+                this.connected = true;
+                this.emit('connected', this.connected);
+            });
+
+            await settlePromise;
 
             //hook up the pipeline to the socket
-            this.requestPipeline = new RequestPipeline(client);
+            this.requestPipeline = new TelnetRequestPipeline(client);
+            this.requestPipeline.connect();
 
             //forward all raw console output
             this.requestPipeline.on('console-output', (output) => {
@@ -266,15 +282,15 @@ export class TelnetAdapter {
 
                 // short circuit after the output has been sent as console output
                 if (hasRuntimeError) {
-                    console.debug('hasRuntimeError!!');
+                    this.logger.log('Detected runtime error in output', { responseText });
                     this.isAtDebuggerPrompt = true;
                     return;
                 }
 
-                this.processUnhandledLines(responseText);
-                let match;
+                this.compileErrorProcessor.processUnhandledLines(responseText);
 
                 if (this.isAtCannotContinue(responseText)) {
+                    this.logger.log('is at cannot continue');
                     this.isAtDebuggerPrompt = true;
                     return;
                 }
@@ -282,36 +298,40 @@ export class TelnetAdapter {
                 if (this.isActivated) {
                     //watch for the start of the program
                     // eslint-disable-next-line no-cond-assign
-                    if (match = /\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
+                    if (/\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
                         this.isAppRunning = true;
+                        this.logger.log('Running beacon detected', { responseText });
                         void this.handleStartupIfReady();
                     }
 
                     //watch for the end of the program
                     // eslint-disable-next-line no-cond-assign
-                    if (match = /\[beacon.report\] \|AppExitComplete/i.exec(responseText.trim())) {
+                    if (/\[beacon.report\] \|AppExitComplete/i.exec(responseText.trim())) {
                         this.beginAppExit();
                     }
 
                     //watch for debugger prompt output
-                    // eslint-disable-next-line no-cond-assign
-                    if (match = /Brightscript\s*Debugger>\s*$/i.exec(responseText.trim())) {
+                    if (util.endsWithDebuggerPrompt(responseText)) {
+                        this.logger.log('Debugger prompt detected in', { responseText });
 
                         //if we are activated AND this is the first time seeing the debugger prompt since a continue/step action
                         if (this.isNextBreakpointSkipped) {
-                            console.log('this breakpoint is flagged to be skipped');
+                            this.logger.log('This debugger is flagged to be skipped');
                             this.isInMicroDebugger = false;
                             this.isNextBreakpointSkipped = false;
-                            void this.requestPipeline.executeCommand('c', false, false, false);
+                            void this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
                         } else {
                             if (this.isActivated && this.isAtDebuggerPrompt === false) {
                                 this.isAtDebuggerPrompt = true;
+                                this.logger.log('Sending the "suspend" event to the client');
                                 this.emit('suspend');
                             } else {
+                                this.logger.log('Skipping "suspend" event because we are already suspended');
                                 this.isAtDebuggerPrompt = true;
                             }
                         }
                     } else {
+                        this.logger.debug('responseText does not end with debugger prompt. isAtDebuggerPrompt = false', { responseText });
                         this.isAtDebuggerPrompt = false;
                     }
                 }
@@ -326,7 +346,9 @@ export class TelnetAdapter {
     }
 
     private beginAppExit() {
+        this.logger.log('Beginning app exit');
         this.compileErrorProcessor.compileErrorTimer = setTimeout(() => {
+            this.logger.info('emitting app-exit');
             this.isAppRunning = false;
             this.emit('app-exit');
         }, 200);
@@ -368,26 +390,25 @@ export class TelnetAdapter {
         }
     }
 
-    private processUnhandledLines(responseText: string) {
-        this.compileErrorProcessor.processUnhandledLines(responseText);
-    }
-
     /**
      * Send command to step over
      */
     public stepOver() {
+        this.logger.log('stepOver');
         this.clearCache();
-        return this.requestPipeline.executeCommand('over', false);
+        return this.requestPipeline.executeCommand('over', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepInto() {
+        this.logger.log('stepInto');
         this.clearCache();
-        return this.requestPipeline.executeCommand('step', false);
+        return this.requestPipeline.executeCommand('step', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepOut() {
+        this.logger.log('stepOut');
         this.clearCache();
-        return this.requestPipeline.executeCommand('out', false);
+        return this.requestPipeline.executeCommand('out', { waitForPrompt: false, insertAtFront: true });
 
     }
 
@@ -395,23 +416,26 @@ export class TelnetAdapter {
      * Tell the brightscript program to continue (i.e. resume program)
      */
     public continue() {
+        this.logger.log('continue');
         this.clearCache();
-        return this.requestPipeline.executeCommand('c', false);
+        return this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
     }
 
     /**
      * Tell the brightscript program to pause (fall into debug mode)
      */
     public pause() {
+        this.logger.log('pause');
         this.clearCache();
-        //send the kill signal, which breaks into debugger mode
-        return this.requestPipeline.executeCommand('\x03;', false, true);
+        //send the kill signal, which breaks into debugger mode. This gets written immediately, regardless of debugger prompt status.
+        this.requestPipeline.write('\x03;');
     }
 
     /**
      * Clears the state, which means that everything will be retrieved fresh next time it is requested
      */
     public clearCache() {
+        this.logger.info('Clearing TelnetAdapter cache');
         this.cache = {};
         this.isAtDebuggerPrompt = false;
     }
@@ -420,28 +444,33 @@ export class TelnetAdapter {
      * Execute a command directly on the roku. Returns the output of the command.
      * @param command the command to execute. If the command does not start with `print` the command will be prefixed with `print ` because
      */
-    public async evaluate(command: string) {
+    public async evaluate(command: string): Promise<RokuAdapterEvaluateResponse> {
+        this.logger.log('evaluate ', { command });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot run evaluate: debugger is not paused');
         }
         //clear the cache (we don't know what command the user entered)
         this.clearCache();
         //don't wait for the output...we don't know what command the user entered
-        let responseText = await this.requestPipeline.executeCommand(command, true);
+        let responseText = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
         //we know that if we got a response, we are back at a debugger prompt
         this.isAtDebuggerPrompt = true;
-        return responseText;
+        return {
+            message: responseText,
+            type: 'message'
+        };
     }
 
     public async getStackTrace() {
+        this.logger.log(TelnetAdapter.prototype.getStackTrace.name);
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get stack trace: debugger is not paused');
         }
         return this.resolve('stackTrace', async () => {
             //perform a request to load the stack trace
-            let responseText = await this.requestPipeline.executeCommand('bt', true);
+            let responseText = (await this.requestPipeline.executeCommand('bt', { waitForPrompt: true })).trim();
             let regexp = /#(\d+)\s+(?:function|sub)\s+([\$\w\d]+).*\s+file\/line:\s+(.*)\((\d+)\)/ig;
-            let matches;
+            let matches: RegExpExecArray;
             let frames: StackFrame[] = [];
             // eslint-disable-next-line no-cond-assign
             while (matches = regexp.exec(responseText)) {
@@ -468,21 +497,10 @@ export class TelnetAdapter {
     }
 
     /**
-     * Runs a regex to get the content between telnet commands
-     * @param value
-     */
-    public getExpressionDetails(value: string) {
-        const match = /(.*?)\r?\nBrightscript Debugger>\s*/is.exec(value);
-        if (match) {
-            return match[1];
-        }
-    }
-
-    /**
      * Runs a regex to check if the target is an object and get the type if it is
      * @param value
      */
-    public getObjectType(value: string) {
+    private getObjectType(value: string) {
         const match = /<.*?:\s*(\w+\s*\:*\s*[\w\.]*)>/gi.exec(value);
         if (match) {
             return match[1];
@@ -504,18 +522,19 @@ export class TelnetAdapter {
      * @param scope
      */
     public async getScopeVariables(scope?: string) {
+        this.logger.log('getScopeVariables', { scope });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
         return this.resolve(`Scope Variables`, async () => {
             let data: string;
-            let vars = [];
+            let vars = [] as string[];
 
-            data = await this.requestPipeline.executeCommand(`var`, true);
-            let splitData = data.split('\n');
+            data = await this.requestPipeline.executeCommand(`var`, { waitForPrompt: true });
+            let splitData = data.trim().split('\n');
 
             for (const line of splitData) {
-                let match;
+                let match: RegExpExecArray;
                 if (!line.includes('Brightscript Debugger') && (match = this.getFirstWord(line))) {
                     // There seems to be a local ifGlobal interface variable under the name of 'global' but it
                     // is not accessible by the channel. Stript it our.
@@ -533,117 +552,158 @@ export class TelnetAdapter {
      * @param expression
      */
     public async getVariable(expression: string) {
+        const logger = this.logger.createLogger('[getVariable]');
+        logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
-        return this.resolve(`variable: ${expression}`, async () => {
-            let expressionType = await this.getVariableType(expression);
+        let expressionType = await this.getVariableType(expression);
 
-            let lowerExpressionType = expressionType ? expressionType.toLowerCase() : null;
+        let lowerExpressionType = expressionType ? expressionType.toLowerCase() : null;
 
-            let data: string;
-            //if the expression type is a string, we need to wrap the expression in quotes BEFORE we run the print so we can accurately capture the full string value
-            if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
-                data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, true);
+        let data: string;
+        //if the expression type is a string, we need to wrap the expression in quotes BEFORE we run the print so we can accurately capture the full string value
+        if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
+            data = await this.requestPipeline.executeCommand(`print "--string-wrap--" + ${expression} + "--string-wrap--"`, { waitForPrompt: true });
 
-                //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
-            } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
-                data = await this.requestPipeline.executeCommand(
-                    `for each vscodeLoopItem in ${expression} : print "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString")); vscodeLoopItem : end for`
-                    , true);
-            } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
-                data = await this.requestPipeline.executeCommand(
-                    `for each vscodeLoopKey in ${expression}.keys() : print "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop " + "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString")); ${expression}[vscodeLoopKey] : end for`,
-                    true);
-            } else {
-                data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
-            }
+            //write a for loop to print every value from the array. This gets around the `...` after the 100th item issue in the roku print call
+        } else if (['roarray', 'rolist', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
+            const command = [
+                `for each vscodeLoopItem in ${expression} : print ` +
+                `   "vscode_type_start:" + type(vscodeLoopItem) + ":vscode_type_stop "`,
+                `   "vscode_is_string:"; (invalid <> GetInterface(vscodeLoopItem, "ifString"))`,
+                `   vscodeLoopItem :` +
+                ` end for`
+            ].join(';');
+            data = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
+        } else if (['roassociativearray', 'rosgnode'].includes(lowerExpressionType)) {
+            const command = [
+                `for each vscodeLoopKey in ${expression}.keys(): print` +
+                `   "vscode_key_start:" + vscodeLoopKey + ":vscode_key_stop "`,
+                `   "vscode_type_start:" + type(${expression}[vscodeLoopKey]) + ":vscode_type_stop "`,
+                `   "vscode_is_string:"; (invalid <> GetInterface(${expression}[vscodeLoopKey], "ifString"))`,
+                `   ${expression}[vscodeLoopKey] :` +
+                ' end for'
+            ].join(';');
+            data = await this.requestPipeline.executeCommand(command, { waitForPrompt: true });
+        } else {
+            data = await this.requestPipeline.executeCommand(`print ${expression}`, { waitForPrompt: true });
+        }
 
-            let match = this.getExpressionDetails(data);
-            if (match !== undefined) {
-                let value = match;
-                if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
-                    value = value.trim().replace(/--string-wrap--/g, '');
-                    //add an escape character in front of any existing quotes
-                    value = value.replace(/"/g, '\\"');
-                    //wrap the string value with literal quote marks
-                    value = '"' + value + '"';
-                }
-                let highLevelType = this.getHighLevelType(expressionType);
+        logger.info('expression details', { data });
+        //remove excess whitespace
+        data = data.trim();
+        if (lowerExpressionType === 'string' || lowerExpressionType === 'rostring') {
+            data = data.trim().replace(/--string-wrap--/g, '');
+            //add an escape character in front of any existing quotes
+            data = data.replace(/"/g, '\\"');
+            //wrap the string value with literal quote marks
+            data = '"' + data + '"';
+        }
+        let highLevelType = this.getHighLevelType(expressionType);
 
-                let children: EvaluateContainer[];
-                if (highLevelType === HighLevelType.array || ['roassociativearray', 'rosgnode', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
-                    //the print statment will always have 1 trailing newline, so remove that.
-                    value = util.removeTrailingNewline(value);
-                    //the array/associative array print is a loop of every value, so handle that
-                    children = this.getForLoopPrintedChildren(expression, value);
-                } else if (highLevelType === HighLevelType.object) {
-                    children = this.getObjectChildren(expression, value.trim());
-                }
+        let children: EvaluateContainer[];
+        if (highLevelType === HighLevelType.array || ['roassociativearray', 'rosgnode', 'roxmllist', 'robytearray'].includes(lowerExpressionType)) {
+            //the print statment will always have 1 trailing newline, so remove that.
+            data = util.removeTrailingNewline(data);
+            //the array/associative array print is a loop of every value, so handle that
+            children = this.getForLoopPrintedChildren(expression, data);
+            children.push({
+                name: '[[count]]',
+                value: children.length.toString(),
+                type: 'integer',
+                highLevelType: HighLevelType.primative,
+                evaluateName: children.length.toString(),
+                presentationHint: 'virtual',
+                keyType: KeyType.legacy,
+                children: undefined
+            } as EvaluateContainer);
+        } else if (highLevelType === HighLevelType.object) {
+            children = this.getObjectChildren(expression, data.trim());
+        } else if (highLevelType === HighLevelType.unknown) {
+            logger.warn('there was an issue evaluating this variable', { expression });
+            data = '<UNKNOWN>';
+        }
 
-                //add a computed `[[children]]` property to allow expansion of node children
-                if (lowerExpressionType === 'rosgnode') {
-                    let nodeChildren = <EvaluateContainer>{
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: 'array',
-                        evaluateName: `${expression}.getChildren(-1,0)`,
-                        children: []
-                    };
-                    children.push(nodeChildren);
-                }
+        if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
+            return {
+                name: expression,
+                value: util.removeTrailingNewline(data),
+                type: expressionType,
+                highLevelType: HighLevelType.primative,
+                evaluateName: expression,
+                children: []
+            } as EvaluateContainer;
+        }
 
-                //xml elements won't display on their own, so we need to create some sub elements
-                if (lowerExpressionType === 'roxmlelement') {
-                    //add a computed `[[children]]` property to allow expansion of node children
-                    children.push({
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: HighLevelType.array,
-                        evaluateName: `${expression}.GetChildNodes()`,
-                        children: []
-                    } as EvaluateContainer);
+        //add a computed `[[children]]` property to allow expansion of node children
+        if (lowerExpressionType === 'rosgnode') {
+            let nodeChildren = <EvaluateContainer>{
+                name: '[[children]]',
+                type: 'roArray',
+                highLevelType: 'array',
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.getChildren(-1, 0)`,
+                children: []
+            };
+            children.push(nodeChildren);
+        }
 
-                    children.push({
-                        name: '[[attributes]]',
-                        type: 'roArray',
-                        highLevelType: HighLevelType.array,
-                        evaluateName: `${expression}.GetAttributes()`,
-                        children: []
-                    } as EvaluateContainer);
+        //xml elements won't display on their own, so we need to create some sub elements
+        if (lowerExpressionType === 'roxmlelement') {
+            children.push({
+                //look up the name of the xml element
+                ...await this.getVariable(`${expression}.GetName()`),
+                name: '[[name]]',
+                presentationHint: 'virtual'
+            });
 
-                    //look up the element name right now
-                    const container = await this.getVariable(`${expression}.GetName()`);
-                    container.name = '[[name]]';
-                    children.push(container);
-                }
+            children.push({
+                name: '[[attributes]]',
+                type: 'roAssociativeArray',
+                highLevelType: HighLevelType.array,
+                evaluateName: `${expression}.GetAttributes()`,
+                presentationHint: 'virtual',
+                children: []
+            } as EvaluateContainer);
 
-                //if this item is an array or a list, add the item count to the end of the type
-                if (highLevelType === HighLevelType.array) {
-                    //TODO re-enable once we find how to refresh watch/variables panel, since lazy loaded arrays can't show a length
-                    //expressionType += `(${children.length})`;
-                }
+            //add a computed `[[children]]` property to allow expansion of child elements
+            children.push({
+                name: '[[children]]',
+                type: 'roArray',
+                highLevelType: HighLevelType.array,
+                evaluateName: `${expression}.GetChildNodes()`,
+                presentationHint: 'virtual',
+                children: []
 
-                let container = <EvaluateContainer>{
-                    name: expression,
-                    evaluateName: expression,
-                    type: expressionType,
-                    value: value.trim(),
-                    highLevelType: highLevelType,
-                    children: children
-                };
-                return container;
-            }
-        });
+            } as EvaluateContainer);
+        }
+
+        //if this item is an array or a list, add the item count to the end of the type
+        if (highLevelType === HighLevelType.array) {
+            //TODO re-enable once we find how to refresh watch/variables panel, since lazy loaded arrays can't show a length
+            //expressionType += `(${children.length})`;
+        }
+
+        let container = <EvaluateContainer>{
+            name: expression,
+            evaluateName: expression,
+            type: expressionType,
+            value: data.trim(),
+            highLevelType: highLevelType,
+            children: children
+        };
+        logger.info('end', { container });
+        return container;
     }
 
     /**
      * In order to get around the `...` issue in printed arrays, `getVariable` now prints every value from an array or associative array in a for loop.
      * As such, we need to iterate over every printed result to produce the children array
      */
-    public getForLoopPrintedChildren(expression: string, data: string) {
+    private getForLoopPrintedChildren(expression: string, data: string) {
         let children = [] as EvaluateContainer[];
-        let lines = eol.split(data);
+        let lines = data.split(/\r?\n/g);
         //if there are no lines, this is an empty object/array
         if (lines.length === 1 && lines[0].trim() === '') {
             return children;
@@ -670,6 +730,20 @@ export class TelnetAdapter {
             } else {
                 child.name = children.length.toString();
                 child.evaluateName = `${expression}[${children.length}]`;
+            }
+
+            //get the object type
+            let typeStartWrapper = 'vscode_type_start:';
+            let typeStopWrapper = ':vscode_type_stop ';
+            let type: string;
+
+            const typeStartIndex = line.indexOf(typeStartWrapper);
+            //if the type is present, extract it
+            if (typeStartIndex > -1) {
+                type = line.substring(typeStartIndex + typeStartWrapper.length, line.indexOf(typeStopWrapper));
+
+                //throw out the type chunk
+                line = line.substring(line.indexOf(typeStopWrapper) + typeStopWrapper.length);
             }
 
             if (line.includes('vscode_is_string:true')) {
@@ -732,32 +806,10 @@ export class TelnetAdapter {
                         break;
                     }
                 }
-                //if the next-to-last line of collection is `...`, then scrap the values
-                //because we will need to run a full evaluation (later) to get around the `...` issue
-                if (collectionLineList.length > 3 && collectionLineList[collectionLineList.length - 2].trim() === '...') {
-                    child.children = [];
+                //we have reached the end of the collection. scrap children because they need evaluated in a separate call to compute their types
+                child.children = [];
 
-                    //get the object children
-                } else if (child.highLevelType === HighLevelType.object) {
-                    child.children = this.getObjectChildren(child.evaluateName, collectionLineList.join('\n'));
-
-                    //get all of the array children right now since we have them
-                } else {
-                    child.children = this.getArrayOrListChildren(child.evaluateName, collectionLineList.join('\n'));
-                    child.type += `(${child.children.length})`;
-                }
-                if (isRoSGNode) {
-                    let nodeChildrenProperty = <EvaluateContainer>{
-                        name: '[[children]]',
-                        type: 'roArray',
-                        highLevelType: 'array',
-                        evaluateName: `${child.evaluateName}.getChildren(-1,0)`,
-                        children: []
-                    };
-                    child.children.push(nodeChildrenProperty);
-                }
-
-                //this if block must preseec the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
+                //this if block must pre-seek the `line.indexOf('<Component') > -1` line because roInvalid is a component too.
             } else if (objectType === 'roInvalid') {
                 child.highLevelType = HighLevelType.uninitialized;
                 child.type = 'roInvalid';
@@ -771,7 +823,7 @@ export class TelnetAdapter {
 
             } else {
                 //is some primative type
-                child.type = this.getPrimativeTypeFromValue(line);
+                child.type = type;
                 child.value = line.trim();
                 child.highLevelType = HighLevelType.primative;
                 child.children = undefined;
@@ -780,53 +832,6 @@ export class TelnetAdapter {
         }
         let sortedChildren = orderBy(children, ['name']);
         return sortedChildren;
-    }
-
-    /**
-     * Get all of the children of an array or list
-     */
-    private getArrayOrListChildren(expression: string, data: string): EvaluateContainer[] {
-        let collectionEnd: string;
-
-        //this function can handle roArray and roList objects, but we need to know which it is
-        if (data.startsWith('<Component: roList>')) {
-            collectionEnd = ')';
-
-            //array
-        } else {
-            collectionEnd = ']';
-        }
-        let children = [] as EvaluateContainer[];
-        //split by newline. the array contents start at index 2
-        let lines = eol.split(data);
-        let arrayIndex = 0;
-        for (let i = 2; i < lines.length; i++) {
-            let line = lines[i].trim();
-            if (line === collectionEnd) {
-                return children;
-            }
-            let child = <EvaluateContainer>{
-                name: arrayIndex.toString(),
-                evaluateName: `${expression}[${arrayIndex}]`,
-                children: []
-            };
-
-            //if the line is an object, array or function
-            let match = this.getObjectType(line);
-            if (match) {
-                let type = match;
-                child.type = type;
-                child.highLevelType = this.getHighLevelType(type);
-                child.value = type;
-            } else {
-                child.type = this.getPrimativeTypeFromValue(line);
-                child.value = line;
-                child.highLevelType = HighLevelType.primative;
-            }
-            children.push(child);
-            arrayIndex++;
-        }
-        throw new Error('Unable to parse BrightScript array');
     }
 
     private getPrimativeTypeFromValue(value: string): PrimativeType {
@@ -852,7 +857,7 @@ export class TelnetAdapter {
         try {
             let children: EvaluateContainer[] = [];
             //split by newline. the object contents start at index 2
-            let lines = eol.split(data);
+            let lines = data.split(/\r?\n/g);
             for (let i = 2; i < lines.length; i++) {
                 let line = lines[i];
                 let trimmedLine = line.trim();
@@ -901,7 +906,7 @@ export class TelnetAdapter {
             }
             return children;
         } catch (e) {
-            throw new Error(`Unable to parse BrightScript object: ${e.message}. Data: ${data}`);
+            throw new Error(`Unable to parse BrightScript object: ${JSON.stringify(e.message)}. Data: ${data}`);
         }
     }
 
@@ -911,7 +916,7 @@ export class TelnetAdapter {
      */
     private getHighLevelType(expressionType: string) {
         if (!expressionType) {
-            throw new Error(`Unknown expression type: ${expressionType}`);
+            return HighLevelType.unknown;
         }
 
         expressionType = expressionType.toLowerCase();
@@ -933,23 +938,16 @@ export class TelnetAdapter {
      * Get the type of the provided expression
      * @param expression
      */
-    public async getVariableType(expression) {
+    public async getVariableType(expression: string) {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get variable type: debugger is not paused');
         }
         expression = `Type(${expression})`;
         return this.resolve(`${expression}`, async () => {
-            let data = await this.requestPipeline.executeCommand(`print ${expression}`, true);
+            let data = await this.requestPipeline.executeCommand(`print ${expression}`, { waitForPrompt: true });
 
-            let match = this.getExpressionDetails(data);
-            if (match) {
-                let typeValue: string = match;
-                //remove whitespace
-                typeValue = typeValue.trim();
-                return typeValue;
-            } else {
-                return null;
-            }
+            //remove whitespace
+            return data?.trim() ?? null;
         });
     }
 
@@ -959,24 +957,34 @@ export class TelnetAdapter {
      * @param factory
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
-        if (this.cache[key]) {
-            return this.cache[key];
+        try {
+            if (this.cache[key]) {
+                this.logger.debug(`resolve cache "${key}": already exists`);
+                return this.cache[key];
+            } else {
+                this.logger.debug(`resolve cache "${key}": calling factory`);
+                const result = factory();
+                this.cache[key] = Promise.resolve<T>(result);
+                return this.cache[key];
+            }
+        } catch (e) {
+            return Promise.reject(e);
         }
-        this.cache[key] = Promise.resolve<T>(factory());
-        return this.cache[key];
     }
 
     /**
      * Get a list of threads. The first thread in the list is the active thread
      */
     public async getThreads() {
+        this.logger.log('getThreads');
         if (!this.isAtDebuggerPrompt) {
-            throw new Error('Cannot get threads: debugger is not paused');
+            this.logger.log('Cannot get threads: debugger is not paused');
+            return [];
         }
         return this.resolve('threads', async () => {
-            let data = await this.requestPipeline.executeCommand('threads', true);
+            let data = await this.requestPipeline.executeCommand('threads', { waitForPrompt: true });
 
-            let dataString = data.toString();
+            let dataString = data.toString().trim();
             let matches = /^\s+(\d+\*)\s+(.*)\((\d+)\)\s+(.*)/gm.exec(dataString);
             let threads: Thread[] = [];
             if (matches) {
@@ -1005,12 +1013,15 @@ export class TelnetAdapter {
         });
     }
 
+    public removeAllListeners() {
+        this.emitter?.removeAllListeners();
+    }
+
     /**
      * Disconnect from the telnet session and unset all objects
      */
-    public async destroy() {
+    public destroy() {
         if (this.requestPipeline) {
-            await this.exitActiveBrightscriptDebugger();
             this.requestPipeline.destroy();
         }
 
@@ -1020,21 +1031,8 @@ export class TelnetAdapter {
             this.emitter.removeAllListeners();
         }
         this.emitter = undefined;
-    }
-
-    /**
-     * Make sure any active Brightscript Debugger threads are exited
-     */
-    public async exitActiveBrightscriptDebugger() {
-        if (this.requestPipeline) {
-            let commandsExecuted = 0;
-            do {
-                let data = await this.requestPipeline.executeCommand(`exit`, false);
-                // This seems to work without the delay but I wonder about slower devices
-                // await setTimeout[Object.getOwnPropertySymbols(setTimeout)[0]](100);
-                commandsExecuted++;
-            } while (commandsExecuted < 10);
-        }
+        //needs to be async to match the DebugProtocolAdapter implementation
+        return Promise.resolve();
     }
 
     // #region Rendezvous Tracker pass though functions
@@ -1081,14 +1079,6 @@ export enum EventName {
     suspend = 'suspend'
 }
 
-export enum HighLevelType {
-    primative = 'primative',
-    array = 'array',
-    function = 'function',
-    object = 'object',
-    uninitialized = 'uninitialized'
-}
-
 export interface EvaluateContainer {
     name: string;
     evaluateName: string;
@@ -1099,6 +1089,7 @@ export interface EvaluateContainer {
     elementCount: number;
     highLevelType: HighLevelType;
     children: EvaluateContainer[];
+    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
 export enum KeyType {
@@ -1121,185 +1112,6 @@ export enum PrimativeType {
     string = 'String',
     integer = 'Integer',
     float = 'Float'
-}
-
-export class RequestPipeline {
-    constructor(
-        private client: Socket
-    ) {
-        this.debuggerLineRegex = /Brightscript\s+Debugger>\s*$/i;
-        this.connect();
-    }
-
-    private requests: RequestPipelineRequest[] = [];
-    private debuggerLineRegex: RegExp;
-    private isAtDebuggerPrompt = false;
-
-    private get isProcessing() {
-        return this.currentRequest !== undefined;
-    }
-
-    private get hasRequests() {
-        return this.requests.length > 0;
-    }
-
-    private currentRequest: RequestPipelineRequest = undefined;
-
-    private emitter = new EventEmitter();
-
-    public on(eventName: string, handler: (data: any) => void) {
-        this.emitter.on(eventName, handler);
-        return () => {
-            this.emitter.removeListener(eventName, handler);
-        };
-    }
-
-    private emit(eventName: 'console-output' | 'unhandled-console-output', data: string) {
-        this.emitter.emit(eventName, data);
-    }
-
-    private connect() {
-        let allResponseText = '';
-        let lastPartialLine = '';
-
-        this.client.addListener('data', (data) => {
-            let responseText = data.toString();
-            const cumulative = lastPartialLine + responseText;
-            if (!cumulative.endsWith('\n') && !this.checkForDebuggerPrompt(cumulative)) {
-                // buffer was split and was not the result of a prompt, save the partial line
-                lastPartialLine += responseText;
-                return;
-            }
-
-            if (lastPartialLine) {
-                // there was leftover lines, join the partial lines back together
-                responseText = lastPartialLine + responseText;
-                lastPartialLine = '';
-            }
-
-            //forward all raw console output
-            this.emit('console-output', responseText);
-            allResponseText += responseText;
-
-            let foundDebuggerPrompt = this.checkForDebuggerPrompt(allResponseText);
-
-            //if we are not processing, immediately broadcast the latest data
-            if (!this.isProcessing) {
-                this.emit('unhandled-console-output', allResponseText);
-                allResponseText = '';
-
-                if (foundDebuggerPrompt) {
-                    this.isAtDebuggerPrompt = true;
-                    if (this.hasRequests) {
-                        // There are requests waiting to be processed
-                        this.process();
-                    }
-                }
-            } else {
-                //if responseText produced a prompt, return the responseText
-                if (foundDebuggerPrompt) {
-                    //resolve the command's promise (if it cares)
-                    this.isAtDebuggerPrompt = true;
-                    this.currentRequest.onComplete(allResponseText);
-                    allResponseText = '';
-                    this.currentRequest = undefined;
-                    //try to run the next request
-                    this.process();
-                }
-            }
-        });
-    }
-
-    /**
-     * Checks the supplied string for the debugger input prompt
-     * @param responseText
-     */
-    private checkForDebuggerPrompt(responseText: string) {
-        let match = this.debuggerLineRegex.exec(responseText.trim());
-        return (match);
-    }
-
-    /**
-     * Schedule a command to be run. Resolves with the result once the command finishes
-     * @param commandFunction
-     * @param waitForPrompt - if true, the promise will wait until we find a prompt, and return all output in between. If false, the promise will immediately resolve
-     * @param forceExecute - if true, it is assumed the command can be run at any time and will be executed immediately
-     * @param silent - if true, the command will be hidden from the output
-     */
-    public executeCommand(command: string, waitForPrompt: boolean, forceExecute = false, silent = false) {
-        console.debug(`Execute command (and ${waitForPrompt ? 'do' : 'do not'} wait for prompt):`, command);
-        return new Promise<string>((resolve, reject) => {
-            let executeCommand = () => {
-                let commandText = `${command}\r\n`;
-                if (!silent) {
-                    this.emit('console-output', command);
-                }
-                this.client.write(commandText);
-                if (waitForPrompt) {
-                    // The act of executing this command means we are no longer at the debug prompt
-                    this.isAtDebuggerPrompt = false;
-                }
-            };
-
-            let request = {
-                executeCommand: executeCommand,
-                onComplete: (data) => {
-                    console.debug(`Command finished (${waitForPrompt ? 'after waiting for prompt' : 'did not wait for prompt'}`, command);
-                    console.debug('Data:', data);
-                    resolve(data);
-                },
-                waitForPrompt: waitForPrompt
-            };
-
-            if (!waitForPrompt) {
-                if (!this.isProcessing || forceExecute) {
-                    //fire and forget the command
-                    request.executeCommand();
-                    //the command doesn't care about the output, resolve it immediately
-                    request.onComplete(undefined);
-                } else {
-                    // Skip this request as the device is not ready to accept the command or it can not be run at any time
-                }
-            } else {
-                this.requests.push(request);
-                if (this.isAtDebuggerPrompt) {
-                    //start processing since we are already at a debug prompt (safe to call multiple times)
-                    this.process();
-                } else {
-                    // do not run the command until the device is at a debug prompt.
-                    // this will be detected in the data listener in the connect function
-                }
-            }
-        });
-    }
-
-    /**
-     * Internal request processing function
-     */
-    private process() {
-        if (this.isProcessing || !this.hasRequests) {
-            return;
-        }
-
-        //get the oldest command
-        let nextRequest = this.requests.shift();
-        this.currentRequest = nextRequest;
-
-        //run the request. the data listener will handle launching the next request once this one has finished processing
-        nextRequest.executeCommand();
-    }
-
-    public destroy() {
-        this.client.removeAllListeners();
-        this.client.destroy();
-        this.client = undefined;
-    }
-}
-
-interface RequestPipelineRequest {
-    executeCommand: () => void;
-    onComplete: (data: string) => void;
-    waitForPrompt: boolean;
 }
 
 interface BrightScriptRuntimeError {

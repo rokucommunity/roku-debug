@@ -1,5 +1,4 @@
 import * as assert from 'assert';
-import * as eol from 'eol';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
@@ -10,11 +9,12 @@ const globAsync = promisify(glob);
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
+import { logger } from '../logging';
 import type { BreakpointQueue } from '../breakpoints/BreakpointQueue';
+import type { SourceMapManager } from './SourceMapManager';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import { BreakpointMapper } from '../breakpoints/BreakpointMapper';
 import { BreakpointWriter } from '../breakpoints/BreakpointWriter';
-import type { SourceMapManager } from './SourceMapManager';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -167,19 +167,6 @@ export class ProjectManager {
     }
 
     /**
-     * Given a path to a file in some staging directory, find the project that file belongs to
-     */
-    private getProjectForStagingFile(stagingFilePath: string) {
-        let lowerStagingFilePath = stagingFilePath.toLowerCase();
-        let projects = [this.mainProject, ...this.componentLibraryProjects];
-        for (let project of projects) {
-            if (lowerStagingFilePath.startsWith(project.stagingFolderPath.toLowerCase())) {
-                return project;
-            }
-        }
-    }
-
-    /**
      * Given a debugger-relative file path, find the path to that file in the staging directory.
      * This supports the standard out dir, as well as component library out dirs
      * @param debuggerPath the path to the file which was provided by the debugger
@@ -271,6 +258,8 @@ export class Project {
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
 
+    private logger = logger.createLogger(`[${ProjectManager.name}]`);
+
     public async stage() {
         let rd = new rokuDeploy.RokuDeploy();
         if (!this.fileMappings) {
@@ -338,11 +327,11 @@ export class Project {
     }
 
     public updateManifestBsConsts(consts: Record<string, boolean>, fileContents: string): string {
-        let bsConstLine;
+        let bsConstLine: string;
         let missingConsts: string[] = [];
-        let lines = eol.split(fileContents);
+        let lines = fileContents.split(/\r?\n/g);
 
-        let newLine;
+        let newLine: string;
         //loop through the lines until we find the bs_const line if it exists
         for (const line of lines) {
             if (line.toLowerCase().startsWith('bs_const')) {
@@ -389,12 +378,12 @@ export class Project {
         }
         try {
             await fsExtra.copy(this.raleTrackerTaskFileLocation, s`${this.stagingFolderPath}/components/TrackerTask.xml`);
-            console.log('Tracker task successfully injected');
+            this.logger.log('Tracker task successfully injected');
             // Search for the tracker task entry injection point
             const trackerReplacementResult = await replaceInFile({
                 files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
                 from: new RegExp(`^.*'\\s*${Project.RALE_TRACKER_ENTRY}.*$`, 'mig'),
-                to: (match) => {
+                to: (match: string) => {
                     // Strip off the comment
                     let startOfLine = match.substring(0, match.indexOf(`'`));
                     if (/[\S]/.exec(startOfLine)) {
@@ -441,14 +430,14 @@ export class Project {
                     promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
                 }
                 await Promise.all(promises);
-                console.log('RDB OnDeviceComponent successfully injected');
+                this.logger.log('RDB OnDeviceComponent successfully injected');
             }
 
             // Search for the tracker task entry injection point
             const replacementResult = await replaceInFile({
                 files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
                 from: new RegExp(`^.*'\\s*${Project.RDB_ODC_ENTRY}.*$`, 'mig'),
-                to: (match) => {
+                to: (match: string) => {
                     // Strip off the comment
                     let startOfLine = match.substring(0, match.indexOf(`'`));
                     if (/[\S]/.exec(startOfLine)) {
@@ -519,8 +508,8 @@ export class ComponentLibraryProject extends Project {
      */
     private async computeOutFileName(manifestPath: string) {
         let regexp = /\$\{([\w\d_]*)\}/;
-        let renamingMatch;
-        let manifestValues;
+        let renamingMatch: RegExpExecArray;
+        let manifestValues: Record<string, string>;
 
         // search the outFile for replaceable values such as ${title}
         // eslint-disable-next-line no-cond-assign
@@ -577,7 +566,7 @@ export class ComponentLibraryProject extends Project {
             fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingFolderPath, this.stagingFolderPath);
         }
 
-        return await super.stage();
+        return super.stage();
     }
 
     /**

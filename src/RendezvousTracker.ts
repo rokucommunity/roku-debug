@@ -73,13 +73,13 @@ export class RendezvousTracker {
     public async processLog(log: string): Promise<string> {
         let dataChanged = false;
         let lines = log.split('\n');
-        let normalOutput = '';
 
-        for (let line of lines) {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             let match = /\[sg\.node\.(BLOCK|UNBLOCK)\s{0,}\] Rendezvous\[(\d+)\](?:\s\w+\n|\s\w{2}\s(.*)\((\d+)\)|[\s\w]+(\d+\.\d+)+|\s\w+)/g.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/In0t7d/6
             if (match) {
-                let [fullMatch, type, id, fileName, lineNumber, duration] = match;
+                let [, type, id, fileName, lineNumber, duration] = match;
                 if (type === 'BLOCK') {
                     // detected the start of a rendezvous event
                     this.rendezvousBlocks[id] = {
@@ -135,11 +135,9 @@ export class RendezvousTracker {
                     delete this.rendezvousBlocks[id];
                 }
 
-                if (!this.filterOutLogs) {
-                    normalOutput += line + '\n';
+                if (this.filterOutLogs) {
+                    lines.splice(i--, 1);
                 }
-            } else if (line) {
-                normalOutput += line + '\n';
             }
         }
 
@@ -147,7 +145,7 @@ export class RendezvousTracker {
             this.emit('rendezvous', this.rendezvousHistory);
         }
 
-        return normalOutput;
+        return lines.join('\n');
     }
 
     /**

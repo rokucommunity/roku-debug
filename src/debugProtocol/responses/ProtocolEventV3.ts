@@ -1,20 +1,27 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES } from '../Constants';
 
-export class Response {
+export class ProtocolEventV3 {
     constructor(buffer: Buffer) {
         // The smallest a request response can be
-        if (buffer.byteLength >= 8) {
+        if (buffer.byteLength >= 12) {
             try {
                 let bufferReader = SmartBuffer.fromBuffer(buffer);
+                this.packetLength = bufferReader.readUInt32LE(); // packet_length
                 this.requestId = bufferReader.readUInt32LE(); // request_id
+                this.errorCode = bufferReader.readUInt32LE(); // error_code
+
+                if (bufferReader.length < this.packetLength) {
+                    throw new Error(`Incomplete packet. Bytes received: ${bufferReader.length}/${this.packetLength}`);
+                }
 
                 // Any request id less then one is an update and we should not process it here
                 if (this.requestId > 0) {
-                    this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()]; // error_code
                     this.readOffset = bufferReader.readOffset;
-                    this.success = true;
+                } else if (this.requestId === 0) {
+                    this.updateType = bufferReader.readUInt32LE();
                 }
+                this.readOffset = bufferReader.readOffset;
+                this.success = true;
             } catch (error) {
                 // Could not parse
             }
@@ -24,7 +31,9 @@ export class Response {
     public readOffset = 0;
 
     // response fields
+    public packetLength = 0;
     public requestId = -1;
-    public errorCode: string;
+    public updateType = -1;
+    public errorCode = -1;
     public data = -1;
 }

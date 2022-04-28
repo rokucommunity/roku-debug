@@ -1,8 +1,6 @@
 import { expect } from 'chai';
-import * as path from 'path';
 import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer, SourceNode } from 'source-map';
-
 import { standardizePath as s } from '../FileUtils';
 import { LocationManager } from './LocationManager';
 import { SourceMapManager } from './SourceMapManager';

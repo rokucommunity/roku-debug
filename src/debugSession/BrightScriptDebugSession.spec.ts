@@ -2,21 +2,20 @@ import { expect } from 'chai';
 import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
+import type { SinonStub } from 'sinon';
 import { createSandbox } from 'sinon';
 import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { DebugSession } from 'vscode-debugadapter';
-import {
-    BrightScriptDebugSession,
-    defer
-} from './BrightScriptDebugSession';
-import { fileUtils, standardizePath as s } from '../FileUtils';
+import { BrightScriptDebugSession } from './BrightScriptDebugSession';
+import { fileUtils } from '../FileUtils';
 import type { EvaluateContainer } from '../adapters/TelnetAdapter';
-import {
-    HighLevelType,
-    PrimativeType
-} from '../adapters/TelnetAdapter';
+import { PrimativeType } from '../adapters/TelnetAdapter';
+import { defer } from '../util';
+import { HighLevelType } from '../interfaces';
+import { standardizePath as s } from 'brighterscript';
 import { Project } from '../managers/ProjectManager';
-let sinon = createSandbox();
+import type { LaunchConfiguration } from '../LaunchConfiguration';
+const sinon = createSandbox();
 
 const tmpDir = s`${process.cwd()}/.tmp`;
 const outDir = s`${tmpDir}/outDir`;
@@ -24,9 +23,8 @@ const stagingDir = s`${tmpDir}/stagingDir`;
 const rootDir = s`${tmpDir}/rootDir`;
 
 describe('BrightScriptDebugSession', () => {
-    beforeEach(() => {
-        sinon.restore();
-    });
+    let responseDeferreds = [];
+    let responses = [];
 
     afterEach(() => {
         fsExtra.removeSync(outDir);
@@ -35,17 +33,21 @@ describe('BrightScriptDebugSession', () => {
 
     let session: BrightScriptDebugSession;
     let mainProject: Project;
+    let launchConfiguration: LaunchConfiguration;
+    let initRequestArgs: DebugProtocol.InitializeRequestArguments;
+
     let rokuAdapter: any = {
         on: () => {
             return () => {
             };
         },
         activate: () => Promise.resolve(),
-        exitActiveBrightscriptDebugger: () => Promise.resolve(),
         registerSourceLocator: (a, b) => { },
         setConsoleOutput: (a) => { }
     };
     beforeEach(() => {
+        sinon.restore();
+
         try {
             session = new BrightScriptDebugSession();
         } catch (e) {
@@ -57,9 +59,13 @@ describe('BrightScriptDebugSession', () => {
             files: null
         });
         //override the error response function and throw an exception so we can fail any tests
-        (session as any).sendErrorResponse = (...args) => {
+        (session as any).sendErrorResponse = (...args: string[]) => {
             throw new Error(args[2]);
         };
+        launchConfiguration = {} as any;
+        session['launchConfiguration'] = launchConfiguration;
+        initRequestArgs = {} as any;
+        session['initRequestArgs'] = initRequestArgs;
         //mock the rokuDeploy module with promises so we can have predictable tests
         session.rokuDeploy = <any>{
             prepublishToStaging: () => {
@@ -85,25 +91,60 @@ describe('BrightScriptDebugSession', () => {
             getFilePaths: () => {
             }
         };
+        rokuAdapter = {
+            on: () => {
+                return () => {
+                };
+            },
+            activate: () => Promise.resolve(),
+            registerSourceLocator: (a, b) => { },
+            setConsoleOutput: (a) => { },
+            evaluate: () => { },
+            getVariable: () => { }
+        };
         (session as any).rokuAdapter = rokuAdapter;
         //mock the roku adapter
         (session as any).connectRokuAdapter = () => {
             return Promise.resolve(rokuAdapter);
         };
+
+        //clear out the responses before each test
+        responses = [];
+        responseDeferreds = [];
+
+        sinon.stub(session, 'sendResponse').callsFake((response) => {
+            responses.push(response);
+
+            let filteredList = [];
+
+            //notify waiting deferreds
+            for (let deferred of responseDeferreds) {
+                let index = (deferred).index;
+                if (responses.length - 1 >= index) {
+                    deferred.resolve(responses[index]);
+                } else {
+                    filteredList.push(deferred);
+                }
+            }
+        });
     });
 
     describe('initializeRequest', () => {
         it('does not throw', () => {
             assert.doesNotThrow(() => {
-                session.initializeRequest(<any>{}, <any>{});
+                session.initializeRequest({} as DebugProtocol.InitializeResponse, {} as DebugProtocol.InitializeRequestArguments);
             });
         });
     });
 
     describe('evaluating variable', () => {
         let getVariableValue;
-        let responseDeferreds = [];
-        let responses = [];
+
+        beforeEach(() => {
+            rokuAdapter.getVariable = () => {
+                return Promise.resolve(getVariableValue);
+            };
+        });
 
         function getResponse<T>(index: number) {
             let deferred = defer();
@@ -128,41 +169,16 @@ describe('BrightScriptDebugSession', () => {
             };
         }
 
-        beforeEach(() => {
-            //clear out the responses before each test
-            responses = [];
-            responseDeferreds = [];
-
-            sinon.stub(session, 'sendResponse').callsFake((response) => {
-                responses.push(response);
-
-                let filteredList = [];
-
-                //notify waiting deferreds
-                for (let deferred of responseDeferreds) {
-                    let index = (deferred).index;
-                    if (responses.length - 1 >= index) {
-                        deferred.resolve(responses[index]);
-                    } else {
-                        filteredList.push(deferred);
-                    }
-                }
-            });
-
-            rokuAdapter.getVariable = () => {
-                return Promise.resolve(getVariableValue);
-            };
-        });
-
         it('returns the correct boolean variable', async () => {
             let expression = 'someBool';
             getVariableValue = getBooleanEvaluateContainer(expression);
             //adapter has to be at prompt for evaluates to work
             rokuAdapter.isAtDebuggerPrompt = true;
-            void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
+            void session.evaluateRequest({} as DebugProtocol.EvaluateResponse, { context: 'hover', expression: expression } as DebugProtocol.EvaluateArguments);
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'true',
+                type: 'Boolean',
                 variablesReference: 0,
                 namedVariables: 0,
                 indexedVariables: 0
@@ -185,8 +201,9 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'roArray',
+                type: 'roArray',
                 variablesReference: 1,
                 namedVariables: 0,
                 indexedVariables: 2
@@ -208,8 +225,9 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
             let response = await getResponse<DebugProtocol.EvaluateResponse>(0);
-            assert.deepEqual(response.body, {
+            expect(response.body).to.eql({
                 result: 'roAssociativeArray',
+                type: 'roAssociativeArray',
                 variablesReference: 1,
                 namedVariables: 2,
                 indexedVariables: 0
@@ -453,4 +471,126 @@ describe('BrightScriptDebugSession', () => {
             expect(result.pop()?.filePath).to.eql('pkg:/source/main.brs');
         });
     });
+    describe('evaluateRequest', () => {
+        const frameId = 12;
+        let evalStub: SinonStub;
+        let getVarStub: SinonStub;
+        let getVarValue = {
+            evaluateName: '',
+            highLevelType: 'primative',
+            value: '"alpha"'
+        } as EvaluateContainer;
+
+        beforeEach(() => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            evalStub = sinon.stub(rokuAdapter, 'evaluate').callsFake((args) => {
+                console.log('called with', args);
+                return {
+                    message: undefined,
+                    type: 'message'
+                };
+            });
+            getVarStub = sinon.stub(rokuAdapter, 'getVariable').callsFake(() => {
+                return Promise.resolve(getVarValue);
+            });
+        });
+
+        async function expectResponse(args: DebugProtocol.EvaluateArguments, responseBody: DebugProtocol.EvaluateResponse['body']) {
+            const result = await session.evaluateRequest({} as any, {
+                frameId: frameId,
+                ...args
+            });
+            expect(responses[0]?.body).to.eql(responseBody);
+            return result;
+        }
+
+        it('ensures closing quote for hover', async () => {
+            initRequestArgs.supportsInvalidatedEvent = true;
+            await expectResponse({
+                expression: `"Billy`,
+                context: 'hover'
+            }, {
+                result: 'invalid',
+                variablesReference: 0
+            });
+            console.log('checking calls');
+            expect(evalStub.getCall(0)?.args[0]).equal('"Billy"');
+        });
+
+        it('skips when not at debugger prompt', async () => {
+            rokuAdapter.isAtDebuggerPrompt = false;
+            await expectResponse({
+                context: 'repl',
+                expression: 'print "hello"'
+            }, {
+                result: 'invalid',
+                variablesReference: 0
+            });
+        });
+
+        it('caches results', async () => {
+            const refId = session['getEvaluateRefId']('person.name', frameId);
+            session['variables'][refId] = {
+                name: 'person.name',
+                variablesReference: 0,
+                value: 'someValue'
+            };
+            await expectResponse({
+                context: 'repl',
+                expression: 'person.name'
+            }, {
+                result: 'someValue',
+                variablesReference: 0,
+                type: undefined,
+                indexedVariables: 0,
+                namedVariables: 0
+            });
+        });
+
+        it('clears cache on evaluate call', async () => {
+            const refId = session['getEvaluateRefId']('person.name', frameId);
+            session['variables'][refId] = {
+                name: 'person.name',
+                variablesReference: 0,
+                value: 'someValue'
+            };
+            await expectResponse({
+                context: 'repl',
+                expression: 'print person.name'
+            }, {
+                result: 'invalid',
+                variablesReference: 0
+            });
+            expect(session['variables']).to.be.empty;
+        });
+
+        describe('repl', () => {
+            it('calls eval for print statement', async () => {
+                await expectResponse({
+                    context: 'repl',
+                    expression: 'print "hello"'
+                }, {
+                    result: 'invalid',
+                    variablesReference: 0
+                });
+                expect(evalStub.called).to.be.true;
+            });
+
+            it('calls getVariable for var expressions', async () => {
+                await expectResponse({
+                    context: 'repl',
+                    expression: 'person.name'
+                }, {
+                    result: '"alpha"',
+                    variablesReference: 0,
+                    indexedVariables: 0,
+                    type: undefined,
+                    namedVariables: 0
+                });
+                expect(getVarStub.calledWith('person.name', frameId, true));
+            });
+        });
+
+    });
+
 });

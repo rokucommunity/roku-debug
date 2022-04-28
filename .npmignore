@@ -2,7 +2,7 @@
 .git
 .nyc_output
 coverage
-dist/*.spec.*
+dist/**/*.spec.*
 src
 testProject
 .gitignore

@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES, STOP_REASONS } from '../Constants';
+import { STOP_REASONS } from '../Constants';
 import { util } from '../../util';
 
 export class ThreadsResponse {
@@ -14,7 +14,7 @@ export class ThreadsResponse {
 
                 // Any request id less then one is an update and we should not process it here
                 if (this.requestId > 0) {
-                    this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
+                    this.errorCode = bufferReader.readUInt32LE();
                     this.threadsCount = bufferReader.readUInt32LE();
 
                     for (let i = 0; i < this.threadsCount; i++) {
@@ -38,7 +38,7 @@ export class ThreadsResponse {
 
     // response fields
     public requestId = -1;
-    public errorCode: string;
+    public errorCode = -1;
     public threadsCount = -1;
     public threads = [];
 }

@@ -1,9 +1,7 @@
-import type { ProtocolVersionDetails, RemoveBreakpointRequestObject, AddBreakpointRequestObject } from '../debugProtocol/Debugger';
+import type { ProtocolVersionDetails } from '../debugProtocol/Debugger';
 import { Debugger } from '../debugProtocol/Debugger';
-import * as eol from 'eol';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
-import { defer } from '../debugSession/BrightScriptDebugSession';
 import type { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
@@ -11,7 +9,11 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { ERROR_CODES, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { defer, util } from '../util';
+import { logger } from '../logging';
+import * as semver from 'semver';
+import type { HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
 import type { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
 
 /**
@@ -26,6 +28,7 @@ export class DebugProtocolAdapter {
         this.chanperfTracker = new ChanperfTracker();
         this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
+        this.connected = false;
 
         // watch for chanperf events
         this.chanperfTracker.on('chanperf', (output) => {
@@ -38,8 +41,16 @@ export class DebugProtocolAdapter {
         });
     }
 
+    private logger = logger.createLogger(`[${DebugProtocolAdapter.name}]`);
+
     public connected: boolean;
 
+    /**
+     *  Due to casing issues with the variables request on some versions of the debug protocol, we first need to try the request in the supplied case.
+     * If that fails we retry in lower case. This flag is used to drive that logic switching
+     */
+    private enableVariablesLowerCaseRetry = true;
+    private supportsExecuteCommand: boolean;
     private compileClient: Socket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
@@ -50,6 +61,13 @@ export class DebugProtocolAdapter {
 
     private stackFramesCache: Record<number, StackFrame> = {};
     private cache = {};
+
+    /**
+     * Get the version of the protocol for the Roku device we're currently connected to.
+     */
+    public get activeProtocolVersion() {
+        return this.socketDebugger?.protocolVersion;
+    }
 
     public readonly supportsMultipleRuns = false;
 
@@ -183,25 +201,36 @@ export class DebugProtocolAdapter {
             stopOnEntry: this.stopOnEntry
         });
         try {
-            // Emit IO output from the debugger.
+            // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.socketDebugger.on('io-output', async (responseText) => {
-                if (responseText) {
+                if (typeof responseText === 'string') {
                     responseText = this.chanperfTracker.processLog(responseText);
                     responseText = await this.rendezvousTracker.processLog(responseText);
                     this.emit('unhandled-console-output', responseText);
+                    this.emit('console-output', responseText);
                 }
             });
 
-            // Emit IO output from the debugger.
+            // Emit IO from the debugger.
             this.socketDebugger.on('protocol-version', (data: ProtocolVersionDetails) => {
                 if (data.errorCode === PROTOCOL_ERROR_CODES.SUPPORTED) {
                     this.emit('console-output', data.message);
                 } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_TESTED) {
                     this.emit('unhandled-console-output', data.message);
+                    this.emit('console-output', data.message);
                 } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_SUPPORTED) {
                     this.emit('unhandled-console-output', data.message);
+                    this.emit('console-output', data.message);
                 }
+
+                // TODO: Update once we know the exact version of the debug protocol this issue was fixed in.
+                // Due to casing issues with variables on protocol version <FUTURE_VERSION> and under we first need to try the request in the supplied case.
+                // If that fails we retry in lower case.
+                this.enableVariablesLowerCaseRetry = semver.satisfies(this.activeProtocolVersion, '*');
+                // While execute was added as a command in 2.1.0. It has shortcoming that prevented us for leveraging the command.
+                // This was mostly addressed in the 3.0.0 release to the point where we were comfortable adding support for the command.
+                this.supportsExecuteCommand = semver.satisfies(this.activeProtocolVersion, '>=3.0.0');
             });
 
             // Listen for the close event
@@ -216,7 +245,8 @@ export class DebugProtocolAdapter {
             });
 
             this.socketDebugger.on('suspend', (data) => {
-                this.emit('suspend', data);
+                this.clearCache();
+                this.emit('suspend', data as number);
             });
 
             this.socketDebugger.on('runtime-error', (data) => {
@@ -233,14 +263,14 @@ export class DebugProtocolAdapter {
 
             this.connected = await this.socketDebugger.connect();
 
-            console.log(`Closing telnet connection used for compile errors`);
+            this.logger.log(`Closing telnet connection used for compile errors`);
             if (this.compileClient) {
                 this.compileClient.removeAllListeners();
                 this.compileClient.destroy();
                 this.compileClient = undefined;
             }
 
-            console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host}, Success ${this.connected} +++++++++++`);
+            this.logger.log(`Connected to device`, { host: this.host, connected: this.connected });
             this.emit('connected', this.connected);
 
             //the adapter is connected and running smoothly. resolve the promise
@@ -248,7 +278,7 @@ export class DebugProtocolAdapter {
         } catch (e) {
             deferred.reject(e);
         }
-        return await deferred.promise;
+        return deferred.promise;
     }
 
     private beginAppExit() {
@@ -269,23 +299,28 @@ export class DebugProtocolAdapter {
 
             //if the connection fails, reject the connect promise
             this.compileClient.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message}`));
+                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message} `));
             });
-
+            this.logger.info('Connecting via telnet to gether compile info', { host: this.host });
             this.compileClient.connect(8085, this.host, () => {
-                console.log(`+++++++++++ CONNECTED TO DEVICE ${this.host} VIA TELNET FOR COMPILE INFO +++++++++++`);
+                this.logger.log(`Connected via telnet to gather compile info`, { host: this.host });
             });
 
+            this.logger.debug('Waiting for the compile client to settle');
             await this.settle(this.compileClient, 'data');
+            this.logger.debug('Compile client has settled');
 
             let lastPartialLine = '';
             this.compileClient.on('data', (buffer) => {
                 let responseText = buffer.toString();
+                this.logger.info('CompileClient received data', { responseText });
                 if (!responseText.endsWith('\n')) {
+                    this.logger.debug('Buffer was split');
                     // buffer was split, save the partial line
                     lastPartialLine += responseText;
                 } else {
                     if (lastPartialLine) {
+                        this.logger.debug('Previous response was split, so merging last response with this one', { lastPartialLine, responseText });
                         // there was leftover lines, join the partial lines back together
                         responseText = lastPartialLine + responseText;
                         lastPartialLine = '';
@@ -301,7 +336,7 @@ export class DebugProtocolAdapter {
         } catch (e) {
             deferred.reject(e);
         }
-        return await deferred.promise;
+        return deferred.promise;
     }
 
     /**
@@ -350,14 +385,39 @@ export class DebugProtocolAdapter {
     /**
      * Execute a command directly on the roku. Returns the output of the command
      * @param command
+     * @returns the output of the command (if possible)
      */
-    public async evaluate(command: string, frameId: number = this.socketDebugger.primaryThread) {
-        if (!this.isAtDebuggerPrompt) {
-            throw new Error('Cannot run evaluate: debugger is not paused');
-        }
+    public async evaluate(command: string, frameId: number = this.socketDebugger.primaryThread): Promise<RokuAdapterEvaluateResponse> {
+        if (this.supportsExecuteCommand) {
+            if (!this.isAtDebuggerPrompt) {
+                throw new Error('Cannot run evaluate: debugger is not paused');
+            }
 
-        // Pipe all evaluate requests though as a variable request as evaluate is not available at the moment.
-        return this.getVariable(command, frameId);
+            let stackFrame = this.getStackFrameById(frameId);
+            if (!stackFrame) {
+                throw new Error('Cannot execute command without a corresponding frame');
+            }
+            this.logger.log('evaluate ', { command, frameId });
+
+            const response = await this.socketDebugger.executeCommand(command, stackFrame.frameIndex, stackFrame.threadIndex);
+            this.logger.info('evaluate response', { command, response });
+            if (response.executeSuccess) {
+                return {
+                    message: undefined,
+                    type: 'message'
+                };
+            } else {
+                return {
+                    message: response.compileErrors.messages[0] ?? response.runtimeErrors.messages[0] ?? response.otherErrors.messages[0] ?? 'Unknown error executing command',
+                    type: 'error'
+                };
+            }
+        } else {
+            return {
+                message: `Execute commands are not supported on debug protocol: ${this.activeProtocolVersion}, v3.0.0 or greater is required.`,
+                type: 'error'
+            };
+        }
     }
 
     public async getStackTrace(threadId: number = this.socketDebugger.primaryThread) {
@@ -367,10 +427,10 @@ export class DebugProtocolAdapter {
         return this.resolve(`stack trace for thread ${threadId}`, async () => {
             let thread = await this.getThreadByThreadId(threadId);
             let frames: StackFrame[] = [];
-            let stackTraceData: any = await this.socketDebugger.stackTrace(threadId);
+            let stackTraceData = await this.socketDebugger.stackTrace(threadId);
             for (let i = 0; i < stackTraceData.stackSize; i++) {
                 let frameData = stackTraceData.entries[i];
-                let frame: StackFrame = {
+                let stackFrame: StackFrame = {
                     frameId: this.nextFrameId++,
                     frameIndex: stackTraceData.stackSize - i - 1, // frame index is the reverse of the returned order.
                     threadIndex: threadId,
@@ -380,15 +440,15 @@ export class DebugProtocolAdapter {
                     // eslint-disable-next-line no-nested-ternary
                     functionIdentifier: this.cleanUpFunctionName(i === 0 ? (frameData.functionName) ? frameData.functionName : thread.functionName : frameData.functionName)
                 };
-                this.stackFramesCache[frame.frameId] = frame;
-                frames.push(frame);
+                this.stackFramesCache[stackFrame.frameId] = stackFrame;
+                frames.push(stackFrame);
             }
 
             return frames;
         });
     }
 
-    private getStackTraceById(frameId: number): StackFrame {
+    private getStackFrameById(frameId: number): StackFrame {
         return this.stackFramesCache[frameId];
     }
 
@@ -401,101 +461,103 @@ export class DebugProtocolAdapter {
      * @param expression
      */
     public async getVariable(expression: string, frameId: number, withChildren = true) {
+        const logger = this.logger.createLogger(' getVariable');
+        logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
 
-        let frame = this.getStackTraceById(frameId);
+        let frame = this.getStackFrameById(frameId);
         if (!frame) {
             throw new Error('Cannot request variable without a corresponding frame');
         }
 
-        return this.resolve(`variable: ${expression} ${frame.frameIndex} ${frame.threadIndex}`, async () => {
-            let variablePath = this.getVariablePath(expression);
-            let variableInfo: any = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+        logger.log(`Expression:`, expression);
+        let variablePath = expression === '' ? [] : util.getVariablePath(expression);
 
-            if (variableInfo.errorCode === 'OK') {
-                let mainContainer: EvaluateContainer;
-                let children: EvaluateContainer[] = [];
-                let firstHandled = false;
-                for (let variable of variableInfo.variables) {
-                    let value;
-                    let variableType = variable.variableType;
-                    if (variable.value === null) {
-                        value = 'roInvalid';
-                    } else if (variableType === 'String') {
-                        value = `\"${variable.value}\"`;
-                    } else {
-                        value = variable.value;
-                    }
-
-                    if (variableType === 'Subtyped_Object') {
-                        let parts = variable.value.split('; ');
-                        variableType = `${parts[0]} (${parts[1]})`;
-                    } else if (variableType === 'AA') {
-                        variableType = 'AssociativeArray';
-                    }
-
-                    let container = <EvaluateContainer>{
-                        name: expression,
-                        evaluateName: expression,
-                        variablePath: variablePath,
-                        type: variableType,
-                        value: value,
-                        keyType: variable.keyType,
-                        elementCount: variable.elementCount
-                    };
-
-                    if (!firstHandled && variablePath.length > 0) {
-                        firstHandled = true;
-                        mainContainer = container;
-                    } else {
-                        if (!firstHandled && variablePath.length === 0) {
-                            // If this is a scope request there will be no entry's in the variable path
-                            // We will need to create a fake mainContainer
-                            firstHandled = true;
-                            mainContainer = <EvaluateContainer>{
-                                name: expression,
-                                evaluateName: expression,
-                                variablePath: variablePath,
-                                type: '',
-                                value: null,
-                                keyType: 'String',
-                                elementCount: variableInfo.numVariables
-                            };
-                        }
-
-                        let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
-                        container.name = pathAddition.toString();
-                        container.evaluateName = `${mainContainer.evaluateName}.${pathAddition}`;
-                        container.variablePath = [].concat(container.variablePath, [pathAddition.toString()]);
-                        if (container.keyType) {
-                            container.children = [];
-                        }
-                        children.push(container);
-                    }
-                }
-                mainContainer.children = children;
-                return mainContainer;
-            }
-        });
-    }
-
-    public getVariablePath(expression: string): string[] {
-        // Regex 101 link for match examples: https://regex101.com/r/KNKfHP/8
-        let regexp = /(?:\[\"(.*?)\"\]|([a-z_][a-z0-9_\$%!#]*)|\[([0-9]*)\]|\.([0-9]+))/gi;
-        let match: RegExpMatchArray;
-        let variablePath = [];
-
-        // eslint-disable-next-line no-cond-assign
-        while (match = regexp.exec(expression)) {
-            // match 1: strings between quotes - this["that"]
-            // match 2: any valid brightscript viable format
-            // match 3: array/list access via index - this[0]
-            // match 3: array/list access via dot notation (not valid in code but returned as part of the VS Code flow) - this.0
-            variablePath.push(match[1] ?? match[2] ?? match[3] ?? match[4]);
+        // Temporary workaround related to casing issues over the protocol
+        if (this.enableVariablesLowerCaseRetry && variablePath?.length > 0) {
+            variablePath[0] = variablePath[0].toLowerCase();
         }
-        return variablePath;
+
+        let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+
+        if (this.enableVariablesLowerCaseRetry && response.errorCode !== ERROR_CODES.OK) {
+            // Temporary workaround related to casing issues over the protocol
+            logger.log(`Retrying expression as lower case:`, expression);
+            variablePath = expression === '' ? [] : util.getVariablePath(expression?.toLowerCase());
+            response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+        }
+
+        if (response.errorCode === ERROR_CODES.OK) {
+            let mainContainer: EvaluateContainer;
+            let children: EvaluateContainer[] = [];
+            let firstHandled = false;
+            for (let variable of response.variables) {
+                let value;
+                let variableType = variable.variableType;
+                if (variable.value === null) {
+                    value = 'roInvalid';
+                } else if (variableType === 'String') {
+                    value = `\"${variable.value}\"`;
+                } else {
+                    value = variable.value;
+                }
+
+                if (variableType === 'Subtyped_Object') {
+                    //subtyped objects can only have string values
+                    let parts = (variable.value as string).split('; ');
+                    variableType = `${parts[0]} (${parts[1]})`;
+                } else if (variableType === 'AA') {
+                    variableType = 'AssociativeArray';
+                }
+
+                let container = <EvaluateContainer>{
+                    name: expression,
+                    evaluateName: expression,
+                    variablePath: variablePath,
+                    type: variableType,
+                    value: value,
+                    keyType: variable.keyType,
+                    elementCount: variable.elementCount
+                };
+
+                if (!firstHandled && variablePath.length > 0) {
+                    firstHandled = true;
+                    mainContainer = container;
+                } else {
+                    if (!firstHandled && variablePath.length === 0) {
+                        // If this is a scope request there will be no entries in the variable path
+                        // We will need to create a fake mainContainer
+                        firstHandled = true;
+                        mainContainer = <EvaluateContainer>{
+                            name: expression,
+                            evaluateName: expression,
+                            variablePath: variablePath,
+                            type: '',
+                            value: null,
+                            keyType: 'String',
+                            elementCount: response.numVariables
+                        };
+                    }
+
+                    let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
+                    container.name = pathAddition.toString();
+                    if (mainContainer.evaluateName) {
+                        container.evaluateName = `${mainContainer.evaluateName}["${pathAddition}"]`;
+                    } else {
+                        container.evaluateName = pathAddition.toString();
+                    }
+                    container.variablePath = [].concat(container.variablePath, [pathAddition.toString()]);
+                    if (container.keyType) {
+                        container.children = [];
+                    }
+                    children.push(container);
+                }
+            }
+            mainContainer.children = children;
+            return mainContainer;
+        }
     }
 
     /**
@@ -505,6 +567,7 @@ export class DebugProtocolAdapter {
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         if (this.cache[key]) {
+            this.logger.log('return cashed response', key, this.cache[key]);
             return this.cache[key];
         }
         this.cache[key] = Promise.resolve<T>(factory());
@@ -520,7 +583,7 @@ export class DebugProtocolAdapter {
         }
         return this.resolve('threads', async () => {
             let threads: Thread[] = [];
-            let threadsData: any = await this.socketDebugger.threads();
+            let threadsData = await this.socketDebugger.threads();
 
             for (let i = 0; i < threadsData.threadsCount; i++) {
                 let threadInfo = threadsData.threads[i];
@@ -555,6 +618,10 @@ export class DebugProtocolAdapter {
         }
     }
 
+    public removeAllListeners() {
+        this.emitter?.removeAllListeners();
+    }
+
     /**
      * Synchronize the full list of breakpoints to the protocol (delete existing and then send new)
      */
@@ -573,7 +640,7 @@ export class DebugProtocolAdapter {
                 lineNumber: x.line
             }))
         );
-        const verifiedBreakpoints = [];
+        const verifiedBreakpoints: QueueBreakpoint[] = [];
         //emit an event for every breakpoint. All breakpoints are marked as 'disabled' by default,
         //so we only emit the verified breakpoints
         for (let i = 0; i < breakpoints.length; i++) {
@@ -598,13 +665,6 @@ export class DebugProtocolAdapter {
             this.emitter.removeAllListeners();
         }
         this.emitter = undefined;
-    }
-
-    /**
-     * Make sure any active Brightscript Debugger threads are exited
-     */
-    public async exitActiveBrightscriptDebugger() {
-        // Legacy function called by the debug section
     }
 
     // #region Rendezvous Tracker pass though functions
@@ -653,14 +713,6 @@ export enum EventName {
     suspend = 'suspend'
 }
 
-export enum HighLevelType {
-    primative = 'primative',
-    array = 'array',
-    function = 'function',
-    object = 'object',
-    uninitialized = 'uninitialized'
-}
-
 export interface EvaluateContainer {
     name: string;
     evaluateName: string;
@@ -671,6 +723,7 @@ export interface EvaluateContainer {
     elementCount: number;
     highLevelType: HighLevelType;
     children: EvaluateContainer[];
+    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
 export enum KeyType {

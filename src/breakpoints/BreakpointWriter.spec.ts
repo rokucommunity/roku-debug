@@ -264,7 +264,7 @@ describe.only('BreakpointWriter', () => {
                 column: 0
             }]);
 
-            
+
             await writeAndTestBreakpoints([{
                 line: 3,
                 condition: 'true = true',

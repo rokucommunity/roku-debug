@@ -163,6 +163,13 @@ describe('ChanperfTracker ', () => {
             expect(history).to.eql(expectedNoDataHistory);
             expect(chanperfTracker.getHistory).to.eql(expectedNoDataHistory);
         });
+
+        it('does not discard extra newlines', () => {
+            const text = `\n\r\nmessage\n\r\n\nmessage\n\r\n`;
+            expect(
+                chanperfTracker.processLog(text)
+            ).to.eql(text);
+        });
     });
 
     describe('clearHistory', () => {

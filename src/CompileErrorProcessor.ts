@@ -1,14 +1,15 @@
-import * as eol from 'eol';
 import { EventEmitter } from 'events';
+import { logger } from './logging';
 
 export const GENERAL_XML_ERROR = 'General XML compilation error';
 
 export class CompileErrorProcessor {
 
+    private logger = logger.createLogger(`[${CompileErrorProcessor.name}]`);
     public status: CompileStatus = CompileStatus.none;
     public startCompilingLine = -1;
     public endCompilingLine = -1;
-    public compilingLines = [];
+    public compilingLines = [] as string[];
     public compileErrorTimeoutMs = 1000;
     private emitter = new EventEmitter();
     public compileErrorTimer: NodeJS.Timeout;
@@ -38,14 +39,13 @@ export class CompileErrorProcessor {
             return;
         }
 
-        let newLines = eol.split(responseText);
-        // console.debug('processUnhandledLines: this.status ' + this.status);
+        let newLines = responseText.split(/\r?\n/g);
         switch (this.status) {
             case CompileStatus.compiling:
             case CompileStatus.compileError:
                 this.endCompilingLine = this.getEndCompilingLine(newLines);
                 if (this.endCompilingLine !== -1) {
-                    console.debug('processUnhandledLines: entering state CompileStatus.running');
+                    this.logger.debug('[processUnhandledLines] entering state CompileStatus.running');
                     this.status = CompileStatus.running;
                     this.resetCompileErrorTimer(false);
                 } else {
@@ -54,6 +54,7 @@ export class CompileErrorProcessor {
                         //check to see if we've entered an error scenario
                         let hasError = /\berror\b/gi.test(responseText);
                         if (hasError) {
+                            this.logger.debug('[processUnhandledLines] entering state CompileStatus.compileError');
                             this.status = CompileStatus.compileError;
                         }
                     }
@@ -67,7 +68,7 @@ export class CompileErrorProcessor {
                 this.startCompilingLine = this.getStartingCompilingLine(newLines);
                 this.compilingLines = this.compilingLines.concat(newLines);
                 if (this.startCompilingLine !== -1) {
-                    console.debug('processUnhandledLines: entering state CompileStatus.compiling');
+                    this.logger.debug('[processUnhandledLines] entering state CompileStatus.compiling');
                     newLines.splice(0, this.startCompilingLine);
                     this.status = CompileStatus.compiling;
                     this.resetCompileErrorTimer(true);

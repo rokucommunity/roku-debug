@@ -8,11 +8,9 @@ import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
-
+import * as dedent from 'dedent';
 import { util } from './util';
 let sinon = sinonActual.createSandbox();
-
-const rootDir = path.normalize(path.dirname(__dirname));
 
 beforeEach(() => {
     sinon.restore();
@@ -192,93 +190,29 @@ describe('Util', () => {
         });
     });
 
-    describe('objectDiff', () => {
-        let objectA;
-        let objectB;
-
-        beforeEach(() => {
-            objectA = {
-                a: 1,
-                b: 2,
-                c: 3,
-                nestedLevelOne: {
-                    x: 1,
-                    y: 2,
-                    z: 3,
-                    nestedLevelTwo: {
-                        w: 9,
-                        q: 8,
-                        r: 7
-                    }
-                }
-            };
-
-            objectB = {
-                a: 1,
-                b: 2,
-                c: 3,
-                nestedLevelOne: {
-                    x: 1,
-                    y: 2,
-                    z: 3,
-                    nestedLevelTwo: {
-                        w: 9,
-                        q: 8,
-                        r: 7
-                    }
-                }
-            };
+    describe('ensureDebugPromptOnOwnLine', () => {
+        it('leaves good code alone', () => {
+            expect(
+                util.ensureDebugPromptOnOwnLine(`Brightscript Debugger>`)
+            ).to.eql(`Brightscript Debugger>`);
         });
 
-        it('should detect no changes', () => {
-            assert.deepEqual(util.objectDiff(objectB, objectA), {});
+        it('splits leading text', () => {
+            expect(
+                util.ensureDebugPromptOnOwnLine(`BLABLABrightscript Debugger>`)
+            ).to.eql(`BLABLA\nBrightscript Debugger>`);
         });
 
-        it('should detect value changes', () => {
-            objectB.b = '2';
-            objectB.nestedLevelOne.y = 3;
-            objectB.nestedLevelOne.nestedLevelTwo.q = true;
-            assert.deepEqual(util.objectDiff(objectB, objectA), {
-                b: '2',
-                nestedLevelOne: {
-                    nestedLevelTwo: {
-                        q: true
-                    },
-                    y: 3
-                }
-            });
+        it('splits trailing text', () => {
+            expect(
+                util.ensureDebugPromptOnOwnLine(`Brightscript Debugger>BLABLA`)
+            ).to.eql(`Brightscript Debugger>\nBLABLA`);
         });
 
-        it('should handle deleted or undefined values', () => {
-            delete objectA.a;
-            objectB.b = '2';
-            objectB.c = undefined;
-            objectB.nestedLevelOne.x = null;
-            objectB.nestedLevelOne.y = 3;
-
-            assert.deepEqual(util.objectDiff(objectB, objectA), {
-                a: 1,
-                b: '2',
-                c: undefined,
-                nestedLevelOne: {
-                    x: null,
-                    y: 3
-                }
-            });
-        });
-
-        it('should not return excluded values', () => {
-            objectB.b = '2';
-            objectB.nestedLevelOne.y = 3;
-            objectB.nestedLevelOne.nestedLevelTwo.q = true;
-            assert.deepEqual(util.objectDiff(objectB, objectA, ['2']), {
-                nestedLevelOne: {
-                    nestedLevelTwo: {
-                        q: true
-                    },
-                    y: 3
-                }
-            });
+        it('splits trailing text and whitespace', () => {
+            expect(
+                util.ensureDebugPromptOnOwnLine(`Brightscript Debugger> 10-29 15:39:24.956 [beacon.header] __________________________________________`)
+            ).to.eql(`Brightscript Debugger> \n10-29 15:39:24.956 [beacon.header] __________________________________________`);
         });
     });
 
@@ -323,6 +257,178 @@ describe('Util', () => {
             ];
             const actual = util.filterGenericErrors([err1, err2, err3, err4]);
             expect(actual).to.deep.equal(expected);
+        });
+    });
+
+    describe('getVariablePath', () => {
+        it('detects valid patterns', () => {
+            expect(util.getVariablePath('a')).to.eql(['a']);
+            expect(util.getVariablePath('a[0].b.c[0]')).to.eql(['a', '0', 'b', 'c', '0']);
+            expect(util.getVariablePath('a.b')).to.eql(['a', 'b']);
+            expect(util.getVariablePath('a.b.c')).to.eql(['a', 'b', 'c']);
+            expect(util.getVariablePath('a[0]')).to.eql(['a', '0']);
+            expect(util.getVariablePath('a[0].b')).to.eql(['a', '0', 'b']);
+            expect(util.getVariablePath('a[0].b[0]')).to.eql(['a', '0', 'b', '0']);
+            expect(util.getVariablePath('a["b"]')).to.eql(['a', 'b']);
+            expect(util.getVariablePath('a["b"]["c"]')).to.eql(['a', 'b', 'c']);
+            expect(util.getVariablePath('a["b"][0]')).to.eql(['a', 'b', '0']);
+            expect(util.getVariablePath('a["b"].c[0]')).to.eql(['a', 'b', 'c', '0']);
+            expect(util.getVariablePath(`m_that["this -that.thing"]  .other[9]`)).to.eql(['m_that', 'this -that.thing', 'other', '9']);
+            expect(util.getVariablePath(`a`)).to.eql(['a']);
+            expect(util.getVariablePath(`boy5`)).to.eql(['boy5']);
+            expect(util.getVariablePath(`super_man$`)).to.eql(['super_man$']);
+            expect(util.getVariablePath(`_super_man$`)).to.eql(['_super_man$']);
+            expect(util.getVariablePath(`a["something with a quote"].c`)).to.eql(['a', 'something with a quote', 'c']);
+            expect(util.getVariablePath(`m.global.initialInputEvent`)).to.eql(['m', 'global', 'initialInputEvent']);
+            expect(util.getVariablePath(`m.["that"]`)).to.eql(['m', 'that']);
+        });
+
+        it('rejects invalid patterns', () => {
+            expect(util.getVariablePath('[0]')).undefined;
+            expect(util.getVariablePath('m.global.initialInputEvent.0')).undefined;
+            expect(util.getVariablePath('m.global.initialInputEvent.0[123]')).undefined;
+            expect(util.getVariablePath('m.global.initialInputEvent.0[123]["this \"-that.thing"]')).undefined;
+            expect(util.getVariablePath('m.global["something with a quote"]initialInputEvent.0[123]["this \"-that.thing"]')).undefined;
+        });
+    });
+
+    describe('trimDebugPrompt', () => {
+        it('correctly handles both types of line endings', () => {
+            expect(util.trimDebugPrompt(
+                'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\r\n' +
+                'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld\r\n' +
+                '\r\n' +
+                'Brightscript Debugger>'
+            )).to.equal((
+                'vscode_key_start:message1:vscode_key_stop vscode_is_string:trueHello\r\n' +
+                'vscode_key_start:message2:vscode_key_stop vscode_is_string:trueWorld\r\n'
+            ));
+        });
+
+        it('trims stuff', () => {
+            expect(
+                util.trimDebugPrompt('roString\r\n\r\nBrightscript Debugger> ')
+            ).to.eql('roString\r\n');
+        });
+
+        it('does not crash on falsey values', () => {
+            util.trimDebugPrompt(undefined);
+            util.trimDebugPrompt(null);
+            (util.trimDebugPrompt as any)(false);
+            (util.trimDebugPrompt as any)(NaN);
+            (util.trimDebugPrompt as any)(Infinity);
+            (util.trimDebugPrompt as any)(/asdf/);
+        });
+    });
+
+    describe('isPrintVarExpression', () => {
+        it('works for normal use cases', () => {
+            expect(util.isPrintVarExpression('print thing')).to.be.true;
+            expect(util.isPrintVarExpression(' print thing')).to.be.true;
+            expect(util.isPrintVarExpression('\tprint thing')).to.be.true;
+            expect(util.isPrintVarExpression('print a')).to.be.true;
+            expect(util.isPrintVarExpression('print a[1]')).to.be.true;
+            expect(util.isPrintVarExpression('print a.b')).to.be.true;
+            expect(util.isPrintVarExpression('print a["b"]')).to.be.true;
+            expect(util.isPrintVarExpression('print a.b["c"]')).to.be.true;
+            expect(util.isPrintVarExpression('print a["b"].c')).to.be.true;
+            //print shorthand works too
+            expect(util.isPrintVarExpression('?a')).to.be.true;
+        });
+
+        it('returns false for non simple expressions', () => {
+            expect(util.isPrintVarExpression('print a[someVariable]')).to.be.false;
+            expect(util.isPrintVarExpression('print a.b[someVar]')).to.be.false;
+            expect(util.isPrintVarExpression('a[1] = true')).to.be.false;
+            expect(util.isPrintVarExpression('doSomething()')).to.be.false;
+        });
+    });
+
+    describe('removeThreadAttachedText', () => {
+        it('removes when found', () => {
+            expect(
+                dedent(util.removeThreadAttachedText(`
+                    Thread attached: pkg:/source/main.brs(6)                 screen.show()
+
+                    Brightscript Debugger> ID    Location                                Source Code
+                    0    pkg:/source/main.brs(6)                 screen.show()
+                    1*   pkg:/components/MainScene.brs(6)        STOP
+                    *selected
+
+                    Brightscript Debugger>  
+                `))
+            ).to.eql(dedent`
+                ID    Location                                Source Code
+                0    pkg:/source/main.brs(6)                 screen.show()
+                1*   pkg:/components/MainScene.brs(6)        STOP
+                *selected
+
+                Brightscript Debugger>  
+            `);
+        });
+
+        it('does not change unmatched text', () => {
+            const text = `
+                ID    Location                                Source Code
+                0    pkg:/source/main.brs(6)                 screen.show()
+                1*   pkg:/components/MainScene.brs(6)        STOP
+                *selected
+
+                Brightscript Debugger> 
+            `;
+            expect(
+                util.removeThreadAttachedText(text)
+            ).to.eql(text);
+        });
+
+        it('matches truncated file paths', () => {
+            const text = `
+                Thread attached: ...Modules/MainMenu/MainMenu.brs(309)   renderTracking = m.top.renderTracking
+                
+                Brightscript Debugger>
+            `;
+            expect(
+                util.removeThreadAttachedText(text)
+                //removes it all
+            ).to.eql('');
+        });
+    });
+
+    describe('endsWithThreadAttachedText', () => {
+        it('matches single line', () => {
+            expect(
+                util.endsWithThreadAttachedText(`Thread attached: pkg:/source/main.brs(6)                 screen.show()`)
+            ).to.be.true;
+        });
+
+        it('matches for leading whitespace line', () => {
+            expect(
+                util.endsWithThreadAttachedText(`\n\r\n   Thread attached: pkg:/source/main.brs(6)                 screen.show()`)
+            ).to.be.true;
+        });
+
+        it('matches for leading data', () => {
+            expect(
+                util.endsWithThreadAttachedText(`some stuff...\r\n   Thread attached: pkg:/source/main.brs(6)                 screen.show()`)
+            ).to.be.true;
+        });
+
+        it('matches for trailing whitespace', () => {
+            expect(
+                util.endsWithThreadAttachedText(`Thread attached: pkg:/source/main.brs(6)                 screen.show()\r\n   `)
+            ).to.be.true;
+        });
+
+        it('does not match when stuff comes after', () => {
+            expect(
+                util.endsWithThreadAttachedText(`Thread attached: pkg:/source/main.brs(6)                 screen.show()\r\n   Brightscript Debugger>\r\n`)
+            ).to.be.false;
+        });
+
+        it('works for special case', () => {
+            expect(
+                util.endsWithThreadAttachedText('Thread attached: ...Modules/MainMenu/MainMenu.brs(309)   renderTracking = m.top.renderTracking\r\n\r\n')
+            ).to.be.true;
         });
     });
 });

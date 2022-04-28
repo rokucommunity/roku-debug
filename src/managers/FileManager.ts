@@ -1,11 +1,14 @@
 import * as fsExtra from 'fs-extra';
 import { util } from '../util';
-import { Position, Range } from 'vscode-languageserver';
+import type { Range, Position } from 'brighterscript';
+import { util as bscUtil } from 'brighterscript';
+import { logger } from '../logging';
 
 /**
  * Unifies access to source files across the whole project
  */
 export class FileManager {
+    private logger = logger.createLogger(`[${FileManager.name}]`);
     /**
      * A map of file lines, indexed by file path
      * Store all paths in lower case since Roku is case-insensitive
@@ -26,7 +29,7 @@ export class FileManager {
                 fileInfo.functionInfo = this.getFunctionInfo(fileInfo.lines);
                 fileInfo.functionNameMap = this.getFunctionNameMap(fileContents);
             } catch (e) {
-                util.logDebug(`Error loading file: '${filePath}'`, JSON.stringify(e));
+                this.logger.log(`Error loading file: '${filePath}'`, JSON.stringify(e));
             }
             this.cache[lowerFilePath] = fileInfo;
         }
@@ -39,7 +42,6 @@ export class FileManager {
         let functionStack = [] as FunctionInfo[];
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             let line = lines[lineIndex];
-            let functionName: string;
             let openers = [
                 //function declaration
                 /^\s*(?:public|private|protected)?\s*(?:override)?\s*(?:sub|function)\s+([a-z0-9_]+)/gim,
@@ -53,15 +55,14 @@ export class FileManager {
             for (let opener of openers) {
                 let match = opener.exec(line);
                 if (match) {
-                    functionName = match[1];
                     functionStack.push({
                         name: match[1],
                         children: [],
-                        range: Range.create(
+                        range: bscUtil.createRange(
                             lineIndex,
                             0, //TODO determine the char for this range,
-                            -1,
-                            -1
+                            lineIndex,
+                            0
                         )
                     });
                     break;
@@ -79,9 +80,9 @@ export class FileManager {
                     if (!func) {
                         return [];
                     }
-                    func.range = Range.create(
+                    func.range = bscUtil.createRangeFromPositions(
                         func.range.start,
-                        Position.create(lineIndex, Number.MAX_SAFE_INTEGER)
+                        bscUtil.createPosition(lineIndex, Number.MAX_SAFE_INTEGER)
                     );
                     //if there's a parent function, register this function as a child
                     if (functionStack.length > 0) {
@@ -154,7 +155,7 @@ export class FileManager {
      */
     public getFunctionNameAtPosition(sourceFilePath: string, lineIndex: number, functionName: string) {
         let fileInfo = this.getCodeFile(sourceFilePath);
-        let functionInfo = this.getFunctionInfoAtPosition(Position.create(lineIndex, 0), fileInfo.functionInfo);
+        let functionInfo = this.getFunctionInfoAtPosition(bscUtil.createPosition(lineIndex, 0), fileInfo.functionInfo);
         if (functionInfo) {
             functionName = functionInfo.name;
         }

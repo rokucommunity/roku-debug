@@ -1,4 +1,4 @@
-import { util } from './util';
+import { logger } from './logging';
 
 // eslint-disable-next-line
 const Telnet = require('telnet-client');
@@ -11,11 +11,14 @@ export class SceneGraphDebugCommandController {
 
     private shellPrompt = /^>$/img;
     private echoLines = 0;
-    private timeout = 5000;
+    public timeout = 5000;
+    public execTimeout = 2000;
     private port = 8080;
     private maxBufferLength = 5242880;
 
-    public async connect() {
+    private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);
+
+    public async connect(options: { execTimeout?: number; timeout?: number } = {}) {
         this.removeConnection();
 
         try {
@@ -25,18 +28,21 @@ export class SceneGraphDebugCommandController {
             connection.on('close', () => {
                 this.removeConnection();
             });
-
-            await connection.connect({
+            const config = {
                 host: this.host,
                 port: this.port,
                 shellPrompt: this.shellPrompt,
                 echoLines: this.echoLines,
                 timeout: this.timeout,
-                maxBufferLength: this.maxBufferLength
-            });
+                execTimeout: this.execTimeout,
+                maxBufferLength: this.maxBufferLength,
+                ...options
+            };
+            this.logger.debug('Establishing telnet connection', config);
+            await connection.connect(config);
             this.connection = connection;
-        } catch (error) {
-            throw new Error(error.message);
+        } catch (e) {
+            throw new Error((e as Error).message);
         }
     }
 
@@ -48,7 +54,7 @@ export class SceneGraphDebugCommandController {
      * executes the different bsprof commands used for brightscript profiling.
      * @param {('pause'|'resume'|'status')} option Pause, resume, or get BS profiling status.
      */
-    public async bsprof(option: 'pause'|'resume'|'status'): Promise<SceneGraphCommandResponse> {
+    public async bsprof(option: 'pause' | 'resume' | 'status'): Promise<SceneGraphCommandResponse> {
         return this.exec(`bsprof-${option}`);
     }
 
@@ -82,7 +88,7 @@ export class SceneGraphDebugCommandController {
      * Displays frames-per-second and free memory on-screen. Leverage this tool to optimize your channel UI. It presents a 1-second moving average of the current frame rate.
      * @param {('off'|'on'|'toggle')} option
      */
-    public async fpsDisplay(option: 'off'|'on'|'toggle'): Promise<SceneGraphCommandResponse> {
+    public async fpsDisplay(option: 'off' | 'on' | 'toggle'): Promise<SceneGraphCommandResponse> {
         let command = 'fps_display';
 
         if (option !== 'toggle') {
@@ -122,7 +128,7 @@ export class SceneGraphDebugCommandController {
      * Enable, disable, or checks the status of console logging of thread rendezvous.
      * @param {('status'|'off'|'on')} option
      */
-    public async logrendezvous(option: 'status'|'off'|'on'): Promise<SceneGraphCommandResponse> {
+    public async logrendezvous(option: 'status' | 'off' | 'on'): Promise<SceneGraphCommandResponse> {
         let command = 'logrendezvous';
 
         if (option !== 'status') {
@@ -144,7 +150,8 @@ export class SceneGraphDebugCommandController {
      * @param {string[]} keys A list of keys to press in sequence
      */
     public async press(keys: string[]): Promise<SceneGraphCommandResponse> {
-        return this.exec(`press ${keys.join(', ')}`);
+        // Add 1 second per character to the max execution timeout because roku is really slow......
+        return this.exec(`press ${keys.join(', ')}`, { execTimeout: this.execTimeout + (keys.length * 1000) });
     }
 
 
@@ -197,7 +204,7 @@ export class SceneGraphDebugCommandController {
      * Provides basic node operation performance metrics. This command tracks all node operations by a thread, whether it's being created or an operation on an existing node, and whether it involves a rendezvous.
      * @param {('start'|'clear'|'report'|'stop')} action start - enables counting, clear - resets counters to zero, report - prints current counts with rendezvous as a percentage, stop - disables counting.
      */
-    public async sgperf(action: 'start'|'clear'|'report'|'stop'): Promise<SceneGraphCommandResponse> {
+    public async sgperf(action: 'start' | 'clear' | 'report' | 'stop'): Promise<SceneGraphCommandResponse> {
         return this.exec(`sgperf ${action}`);
     }
 
@@ -213,7 +220,8 @@ export class SceneGraphDebugCommandController {
      * @param text string to be sent to the device.
      */
     public async type(text: string): Promise<SceneGraphCommandResponse> {
-        return this.exec(`type ${text}`);
+        // Add 1 second per character to the max execution timeout because roku is really slow......
+        return this.exec(`type ${text}`, { execTimeout: this.execTimeout + (text.length * 1000) });
     }
 
 
@@ -224,15 +232,16 @@ export class SceneGraphDebugCommandController {
      * In this case once the command has been executed we will then close the connection.
      * @param {string} command command to be run.
      */
-    public async exec(command: string): Promise<SceneGraphCommandResponse> {
+    public async exec(command: string, options: { execTimeout?: number; timeout?: number } = {}): Promise<SceneGraphCommandResponse> {
         let response = this.getBlankResponseObject(command);
-        util.logDebug(`Running: ${command}`);
+        this.logger.log(`Running SceneGraphDebugger command`, { command });
 
         // Set up a short lived connection if a long lived one has not beed started
         let closeConnectionAfterCommand = !this.connection;
         if (closeConnectionAfterCommand) {
+            this.logger.trace('Opening new connection');
             try {
-                await this.connect();
+                await this.connect(options);
             } catch (error) {
                 response.error = error;
             }
@@ -241,7 +250,8 @@ export class SceneGraphDebugCommandController {
         // Send the commend if we have a connection
         if (this.connection) {
             try {
-                response.result.rawResponse = await this.connection.exec(command);
+                response.result.rawResponse = await this.connection.exec(command, options);
+                this.logger.debug('Command complete', { command });
             } catch (error) {
                 response.error = error;
             }
@@ -249,6 +259,7 @@ export class SceneGraphDebugCommandController {
 
         // Close the connection if we opened a short lived one
         if (closeConnectionAfterCommand) {
+            this.logger.trace('Closing connection');
             await this.end();
         }
 
@@ -268,7 +279,7 @@ export class SceneGraphDebugCommandController {
                     // Asking the host to close is much faster then running our own connections destroy
                     await this.connection.exec('quit', { shellPrompt: 'Quit command received, exiting.' });
                 } catch (error) {
-                    console.log(error);
+                    this.logger.error(`There was a problem quitting the SceneGraphDebugCommand connection`, error);
                 }
                 this.removeConnection();
             } catch (error) {
@@ -293,7 +304,7 @@ export class SceneGraphDebugCommandController {
     }
 }
 
-export interface SceneGraphCommandResponse<T=undefined> {
+export interface SceneGraphCommandResponse<T = undefined> {
     command: string;
     error?: SceneGraphCommandError<T>;
     result: {
@@ -302,7 +313,7 @@ export interface SceneGraphCommandResponse<T=undefined> {
     };
 }
 
-interface SceneGraphCommandError<T=undefined> {
+interface SceneGraphCommandError<T = undefined> {
     message: string;
     type: 'socket' | 'device';
     data?: T;
