@@ -240,7 +240,7 @@ export class TelnetAdapter {
             });
 
             const settlePromise = this.settle(client, 'data');
-            client.connect(8085, this.options.host, () => {
+            client.connect(this.options.brightScriptConsolePort, this.options.host, () => {
                 this.logger.log(`Telnet connection established to ${this.options.host}`);
                 this.connected = true;
                 this.emit('connected', this.connected);
