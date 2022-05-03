@@ -161,7 +161,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     remotePort?: number;
 
     /**
-     * The brightscript console port. In telnet mode this is the port used for the telnet connection. In debug protocol mode, this is where the compile errors show up.
+     * The brightscript console port. In telnet mode this is the port used for the telnet connection. In debug protocol mode, this is used to obtain compile errors from the device.
      */
     brightScriptConsolePort?: number;
 
