@@ -299,7 +299,7 @@ export class DebugProtocolAdapter {
             });
             this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
             this.compileClient.connect(this.options.brightScriptConsolePort, this.options.host, () => {
-                this.logger.log(`Connected via telnet to gather compile info`, { host: this.options.host });
+                this.logger.log(`Connected via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
             });
 
             this.logger.debug('Waiting for the compile client to settle');
