@@ -236,7 +236,7 @@ export class TelnetAdapter {
 
             //if the connection fails, reject the connect promise
             client.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.options.host} \n\n ${err.message} `));
+                deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
             const settlePromise = this.settle(client, 'data');
