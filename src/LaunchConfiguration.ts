@@ -161,6 +161,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     remotePort?: number;
 
     /**
+     * The brightscript console port. In telnet mode this is the port used for the telnet connection. In debug protocol mode, this is where the compile errors show up.
+     */
+    brightScriptConsolePort?: number;
+
+    /**
      * The path used for the staging folder of roku-deploy
      * This should generally be set to "${cwd}/.roku-deploy-staging", but that's ultimately up to the debug client.
      */

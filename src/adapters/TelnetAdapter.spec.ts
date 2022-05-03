@@ -8,7 +8,9 @@ describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
 
     beforeEach(() => {
-        adapter = new TelnetAdapter('127.0.0.1');
+        adapter = new TelnetAdapter({
+            host: '127.0.0.1'
+        });
     });
 
     describe('getHighLevelTypeDetails', () => {

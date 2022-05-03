@@ -11,6 +11,7 @@ import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
+import type { AdapterOptions } from './interfaces';
 
 class Util {
     /**
@@ -380,6 +381,11 @@ class Util {
         const minutes = allocate(60000);
         const seconds = allocate(1000);
         return `${hours > 0 ? hours + 'h' : ''}${minutes > 0 ? minutes + 'm' : ''}${seconds > 0 ? seconds + 's' : ''}${ms > 0 ? ms + 'ms' : ''}`;
+    }
+
+    public normalizeAdapterOptions(options: AdapterOptions) {
+        options.brightScriptConsolePort ??= 8085;
+        options.remotePort ??= 8060;
     }
 }
 
