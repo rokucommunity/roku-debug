@@ -297,7 +297,7 @@ export class DebugProtocolAdapter {
             this.compileClient.addListener('error', (err) => {
                 deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
-            this.logger.info('Connecting via telnet to gether compile info', { host: this.options.host });
+            this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
             this.compileClient.connect(this.options.brightScriptConsolePort, this.options.host, () => {
                 this.logger.log(`Connected via telnet to gather compile info`, { host: this.options.host });
             });
