@@ -412,7 +412,8 @@ export class Project {
                 const promises = [];
                 //only include files (i.e. skip directories)
                 if (await util.isFile(filePathAbsolute)) {
-                    const destinationPath = s`${this.stagingFolderPath}${filePathAbsolute.replace(s`${this.rdbFilesBasePath}`, '')}`;
+                    const relativePath = s`${filePathAbsolute}`.replace(s`${this.rdbFilesBasePath}`, '');
+                    const destinationPath = s`${this.stagingFolderPath}/${relativePath}`;
                     promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
                 }
                 await Promise.all(promises);
