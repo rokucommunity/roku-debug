@@ -14,3 +14,9 @@ export interface RokuAdapterEvaluateResponse {
     type: 'message' | 'error';
     message: string;
 }
+
+export interface AdapterOptions {
+    host: string;
+    brightScriptConsolePort?: number;
+    remotePort?: number;
+}

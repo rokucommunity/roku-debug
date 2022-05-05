@@ -201,7 +201,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
 
             //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
             this.rokuAdapter.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
@@ -263,7 +263,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.sendEvent(new CompileFailureEvent(compileErrors));
                 //stop the roku adapter and exit the channel
                 void this.rokuAdapter.destroy();
-                void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+                void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
             });
 
             // close disconnect if required when the app is exited
@@ -279,7 +279,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         void this.rokuAdapter.destroy();
                     }
                     //return to the home screen
-                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
                     this.shutdown();
                     this.sendEvent(new TerminatedEvent());
                 } else {
@@ -346,7 +346,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //if we are at a breakpoint, continue
             await this.rokuAdapter.continue();
             //kill the app on the roku
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
             //send the deep link http request
             await new Promise((resolve, reject) => {
                 request.post(this.launchConfiguration.deepLinkUrl, (err, response) => {
@@ -932,7 +932,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
         //return to the home screen
         if (!this.enableDebugProtocol) {
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
         }
         this.componentLibraryServer.stop();
         this.sendResponse(response);
@@ -940,9 +940,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private createRokuAdapter(host: string) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new DebugProtocolAdapter(host, this.launchConfiguration.stopOnEntry);
+            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration);
         } else {
-            this.rokuAdapter = new TelnetAdapter(host, this.launchConfiguration.enableDebuggerAutoRecovery);
+            this.rokuAdapter = new TelnetAdapter(this.launchConfiguration);
         }
     }
 
