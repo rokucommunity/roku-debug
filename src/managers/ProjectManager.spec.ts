@@ -216,6 +216,12 @@ describe('ProjectManager', () => {
     });
 
     describe('getSourceLocation', () => {
+        it(`does not crash when file is missing`, async () => {
+            manager.mainProject.fileMappings = [];
+            let sourceLocation = await manager.getSourceLocation('pkg:/source/file-we-dont-know-about.brs', 1);
+            expect(n(sourceLocation.filePath)).to.equal(n(`${stagingFolderPath}/source/file-we-dont-know-about.brs`));
+        });
+
         it('handles truncated paths', async () => {
             //mock fsExtra so we don't have to create actual files
             sinon.stub(fsExtra as any, 'pathExists').callsFake((filePath: string) => {
@@ -275,7 +281,6 @@ describe('ProjectManager', () => {
             sourceLocation = await manager.getSourceLocation('pkg:/source/file2.brs', 1);
             expect(n(sourceLocation.filePath)).to.equal(n(`${rootDir}/source/file2.brs`));
         });
-
     });
 });
 
