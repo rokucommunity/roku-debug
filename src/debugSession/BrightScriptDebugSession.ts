@@ -36,7 +36,8 @@ import {
     CompileFailureEvent,
     StoppedEventReason,
     ChanperfEvent,
-    DebugServerLogOutputEvent
+    DebugServerLogOutputEvent,
+    ChannelPublishedEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -296,6 +297,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //publish the package to the target Roku
             await this.rokuDeploy.publish(this.launchConfiguration as any as RokuDeployOptions);
+
+            this.sendEvent(new ChannelPublishedEvent());
 
             if (this.enableDebugProtocol) {
                 //connect to the roku debug via sockets
