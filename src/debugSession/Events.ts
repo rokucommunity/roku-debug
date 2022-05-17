@@ -70,6 +70,19 @@ export class LaunchStartEvent implements DebugProtocol.Event {
     public type: string;
 }
 
+export class ChannelPublishedEvent implements DebugProtocol.Event {
+    constructor() {
+        this.body = {};
+        this.event = 'BSChannelPublishedEvent';
+    }
+
+    public body: any;
+    public event: string;
+    public seq: number;
+    public type: string;
+}
+
+
 export enum StoppedEventReason {
     step = 'step',
     breakpoint = 'breakpoint',
