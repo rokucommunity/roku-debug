@@ -117,15 +117,15 @@ export class ProjectManager {
         });
 
         //if sourcemaps are disabled, account for the breakpoint offsets
-        if (this.launchConfiguration?.enableSourceMaps === false) {
+        if (sourceLocation && this.launchConfiguration?.enableSourceMaps === false) {
             sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
         }
 
-        if (!sourceLocation.filePath) {
+        if (!sourceLocation?.filePath) {
             //couldn't find a source location. At least send back the staging file information so the user can still debug
             return {
                 filePath: stagingFileInfo.absolutePath,
-                lineNumber: sourceLocation.lineNumber || debuggerLineNumber,
+                lineNumber: sourceLocation?.lineNumber || debuggerLineNumber,
                 columnIndex: 0
             } as SourceLocation;
         } else {
@@ -426,7 +426,8 @@ export class Project {
                 const promises = [];
                 //only include files (i.e. skip directories)
                 if (await util.isFile(filePathAbsolute)) {
-                    const destinationPath = s`${this.stagingFolderPath}${filePathAbsolute.replace(s`${this.rdbFilesBasePath}`, '')}`;
+                    const relativePath = s`${filePathAbsolute}`.replace(s`${this.rdbFilesBasePath}`, '');
+                    const destinationPath = s`${this.stagingFolderPath}/${relativePath}`;
                     promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
                 }
                 await Promise.all(promises);

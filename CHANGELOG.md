@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.12.0](https://github.com/rokucommunity/roku-debug/compare/v0.11.0...v0.12.0) - 2022-05-17
+### Added
+ - `BSChannelPublishedEvent` custom event to allow clients to handle when the channel has been uploaded to a Roku ([#81](https://github.com/rokucommunity/roku-debug/pull/81))
+
+
+
+## [0.11.0](https://github.com/rokucommunity/roku-debug/compare/v0.10.5...v0.11.0) - 2022-05-05
+ ### Added
+ - `brightScriptConsolePort` option. Utilize `remotePort` in more places ([#79](https://github.com/rokucommunity/roku-debug/pull/79))
+ -basic breakpoint logic for debug protocol (only useful for direct API access at the moment) ([#77](https://github.com/rokucommunity/roku-debug/pull/77))
+ ### Changed
+ - upgrade to [brighterscript@0.49.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0490---2022-05-02)
+### Fixed
+ - fix RDB path bug on windows ([#76](https://github.com/rokucommunity/roku-debug/pull/76))
+
+
+
+
 ## [0.10.5](https://github.com/rokucommunity/roku-debug/compare/v0.10.4...v0.10.5) - 2022-04-13
 ### Changed
  - upgrade to [roku-deploy@3.6.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#360---2022-04-13)

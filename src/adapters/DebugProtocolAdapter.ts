@@ -13,7 +13,7 @@ import { ERROR_CODES, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
-import type { HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
+import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
 import type { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
 
 /**
@@ -21,9 +21,9 @@ import type { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
  */
 export class DebugProtocolAdapter {
     constructor(
-        private host: string,
-        private stopOnEntry: boolean = false
+        private options: AdapterOptions
     ) {
+        util.normalizeAdapterOptions(this.options);
         this.emitter = new EventEmitter();
         this.chanperfTracker = new ChanperfTracker();
         this.rendezvousTracker = new RendezvousTracker();
@@ -196,10 +196,7 @@ export class DebugProtocolAdapter {
      */
     public async connect() {
         let deferred = defer();
-        this.socketDebugger = new Debugger({
-            host: this.host,
-            stopOnEntry: this.stopOnEntry
-        });
+        this.socketDebugger = new Debugger(this.options);
         try {
             // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -270,7 +267,7 @@ export class DebugProtocolAdapter {
                 this.compileClient = undefined;
             }
 
-            this.logger.log(`Connected to device`, { host: this.host, connected: this.connected });
+            this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
             this.emit('connected', this.connected);
 
             //the adapter is connected and running smoothly. resolve the promise
@@ -299,11 +296,11 @@ export class DebugProtocolAdapter {
 
             //if the connection fails, reject the connect promise
             this.compileClient.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message} `));
+                deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
-            this.logger.info('Connecting via telnet to gether compile info', { host: this.host });
-            this.compileClient.connect(8085, this.host, () => {
-                this.logger.log(`Connected via telnet to gather compile info`, { host: this.host });
+            this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
+            this.compileClient.connect(this.options.brightScriptConsolePort, this.options.host, () => {
+                this.logger.log(`Connected via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
             });
 
             this.logger.debug('Waiting for the compile client to settle');

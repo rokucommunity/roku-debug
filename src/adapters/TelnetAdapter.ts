@@ -11,7 +11,7 @@ import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
 import { defer, util } from '../util';
 import { logger } from '../logging';
-import type { RokuAdapterEvaluateResponse } from '../interfaces';
+import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces';
 import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
 import { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
@@ -21,9 +21,13 @@ import { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
  */
 export class TelnetAdapter {
     constructor(
-        private host: string,
-        private enableDebuggerAutoRecovery: boolean = false
+        private options: AdapterOptions & {
+            enableDebuggerAutoRecovery?: boolean;
+        }
     ) {
+        util.normalizeAdapterOptions(this.options);
+        this.options.enableDebuggerAutoRecovery ??= false;
+
         this.connected = false;
         this.emitter = new EventEmitter();
         this.debugStartRegex = /BrightScript Micro Debugger\./ig;
@@ -208,7 +212,7 @@ export class TelnetAdapter {
                 //ended MicroDebugger block
                 this.isInMicroDebugger = false;
             } else if (this.isInMicroDebugger) {
-                if (this.enableDebuggerAutoRecovery && line.startsWith('Break in ')) {
+                if (this.options.enableDebuggerAutoRecovery && line.startsWith('Break in ')) {
                     //this block is a break: skipping it
                     this.isNextBreakpointSkipped = true;
                 }
@@ -227,7 +231,7 @@ export class TelnetAdapter {
         try {
             this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
-            await rokuDeploy.pressHomeButton(this.host);
+            await rokuDeploy.pressHomeButton(this.options.host, this.options.remotePort);
             let client: Socket = new Socket();
 
             //listen for the close event
@@ -237,12 +241,12 @@ export class TelnetAdapter {
 
             //if the connection fails, reject the connect promise
             client.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.host} \n\n ${err.message} `));
+                deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
             const settlePromise = this.settle(client, 'data');
-            client.connect(8085, this.host, () => {
-                this.logger.log(`Telnet connection established to ${this.host}`);
+            client.connect(this.options.brightScriptConsolePort, this.options.host, () => {
+                this.logger.log(`Telnet connection established to ${this.options.host}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
                 this.emit('connected', this.connected);
             });

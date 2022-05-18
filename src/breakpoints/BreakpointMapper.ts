@@ -1,5 +1,5 @@
 import type { Project } from '../managers/ProjectManager';
-import type { AddBreakpointRequestObject } from '../debugProtocol/Debugger';
+import type { BreakpointSpec } from '../debugProtocol/Debugger';
 import type { BreakpointQueue, QueueBreakpoint } from './BreakpointQueue';
 import type { LocationManager } from '../managers/LocationManager';
 import { standardizePath as s, fileUtils } from '../FileUtils';
@@ -18,7 +18,7 @@ export class BreakpointMapper {
 
         const breakpoints = this.queue.getBreakpoints();
         //a container where all promises will write their results
-        const result = [] as AddBreakpointRequestObject[];
+        const result = [] as BreakpointSpec[];
         await Promise.all(
             breakpoints.map(x => this.mapBreakpoint(project, x, result))
         );
@@ -56,7 +56,7 @@ export class BreakpointMapper {
     /**
      * Determine the target location for this breakpoint
      */
-    private async mapBreakpoint(project: Project, breakpoint: QueueBreakpoint, result: AddBreakpointRequestObject[]) {
+    private async mapBreakpoint(project: Project, breakpoint: QueueBreakpoint, result: BreakpointSpec[]) {
         //get the list of locations in staging that this breakpoint should be written to.
         //if none are found, then this breakpoint is ignored
         let stagingLocationsResult = await this.locationManager.getStagingLocations(

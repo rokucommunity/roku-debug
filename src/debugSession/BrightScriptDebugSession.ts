@@ -37,7 +37,8 @@ import {
     CompileFailureEvent,
     StoppedEventReason,
     ChanperfEvent,
-    DebugServerLogOutputEvent
+    DebugServerLogOutputEvent,
+    ChannelPublishedEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -48,6 +49,7 @@ import { logger, debugServerLogOutputEventTransport } from '../logging';
 import type { QueueBreakpoint } from '../breakpoints/BreakpointQueue';
 import { BreakpointQueue } from '../breakpoints/BreakpointQueue';
 import { BreakpointMapper } from '../breakpoints/BreakpointMapper';
+import type { BreakpointSpec } from '../debugProtocol/Debugger';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -183,8 +185,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             logger.logLevel = this.launchConfiguration.logLevel;
         }
 
-        this.isDebugProtocolEnabled = this.launchConfiguration.enableDebugProtocol;
-
         //do a DNS lookup for the host to fix issues with roku rejecting ECP
         this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
 
@@ -237,7 +237,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
 
             //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
             this.rokuAdapter.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
@@ -299,7 +299,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.sendEvent(new CompileFailureEvent(compileErrors));
                 //stop the roku adapter and exit the channel
                 void this.rokuAdapter.destroy();
-                void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+                void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
             });
 
             // close disconnect if required when the app is exited
@@ -315,7 +315,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         void this.rokuAdapter.destroy();
                     }
                     //return to the home screen
-                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
                     this.shutdown();
                     this.sendEvent(new TerminatedEvent());
                 } else {
@@ -332,6 +332,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //publish the package to the target Roku
             await this.rokuDeploy.publish(this.launchConfiguration as any as RokuDeployOptions);
+
+            this.sendEvent(new ChannelPublishedEvent());
 
             if (this.isDebugProtocolEnabled) {
                 //connect to the roku debug via sockets
@@ -382,7 +384,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //if we are at a breakpoint, continue
             await this.rokuAdapter.continue();
             //kill the app on the roku
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
             //send the deep link http request
             await new Promise((resolve, reject) => {
                 request.post(this.launchConfiguration.deepLinkUrl, (err, response) => {
@@ -977,9 +979,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private createRokuAdapter(host: string) {
         if (this.isDebugProtocolEnabled) {
-            this.rokuAdapter = new DebugProtocolAdapter(host, this.launchConfiguration.stopOnEntry);
+            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration);
         } else {
-            this.rokuAdapter = new TelnetAdapter(host, this.launchConfiguration.enableDebuggerAutoRecovery);
+            this.rokuAdapter = new TelnetAdapter(this.launchConfiguration);
         }
     }
 
@@ -1041,13 +1043,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async syncBreakpoints() {
         if (this.breakpointQueue.isDirty) {
-            const breakpoints: AddBreakpointRequestObject[] = [];
+            const breakpoints: BreakpointSpec[] = [];
             //translate breakpoints to their device locations
             await Promise.all([
                 this.projectManager.mainProject,
                 ...this.projectManager.componentLibraryProjects
             ].map(async project => {
-                breakpoints.push(...await this.breakpointMapper.mapBreakpoints(project));
+                breakpoints.push(...(await this.breakpointMapper.mapBreakpoints(project)));
             }));
             await this.rokuAdapter.syncBreakpoints(breakpoints);
             this.breakpointQueue.isDirty = false;
