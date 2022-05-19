@@ -71,8 +71,12 @@ export class LaunchStartEvent implements DebugProtocol.Event {
 }
 
 export class ChannelPublishedEvent implements DebugProtocol.Event {
-    constructor() {
-        this.body = {};
+    constructor(
+        body: {
+            launchConfiguration: LaunchConfiguration;
+        }
+    ) {
+        this.body = body ?? {};
         this.event = 'BSChannelPublishedEvent';
     }
 
