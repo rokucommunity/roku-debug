@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.12.1](https://github.com/rokucommunity/roku-debug/compare/v0.12.0...v0.12.1) - 2022-05-20
+### Changed
+ - add `launchConfiguration` to the `ChannelPublishedEvent` ([#83](https://github.com/rokucommunity/roku-debug/pull/83))
+ ### Fixed
+ - crash during rendezvous tracking ([#82](https://github.com/rokucommunity/roku-debug/pull/82))
+
+
+
 ## [0.12.0](https://github.com/rokucommunity/roku-debug/compare/v0.11.0...v0.12.0) - 2022-05-17
 ### Added
  - `BSChannelPublishedEvent` custom event to allow clients to handle when the channel has been uploaded to a Roku ([#81](https://github.com/rokucommunity/roku-debug/pull/81))
