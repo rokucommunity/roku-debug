@@ -154,7 +154,7 @@ export class LocationManager {
 
         //look through the files array to see if there are any mappings that reference this file.
         //both `src` and `dest` are assumed to already be standardized
-        for (let fileMapping of fileMappings) {
+        for (let fileMapping of fileMappings ?? []) {
             if (fileMapping.src === sourceFilePath) {
                 return {
                     type: 'fileMap',

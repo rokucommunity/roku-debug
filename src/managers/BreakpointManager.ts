@@ -45,7 +45,7 @@ export class BreakpointManager {
      * These breakpoints are all set before launch, and then this list is not changed again after that.
      * (this concept may need to be modified once we get live breakpoint support)
      */
-    private breakpointsByFilePath = {} as Record<string, AugmentedSourceBreakpoint[]>;
+    private breakpointsByFilePath = new Map<string, AugmentedSourceBreakpoint[]>();
 
     public static breakpointIdSequence = 1;
 
@@ -55,8 +55,8 @@ export class BreakpointManager {
     public registerBreakpoint(sourceFilePath: string, breakpoint: AugmentedSourceBreakpoint | DebugProtocol.SourceBreakpoint) {
         sourceFilePath = this.sanitizeSourceFilePath(sourceFilePath);
         //get the breakpoints array (and optionally initialize it if not set)
-        let breakpointsArray = this.breakpointsByFilePath[sourceFilePath] ?? [];
-        this.breakpointsByFilePath[sourceFilePath] = breakpointsArray;
+        let breakpointsArray = this.getBreakpointsForFile(sourceFilePath);
+        this.breakpointsByFilePath.set(sourceFilePath, breakpointsArray);
 
         let existingBreakpoint = breakpointsArray.find(x => x.line === breakpoint.line);
 
@@ -66,9 +66,6 @@ export class BreakpointManager {
         bp.column = bp.column ?? 0;
 
         bp.wasAddedBeforeLaunch = bp.wasAddedBeforeLaunch ?? this.areBreakpointsLocked === false;
-
-        //set an id if one does not already exist (used for pushing breakpoints to the client)
-        bp.id = bp.id ?? BreakpointManager.breakpointIdSequence++;
 
         //any breakpoint set in this function is not hidden
         bp.isHidden = false;
@@ -109,7 +106,7 @@ export class BreakpointManager {
             }
         }
 
-        //if we already have a breakpoint for this exact line, don't add another one
+        //if we already have a breakpoint for this exact line, don't add another one (because we augmented that original breakpoint)
         if (breakpointsArray.find(x => x.line === breakpoint.line)) {
 
         } else {
@@ -128,16 +125,18 @@ export class BreakpointManager {
 
         if (this.areBreakpointsLocked) {
             //keep verified breakpoints, but toss the rest
-            this.breakpointsByFilePath[sourceFilePath] = this.getBreakpointsForFile(sourceFilePath)
-                .filter(x => x.verified);
+            this.breakpointsByFilePath.set(
+                sourceFilePath,
+                this.getBreakpointsForFile(sourceFilePath).filter(x => x.verified)
+            );
 
             //hide all of the breakpoints (the active ones will be reenabled later in this method)
-            for (let bp of this.breakpointsByFilePath[sourceFilePath]) {
+            for (let bp of this.breakpointsByFilePath.get(sourceFilePath)) {
                 bp.isHidden = true;
             }
         } else {
             //we're not debugging erase all of the breakpoints
-            this.breakpointsByFilePath[sourceFilePath] = [];
+            this.breakpointsByFilePath.set(sourceFilePath, []);
         }
 
         for (let breakpoint of allBreakpointsForFile) {
@@ -156,9 +155,7 @@ export class BreakpointManager {
         let result = {} as Record<string, Array<BreakpointWorkItem>>;
 
         //iterate over every file that contains breakpoints
-        for (let sourceFilePath in this.breakpointsByFilePath) {
-            let breakpoints = this.breakpointsByFilePath[sourceFilePath];
-
+        for (let [sourceFilePath, breakpoints] of this.breakpointsByFilePath) {
             for (let breakpoint of breakpoints) {
                 //get the list of locations in staging that this breakpoint should be written to.
                 //if none are found, then this breakpoint is ignored
@@ -182,6 +179,18 @@ export class BreakpointManager {
                         ),
                         ''
                     );
+                    const pkgPath = 'pkg:/' + fileUtils
+                        //replace staging folder path with nothing (so we can build a pkg path)
+                        .replaceCaseInsensitive(
+                            s`${stagingLocation.filePath}`,
+                            s`${project.stagingFolderPath}`,
+                            ''
+                        )
+                        //force to unix path separators
+                        .replace(/[\/\\]+/g, '/')
+                        //remove leading slash
+                        .replace(/^\//, '');
+
                     let obj: BreakpointWorkItem = {
                         //add the breakpoint info
                         ...breakpoint,
@@ -191,7 +200,8 @@ export class BreakpointManager {
                         line: stagingLocation.lineNumber,
                         column: stagingLocation.columnIndex,
                         stagingFilePath: stagingLocation.filePath,
-                        type: stagingLocationsResult.type
+                        type: stagingLocationsResult.type,
+                        pkgPath: pkgPath
                     };
                     if (!result[stagingLocation.filePath]) {
                         result[stagingLocation.filePath] = [];
@@ -382,7 +392,7 @@ export class BreakpointManager {
      */
     public getBreakpointsForFile(filePath: string): AugmentedSourceBreakpoint[] {
         let key = this.sanitizeSourceFilePath(filePath);
-        return this.breakpointsByFilePath[key] ?? [];
+        return this.breakpointsByFilePath.get(key) ?? [];
     }
 
     /**
@@ -392,18 +402,76 @@ export class BreakpointManager {
     public sanitizeSourceFilePath(filePath: string) {
         filePath = fileUtils.standardizePath(filePath);
 
-        for (let key in this.breakpointsByFilePath) {
+        for (let [key] of this.breakpointsByFilePath) {
             if (filePath.toLowerCase() === key.toLowerCase()) {
                 return key;
             }
         }
         return filePath;
     }
+
+    /**
+     * Get a diff of all breakpoints that have changed since the last time the diff was retrieved.
+     * Sets the new baseline to the current state, so the next diff will be based on this new baseline.
+     *
+     * All projects should be passed in every time.
+     */
+    public async getDiff(projects: Project[]) {
+        const currentState = new Map<string, BreakpointWorkItem>();
+        await Promise.all(
+            projects.map(async (project) => {
+                //send breakpoints for every file
+                const work = await this.getBreakpointWork(project);
+                for (const filePath in work) {
+                    const fileWork = work[filePath];
+                    for (const bp of fileWork) {
+                        const key = [
+                            bp.stagingFilePath,
+                            bp.line,
+                            bp.column,
+                            bp.condition,
+                            bp.hitCondition,
+                            bp.logMessage
+                        ].join('--');
+                        //clone the breakpoint and then add it to the current state
+                        currentState.set(key, { ...bp });
+                    }
+                }
+            })
+        );
+
+        const added = new Map<string, BreakpointWorkItem>();
+        const removed = new Map<string, BreakpointWorkItem>();
+        const unchanged = new Map<string, BreakpointWorkItem>();
+        for (const key of [...currentState.keys(), ...this.lastState.keys()]) {
+            const inCurrent = currentState.has(key);
+            const inLast = this.lastState.has(key);
+            //no change
+            if (inLast && inCurrent) {
+                unchanged.set(key, currentState.get(key));
+
+                //added since last time
+            } else if (!inLast && inCurrent) {
+                added.set(key, currentState.get(key));
+
+                //removed since last time
+            } else {
+                removed.set(key, this.lastState.get(key));
+            }
+        }
+        this.lastState = currentState;
+        return {
+            added: [...added.values()],
+            removed: [...removed.values()],
+            unchanged: [...unchanged.values()]
+        };
+    }
+    private lastState = new Map<string, BreakpointWorkItem>();
 }
 
 interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoint {
     /**
-     * An ID for this breakpoint, which is used to set/unset breakpoints in the client
+     * An ID for this breakpoint. This id is created by the roku device.
      */
     id: number;
     /**
@@ -423,9 +491,13 @@ interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoint {
     isHidden: boolean;
 }
 
-interface BreakpointWorkItem {
+export interface BreakpointWorkItem {
     sourceFilePath: string;
     stagingFilePath: string;
+    /**
+     * The device path (i.e. `pkg:/source/main.brs`)
+     */
+    pkgPath: string;
     rootDirFilePath: string;
     /**
      * The 1-based line number
