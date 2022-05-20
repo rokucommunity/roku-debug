@@ -100,7 +100,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variableHandles = new Handles<string>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
-    private enableDebugProtocol: boolean;
+    private get enableDebugProtocol() {
+        return this.launchConfiguration.enableDebugProtocol;
+    }
 
     private getRokuAdapter() {
         return this.rokuAdapterDeferred.promise;
@@ -165,8 +167,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (this.launchConfiguration.logLevel) {
             logger.logLevel = this.launchConfiguration.logLevel;
         }
-
-        this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
 
         //do a DNS lookup for the host to fix issues with roku rejecting ECP
         this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
