@@ -1,7 +1,7 @@
 import { orderBy } from 'natural-orderby';
 import * as EventEmitter from 'eventemitter3';
 import { Socket } from 'net';
-import * as rokuDeploy from 'roku-deploy';
+import { rokuDeploy } from 'roku-deploy';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';

@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import * as rokuDeploy from 'roku-deploy';
+import { rokuDeploy } from 'roku-deploy';
 import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { ComponentLibraryConstructorParams } from './ProjectManager';

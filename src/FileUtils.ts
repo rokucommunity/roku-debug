@@ -3,7 +3,7 @@ import * as fsExtra from 'fs-extra';
 import * as glob from 'glob';
 import * as path from 'path';
 import { promisify } from 'util';
-import * as rokuDeploy from 'roku-deploy';
+import { util as rokuDeployUtil } from 'roku-deploy';
 const globp = promisify(glob);
 
 export class FileUtils {
@@ -262,7 +262,7 @@ export class FileUtils {
             }
         }
         let relativePath = fileUtils.removeLeadingSlash(
-            rokuDeploy.util.stringReplaceInsensitive(entryPath, projectPath, '')
+            rokuDeployUtil.stringReplaceInsensitive(entryPath, projectPath, '')
         );
 
         return {

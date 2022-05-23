@@ -2,7 +2,7 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as request from 'request';
-import * as rokuDeploy from 'roku-deploy';
+import { rokuDeploy } from 'roku-deploy';
 import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     DebugSession as BaseDebugSession,
