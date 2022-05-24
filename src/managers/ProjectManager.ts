@@ -154,7 +154,7 @@ export class ProjectManager {
         let sourceLocation = await this.getSourceLocation(entryPoint.relativePath, entryPoint.lineNumber);
 
         //register the entry breakpoint
-        this.breakpointManager.registerBreakpoint(sourceLocation.filePath, {
+        this.breakpointManager.setBreakpoint(sourceLocation.filePath, {
             //+1 to select the first line of the function
             line: sourceLocation.lineNumber + 1
         });

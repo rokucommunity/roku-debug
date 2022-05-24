@@ -5,6 +5,7 @@ import * as request from 'request';
 import * as rokuDeploy from 'roku-deploy';
 import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
+    BreakpointEvent,
     DebugSession as BaseDebugSession,
     Handles,
     InitializedEvent,
@@ -43,6 +44,7 @@ import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../Laun
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
+import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
@@ -61,7 +63,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
+        this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceVerifiedBreakpoints(data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
+    }
+
+    private onDeviceVerifiedBreakpoints(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
+        //send all verified breakpoints to the client
+        for (const breakpoint of data.breakpoints) {
+            const event: DebugProtocol.Breakpoint = {
+                line: breakpoint.line,
+                column: breakpoint.column,
+                verified: true,
+                source: {
+                    path: breakpoint.srcPath
+                }
+            };
+            this.sendEvent(new BreakpointEvent('new', event));
+        }
     }
 
     public logger = logger.createLogger(`[${BrightScriptDebugSession.name}]`);
@@ -570,21 +588,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
 
         await this.rokuAdapter?.syncBreakpoints();
-
-        //set a small timeout so the user sees the breakpoints disappear before reappearing
-        //This is disabled because I'm not sure anyone actually wants this functionality, but I didn't want to lose it.
-        // setTimeout(() => {
-        //     //notify the client about every other breakpoint that was not explicitly requested here
-        //     //(basically force to re-enable the `stop` breakpoints that were written into the source code by the debugger)
-        //     var otherBreakpoints = sanitizedBreakpoints.filter(x => sortedAndFilteredBreakpoints.indexOf(x) === -1);
-        //     for (var breakpoint of otherBreakpoints) {
-        //         this.sendEvent(new BreakpointEvent('new', <DebugProtocol.Breakpoint>{
-        //             line: breakpoint.line,
-        //             verified: true,
-        //             source: args.source
-        //         }));
-        //     }
-        // }, 100);
     }
 
     protected exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {

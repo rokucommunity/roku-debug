@@ -673,71 +673,36 @@ export class DebugProtocolAdapter {
     // #endregion
 
     public async syncBreakpoints() {
+        //compute breakpoint changes since last sync
+        const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
+        //delete these breakpoints
+        await this.socketDebugger.removeBreakpoints(
+            diff.removed.map(x => x.id)
+        );
 
-        // //remove all breakpoints
+        const breakpointsToSendToDevice = diff.added.map(breakpoint => {
+            const hitCount = parseInt(breakpoint.hitCondition);
+            return {
+                filePath: breakpoint.pkgPath,
+                lineNumber: breakpoint.line,
+                hitCount: !isNaN(hitCount) ? hitCount : undefined,
+                key: breakpoint.key
+            };
+        });
+        //send breakpoints to the device
+        const response = await this.socketDebugger.addBreakpoints(breakpointsToSendToDevice);
 
-        // const response = await this.socketDebugger.listBreakpoints();
-        // await this.socketDebugger.removeBreakpoints(
-        //     response.breakpoints.map(x => x.breakpointId)
-        // );
-
-        // const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
-        // //delete these breakpoints
-        // await this.socketDebugger.removeBreakpoints(
-        //     diff.removed.map(x => x.id)
-        // );
-
-        // const breakpoints = diff.added.map(x => {
-        //     const hitCount = parseInt(x.hitCondition);
-        //     return {
-        //         filePath: x.pkgPath,
-        //         lineNumber: x.line,
-        //         hitCount: !isNaN(hitCount) ? hitCount : undefined
-        //     } as BreakpointSpec;
-        // });
-        // //add these breakpoints
-        // const response = await this.socketDebugger.addBreakpoints(
-        //     breakpoints
-        // );
-
-        // //mark all these breakpoints as verified
-        // for (let i = 0; i < response.breakpoints.length; i++) {
-        //     const breakpointKey = this.breakpointManager.getKey(breakpoints[i]);
-        //     this.breakpointManager.verifyBreakpoint(breakpointKey, bp.id);
-        // }
-
-        // const breakpoints: BreakpointSpec[] = [];
-        // await Promise.all(
-        //     [this.projectManager.mainProject, ...this.projectManager.componentLibraryProjects].map(async (project) => {
-        //         //send breakpoints for every file
-        //         const work = await this.breakpointManager['getBreakpointWork'](project);
-        //         for (const filePath in work) {
-        //             const fileWork = work[filePath];
-        //             for (const bp of fileWork) {
-        //                 let pkgPath = fileUtils
-        //                     //replace staging folder path with nothing (so we can build a pkg path)
-        //                     .replaceCaseInsensitive(
-        //                         s`${bp.stagingFilePath}`,
-        //                         s`${project.stagingFolderPath}`,
-        //                         ''
-        //                     )
-        //                     //force to unix path separators
-        //                     .replace(/[\/\\]+/g, '/')
-        //                     //remove leading slash
-        //                     .replace(/^\//, '');
-        //                 pkgPath = `lib:/SampleComponent/${pkgPath}`;
-        //                 // pkgPath = `pkg:/${pkgPath}`;
-        //                 breakpoints.push({
-        //                     filePath: pkgPath,
-        //                     lineNumber: bp.line
-        //                 });
-        //             }
-        //         }
-        //     })
-        // );
-        // await this.socketDebugger.addBreakpoints(breakpoints);
+        //mark the breakpoints as verified
+        for (let i = 0; i < response.breakpoints.length; i++) {
+            const deviceBreakpoint = response.breakpoints[i];
+            if (deviceBreakpoint.isVerified) {
+                this.breakpointManager.verifyBreakpoint(
+                    breakpointsToSendToDevice[i].key,
+                    deviceBreakpoint.breakpointId
+                );
+            }
+        }
     }
-
 }
 
 export interface StackFrame {

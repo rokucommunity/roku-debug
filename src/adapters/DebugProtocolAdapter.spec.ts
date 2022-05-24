@@ -13,9 +13,13 @@ describe('DebugProtocolAdapter', () => {
     let socketDebugger: Debugger;
     beforeEach(() => {
 
-        adapter = new DebugProtocolAdapter({
-            host: '127.0.0.1'
-        });
+        adapter = new DebugProtocolAdapter(
+            {
+                host: '127.0.0.1'
+            },
+            undefined,
+            undefined
+        );
         socketDebugger = new Debugger(undefined);
         adapter['socketDebugger'] = socketDebugger;
     });

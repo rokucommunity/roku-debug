@@ -536,10 +536,10 @@ describe('BreakpointManager', () => {
             fsExtra.writeFileSync(s`${stagingDir}/main.brs.map`, result.map.toString());
 
             //set a few breakpoints in the source files
-            bpManager.registerBreakpoint(src, {
+            bpManager.setBreakpoint(src, {
                 line: 5
             });
-            bpManager.registerBreakpoint(src, {
+            bpManager.setBreakpoint(src, {
                 line: 7
             });
 
@@ -645,7 +645,7 @@ describe('BreakpointManager', () => {
                 column: 4
             });
 
-            bpManager.registerBreakpoint(sourceFilePath, {
+            bpManager.setBreakpoint(sourceFilePath, {
                 line: 3,
                 column: 0
             });
@@ -706,7 +706,7 @@ describe('BreakpointManager', () => {
             ]);
 
             //write breakpoints
-            bpManager.registerBreakpoint(sourceFilePath, {
+            bpManager.setBreakpoint(sourceFilePath, {
                 line: 4,
                 column: 0
             });
@@ -740,7 +740,7 @@ describe('BreakpointManager', () => {
         `);
 
         //write breakpoints
-        bpManager.registerBreakpoint(baseFilePath, {
+        bpManager.setBreakpoint(baseFilePath, {
             line: 2,
             column: 0
         });
@@ -795,10 +795,10 @@ describe('BreakpointManager', () => {
 
     it('does not duplicate breakpoints that have the same key', () => {
         const pkgPath = s`${rootDir}/source/main.brs`;
-        bpManager.registerBreakpoint(pkgPath, {
+        bpManager.setBreakpoint(pkgPath, {
             line: 2
         });
-        bpManager.registerBreakpoint(pkgPath, {
+        bpManager.setBreakpoint(pkgPath, {
             line: 2
         });
         expect(
@@ -811,7 +811,7 @@ describe('BreakpointManager', () => {
     it('replaces breakpoints with distinct attributes', () => {
         const pkgPath = s`${rootDir}/source/main.brs`;
 
-        bpManager.registerBreakpoint(pkgPath, {
+        bpManager.setBreakpoint(pkgPath, {
             line: 2
         });
         expect(
@@ -820,7 +820,7 @@ describe('BreakpointManager', () => {
             s`${pkgPath}:2:0-standard`
         ]);
 
-        bpManager.registerBreakpoint(pkgPath, {
+        bpManager.setBreakpoint(pkgPath, {
             line: 2,
             condition: 'true'
         });
@@ -830,7 +830,7 @@ describe('BreakpointManager', () => {
             s`${pkgPath}:2:0-condition=true`
         ]);
 
-        bpManager.registerBreakpoint(pkgPath, {
+        bpManager.setBreakpoint(pkgPath, {
             line: 2,
             hitCondition: '4'
         });

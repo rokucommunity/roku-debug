@@ -9,6 +9,8 @@ import { standardizePath as s } from 'roku-deploy';
 import type { SourceMapManager } from './SourceMapManager';
 import type { LocationManager } from './LocationManager';
 import { util } from '../util';
+import { nextTick } from 'process';
+import { EventEmitter } from 'eventemitter3';
 
 export class BreakpointManager {
 
@@ -24,6 +26,24 @@ export class BreakpointManager {
         rootDir: string;
         enableSourceMaps?: boolean;
     };
+
+    private emitter = new EventEmitter();
+
+    private emit(eventName: 'breakpoints-verified', data: { breakpoints: AugmentedSourceBreakpoint[] });
+    private emit(eventName: string, data: any) {
+        this.emitter.emit(eventName, data);
+    }
+
+    /**
+     * Subscribe to an event
+     */
+    public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
+    public on(eventName: string, handler: (data: any) => any) {
+        this.emitter.on(eventName, handler);
+        return () => {
+            this.emitter.off(eventName, handler);
+        };
+    }
 
     /**
      * Tell the breakpoint manager that no new breakpoints can be verified
@@ -52,11 +72,11 @@ export class BreakpointManager {
     /**
      * breakpoint lines are 1-based, and columns are zero-based
      */
-    public registerBreakpoint(sourceFilePath: string, breakpoint: AugmentedSourceBreakpoint | DebugProtocol.SourceBreakpoint) {
-        sourceFilePath = this.sanitizeSourceFilePath(sourceFilePath);
+    public setBreakpoint(srcPath: string, breakpoint: AugmentedSourceBreakpoint | DebugProtocol.SourceBreakpoint) {
+        srcPath = this.sanitizeSourceFilePath(srcPath);
         //get the breakpoints array (and optionally initialize it if not set)
-        let breakpointsArray = this.getBreakpointsForFile(sourceFilePath);
-        this.breakpointsByFilePath.set(sourceFilePath, breakpointsArray);
+        let breakpointsArray = this.getBreakpointsForFile(srcPath);
+        this.breakpointsByFilePath.set(srcPath, breakpointsArray);
 
         //only a single breakpoint can be defined per line. So, if we find one on this line, we'll augment that breakpoint rather than builiding a new one
         const existingBreakpoint = breakpointsArray.find(x => x.line === breakpoint.line);
@@ -71,9 +91,10 @@ export class BreakpointManager {
         }
 
         let bp = <AugmentedSourceBreakpoint>Object.assign(existingBreakpoint || {}, breakpoint);
+        bp.srcPath = srcPath;
 
         //assign a hash-like key to this breakpoint (so we can match against other similar breakpoints in the future)
-        bp.key = this.getBreakpointKey(sourceFilePath, breakpoint);
+        bp.key = this.getBreakpointKey(srcPath, breakpoint);
 
         //set column=0 if the breakpoint is missing that field
         bp.column = bp.column ?? 0;
@@ -84,7 +105,7 @@ export class BreakpointManager {
         bp.isHidden = false;
 
         //mark non-supported breakpoint as NOT verified, since we don't support debugging non-brightscript files
-        if (!fileUtils.hasAnyExtension(sourceFilePath, ['.brs', '.bs', '.xml'])) {
+        if (!fileUtils.hasAnyExtension(srcPath, ['.brs', '.bs', '.xml'])) {
             bp.verified = false;
 
             //debug session is not launched yet, all of these breakpoints are treated as verified
@@ -101,12 +122,12 @@ export class BreakpointManager {
             if (this.launchConfiguration?.sourceDirs && this.launchConfiguration.sourceDirs.length > 0) {
                 let lastWorkingPath = '';
                 for (const sourceDir of this.launchConfiguration.sourceDirs) {
-                    sourceFilePath = sourceFilePath.replace(this.launchConfiguration.rootDir, sourceDir);
-                    if (fsExtra.pathExistsSync(sourceFilePath)) {
-                        lastWorkingPath = sourceFilePath;
+                    srcPath = srcPath.replace(this.launchConfiguration.rootDir, sourceDir);
+                    if (fsExtra.pathExistsSync(srcPath)) {
+                        lastWorkingPath = srcPath;
                     }
                 }
-                sourceFilePath = lastWorkingPath;
+                srcPath = lastWorkingPath;
 
             }
             //new breakpoints will be verified=false, but breakpoints that were removed and then added again should be verified=true
@@ -122,8 +143,51 @@ export class BreakpointManager {
         if (!existingBreakpoint) {
             breakpointsArray.push(bp);
         }
+        this.breakpoints.set(bp.key, bp);
         return bp;
     }
+
+    /**
+     * A map of all breakpoints, indexed by key
+     */
+    private breakpoints = new Map<string, AugmentedSourceBreakpoint>();
+
+    public deleteBreakpoint(key: string) {
+        this.breakpoints.delete(key);
+    }
+
+    /**
+     * Mark this breakpoint as verified
+     */
+    public verifyBreakpoint(key: string, id: number) {
+        const breakpoint = this.breakpoints.get(key);
+        if (breakpoint) {
+            breakpoint.verified = true;
+            breakpoint.id = id;
+        }
+        this.queueVerifyEvent(key);
+    }
+
+    /**
+     * Whenever breakpoints get verified, they need to be synced back to vscode.
+     * This queues up a future function that will emit a batch of all verified breakpoints
+     */
+    private queueVerifyEvent(key: string) {
+        this.verifiedBreakpointKeys.push(key);
+        if (!this.isVerifyEventQueued) {
+            this.isVerifyEventQueued = true;
+            process.nextTick(() => {
+                this.isVerifyEventQueued = false;
+                const breakpoints = this.verifiedBreakpointKeys.map(x => this.breakpoints.get(x));
+                this.verifiedBreakpointKeys = [];
+                this.emit('breakpoints-verified', {
+                    breakpoints: breakpoints
+                });
+            });
+        }
+    }
+    private verifiedBreakpointKeys: string[] = [];
+    private isVerifyEventQueued = false;
 
     /**
      * Generate a key based on the features of the breakpoint. Every breakpoint that exists at the same location
@@ -174,7 +238,7 @@ export class BreakpointManager {
         }
 
         for (let breakpoint of allBreakpointsForFile) {
-            this.registerBreakpoint(sourceFilePath, breakpoint);
+            this.setBreakpoint(sourceFilePath, breakpoint);
         }
 
         //get the final list of breakpoints
@@ -504,13 +568,17 @@ export class BreakpointManager {
     private lastState = new Map<string, BreakpointWorkItem>();
 }
 
-interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoint {
+export interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoint {
+    /**
+     * The path to the source file where this breakpoint was originally set
+     */
+    srcPath: string;
     /**
      * A unique key generated for the breakpoint at this exact file/line/column/feature. Every breakpoint with these same features should get the same key
      */
     key: string;
     /**
-     * An ID for this breakpoint. This id is created by the roku device.
+     * The device-provided breakpoint id. A missing ID means this breakpoint has not yet been verified by the device.
      */
     id?: number;
     /**
@@ -542,6 +610,14 @@ export interface BreakpointWorkItem {
      * The 1-based line number
      */
     line: number;
+    /**
+     * The device-provided breakpoint id. A missing ID means this breakpoint has not yet been verified by the device.
+     */
+    id?: number;
+    /**
+     * The breakpoint key (used to compare different breakpoints with the same features)
+     */
+    key: string;
     /**
      * The 0-based column index
      */
