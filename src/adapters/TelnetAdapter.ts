@@ -1065,6 +1065,8 @@ export class TelnetAdapter {
         this.chanperfTracker.clearHistory();
     }
     // #endregion
+
+    public async syncBreakpoints() { }
 }
 
 export interface StackFrame {

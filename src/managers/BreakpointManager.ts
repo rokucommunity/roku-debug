@@ -3,7 +3,7 @@ import { orderBy } from 'natural-orderby';
 import type { CodeWithSourceMap } from 'source-map';
 import { SourceNode } from 'source-map';
 import type { DebugProtocol } from 'vscode-debugprotocol';
-import { fileUtils } from '../FileUtils';
+import { fileUtils, standardizePath } from '../FileUtils';
 import type { Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
 import type { SourceMapManager } from './SourceMapManager';
@@ -58,9 +58,22 @@ export class BreakpointManager {
         let breakpointsArray = this.getBreakpointsForFile(sourceFilePath);
         this.breakpointsByFilePath.set(sourceFilePath, breakpointsArray);
 
-        let existingBreakpoint = breakpointsArray.find(x => x.line === breakpoint.line);
+        //only a single breakpoint can be defined per line. So, if we find one on this line, we'll augment that breakpoint rather than builiding a new one
+        const existingBreakpoint = breakpointsArray.find(x => x.line === breakpoint.line);
+
+        //remove common attributes from any existing breakpoint so we don't end up with more info than we need
+        if (existingBreakpoint) {
+            delete existingBreakpoint.line;
+            delete existingBreakpoint.column;
+            delete existingBreakpoint.condition;
+            delete existingBreakpoint.hitCondition;
+            delete existingBreakpoint.logMessage;
+        }
 
         let bp = <AugmentedSourceBreakpoint>Object.assign(existingBreakpoint || {}, breakpoint);
+
+        //assign a hash-like key to this breakpoint (so we can match against other similar breakpoints in the future)
+        bp.key = this.getBreakpointKey(sourceFilePath, breakpoint);
 
         //set column=0 if the breakpoint is missing that field
         bp.column = bp.column ?? 0;
@@ -105,14 +118,35 @@ export class BreakpointManager {
                 bp.wasAddedBeforeLaunch = false;
             }
         }
-
-        //if we already have a breakpoint for this exact line, don't add another one (because we augmented that original breakpoint)
-        if (breakpointsArray.find(x => x.line === breakpoint.line)) {
-
-        } else {
-            //add the breakpoint to the list
+        //if this is a new breakpoint, add it to the list. (otherwise, the existing breakpoint is edited in-place)
+        if (!existingBreakpoint) {
             breakpointsArray.push(bp);
         }
+        return bp;
+    }
+
+    /**
+     * Generate a key based on the features of the breakpoint. Every breakpoint that exists at the same location
+     * and has the same features should have the same key.
+     */
+    public getBreakpointKey(filePath: string, breakpoint: DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint) {
+        const key = `${standardizePath(filePath)}:${breakpoint.line}:${breakpoint.column ?? 0}`;
+
+        const condition = breakpoint.condition?.trim();
+        if (condition) {
+            return `${key}-condition=${condition}`;
+        }
+
+        const hitCondition = parseInt(breakpoint.hitCondition?.trim());
+        if (!isNaN(hitCondition)) {
+            return `${key}-hitCondition=${hitCondition}`;
+        }
+
+        if (breakpoint.logMessage) {
+            return `${key}-logMessage=${breakpoint.logMessage}`;
+        }
+
+        return `${key}-standard`;
     }
 
     /**
@@ -465,15 +499,20 @@ export class BreakpointManager {
             removed: [...removed.values()],
             unchanged: [...unchanged.values()]
         };
+
     }
     private lastState = new Map<string, BreakpointWorkItem>();
 }
 
 interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoint {
     /**
+     * A unique key generated for the breakpoint at this exact file/line/column/feature. Every breakpoint with these same features should get the same key
+     */
+    key: string;
+    /**
      * An ID for this breakpoint. This id is created by the roku device.
      */
-    id: number;
+    id?: number;
     /**
      * Was this breakpoint added before launch? That means this breakpoint was written into the source code as a `stop` statement,
      * so if users toggle this breakpoint line on and off, it should get verified every time.

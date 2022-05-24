@@ -85,7 +85,8 @@ export class Debugger {
      * Subscribe to various events
      */
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
-    public on(eventName: 'data' | 'runtime-error' | 'suspend', handler: (data: any) => void);
+    public on(eventName: 'suspend', handler: (update: UpdateThreadsResponse) => void);
+    public on(eventName: 'data' | 'runtime-error', handler: (data: any) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);

@@ -1,4 +1,4 @@
-import type { ProtocolVersionDetails } from '../debugProtocol/Debugger';
+import type { BreakpointSpec, ProtocolVersionDetails } from '../debugProtocol/Debugger';
 import { Debugger } from '../debugProtocol/Debugger';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
@@ -13,13 +13,19 @@ import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
 import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
+import type { BreakpointManager } from '../managers/BreakpointManager';
+import type { ProjectManager } from '../managers/ProjectManager';
+import * as fileUtils from '../FileUtils';
+import { standardizePath as s } from 'brighterscript';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
  */
 export class DebugProtocolAdapter {
     constructor(
-        private options: AdapterOptions
+        private options: AdapterOptions,
+        private projectManager: ProjectManager,
+        private breakpointManager: BreakpointManager
     ) {
         util.normalizeAdapterOptions(this.options);
         this.emitter = new EventEmitter();
@@ -665,6 +671,73 @@ export class DebugProtocolAdapter {
         this.chanperfTracker.clearHistory();
     }
     // #endregion
+
+    public async syncBreakpoints() {
+
+        // //remove all breakpoints
+
+        // const response = await this.socketDebugger.listBreakpoints();
+        // await this.socketDebugger.removeBreakpoints(
+        //     response.breakpoints.map(x => x.breakpointId)
+        // );
+
+        // const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
+        // //delete these breakpoints
+        // await this.socketDebugger.removeBreakpoints(
+        //     diff.removed.map(x => x.id)
+        // );
+
+        // const breakpoints = diff.added.map(x => {
+        //     const hitCount = parseInt(x.hitCondition);
+        //     return {
+        //         filePath: x.pkgPath,
+        //         lineNumber: x.line,
+        //         hitCount: !isNaN(hitCount) ? hitCount : undefined
+        //     } as BreakpointSpec;
+        // });
+        // //add these breakpoints
+        // const response = await this.socketDebugger.addBreakpoints(
+        //     breakpoints
+        // );
+
+        // //mark all these breakpoints as verified
+        // for (let i = 0; i < response.breakpoints.length; i++) {
+        //     const breakpointKey = this.breakpointManager.getKey(breakpoints[i]);
+        //     this.breakpointManager.verifyBreakpoint(breakpointKey, bp.id);
+        // }
+
+        // const breakpoints: BreakpointSpec[] = [];
+        // await Promise.all(
+        //     [this.projectManager.mainProject, ...this.projectManager.componentLibraryProjects].map(async (project) => {
+        //         //send breakpoints for every file
+        //         const work = await this.breakpointManager['getBreakpointWork'](project);
+        //         for (const filePath in work) {
+        //             const fileWork = work[filePath];
+        //             for (const bp of fileWork) {
+        //                 let pkgPath = fileUtils
+        //                     //replace staging folder path with nothing (so we can build a pkg path)
+        //                     .replaceCaseInsensitive(
+        //                         s`${bp.stagingFilePath}`,
+        //                         s`${project.stagingFolderPath}`,
+        //                         ''
+        //                     )
+        //                     //force to unix path separators
+        //                     .replace(/[\/\\]+/g, '/')
+        //                     //remove leading slash
+        //                     .replace(/^\//, '');
+        //                 pkgPath = `lib:/SampleComponent/${pkgPath}`;
+        //                 // pkgPath = `pkg:/${pkgPath}`;
+        //                 breakpoints.push({
+        //                     filePath: pkgPath,
+        //                     lineNumber: bp.line
+        //                 });
+        //             }
+        //         }
+        //     })
+        // );
+        // await this.socketDebugger.addBreakpoints(breakpoints);
+    }
+
 }
 
 export interface StackFrame {

@@ -448,11 +448,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
-        //prevent new breakpoints from being verified
-        this.breakpointManager.lockBreakpoints();
+        //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
+        if (!this.enableDebugProtocol) {
 
-        //write all `stop` statements to the files in the staging folder
-        await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
+            //prevent new breakpoints from being verified
+            this.breakpointManager.lockBreakpoints();
+            await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
+        }
 
         //create zip package from staging folder
         util.log('Creating zip archive from project sources');
@@ -510,8 +512,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 // Add breakpoint lines to the staging files and before publishing
                 util.log('Adding stop statements for active breakpoints in Component Libraries');
 
-                //write the `stop` statements to every file that has breakpoints
-                await this.breakpointManager.writeBreakpointsForProject(compLibProject);
+                //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
+                if (!this.enableDebugProtocol) {
+                    await this.breakpointManager.writeBreakpointsForProject(compLibProject);
+                }
 
                 await compLibProject.postfixFiles();
 
@@ -551,7 +555,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Called every time a breakpoint is created, modified, or deleted, for each file. This receives the entire list of breakpoints every time.
      */
-    public setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
+    public async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
         let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
         //sort the breakpoints
         let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
@@ -562,6 +566,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             breakpoints: sortedAndFilteredBreakpoints
         };
         this.sendResponse(response);
+
+        await this.rokuAdapter?.syncBreakpoints();
 
         //set a small timeout so the user sees the breakpoints disappear before reappearing
         //This is disabled because I'm not sure anyone actually wants this functionality, but I didn't want to lose it.
@@ -943,7 +949,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private createRokuAdapter(host: string) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration);
+            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager);
         } else {
             this.rokuAdapter = new TelnetAdapter(this.launchConfiguration);
         }
@@ -974,6 +980,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
+            //sync breakpoints
+            await this.rokuAdapter?.syncBreakpoints();
             this.logger.info('received "suspend" event from adapter');
             let threads = await this.rokuAdapter.getThreads();
             let threadId = threads[0]?.threadId;

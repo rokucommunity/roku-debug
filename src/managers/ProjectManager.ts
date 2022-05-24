@@ -35,6 +35,7 @@ export class ProjectManager {
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;
+        enableDebugProtocol?: boolean;
     };
 
     public mainProject: Project;
@@ -42,6 +43,13 @@ export class ProjectManager {
 
     public addComponentLibraryProject(project: ComponentLibraryProject) {
         this.componentLibraryProjects.push(project);
+    }
+
+    public getAllProjects() {
+        return [
+            ...(this.mainProject ? [this.mainProject] : []),
+            ...(this.componentLibraryProjects ?? [])
+        ];
     }
 
     /**
@@ -117,8 +125,8 @@ export class ProjectManager {
             enableSourceMaps: this.launchConfiguration?.enableSourceMaps ?? true
         });
 
-        //if sourcemaps are disabled, account for the breakpoint offsets
-        if (sourceLocation && this.launchConfiguration?.enableSourceMaps === false) {
+        //if sourcemaps are disabled, and this is a telnet debug dession, account for breakpoint offsets
+        if (sourceLocation && this.launchConfiguration?.enableSourceMaps === false && !this.launchConfiguration.enableDebugProtocol) {
             sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
         }
 
