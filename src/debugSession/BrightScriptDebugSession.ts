@@ -298,7 +298,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //publish the package to the target Roku
             await this.rokuDeploy.publish(this.launchConfiguration as any as RokuDeployOptions);
 
-            this.sendEvent(new ChannelPublishedEvent());
+            this.sendEvent(new ChannelPublishedEvent({
+                launchConfiguration: this.launchConfiguration
+            }));
 
             if (this.enableDebugProtocol) {
                 //connect to the roku debug via sockets
