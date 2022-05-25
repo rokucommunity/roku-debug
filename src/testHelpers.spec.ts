@@ -1,3 +1,4 @@
+import { expect } from 'chai';
 import dedent = require('dedent');
 
 /**
@@ -52,4 +53,12 @@ export function pickArray(subjects: any[], patterns: any[]) {
         }
     }
     return subjects;
+}
+
+export function expectPickEquals(subjects: any[], patterns: any[]) {
+    expect(
+        pickArray(subjects, patterns)
+    ).to.eql(
+        patterns
+    );
 }

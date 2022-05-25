@@ -63,22 +63,25 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
+        //send newly-verified breakpoints to vscode
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceVerifiedBreakpoints(data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
     }
 
     private onDeviceVerifiedBreakpoints(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
+        this.logger.info('Sending verified device breakpoints to client', data);
         //send all verified breakpoints to the client
         for (const breakpoint of data.breakpoints) {
             const event: DebugProtocol.Breakpoint = {
                 line: breakpoint.line,
                 column: breakpoint.column,
                 verified: true,
+                id: breakpoint.id,
                 source: {
                     path: breakpoint.srcPath
                 }
             };
-            this.sendEvent(new BreakpointEvent('new', event));
+            this.sendEvent(new BreakpointEvent('changed', event));
         }
     }
 
@@ -471,8 +474,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
         if (!this.enableDebugProtocol) {
 
-            //prevent new breakpoints from being verified
-            this.breakpointManager.lockBreakpoints();
             await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
         }
 
@@ -578,9 +579,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
         let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
         //sort the breakpoints
-        let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
-            //filter out the inactive breakpoints
-            .filter(x => x.isHidden === false);
+        let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column]);
 
         response.body = {
             breakpoints: sortedAndFilteredBreakpoints

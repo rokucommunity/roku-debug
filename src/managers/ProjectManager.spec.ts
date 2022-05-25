@@ -54,11 +54,11 @@ describe('ProjectManager', () => {
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
         it('accounts for the entry breakpoint', () => {
-            sinon.stub(manager.breakpointManager, 'getBreakpointsForFile').returns(<any>[{
+            manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [{
                 line: 3
             }, {
                 line: 3
-            }]);
+            }] as any);
             //no offset because line is before any breakpoints
             expect(manager.getLineNumberOffsetByBreakpoints(filePath, 1)).to.equal(1);
             //after the breakpoints, should be offset by -1
@@ -66,7 +66,6 @@ describe('ProjectManager', () => {
         });
 
         it('works with zero breakpoints', () => {
-            sinon.stub(manager.breakpointManager, 'getBreakpointsForFile').returns(<any>[]);
             //no offset because line is before any breakpoints
             expect(manager.getLineNumberOffsetByBreakpoints(filePath, 1)).to.equal(1);
             //after the breakpoints, should be offset by -1
@@ -116,7 +115,7 @@ describe('ProjectManager', () => {
                         line = 12
                 end function
              */
-            sinon.stub(manager.breakpointManager, 'getBreakpointsForFile').returns(<any>[
+            manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [
                 { line: 3 },
                 { line: 4 },
                 { line: 5 },
@@ -124,7 +123,7 @@ describe('ProjectManager', () => {
                 { line: 8 },
                 { line: 10 },
                 { line: 12 }
-            ]);
+            ] as any);
             //no offset because line is before any breakpoints
             //no breakpoint
             expect(manager.getLineNumberOffsetByBreakpoints(filePath, 1)).to.equal(1);

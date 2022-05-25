@@ -677,7 +677,7 @@ export class DebugProtocolAdapter {
         const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
         //delete these breakpoints
         await this.socketDebugger.removeBreakpoints(
-            diff.removed.map(x => x.id)
+            diff.removed.map(x => x.deviceId)
         );
 
         const breakpointsToSendToDevice = diff.added.map(breakpoint => {
@@ -686,7 +686,7 @@ export class DebugProtocolAdapter {
                 filePath: breakpoint.pkgPath,
                 lineNumber: breakpoint.line,
                 hitCount: !isNaN(hitCount) ? hitCount : undefined,
-                key: breakpoint.key
+                key: breakpoint.hash
             };
         });
         //send breakpoints to the device

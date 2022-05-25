@@ -69,7 +69,7 @@ export class ProjectManager {
      * @param debuggerLineNumber - the line number from the debugger
      */
     public getLineNumberOffsetByBreakpoints(filePath: string, debuggerLineNumber: number) {
-        let breakpoints = this.breakpointManager.getBreakpointsForFile(filePath);
+        let breakpoints = this.breakpointManager.getPermanentBreakpointsForFile(filePath);
         //throw out duplicate breakpoints (account for entry breakpoint) and sort them ascending
         breakpoints = this.breakpointManager.sortAndRemoveDuplicateBreakpoints(breakpoints);
 

@@ -1066,7 +1066,9 @@ export class TelnetAdapter {
     }
     // #endregion
 
-    public async syncBreakpoints() { }
+    public async syncBreakpoints() {
+        //we can't send dynamic breakpoints to the server...so just do nothing
+    }
 }
 
 export interface StackFrame {
