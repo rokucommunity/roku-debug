@@ -7,18 +7,15 @@ import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { Breakpoint, DebugSession } from 'vscode-debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
-import type { EvaluateContainer } from '../adapters/TelnetAdapter';
+import type { EvaluateContainer, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { PrimativeType } from '../adapters/TelnetAdapter';
 import { defer } from '../util';
 import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { standardizePath as s } from 'brighterscript';
-import { ProjectManager } from '../managers/ProjectManager';
-import { BreakpointManager } from '../managers/BreakpointManager';
-import { LocationManager } from '../managers/LocationManager';
-import { SourceMapManager } from '../managers/SourceMapManager';
 import { DefaultFiles } from 'roku-deploy';
+import type { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 
 let sinon = sinonActual.createSandbox();
 const tempDir = s`${process.cwd()}/.tmp`;
@@ -40,15 +37,8 @@ describe('BrightScriptDebugSession', () => {
     let launchConfiguration: LaunchConfiguration;
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
-    let rokuAdapter: any = {
-        on: () => {
-            return () => {
-            };
-        },
-        activate: () => Promise.resolve(),
-        registerSourceLocator: (a, b) => { },
-        setConsoleOutput: (a) => { }
-    };
+    let rokuAdapter: ReturnType<typeof createRokuAdapter>;
+
     beforeEach(() => {
         sinon.restore();
 
@@ -98,17 +88,7 @@ describe('BrightScriptDebugSession', () => {
             getFilePaths: () => {
             }
         };
-        rokuAdapter = {
-            on: () => {
-                return () => {
-                };
-            },
-            activate: () => Promise.resolve(),
-            registerSourceLocator: (a, b) => { },
-            setConsoleOutput: (a) => { },
-            evaluate: () => { },
-            getVariable: () => { }
-        };
+        rokuAdapter = createRokuAdapter();
         (session as any).rokuAdapter = rokuAdapter;
         //mock the roku adapter
         (session as any).connectRokuAdapter = () => {
@@ -135,6 +115,22 @@ describe('BrightScriptDebugSession', () => {
             }
         });
     });
+
+    function createRokuAdapter() {
+        return {
+            on: () => {
+                return () => {
+                };
+            },
+            activate: () => Promise.resolve(),
+            registerSourceLocator: (a, b) => { },
+            setConsoleOutput: (a) => { },
+            evaluate: (() => { }) as (...args) => any,
+            syncBreakpoints: () => { },
+            getVariable: (() => Promise.resolve()) as () => any,
+            isAtDebuggerPrompt: false
+        };
+    }
 
     describe('initializeRequest', () => {
         it('does not throw', () => {
