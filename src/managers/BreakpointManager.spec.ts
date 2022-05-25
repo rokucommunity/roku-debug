@@ -20,6 +20,7 @@ describe('BreakpointManager', () => {
     let distDir = s`${tmpDir}/dist`;
     let srcDir = s`${tmpDir}/src`;
     let outDir = s`${tmpDir}/out`;
+    const srcPath = s`${rootDir}/source/main.brs`;
     const complib1RootDir = s`${tmpDir}/complib1/rootDir`;
     const complib1OutDir = s`${tmpDir}/complib1/outDir`;
 
@@ -817,6 +818,28 @@ describe('BreakpointManager', () => {
         ).to.eql([
             s`${pkgPath}:2:0-hitCondition=4`
         ]);
+    });
+
+    it('keeps breakpoints verified if they did not change', () => {
+        let breakpoints = bpManager.replaceBreakpoints(srcPath, [{
+            line: 10
+        }]);
+        //mark this breakpoint as verified
+        breakpoints[0].verified = true;
+
+        breakpoints = bpManager.replaceBreakpoints(srcPath, [{
+            line: 10
+        }, {
+            line: 11
+        }]);
+
+        expectPickEquals(breakpoints, [{
+            line: 10,
+            verified: true
+        }, {
+            line: 11,
+            verified: false
+        }]);
     });
 
     describe('getDiff', () => {

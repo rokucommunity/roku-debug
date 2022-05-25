@@ -105,7 +105,7 @@ export class BreakpointManager {
         bp.verified ??= false;
 
         //if the breakpoint hash changed, mark the breakpoint as unverified
-        if (existingBreakpoint?.hash === bp.hash) {
+        if (existingBreakpoint?.hash !== bp.hash) {
             bp.verified = false;
         }
 
@@ -540,64 +540,88 @@ export class BreakpointManager {
         return filePath;
     }
 
+
     /**
      * Get a diff of all breakpoints that have changed since the last time the diff was retrieved.
      * Sets the new baseline to the current state, so the next diff will be based on this new baseline.
      *
      * All projects should be passed in every time.
      */
-    public async getDiff(projects: Project[]) {
-        const currentState = new Map<string, BreakpointWorkItem>();
-        await Promise.all(
-            projects.map(async (project) => {
-                //get breakpoint data for every project
-                const work = await this.getBreakpointWork(project);
-                for (const filePath in work) {
-                    const fileWork = work[filePath];
-                    for (const bp of fileWork) {
-                        const key = [
-                            bp.stagingFilePath,
-                            bp.line,
-                            bp.column,
-                            bp.condition,
-                            bp.hitCondition,
-                            bp.logMessage
-                        ].join('--');
-                        //clone the breakpoint and then add it to the current state
-                        currentState.set(key, { ...bp });
-                    }
-                }
-            })
-        );
-
-        const added = new Map<string, BreakpointWorkItem>();
-        const removed = new Map<string, BreakpointWorkItem>();
-        const unchanged = new Map<string, BreakpointWorkItem>();
-        for (const key of [...currentState.keys(), ...this.lastState.keys()]) {
-            const inCurrent = currentState.has(key);
-            const inLast = this.lastState.has(key);
-            //no change
-            if (inLast && inCurrent) {
-                unchanged.set(key, currentState.get(key));
-
-                //added since last time
-            } else if (!inLast && inCurrent) {
-                added.set(key, currentState.get(key));
-
-                //removed since last time
-            } else {
-                removed.set(key, this.lastState.get(key));
-            }
+    public async getDiff(projects: Project[]): Promise<Diff> {
+        //if the diff is currently running, return an empty "nothing has changed" diff
+        if (this.isGetDiffRunning) {
+            return {
+                added: [],
+                removed: [],
+                unchanged: [...this.lastState.values()]
+            };
         }
-        this.lastState = currentState;
-        return {
-            added: [...added.values()],
-            removed: [...removed.values()],
-            unchanged: [...unchanged.values()]
-        };
+        try {
+            this.isGetDiffRunning = true;
 
+            const currentState = new Map<string, BreakpointWorkItem>();
+            await Promise.all(
+                projects.map(async (project) => {
+                    //get breakpoint data for every project
+                    const work = await this.getBreakpointWork(project);
+                    for (const filePath in work) {
+                        const fileWork = work[filePath];
+                        for (const bp of fileWork) {
+                            const key = [
+                                bp.stagingFilePath,
+                                bp.line,
+                                bp.column,
+                                bp.condition,
+                                bp.hitCondition,
+                                bp.logMessage
+                            ].join('--');
+                            //clone the breakpoint and then add it to the current state
+                            currentState.set(key, { ...bp });
+                        }
+                    }
+                })
+            );
+
+            const added = new Map<string, BreakpointWorkItem>();
+            const removed = new Map<string, BreakpointWorkItem>();
+            const unchanged = new Map<string, BreakpointWorkItem>();
+            for (const key of [...currentState.keys(), ...this.lastState.keys()]) {
+                const inCurrent = currentState.has(key);
+                const inLast = this.lastState.has(key);
+                //no change
+                if (inLast && inCurrent) {
+                    unchanged.set(key, currentState.get(key));
+
+                    //added since last time
+                } else if (!inLast && inCurrent) {
+                    added.set(key, currentState.get(key));
+
+                    //removed since last time
+                } else {
+                    removed.set(key, this.lastState.get(key));
+                }
+            }
+            this.lastState = currentState;
+            return {
+                added: [...added.values()],
+                removed: [...removed.values()],
+                unchanged: [...unchanged.values()]
+            };
+        } finally {
+            this.isGetDiffRunning = false;
+        }
     }
+    /**
+     * Flag indicating whether a `getDiff` function is currently running
+     */
+    private isGetDiffRunning = false;
     private lastState = new Map<string, BreakpointWorkItem>();
+}
+
+export interface Diff {
+    added: BreakpointWorkItem[];
+    removed: BreakpointWorkItem[];
+    unchanged: BreakpointWorkItem[];
 }
 
 export interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoint {
