@@ -218,15 +218,16 @@ export class Debugger {
     public async threads() {
         if (this.stopped) {
             let result = await this.makeRequest<ThreadsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
-            if (result.errorCode === ERROR_CODES.OK) {
-                for (let i = 0; i < result.threadsCount; i++) {
-                    let thread = result.threads[i];
-                    if (thread.isPrimary) {
-                        this.primaryThread = i;
-                        break;
-                    }
-                }
-            }
+            //TODO uncomment this once the device starts correctly reporting `isPrimary`. Right now our logic is better at tracking the primary thread.
+            // if (result.errorCode === ERROR_CODES.OK) {
+            //     for (let i = 0; i < result.threadsCount; i++) {
+            //         let thread = result.threads[i];
+            //         if (thread.isPrimary) {
+            //             this.primaryThread = i;
+            //             break;
+            //         }
+            //     }
+            // }
             return result;
         }
     }
