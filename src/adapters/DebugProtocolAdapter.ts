@@ -8,7 +8,7 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { ERROR_CODES, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { ERROR_CODES, PROTOCOL_ERROR_CODES, STOP_REASONS } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
@@ -101,25 +101,9 @@ export class DebugProtocolAdapter {
         };
     }
 
-    private emit(
-        /* eslint-disable */
-        eventName:
-            'app-exit' |
-            'cannot-continue' |
-            'chanperf' |
-            'close' |
-            'compile-errors' |
-            'connected' |
-            'console-output' |
-            'protocol-version' |
-            'rendezvous' |
-            'runtime-error' |
-            'start' |
-            'suspend' |
-            'unhandled-console-output',
-        /* eslint-enable */
-        data?
-    ) {
+    private emit(eventName: 'suspend');
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'compile-errors' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
+    private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
@@ -140,16 +124,16 @@ export class DebugProtocolAdapter {
      */
     public isAppRunning = false;
 
-    public async activate() {
+    public activate() {
         this.isActivated = true;
-        await this.handleStartupIfReady();
+        this.handleStartupIfReady();
     }
 
     public async sendErrors() {
         await this.compileErrorProcessor.sendErrors();
     }
 
-    private async handleStartupIfReady() {
+    private handleStartupIfReady() {
         if (this.isActivated && this.isAppRunning) {
             this.emit('start');
 
@@ -157,8 +141,7 @@ export class DebugProtocolAdapter {
             //If not, then there are probably still messages being received, so let the normal handler
             //emit the suspend event when it's ready
             if (this.isAtDebuggerPrompt === true) {
-                let threads = await this.getThreads();
-                this.emit('suspend', threads[0].threadId);
+                this.emit('suspend');
             }
         }
     }
@@ -247,14 +230,14 @@ export class DebugProtocolAdapter {
 
             this.socketDebugger.on('suspend', (data) => {
                 this.clearCache();
-                this.emit('suspend', data);
+                this.emit('suspend');
             });
 
             this.socketDebugger.on('runtime-error', (data) => {
                 console.debug('hasRuntimeError!!', data);
                 this.emit('runtime-error', <BrightScriptRuntimeError>{
                     message: data.data.stopReasonDetail,
-                    errorCode: data.data.stopReason
+                    errorCode: STOP_REASONS[data.data.stopReason]
                 });
             });
 
@@ -433,16 +416,21 @@ export class DebugProtocolAdapter {
                 let frameData = stackTraceData.entries[i];
                 let stackFrame: StackFrame = {
                     frameId: this.nextFrameId++,
-                    frameIndex: stackTraceData.stackSize - i - 1, // frame index is the reverse of the returned order.
+                    // frame index is the reverse of the returned order.
+                    frameIndex: stackTraceData.stackSize - i - 1,
                     threadIndex: threadId,
-                    // eslint-disable-next-line no-nested-ternary
-                    filePath: i === 0 ? (frameData.fileName) ? frameData.fileName : thread.filePath : frameData.fileName,
-                    lineNumber: i === 0 ? thread.lineNumber : frameData.lineNumber,
+                    filePath: frameData.fileName,
+                    lineNumber: frameData.lineNumber,
                     // eslint-disable-next-line no-nested-ternary
                     functionIdentifier: this.cleanUpFunctionName(i === 0 ? (frameData.functionName) ? frameData.functionName : thread.functionName : frameData.functionName)
                 };
                 this.stackFramesCache[stackFrame.frameId] = stackFrame;
                 frames.push(stackFrame);
+            }
+            //if the first frame is missing any data, suppliment with thread information
+            if (frames[0]) {
+                frames[0].filePath ??= thread.filePath;
+                frames[0].lineNumber ??= thread.lineNumber;
             }
 
             return frames;
@@ -576,7 +564,7 @@ export class DebugProtocolAdapter {
     }
 
     /**
-     * Get a list of threads. The first thread in the list is the active thread
+     * Get a list of threads. The active thread will always be first in the list.
      */
     public async getThreads() {
         if (!this.isAtDebuggerPrompt) {

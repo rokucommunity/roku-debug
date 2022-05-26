@@ -507,8 +507,7 @@ export class ComponentLibraryProject extends Project {
         let manifestValues: Record<string, string>;
 
         // search the outFile for replaceable values such as ${title}
-        // eslint-disable-next-line no-cond-assign
-        while (renamingMatch = regexp.exec(this.outFile)) {
+        while ((renamingMatch = regexp.exec(this.outFile))) {
             if (!manifestValues) {
                 // The first time a value is found we need to get the manifest values
                 manifestValues = await util.convertManifestToObject(manifestPath);

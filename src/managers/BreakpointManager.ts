@@ -445,8 +445,7 @@ export class BreakpointManager {
             let match: RegExpExecArray;
 
             // Get all the value to evaluate as expressions
-            // eslint-disable-next-line no-cond-assign
-            while (match = expressionsCheck.exec(logMessage)) {
+            while ((match = expressionsCheck.exec(logMessage))) {
                 logMessage = logMessage.replace(match[0], `"; ${match[1]};"`);
             }
 
