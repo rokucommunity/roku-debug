@@ -194,8 +194,7 @@ class Util {
         const regexp = /^((.*?)Brightscript\s+Debugger>\s*)(.*?)$/gm;
         let match: RegExpExecArray;
         const splitIndexes = [] as number[];
-        // eslint-disable-next-line no-cond-assign
-        while (match = regexp.exec(text)) {
+        while ((match = regexp.exec(text))) {
             const leadingAndBeaconText = match[1];
             const leadingText = match[2];
             const trailingText = match[3];

@@ -17,8 +17,7 @@ const sourceDirs = [
 describe('LocationManager', () => {
     let locationManager: LocationManager;
     let sourceMapManager: SourceMapManager;
-    // eslint-disable-next-line prefer-arrow-callback
-    beforeEach(function beforeEach() {
+    beforeEach(() => {
         sourceMapManager = new SourceMapManager();
         locationManager = new LocationManager(sourceMapManager);
         fsExtra.removeSync(tempDir);

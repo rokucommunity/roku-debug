@@ -1,4 +1,3 @@
-/* eslint-disable camelcase */
 import * as assert from 'assert';
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';

@@ -181,8 +181,7 @@ export class CompileErrorProcessor {
         let errors: BrightScriptDebugCompileError[] = [];
         let getFileInfoRegEx = /^--- Line (\d*): (.*)$/gim;
         let match: RegExpExecArray;
-        // eslint-disable-next-line no-cond-assign
-        while (match = getFileInfoRegEx.exec(fileErrorText)) {
+        while ((match = getFileInfoRegEx.exec(fileErrorText))) {
             let lineNumber = parseInt(match[1]); // 1-based
             let errorText = 'ERR_COMPILE:';
             let message = this.sanitizeCompilePath(match[2]);
