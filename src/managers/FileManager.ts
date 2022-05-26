@@ -108,8 +108,7 @@ export class FileManager {
         let result = {};
 
         //create a cache of all function names in this file
-        // eslint-disable-next-line no-cond-assign
-        while (match = regexp.exec(fileContents)) {
+        while ((match = regexp.exec(fileContents))) {
             let correctFunctionName = match[1];
             result[correctFunctionName.toLowerCase()] = correctFunctionName;
         }
