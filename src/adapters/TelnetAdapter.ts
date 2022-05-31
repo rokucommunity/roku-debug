@@ -296,7 +296,6 @@ export class TelnetAdapter {
 
                 if (this.isActivated) {
                     //watch for the start of the program
-                    // eslint-disable-next-line no-cond-assign
                     if (/\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
                         this.isAppRunning = true;
                         this.logger.log('Running beacon detected', { responseText });
@@ -304,7 +303,6 @@ export class TelnetAdapter {
                     }
 
                     //watch for the end of the program
-                    // eslint-disable-next-line no-cond-assign
                     if (/\[beacon.report\] \|AppExitComplete/i.exec(responseText.trim())) {
                         this.beginAppExit();
                     }
@@ -471,8 +469,7 @@ export class TelnetAdapter {
             let regexp = /#(\d+)\s+(?:function|sub)\s+([\$\w\d]+).*\s+file\/line:\s+(.*)\((\d+)\)/ig;
             let matches: RegExpExecArray;
             let frames: StackFrame[] = [];
-            // eslint-disable-next-line no-cond-assign
-            while (matches = regexp.exec(responseText)) {
+            while ((matches = regexp.exec(responseText))) {
                 //the first index is the whole string
                 //then the matches should be in pairs
                 for (let i = 1; i < matches.length; i += 4) {

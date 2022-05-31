@@ -85,7 +85,8 @@ export class Debugger {
      * Subscribe to various events
      */
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
-    public on(eventName: 'data' | 'runtime-error' | 'suspend', handler: (data: any) => void);
+    public on(eventName: 'data', handler: (data: any) => void);
+    public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
@@ -99,29 +100,13 @@ export class Debugger {
         };
     }
 
-    private emit(
-        /* eslint-disable */
-        eventName:
-            'app-exit' |
-            'cannot-continue' |
-            'close' |
-            'connected' |
-            'data' |
-            'handshake-verified' |
-            'io-output' |
-            'protocol-version' |
-            'runtime-error' |
-            'start' |
-            'suspend',
-        /* eslint-disable */
-        data?
-    ) {
+    private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'connected' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
+    private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            if (this.emitter) {
-                this.emitter.emit(eventName, data);
-            }
+            this.emitter?.emit(eventName, data);
         }, 0);
     }
 
@@ -183,12 +168,10 @@ export class Debugger {
     }
 
     public async continue() {
-        let result;
         if (this.stopped) {
             this.stopped = false;
-            result = this.makeRequest<ProtocolEvent>(new SmartBuffer({ size: 12 }), COMMANDS.CONTINUE);
+            return this.makeRequest<ProtocolEvent>(new SmartBuffer({ size: 12 }), COMMANDS.CONTINUE);
         }
-        return result;
     }
 
     public async pause(force = false) {
@@ -235,15 +218,16 @@ export class Debugger {
     public async threads() {
         if (this.stopped) {
             let result = await this.makeRequest<ThreadsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
-            if (result.errorCode === ERROR_CODES.OK) {
-                for (let i = 0; i < result.threadsCount; i++) {
-                    let thread = result.threads[i];
-                    if (thread.isPrimary) {
-                        this.primaryThread = i;
-                        break;
-                    }
-                }
-            }
+            //TODO uncomment this once the device starts correctly reporting `isPrimary`. Right now our logic is better at tracking the primary thread.
+            // if (result.errorCode === ERROR_CODES.OK) {
+            //     for (let i = 0; i < result.threadsCount; i++) {
+            //         let thread = result.threads[i];
+            //         if (thread.isPrimary) {
+            //             this.primaryThread = i;
+            //             break;
+            //         }
+            //     }
+            // }
             return result;
         }
     }
@@ -327,7 +311,7 @@ export class Debugger {
             let unsubscribe = this.on('data', (data) => {
                 if (data.requestId === requestId) {
                     unsubscribe();
-                    resolve(data);
+                    resolve(data as T);
                 }
             });
 
@@ -350,7 +334,7 @@ export class Debugger {
             let packetLength = debuggerRequestResponse.packetLength;
             let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
 
-            this.logger.log('incoming data - ', `bytes: ${buffer.length}`, debuggerRequestResponse)
+            this.logger.log('incoming data - ', `bytes: ${buffer.length}`, debuggerRequestResponse);
             if (debuggerRequestResponse.success) {
                 if (debuggerRequestResponse.requestId > this.totalRequests) {
                     this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);
@@ -364,7 +348,7 @@ export class Debugger {
                 }
 
                 if (debuggerRequestResponse.updateType > 0) {
-                    this.logger.log('Update Type:', UPDATE_TYPES[debuggerRequestResponse.updateType])
+                    this.logger.log('Update Type:', UPDATE_TYPES[debuggerRequestResponse.updateType]);
                     switch (debuggerRequestResponse.updateType) {
                         case UPDATE_TYPES.IO_PORT_OPENED:
                             return this.connectToIoPort(new ConnectIOPortResponse(slicedBuffer), buffer, packetLength);
@@ -372,18 +356,19 @@ export class Debugger {
                         case UPDATE_TYPES.THREAD_ATTACHED:
                             let debuggerUpdateThreads = new UpdateThreadsResponse(slicedBuffer);
                             if (debuggerUpdateThreads.success) {
-                                this.handleThreadsUpdate(debuggerUpdateThreads);
+                                //TODO should we be awaiting this?
+                                void this.handleThreadsUpdate(debuggerUpdateThreads);
                                 this.removedProcessedBytes(debuggerUpdateThreads, slicedBuffer, packetLength);
                                 return true;
                             }
-                            return false
+                            return false;
                         case UPDATE_TYPES.UNDEF:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                         default:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }
                 } else {
-                    this.logger.log('Command Type:', COMMANDS[this.activeRequests[debuggerRequestResponse.requestId].commandType])
+                    this.logger.log('Command Type:', COMMANDS[this.activeRequests[debuggerRequestResponse.requestId].commandType]);
                     switch (this.activeRequests[debuggerRequestResponse.requestId].commandType) {
                         case COMMANDS.STOP:
                         case COMMANDS.CONTINUE:
@@ -431,7 +416,7 @@ export class Debugger {
         return false;
     }
 
-    private checkResponse(responseClass: { requestId: number, readOffset: number, success: boolean }, unhandledData: Buffer, packetLength = 0) {
+    private checkResponse(responseClass: { requestId: number; readOffset: number; success: boolean }, unhandledData: Buffer, packetLength = 0) {
         if (responseClass.success) {
             this.removedProcessedBytes(responseClass, unhandledData, packetLength);
             return true;
@@ -441,7 +426,7 @@ export class Debugger {
         return false;
     }
 
-    private removedProcessedBytes(responseHandler: { requestId: number, readOffset: number }, unhandledData: Buffer, packetLength = 0) {
+    private removedProcessedBytes(responseHandler: { requestId: number; readOffset: number }, unhandledData: Buffer, packetLength = 0) {
         if (responseHandler.requestId > 0 && this.activeRequests[responseHandler.requestId]) {
             delete this.activeRequests[responseHandler.requestId];
         }
@@ -541,7 +526,7 @@ export class Debugger {
             this.removedProcessedBytes(connectIoPortResponse, unhandledData, packetLength);
             return true;
         }
-        return false
+        return false;
     }
 
     private async handleThreadsUpdate(update: UpdateThreadsResponse) {

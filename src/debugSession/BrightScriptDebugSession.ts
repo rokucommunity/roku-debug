@@ -977,12 +977,28 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
             this.logger.info('received "suspend" event from adapter');
-            let threads = await this.rokuAdapter.getThreads();
-            let threadId = threads[0]?.threadId;
+            const threads = await this.rokuAdapter.getThreads();
+            const activeThread = threads.find(x => x.isSelected);
+
+            //TODO remove this once Roku fixes their threads off-by-one line number issues
+            //look up the correct line numbers for each thread from the StackTrace
+            await Promise.all(
+                threads.map(async (thread) => {
+                    const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
+                    const stackTraceLineNumber = stackTrace[0]?.lineNumber;
+                    if (stackTraceLineNumber !== thread.lineNumber) {
+                        this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
+                        thread.lineNumber = stackTraceLineNumber;
+                    }
+                })
+            );
 
             this.clearState();
-            let exceptionText = '';
-            const event: StoppedEvent = new StoppedEvent(StoppedEventReason.breakpoint, threadId, exceptionText);
+            const event: StoppedEvent = new StoppedEvent(
+                StoppedEventReason.breakpoint,
+                activeThread.threadId,
+                '' //exception text
+            );
             // Socket debugger will always stop all threads and supports multi thread inspection.
             (event.body as any).allThreadsStopped = this.enableDebugProtocol;
             this.sendEvent(event);
