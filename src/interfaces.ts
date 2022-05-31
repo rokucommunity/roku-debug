@@ -19,4 +19,8 @@ export interface AdapterOptions {
     host: string;
     brightScriptConsolePort?: number;
     remotePort?: number;
+    /**
+     * If true, the application being debugged will stop on the first line of the program.
+     */
+    stopOnEntry?: boolean;
 }

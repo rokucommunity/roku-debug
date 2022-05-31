@@ -972,6 +972,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     /**
+     * Used to track whether the entry breakpoint has already been handled
+     */
+    private entryBreakpointWasHandled = false;
+
+    /**
      * Registers the main events for the RokuAdapter
      */
     private async connectRokuAdapter() {
@@ -987,6 +992,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //sync breakpoints
             await this.rokuAdapter?.syncBreakpoints();
             this.logger.info('received "suspend" event from adapter');
+
+            //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. continue
+            //TODO fix bug when on debug protocol where stopOnEntry=false but the user set a breakpoint on this line
+            if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
+                this.entryBreakpointWasHandled = true;
+                this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
+                return this.rokuAdapter.continue();
+            }
+
             const threads = await this.rokuAdapter.getThreads();
             const activeThread = threads.find(x => x.isSelected);
 
@@ -1119,8 +1133,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * If `stopOnEntry` is enabled, register the entry breakpoint.
      */
     public async handleEntryBreakpoint() {
-        if (this.launchConfiguration.stopOnEntry && !this.enableDebugProtocol) {
-            await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
+        if (!this.enableDebugProtocol) {
+            this.entryBreakpointWasHandled = true;
+            if (this.launchConfiguration.stopOnEntry) {
+                await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
+            }
         }
     }
 
