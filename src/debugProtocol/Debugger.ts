@@ -85,7 +85,8 @@ export class Debugger {
      * Subscribe to various events
      */
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
-    public on(eventName: 'data' | 'runtime-error' | 'suspend', handler: (data: any) => void);
+    public on(eventName: 'data', handler: (data: any) => void);
+    public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
@@ -99,29 +100,13 @@ export class Debugger {
         };
     }
 
-    private emit(
-        /* eslint-disable @typescript-eslint/indent */
-        eventName:
-            'app-exit' |
-            'cannot-continue' |
-            'close' |
-            'connected' |
-            'data' |
-            'handshake-verified' |
-            'io-output' |
-            'protocol-version' |
-            'runtime-error' |
-            'start' |
-            'suspend',
-        /* eslint-enable @typescript-eslint/indent */
-        data?
-    ) {
+    private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'connected' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
+    private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            if (this.emitter) {
-                this.emitter.emit(eventName, data);
-            }
+            this.emitter?.emit(eventName, data);
         }, 0);
     }
 
@@ -233,15 +218,16 @@ export class Debugger {
     public async threads() {
         if (this.stopped) {
             let result = await this.makeRequest<ThreadsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
-            if (result.errorCode === ERROR_CODES.OK) {
-                for (let i = 0; i < result.threadsCount; i++) {
-                    let thread = result.threads[i];
-                    if (thread.isPrimary) {
-                        this.primaryThread = i;
-                        break;
-                    }
-                }
-            }
+            //TODO uncomment this once the device starts correctly reporting `isPrimary`. Right now our logic is better at tracking the primary thread.
+            // if (result.errorCode === ERROR_CODES.OK) {
+            //     for (let i = 0; i < result.threadsCount; i++) {
+            //         let thread = result.threads[i];
+            //         if (thread.isPrimary) {
+            //             this.primaryThread = i;
+            //             break;
+            //         }
+            //     }
+            // }
             return result;
         }
     }
