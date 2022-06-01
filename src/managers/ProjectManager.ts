@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import * as rokuDeploy from 'roku-deploy';
+import { rokuDeploy, RokuDeploy } from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
 import * as glob from 'glob';
 import { promisify } from 'util';
@@ -255,7 +255,7 @@ export class Project {
     private logger = logger.createLogger(`[${ProjectManager.name}]`);
 
     public async stage() {
-        let rd = new rokuDeploy.RokuDeploy();
+        let rd = new RokuDeploy();
         if (!this.fileMappings) {
             this.fileMappings = await this.getFileMappings();
         }

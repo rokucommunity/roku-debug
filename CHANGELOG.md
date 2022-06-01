@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.12.2](https://github.com/rokucommunity/roku-debug/compare/v0.12.1...v0.12.2) - 2022-05-31
+### Changed
+ - upgrade to [brighterscript@0.51.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0513---2022-05-31)
+ - upgrade to [roku-deploy@3.7.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#370---2022-05-23)
+### Fixed
+ - line number and thread hopping fixes ([#86](https://github.com/rokucommunity/roku-debug/pull/86))
+
+
+
 ## [0.12.1](https://github.com/rokucommunity/roku-debug/compare/v0.12.0...v0.12.1) - 2022-05-20
 ### Changed
  - add `launchConfiguration` to the `ChannelPublishedEvent` ([#83](https://github.com/rokucommunity/roku-debug/pull/83))
