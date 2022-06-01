@@ -647,12 +647,21 @@ export interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoin
 }
 
 export interface BreakpointWorkItem {
+    /**
+     * The path to the source file where this breakpoint was originally set
+     */
     srcPath: string;
+    /**
+     * The absolute path to the file in the staging folder
+     */
     stagingFilePath: string;
     /**
      * The device path (i.e. `pkg:/source/main.brs`)
      */
     pkgPath: string;
+    /**
+     * The path to the rootDir for this breakpoint
+     */
     rootDirFilePath: string;
     /**
      * The 1-based line number
@@ -674,8 +683,17 @@ export interface BreakpointWorkItem {
      * The 0-based column index
      */
     column: number;
+    /**
+     * If set, this breakpoint will only activate when this condition evaluates to true
+     */
     condition?: string;
+    /**
+     * If set, this breakpoint will only activate once the breakpoint has been hit this many times.
+     */
     hitCondition?: string;
+    /**
+     * If set, this breakpoint will emit a log message at runtime and will not actually stop at the breakpoint
+     */
     logMessage?: string;
     /**
      * `sourceMap` means derived from a source map.
