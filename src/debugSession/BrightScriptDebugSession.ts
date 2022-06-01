@@ -993,14 +993,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.rokuAdapter?.syncBreakpoints();
             this.logger.info('received "suspend" event from adapter');
 
-            //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. continue
-            //TODO fix bug when on debug protocol where stopOnEntry=false but the user set a breakpoint on this line
-            if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
-                this.entryBreakpointWasHandled = true;
-                this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
-                return this.rokuAdapter.continue();
-            }
-
             const threads = await this.rokuAdapter.getThreads();
             const activeThread = threads.find(x => x.isSelected);
 
@@ -1016,6 +1008,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                 })
             );
+
+            //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
+            if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
+                this.entryBreakpointWasHandled = true;
+                //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
+                if (!await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
+                    this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
+                    return this.rokuAdapter.continue();
+                }
+            }
 
             this.clearState();
             const event: StoppedEvent = new StoppedEvent(

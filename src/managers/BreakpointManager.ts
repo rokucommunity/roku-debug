@@ -539,6 +539,29 @@ export class BreakpointManager {
         return filePath;
     }
 
+    /**
+     * Determine if there's a breakpoint set at the given staging folder and line.
+     * This is not trivial, so only run when absolutely necessary
+     * @param projects the list of projects to scan
+     * @param pkgPath the path to the file in the staging directory
+     * @param line the 0-based line for the breakpoint
+     */
+    public async lineHasBreakpoint(projects: Project[], pkgPath: string, line: number) {
+        const workByProject = (await Promise.all(
+            projects.map(project => this.getBreakpointWork(project))
+        ));
+        for (const projectWork of workByProject) {
+            for (let key in projectWork) {
+                const work = projectWork[key];
+                for (const item of work) {
+                    if (item.pkgPath === pkgPath && item.line - 1 === line) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
 
     /**
      * Get a diff of all breakpoints that have changed since the last time the diff was retrieved.

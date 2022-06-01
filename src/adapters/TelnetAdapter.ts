@@ -1099,10 +1099,25 @@ export enum KeyType {
 }
 
 export interface Thread {
+    /**
+     * Is this thread selected
+     */
     isSelected: boolean;
+    /**
+     * The 1-based line number
+     */
     lineNumber: number;
+    /**
+     * The pkgPath to the file on-device
+     */
     filePath: string;
+    /**
+     * The contents of the line (i.e. the code for the line)
+     */
     lineContents: string;
+    /**
+     * The id of this thread
+     */
     threadId: number;
 }
 
