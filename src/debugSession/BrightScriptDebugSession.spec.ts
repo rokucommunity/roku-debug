@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
-import { DebugSession } from 'vscode-debugadapter';
+import { Breakpoint, DebugSession } from 'vscode-debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
 import type { EvaluateContainer, StackFrame, TelnetAdapter } from '../adapters/TelnetAdapter';
@@ -14,9 +14,10 @@ import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { standardizePath as s } from 'brighterscript';
-import type { ComponentLibraryConstructorParams, AddProjectParams } from '../managers/ProjectManager';
+import { DefaultFiles } from 'roku-deploy';
+import type { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
+import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
-import Sinon = require('sinon');
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -40,7 +41,7 @@ describe('BrightScriptDebugSession', () => {
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
     let rokuAdapter: TelnetAdapter;
-    let errorSpy: Sinon.SinonSpy;
+    let errorSpy: sinon.SinonSpy;
 
     beforeEach(() => {
         sinon.restore();
@@ -55,10 +56,18 @@ describe('BrightScriptDebugSession', () => {
         (session as any).sendErrorResponse = (...args: string[]) => {
             throw new Error(args[2]);
         };
-        launchConfiguration = {} as any;
+        launchConfiguration = {
+            rootDir: rootDir,
+            outDir: outDir,
+            stagingFolderPath: stagingDir,
+            files: DefaultFiles
+        } as any;
         session['launchConfiguration'] = launchConfiguration;
+        session.projectManager.launchConfiguration = launchConfiguration;
+        session.breakpointManager.launchConfiguration = launchConfiguration;
         initRequestArgs = {} as any;
         session['initRequestArgs'] = initRequestArgs;
+
         //mock the rokuDeploy module with promises so we can have predictable tests
         session.rokuDeploy = <any>{
             prepublishToStaging: () => {
@@ -93,6 +102,7 @@ describe('BrightScriptDebugSession', () => {
             registerSourceLocator: (a, b) => { },
             setConsoleOutput: (a) => { },
             evaluate: () => { },
+            syncBreakpoints: () => { },
             getVariable: () => { },
             getStackTrace: () => { }
         } as any;
@@ -341,7 +351,7 @@ describe('BrightScriptDebugSession', () => {
 
     describe('setBreakPointsRequest', () => {
         let response;
-        let args;
+        let args: DebugProtocol.SetBreakpointsArguments;
         beforeEach(() => {
             response = undefined;
             //intercept the sent response
@@ -351,31 +361,35 @@ describe('BrightScriptDebugSession', () => {
 
             args = {
                 source: {
-                    path: path.normalize(`${rootDir}/dest/some/file.brs`)
+                    path: s`${rootDir}/dest/some/file.brs`
                 },
                 breakpoints: []
             };
         });
 
-        it('returns correct results', () => {
+        it('returns correct results', async () => {
+            args.source.path = s`${rootDir}/source/main.brs`;
+
+            fsExtra.outputFileSync(s`${rootDir}/manifest`, '');
+            fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, 'sub main()\nend sub');
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints[0]).to.deep.include({
                 line: 1,
-                verified: true
+                verified: false
             });
 
-            //mark debugger as 'launched' which should change the behavior of breakpoints.
-            session.breakpointManager.lockBreakpoints();
+            //simulate "launch"
+            await session.prepareMainProject();
 
-            //remove the breakpoint breakpoint (it should not remove the breakpoint because it was already verified)
+            //remove the breakpoint
             args.breakpoints = [];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //add breakpoint during live debug session. one was there before, the other is new. Only one will be verified
+            //add breakpoint during live debug session. one was there before, the other is new. Neither will be verified right now
             args.breakpoints = [{ line: 1 }, { line: 2 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(
                 response.body.breakpoints.map(x => ({ line: x.line, verified: x.verified }))
             ).to.eql([{
@@ -387,18 +401,21 @@ describe('BrightScriptDebugSession', () => {
             }]);
         });
 
-        it('supports breakpoints within xml files', () => {
+        it('supports breakpoints within xml files', async () => {
             args.source.path = `${rootDir}/some/xml-file.xml`;
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
-            //breakpoint should be disabled
-            expect(response.body.breakpoints[0]).to.deep.include({ line: 1, verified: true });
+            await session.setBreakPointsRequest(<any>{}, args);
+            //breakpoint should be unverified by default
+            expect(response.body.breakpoints[0]).to.deep.include({
+                line: 1,
+                verified: false
+            });
         });
 
-        it('handles breakpoints for non-brightscript files', () => {
+        it('handles breakpoints for non-brightscript files', async () => {
             args.source.path = `${rootDir}/some/xml-file.jpg`;
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(1);
             //breakpoint should be disabled
             expect(response.body.breakpoints[0]).to.deep.include({ line: 1, verified: false });

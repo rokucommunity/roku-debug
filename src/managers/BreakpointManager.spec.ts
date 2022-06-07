@@ -1,14 +1,15 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer, SourceNode } from 'source-map';
-
+import type { BreakpointWorkItem } from './BreakpointManager';
 import { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
-import { Project } from './ProjectManager';
+import { ComponentLibraryProject, Project, ProjectManager } from './ProjectManager';
 let n = fileUtils.standardizePath.bind(fileUtils);
 import type { SourceLocation } from '../managers/LocationManager';
 import { LocationManager } from '../managers/LocationManager';
 import { SourceMapManager } from './SourceMapManager';
+import { expectPickEquals, pickArray } from '../testHelpers.spec';
 
 describe('BreakpointManager', () => {
     let cwd = fileUtils.standardizePath(process.cwd());
@@ -19,14 +20,16 @@ describe('BreakpointManager', () => {
     let distDir = s`${tmpDir}/dist`;
     let srcDir = s`${tmpDir}/src`;
     let outDir = s`${tmpDir}/out`;
+    const srcPath = s`${rootDir}/source/main.brs`;
+    const complib1RootDir = s`${tmpDir}/complib1/rootDir`;
+    const complib1OutDir = s`${tmpDir}/complib1/outDir`;
 
     let bpManager: BreakpointManager;
     let locationManager: LocationManager;
     let sourceMapManager: SourceMapManager;
-    //cast the manager as any to simplify some of the tests
-    let b: any;
+    let projectManager: ProjectManager;
+
     beforeEach(() => {
-        fsExtra.ensureDirSync(tmpDir);
         fsExtra.emptyDirSync(tmpDir);
         fsExtra.ensureDirSync(`${rootDir}/source`);
         fsExtra.ensureDirSync(`${stagingDir}/source`);
@@ -37,7 +40,21 @@ describe('BreakpointManager', () => {
         sourceMapManager = new SourceMapManager();
         locationManager = new LocationManager(sourceMapManager);
         bpManager = new BreakpointManager(sourceMapManager, locationManager);
-        b = bpManager;
+        projectManager = new ProjectManager(bpManager, locationManager);
+        projectManager.mainProject = new Project({
+            rootDir: rootDir,
+            files: [],
+            outDir: s`${outDir}/mainProject`
+        });
+        projectManager.addComponentLibraryProject(
+            new ComponentLibraryProject({
+                rootDir: complib1RootDir,
+                files: [],
+                libraryIndex: 0,
+                outDir: complib1OutDir,
+                outFile: s`${complib1OutDir}/complib1.zip`
+            })
+        );
     });
 
     afterEach(() => {
@@ -49,7 +66,7 @@ describe('BreakpointManager', () => {
             expect(bpManager.sanitizeSourceFilePath('a/b/c')).to.equal(s`a/b/c`);
         });
         it('returns the the found key when it already exists', () => {
-            b.breakpointsByFilePath[s`A/B/C`] = [];
+            bpManager['breakpointsByFilePath'].set(s`A/B/C`, []);
             expect(bpManager.sanitizeSourceFilePath('a/b/c')).to.equal(s`A/B/C`);
         });
     });
@@ -177,32 +194,8 @@ describe('BreakpointManager', () => {
         });
     });
 
-    describe('setBreakpointsForFile', () => {
-        it('verifies all breakpoints before launch', () => {
-            let breakpoints = bpManager.replaceBreakpoints(n(`${cwd}/file.brs`), [{
-                line: 0,
-                column: 0
-            }, {
-                line: 1,
-                column: 0
-            }]);
-            expect(breakpoints).to.be.lengthOf(2);
-            expect(breakpoints[0]).to.include({
-                line: 0,
-                column: 0,
-                verified: true,
-                wasAddedBeforeLaunch: true
-            });
-            expect(breakpoints[1]).to.include({
-                line: 1,
-                column: 0,
-                verified: true,
-                wasAddedBeforeLaunch: true
-            });
-        });
-
+    describe('replaceBreakpoints', () => {
         it('does not verify breakpoints after launch', () => {
-            bpManager.lockBreakpoints();
             let breakpoints = bpManager.replaceBreakpoints(n(`${cwd}/file.brs`), [{
                 line: 0,
                 column: 0
@@ -211,49 +204,66 @@ describe('BreakpointManager', () => {
             expect(breakpoints[0]).to.deep.include({
                 line: 0,
                 column: 0,
-                verified: false,
-                wasAddedBeforeLaunch: false
+                verified: false
             });
         });
 
-        it('re-verifies breakpoint after launch toggle', () => {
+        it('re-verifies breakpoint after launch toggle', async () => {
+            //set the breakpoint before launch
+            let breakpoints = bpManager.replaceBreakpoints(s`${rootDir}/file.brs`, [{
+                line: 2
+            }]);
+            expect(breakpoints).to.be.lengthOf(1);
+            expect(breakpoints[0]).to.deep.include({
+                line: 2,
+                column: 0,
+                verified: false
+            });
+
+            //write the breakpoints to the files
+            await projectManager.breakpointManager.writeBreakpointsForProject(projectManager.mainProject);
+
+            expect(breakpoints[0]).to.deep.include({
+                line: 2,
+                column: 0,
+                verified: true
+            });
+
+            //simulate user deleting all breakpoints
+            breakpoints = bpManager.replaceBreakpoints(s`${rootDir}/file.brs`, []);
+
+            expect(breakpoints).to.be.lengthOf(0);
+
+            //simulate user adding a breakpoint to the same place it had been before
+            breakpoints = bpManager.replaceBreakpoints(s`${rootDir}/file.brs`, [{
+                line: 2
+            }]);
+            expect(breakpoints).to.be.lengthOf(1);
+            expect(breakpoints[0]).to.deep.include({
+                line: 2,
+                column: 0,
+                verified: true
+            });
+        });
+
+        it('retains breakpoint data for breakpoints that did not change', () => {
             //set the breakpoint before launch
             let breakpoints = bpManager.replaceBreakpoints(s`${cwd}/file.brs`, [{
                 line: 2
-            }]);
-            expect(breakpoints).to.be.lengthOf(1);
-            expect(breakpoints[0]).to.deep.include({
-                line: 2,
-                column: 0,
-                verified: true,
-                isHidden: false
-            });
+            }, {
+                line: 4,
+                condition: 'true'
+            }]).map(x => ({ ...x }));
 
-            //launch
-            bpManager.lockBreakpoints();
-
-            //simulate user deleting all breakpoints
-            breakpoints = bpManager.replaceBreakpoints(s`${cwd}/file.brs`, []);
-
-            expect(breakpoints).to.be.lengthOf(1);
-            expect(breakpoints[0]).to.deep.include({
-                line: 2,
-                verified: true,
-                isHidden: true
-            });
-
-            //simulate user adding a breakpoint to the same place it had been before
-            breakpoints = bpManager.replaceBreakpoints(s`${cwd}/file.brs`, [{
+            const replacedBreakpoints = bpManager.replaceBreakpoints(s`${cwd}/file.brs`, [{
                 line: 2
-            }]);
-            expect(breakpoints).to.be.lengthOf(1);
-            expect(breakpoints[0]).to.deep.include({
-                line: 2,
-                column: 0,
-                verified: true,
-                wasAddedBeforeLaunch: true,
-                isHidden: false
-            });
+            }, {
+                line: 4,
+                condition: 'true'
+            }]).map(x => ({ ...x }));
+
+            //the breakpoints should be identical
+            expect(breakpoints).to.eql(replacedBreakpoints);
         });
     });
 
@@ -288,9 +298,6 @@ describe('BreakpointManager', () => {
             fsExtra.ensureDirSync(`${stagingDir}/source`);
             //copy the file to staging
             fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
-
-            //launch
-            bpManager.lockBreakpoints();
 
             //file was copied to staging
             expect(fsExtra.pathExistsSync(`${stagingDir}/source/main.brs`)).to.be.true;
@@ -333,9 +340,6 @@ describe('BreakpointManager', () => {
                 column: 0
             }]);
 
-            //launch
-            bpManager.lockBreakpoints();
-
             //sourcemap was not yet created
             expect(fsExtra.pathExistsSync(`${stagingDir}/source/main.brs.map`)).to.be.false;
 
@@ -376,9 +380,6 @@ describe('BreakpointManager', () => {
                 line: 3,
                 column: 0
             }]);
-
-            //launch
-            bpManager.lockBreakpoints();
 
             await bpManager.writeBreakpointsForProject(
                 new Project(<any>{
@@ -423,9 +424,6 @@ describe('BreakpointManager', () => {
                 hitCondition: '3'
             }]);
 
-            //launch
-            bpManager.lockBreakpoints();
-
             await bpManager.writeBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
@@ -467,9 +465,6 @@ describe('BreakpointManager', () => {
                 line: 3,
                 column: 0
             }]);
-
-            //launch
-            bpManager.lockBreakpoints();
 
             await bpManager.writeBreakpointsForProject(
                 new Project(<any>{
@@ -520,10 +515,10 @@ describe('BreakpointManager', () => {
             fsExtra.writeFileSync(s`${stagingDir}/main.brs.map`, result.map.toString());
 
             //set a few breakpoints in the source files
-            bpManager.registerBreakpoint(src, {
+            bpManager.setBreakpoint(src, {
                 line: 5
             });
-            bpManager.registerBreakpoint(src, {
+            bpManager.setBreakpoint(src, {
                 line: 7
             });
 
@@ -629,7 +624,7 @@ describe('BreakpointManager', () => {
                 column: 4
             });
 
-            bpManager.registerBreakpoint(sourceFilePath, {
+            bpManager.setBreakpoint(sourceFilePath, {
                 line: 3,
                 column: 0
             });
@@ -690,7 +685,7 @@ describe('BreakpointManager', () => {
             ]);
 
             //write breakpoints
-            bpManager.registerBreakpoint(sourceFilePath, {
+            bpManager.setBreakpoint(sourceFilePath, {
                 line: 4,
                 column: 0
             });
@@ -724,7 +719,7 @@ describe('BreakpointManager', () => {
         `);
 
         //write breakpoints
-        bpManager.registerBreakpoint(baseFilePath, {
+        bpManager.setBreakpoint(baseFilePath, {
             line: 2,
             column: 0
         });
@@ -749,5 +744,267 @@ describe('BreakpointManager', () => {
         expect(source.sources).to.eql([
             baseFilePath
         ]);
+    });
+
+    it('adds breakpoint keys', () => {
+        expect(
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2
+            }, {
+                line: 3,
+                condition: 'true'
+            }, {
+                line: 4,
+                hitCondition: '2'
+            }, {
+                line: 5,
+                column: 12
+            }, {
+                line: 6,
+                logMessage: 'hello world'
+            }]).map(x => x.hash).sort()
+        ).to.eql([
+            s`${rootDir}/source/main.brs:2:0-standard`,
+            s`${rootDir}/source/main.brs:3:0-condition=true`,
+            s`${rootDir}/source/main.brs:4:0-hitCondition=2`,
+            s`${rootDir}/source/main.brs:5:12-standard`,
+            s`${rootDir}/source/main.brs:6:0-logMessage=hello world`
+        ].sort());
+    });
+
+    it('does not duplicate breakpoints that have the same key', () => {
+        const pkgPath = s`${rootDir}/source/main.brs`;
+        bpManager.setBreakpoint(pkgPath, {
+            line: 2
+        });
+        bpManager.setBreakpoint(pkgPath, {
+            line: 2
+        });
+        expect(
+            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.hash)
+        ).to.eql([
+            s`${pkgPath}:2:0-standard`
+        ]);
+    });
+
+    it('replaces breakpoints with distinct attributes', () => {
+        const pkgPath = s`${rootDir}/source/main.brs`;
+
+        bpManager.setBreakpoint(pkgPath, {
+            line: 2
+        });
+        expect(
+            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.hash)
+        ).to.eql([
+            s`${pkgPath}:2:0-standard`
+        ]);
+
+        bpManager.setBreakpoint(pkgPath, {
+            line: 2,
+            condition: 'true'
+        });
+        expect(
+            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.hash)
+        ).to.eql([
+            s`${pkgPath}:2:0-condition=true`
+        ]);
+
+        bpManager.setBreakpoint(pkgPath, {
+            line: 2,
+            hitCondition: '4'
+        });
+        expect(
+            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.hash)
+        ).to.eql([
+            s`${pkgPath}:2:0-hitCondition=4`
+        ]);
+    });
+
+    it('keeps breakpoints verified if they did not change', () => {
+        let breakpoints = bpManager.replaceBreakpoints(srcPath, [{
+            line: 10
+        }]);
+        //mark this breakpoint as verified
+        breakpoints[0].verified = true;
+
+        breakpoints = bpManager.replaceBreakpoints(srcPath, [{
+            line: 10
+        }, {
+            line: 11
+        }]);
+
+        expectPickEquals(breakpoints, [{
+            line: 10,
+            verified: true
+        }, {
+            line: 11,
+            verified: false
+        }]);
+    });
+
+    describe('getDiff', () => {
+        async function testDiffEquals(
+            expected?: {
+                added?: Array<Partial<BreakpointWorkItem>>;
+                removed?: Array<Partial<BreakpointWorkItem>>;
+                unchanged?: Array<Partial<BreakpointWorkItem>>;
+            },
+            projects = [projectManager.mainProject, ...projectManager.componentLibraryProjects]
+        ) {
+            const diff = await bpManager.getDiff(projects);
+            //filter the result by the list of properties from each test value
+            expected = {
+                added: [],
+                removed: [],
+                unchanged: [],
+                ...expected ?? {}
+            };
+            const actual = {
+                added: pickArray(diff.added, expected.added),
+                removed: pickArray(diff.removed, expected.removed),
+                unchanged: pickArray(diff.unchanged, expected.unchanged)
+            };
+
+            expect(actual).to.eql(expected);
+        }
+
+        it('returns empty diff when no projects are present', async () => {
+            await testDiffEquals({ added: [], removed: [], unchanged: [] }, []);
+        });
+
+        it('returns empty diff when no breakpoints are registered', async () => {
+            await testDiffEquals({ added: [], removed: [], unchanged: [] });
+        });
+
+        it('handles breakpoint flow', async () => {
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2
+            }]);
+            //breakpoint should show up first time
+            await testDiffEquals({
+                added: [{
+                    pkgPath: 'pkg:/source/main.brs',
+                    line: 2
+                }]
+            });
+
+            //should show as "unchanged" now
+            await testDiffEquals({
+                unchanged: [{
+                    pkgPath: 'pkg:/source/main.brs',
+                    line: 2
+                }]
+            });
+
+            //remove the breakpoint
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, []);
+
+            //breakpoint should be in the "removed" bucket
+            await testDiffEquals({
+                removed: [{
+                    pkgPath: 'pkg:/source/main.brs',
+                    line: 2
+                }]
+            });
+
+            //there should be no breakpoint changes
+            await testDiffEquals();
+        });
+
+        it('detects hitCount change', async () => {
+            //add breakpoint with hit condition
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                hitCondition: '2'
+            }]);
+
+            await testDiffEquals({
+                added: [{
+                    line: 2,
+                    hitCondition: '2'
+                }]
+            });
+
+            //change the breakpoint hit condition
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                hitCondition: '1'
+            }]);
+
+            await testDiffEquals({
+                removed: [{
+                    line: 2,
+                    hitCondition: '2'
+                }],
+                added: [{
+                    line: 2,
+                    hitCondition: '1'
+                }]
+            });
+        });
+
+        it('detects column number change (roku does not support this yet, but we might as well...)', async () => {
+            //add breakpoint with hit condition
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                column: 4
+            }]);
+
+            await testDiffEquals({
+                added: [{
+                    line: 2,
+                    column: 4
+                }]
+            });
+
+            //change the breakpoint hit condition
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                column: 8
+            }]);
+
+            await testDiffEquals({
+                removed: [{
+                    line: 2,
+                    column: 4
+                }],
+                added: [{
+                    line: 2,
+                    column: 8
+                }]
+            });
+        });
+
+        it('maintains breakpoint IDs', async () => {
+            //add breakpoint with hit condition
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                column: 4
+            }]);
+
+            await testDiffEquals({
+                added: [{
+                    line: 2,
+                    column: 4
+                }]
+            });
+
+            //change the breakpoint hit condition
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                column: 8
+            }]);
+
+            await testDiffEquals({
+                removed: [{
+                    line: 2,
+                    column: 4
+                }],
+                added: [{
+                    line: 2,
+                    column: 8
+                }]
+            });
+        });
     });
 });
