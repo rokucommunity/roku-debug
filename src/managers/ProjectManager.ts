@@ -200,7 +200,7 @@ export class ProjectManager {
     }
 }
 
-interface AddProjectParams {
+export interface AddProjectParams {
     rootDir: string;
     outDir: string;
     sourceDirs?: string[];

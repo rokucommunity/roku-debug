@@ -16,8 +16,8 @@ export class FileManager {
     private cache = {} as Record<string, CodeFile>;
 
     public getCodeFile(filePath: string) {
-        let lowerFilePath = filePath.toLowerCase();
-        if (!this.cache[lowerFilePath]) {
+        let lowerFilePath = filePath?.toLowerCase();
+        if (lowerFilePath && !this.cache[lowerFilePath]) {
             let fileInfo = {
                 lines: [],
                 functionNameMap: {}
@@ -126,7 +126,7 @@ export class FileManager {
      */
     public getCorrectFunctionNameCase(sourceFilePath: string, functionName: string) {
         let fileInfo = this.getCodeFile(sourceFilePath);
-        return fileInfo.functionNameMap[functionName.toLowerCase()] ?? functionName;
+        return fileInfo?.functionNameMap[functionName?.toLowerCase()] ?? functionName;
     }
 
     /**
