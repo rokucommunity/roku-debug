@@ -12,7 +12,7 @@ export class ListBreakpointsResponse {
 
                 // Any request id less then one is an update and we should not process it here
                 if (this.requestId > 0) {
-                    this.errorCode = ERROR_CODES[bufferReader.readUInt32LE()];
+                    this.errorCode = bufferReader.readUInt32LE();
                     this.numBreakpoints = bufferReader.readUInt32LE(); // num_breakpoints - The number of breakpoints in the breakpoints array.
 
                     // build the list of BreakpointInfo
@@ -38,7 +38,7 @@ export class ListBreakpointsResponse {
     public numBreakpoints: number;
     public breakpoints = [] as BreakpointInfo[];
     public data = -1;
-    public errorCode: string;
+    public errorCode: ERROR_CODES;
 }
 
 export class BreakpointInfo {

@@ -4,7 +4,7 @@
     "target": "es2018",
     "noImplicitAny": false,
     "removeComments": false,
-    "noUnusedLocals": true,
+    "noUnusedLocals": false,
     "noImplicitThis": true,
     "inlineSourceMap": false,
     "declaration": true,

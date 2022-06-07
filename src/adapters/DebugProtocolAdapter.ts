@@ -13,13 +13,18 @@ import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
 import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
+import type { BreakpointManager } from '../managers/BreakpointManager';
+import type { ProjectManager } from '../managers/ProjectManager';
+import { ActionQueue } from '../managers/ActionQueue';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
  */
 export class DebugProtocolAdapter {
     constructor(
-        private options: AdapterOptions
+        private options: AdapterOptions,
+        private projectManager: ProjectManager,
+        private breakpointManager: BreakpointManager
     ) {
         util.normalizeAdapterOptions(this.options);
         this.emitter = new EventEmitter();
@@ -170,7 +175,7 @@ export class DebugProtocolAdapter {
     }
 
     public get isAtDebuggerPrompt() {
-        return this.socketDebugger ? this.socketDebugger.isStopped : false;
+        return this.socketDebugger?.isStopped ?? false;
     }
 
     /**
@@ -653,6 +658,62 @@ export class DebugProtocolAdapter {
         this.chanperfTracker.clearHistory();
     }
     // #endregion
+
+    public async syncBreakpoints() {
+        //we can't send breakpoints unless we're stopped. So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
+        if (!this.isAtDebuggerPrompt) {
+            return;
+        }
+        //compute breakpoint changes since last sync
+        const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
+
+        //delete these breakpoints
+        if (diff.removed.length > 0) {
+            await this.actionQueue.run(async () => {
+                const response = await this.socketDebugger.removeBreakpoints(
+                    diff.removed.map(x => x.deviceId)
+                );
+                //return true to mark this action as complete, or false to retry the task again in the future
+                return response.success && response.errorCode === ERROR_CODES.OK;
+            });
+        }
+
+        if (diff.added.length > 0) {
+            const breakpointsToSendToDevice = diff.added.map(breakpoint => {
+                const hitCount = parseInt(breakpoint.hitCondition);
+                return {
+                    filePath: breakpoint.pkgPath,
+                    lineNumber: breakpoint.line,
+                    hitCount: !isNaN(hitCount) ? hitCount : undefined,
+                    key: breakpoint.hash
+                };
+            });
+
+            //send these new breakpoints to the device
+            await this.actionQueue.run(async () => {
+                const response = await this.socketDebugger.addBreakpoints(breakpointsToSendToDevice);
+                if (response.errorCode === ERROR_CODES.OK) {
+                    //mark the breakpoints as verified
+                    for (let i = 0; i < response.breakpoints.length; i++) {
+                        const deviceBreakpoint = response.breakpoints[i];
+                        if (deviceBreakpoint.isVerified) {
+                            this.breakpointManager.verifyBreakpoint(
+                                breakpointsToSendToDevice[i].key,
+                                deviceBreakpoint.breakpointId
+                            );
+                        }
+                    }
+                    //return true to mark this action as complete
+                    return true;
+                } else {
+                    //this action is not yet complete. it should be retried
+                    return false;
+                }
+            });
+        }
+    }
+
+    private actionQueue = new ActionQueue();
 }
 
 export interface StackFrame {

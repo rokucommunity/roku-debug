@@ -35,6 +35,7 @@ export class ProjectManager {
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;
+        enableDebugProtocol?: boolean;
     };
 
     public mainProject: Project;
@@ -42,6 +43,13 @@ export class ProjectManager {
 
     public addComponentLibraryProject(project: ComponentLibraryProject) {
         this.componentLibraryProjects.push(project);
+    }
+
+    public getAllProjects() {
+        return [
+            ...(this.mainProject ? [this.mainProject] : []),
+            ...(this.componentLibraryProjects ?? [])
+        ];
     }
 
     /**
@@ -61,7 +69,7 @@ export class ProjectManager {
      * @param debuggerLineNumber - the line number from the debugger
      */
     public getLineNumberOffsetByBreakpoints(filePath: string, debuggerLineNumber: number) {
-        let breakpoints = this.breakpointManager.getBreakpointsForFile(filePath);
+        let breakpoints = this.breakpointManager.getPermanentBreakpointsForFile(filePath);
         //throw out duplicate breakpoints (account for entry breakpoint) and sort them ascending
         breakpoints = this.breakpointManager.sortAndRemoveDuplicateBreakpoints(breakpoints);
 
@@ -117,8 +125,8 @@ export class ProjectManager {
             enableSourceMaps: this.launchConfiguration?.enableSourceMaps ?? true
         });
 
-        //if sourcemaps are disabled, account for the breakpoint offsets
-        if (sourceLocation && this.launchConfiguration?.enableSourceMaps === false) {
+        //if sourcemaps are disabled, and this is a telnet debug dession, account for breakpoint offsets
+        if (sourceLocation && this.launchConfiguration?.enableSourceMaps === false && !this.launchConfiguration.enableDebugProtocol) {
             sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
         }
 
@@ -146,7 +154,7 @@ export class ProjectManager {
         let sourceLocation = await this.getSourceLocation(entryPoint.relativePath, entryPoint.lineNumber);
 
         //register the entry breakpoint
-        this.breakpointManager.registerBreakpoint(sourceLocation.filePath, {
+        this.breakpointManager.setBreakpoint(sourceLocation.filePath, {
             //+1 to select the first line of the function
             line: sourceLocation.lineNumber + 1
         });

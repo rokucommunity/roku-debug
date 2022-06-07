@@ -5,6 +5,7 @@ import * as request from 'request';
 import { rokuDeploy } from 'roku-deploy';
 import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
+    BreakpointEvent,
     DebugSession as BaseDebugSession,
     Handles,
     InitializedEvent,
@@ -43,6 +44,7 @@ import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../Laun
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
+import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
@@ -61,7 +63,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
+        //send newly-verified breakpoints to vscode
+        this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceVerifiedBreakpoints(data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
+    }
+
+    private onDeviceVerifiedBreakpoints(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
+        this.logger.info('Sending verified device breakpoints to client', data);
+        //send all verified breakpoints to the client
+        for (const breakpoint of data.breakpoints) {
+            const event: DebugProtocol.Breakpoint = {
+                line: breakpoint.line,
+                column: breakpoint.column,
+                verified: true,
+                id: breakpoint.id,
+                source: {
+                    path: breakpoint.srcPath
+                }
+            };
+            this.sendEvent(new BreakpointEvent('changed', event));
+        }
     }
 
     public logger = logger.createLogger(`[${BrightScriptDebugSession.name}]`);
@@ -100,7 +121,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variableHandles = new Handles<string>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
-    private enableDebugProtocol: boolean;
+    private get enableDebugProtocol() {
+        return this.launchConfiguration.enableDebugProtocol;
+    }
 
     private getRokuAdapter() {
         return this.rokuAdapterDeferred.promise;
@@ -165,8 +188,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (this.launchConfiguration.logLevel) {
             logger.logLevel = this.launchConfiguration.logLevel;
         }
-
-        this.enableDebugProtocol = this.launchConfiguration.enableDebugProtocol;
 
         //do a DNS lookup for the host to fix issues with roku rejecting ECP
         this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
@@ -450,11 +471,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
-        //prevent new breakpoints from being verified
-        this.breakpointManager.lockBreakpoints();
+        //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
+        if (!this.enableDebugProtocol) {
 
-        //write all `stop` statements to the files in the staging folder
-        await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
+            await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
+        }
 
         //create zip package from staging folder
         util.log('Creating zip archive from project sources');
@@ -512,8 +533,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 // Add breakpoint lines to the staging files and before publishing
                 util.log('Adding stop statements for active breakpoints in Component Libraries');
 
-                //write the `stop` statements to every file that has breakpoints
-                await this.breakpointManager.writeBreakpointsForProject(compLibProject);
+                //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
+                if (!this.enableDebugProtocol) {
+                    await this.breakpointManager.writeBreakpointsForProject(compLibProject);
+                }
 
                 await compLibProject.postfixFiles();
 
@@ -553,32 +576,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Called every time a breakpoint is created, modified, or deleted, for each file. This receives the entire list of breakpoints every time.
      */
-    public setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
+    public async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
         let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
         //sort the breakpoints
-        let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column])
-            //filter out the inactive breakpoints
-            .filter(x => x.isHidden === false);
+        let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column]);
 
         response.body = {
             breakpoints: sortedAndFilteredBreakpoints
         };
         this.sendResponse(response);
 
-        //set a small timeout so the user sees the breakpoints disappear before reappearing
-        //This is disabled because I'm not sure anyone actually wants this functionality, but I didn't want to lose it.
-        // setTimeout(() => {
-        //     //notify the client about every other breakpoint that was not explicitly requested here
-        //     //(basically force to re-enable the `stop` breakpoints that were written into the source code by the debugger)
-        //     var otherBreakpoints = sanitizedBreakpoints.filter(x => sortedAndFilteredBreakpoints.indexOf(x) === -1);
-        //     for (var breakpoint of otherBreakpoints) {
-        //         this.sendEvent(new BreakpointEvent('new', <DebugProtocol.Breakpoint>{
-        //             line: breakpoint.line,
-        //             verified: true,
-        //             source: args.source
-        //         }));
-        //     }
-        // }, 100);
+        await this.rokuAdapter?.syncBreakpoints();
     }
 
     protected exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments) {
@@ -945,7 +953,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private createRokuAdapter(host: string) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration);
+            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager);
         } else {
             this.rokuAdapter = new TelnetAdapter(this.launchConfiguration);
         }
@@ -964,6 +972,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     /**
+     * Used to track whether the entry breakpoint has already been handled
+     */
+    private entryBreakpointWasHandled = false;
+
+    /**
      * Registers the main events for the RokuAdapter
      */
     private async connectRokuAdapter() {
@@ -976,7 +989,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
+            //sync breakpoints
+            await this.rokuAdapter?.syncBreakpoints();
             this.logger.info('received "suspend" event from adapter');
+
             const threads = await this.rokuAdapter.getThreads();
             const activeThread = threads.find(x => x.isSelected);
 
@@ -992,6 +1008,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                 })
             );
+
+            //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
+            if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
+                this.entryBreakpointWasHandled = true;
+                //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
+                if (!await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
+                    this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
+                    return this.rokuAdapter.continue();
+                }
+            }
 
             this.clearState();
             const event: StoppedEvent = new StoppedEvent(
@@ -1109,8 +1135,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * If `stopOnEntry` is enabled, register the entry breakpoint.
      */
     public async handleEntryBreakpoint() {
-        if (this.launchConfiguration.stopOnEntry && !this.enableDebugProtocol) {
-            await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
+        if (!this.enableDebugProtocol) {
+            this.entryBreakpointWasHandled = true;
+            if (this.launchConfiguration.stopOnEntry) {
+                await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
+            }
         }
     }
 

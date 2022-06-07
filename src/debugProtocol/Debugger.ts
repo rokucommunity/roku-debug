@@ -44,7 +44,6 @@ export class Debugger {
         this.options = {
             controllerPort: 8081,
             host: undefined,
-            stopOnEntry: false,
             //override the defaults with the options from parameters
             ...options ?? {}
         };
@@ -63,7 +62,6 @@ export class Debugger {
     private controllerClient: Net.Socket;
     private ioClient: Net.Socket;
     private unhandledData: Buffer;
-    private firstRunContinueFired = false;
     private stopped = false;
     private totalRequests = 0;
     private activeRequests = {};
@@ -356,8 +354,7 @@ export class Debugger {
                         case UPDATE_TYPES.THREAD_ATTACHED:
                             let debuggerUpdateThreads = new UpdateThreadsResponse(slicedBuffer);
                             if (debuggerUpdateThreads.success) {
-                                //TODO should we be awaiting this?
-                                void this.handleThreadsUpdate(debuggerUpdateThreads);
+                                this.handleThreadsUpdate(debuggerUpdateThreads);
                                 this.removedProcessedBytes(debuggerUpdateThreads, slicedBuffer, packetLength);
                                 return true;
                             }
@@ -529,17 +526,13 @@ export class Debugger {
         return false;
     }
 
-    private async handleThreadsUpdate(update: UpdateThreadsResponse) {
+    private handleThreadsUpdate(update: UpdateThreadsResponse) {
         this.stopped = true;
         let stopReason = update.data.stopReason;
         let eventName: 'runtime-error' | 'suspend' = stopReason === STOP_REASONS.RUNTIME_ERROR ? 'runtime-error' : 'suspend';
 
         if (update.updateType === UPDATE_TYPES.ALL_THREADS_STOPPED) {
-            if (!this.firstRunContinueFired && !this.options.stopOnEntry) {
-                this.logger.log('Sending first run continue command');
-                await this.continue();
-                this.firstRunContinueFired = true;
-            } else if (stopReason === STOP_REASONS.RUNTIME_ERROR || stopReason === STOP_REASONS.BREAK || stopReason === STOP_REASONS.STOP_STATEMENT) {
+            if (stopReason === STOP_REASONS.RUNTIME_ERROR || stopReason === STOP_REASONS.BREAK || stopReason === STOP_REASONS.STOP_STATEMENT) {
                 this.primaryThread = (update.data as ThreadsStopped).primaryThreadIndex;
                 this.stackFrameIndex = 0;
                 this.emit(eventName, update);
@@ -597,10 +590,6 @@ export interface ConstructorOptions {
      * The host/ip address of the Roku
      */
     host: string;
-    /**
-     * If true, the application being debugged will stop on the first line of the program.
-     */
-    stopOnEntry?: boolean;
     /**
      * The port number used to send all debugger commands. This is static/unchanging for Roku devices,
      * but is configurable here to support unit testing or alternate runtimes (i.e. https://www.npmjs.com/package/brs)
