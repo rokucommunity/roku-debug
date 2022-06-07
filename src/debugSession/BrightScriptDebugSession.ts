@@ -634,7 +634,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //the stacktrace returns function identifiers in all lower case. Try to get the actual case
                     //load the contents of the file and get the correct casing for the function identifier
                     try {
-                        let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation.filePath, debugFrame.functionIdentifier);
+                        let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation?.filePath, debugFrame.functionIdentifier);
                         if (functionName) {
 
                             //search for original function name if this is an anonymous function.
@@ -651,14 +651,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     } catch (error) {
                         this.logger.error('Error correcting function identifier case', { error, sourceLocation, debugFrame });
                     }
+                    const filePath = sourceLocation?.filePath ?? debugFrame.filePath;
 
-                    let frame = new StackFrame(
+                    const frame: DebugProtocol.StackFrame = new StackFrame(
                         debugFrame.frameId,
                         `${debugFrame.functionIdentifier}`,
-                        new Source(path.basename(sourceLocation.filePath), sourceLocation.filePath),
-                        sourceLocation.lineNumber,
+                        new Source(path.basename(filePath), filePath),
+                        sourceLocation?.lineNumber ?? debugFrame.lineNumber,
                         1
                     );
+                    if (!sourceLocation) {
+                        frame.presentationHint = 'subtle';
+                    }
                     frames.push(frame);
                 }
             } else {
@@ -1046,6 +1050,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //make the connection
         await this.rokuAdapter.connect();
         this.rokuAdapterDeferred.resolve(this.rokuAdapter);
+        return this.rokuAdapter;
     }
 
     private getVariableFromResult(result: EvaluateContainer, frameId: number) {

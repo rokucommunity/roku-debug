@@ -7,7 +7,7 @@ import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { Breakpoint, DebugSession } from 'vscode-debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
-import type { EvaluateContainer, TelnetAdapter } from '../adapters/TelnetAdapter';
+import type { EvaluateContainer, StackFrame, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { PrimativeType } from '../adapters/TelnetAdapter';
 import { defer } from '../util';
 import { HighLevelType } from '../interfaces';
@@ -16,12 +16,15 @@ import type { SinonStub } from 'sinon';
 import { standardizePath as s } from 'brighterscript';
 import { DefaultFiles } from 'roku-deploy';
 import type { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
+import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
+import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 
-let sinon = sinonActual.createSandbox();
-const tempDir = s`${process.cwd()}/.tmp`;
-const rootDir = s`${tempDir}/rootDir`;
-const outDir = s`${tempDir}/out`;
-const stagingFolderPath = s`${tempDir}/stagingDir`;
+const sinon = sinonActual.createSandbox();
+const tempDir = s`${__dirname}/../../.tmp`;
+const rootDir = s`${tempDir}/rootDir}`;
+const outDir = s`${tempDir}/outDir`;
+const stagingDir = s`${outDir}/stagingDir`;
+const complib1Dir = s`${tempDir}/complib1`;
 
 describe('BrightScriptDebugSession', () => {
     let responseDeferreds = [];
@@ -37,7 +40,8 @@ describe('BrightScriptDebugSession', () => {
     let launchConfiguration: LaunchConfiguration;
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
-    let rokuAdapter: ReturnType<typeof createRokuAdapter>;
+    let rokuAdapter: TelnetAdapter;
+    let errorSpy: sinon.SinonSpy;
 
     beforeEach(() => {
         sinon.restore();
@@ -47,6 +51,7 @@ describe('BrightScriptDebugSession', () => {
         } catch (e) {
             console.log(e);
         }
+        errorSpy = sinon.spy(session.logger, 'error');
         //override the error response function and throw an exception so we can fail any tests
         (session as any).sendErrorResponse = (...args: string[]) => {
             throw new Error(args[2]);
@@ -54,7 +59,7 @@ describe('BrightScriptDebugSession', () => {
         launchConfiguration = {
             rootDir: rootDir,
             outDir: outDir,
-            stagingFolderPath: stagingFolderPath,
+            stagingFolderPath: stagingDir,
             files: DefaultFiles
         } as any;
         session['launchConfiguration'] = launchConfiguration;
@@ -88,10 +93,22 @@ describe('BrightScriptDebugSession', () => {
             getFilePaths: () => {
             }
         };
-        rokuAdapter = createRokuAdapter();
-        (session as any).rokuAdapter = rokuAdapter;
+        rokuAdapter = {
+            on: () => {
+                return () => {
+                };
+            },
+            activate: () => Promise.resolve(),
+            registerSourceLocator: (a, b) => { },
+            setConsoleOutput: (a) => { },
+            evaluate: () => { },
+            syncBreakpoints: () => { },
+            getVariable: () => { },
+            getStackTrace: () => { }
+        } as any;
+        session['rokuAdapter'] = rokuAdapter;
         //mock the roku adapter
-        (session as any).connectRokuAdapter = () => {
+        session['connectRokuAdapter'] = () => {
             return Promise.resolve(rokuAdapter);
         };
 
@@ -115,22 +132,6 @@ describe('BrightScriptDebugSession', () => {
             }
         });
     });
-
-    function createRokuAdapter() {
-        return {
-            on: () => {
-                return () => {
-                };
-            },
-            activate: () => Promise.resolve(),
-            registerSourceLocator: (a, b) => { },
-            setConsoleOutput: (a) => { },
-            evaluate: (() => { }) as (...args) => any,
-            syncBreakpoints: () => { },
-            getVariable: (() => Promise.resolve()) as () => any,
-            isAtDebuggerPrompt: false
-        };
-    }
 
     describe('initializeRequest', () => {
         it('does not throw', () => {
@@ -425,12 +426,12 @@ describe('BrightScriptDebugSession', () => {
         it('registers the entry breakpoint when stopOnEntry is enabled', async () => {
             (session as any).launchConfiguration = { stopOnEntry: true };
             session.projectManager.mainProject = <any>{
-                stagingFolderPath: stagingFolderPath
+                stagingFolderPath: stagingDir
             };
             let stub = sinon.stub(session.projectManager, 'registerEntryBreakpoint').returns(Promise.resolve());
             await session.handleEntryBreakpoint();
             expect(stub.called).to.be.true;
-            expect(stub.args[0][0]).to.equal(stagingFolderPath);
+            expect(stub.args[0][0]).to.equal(stagingDir);
         });
         it('does NOT register the entry breakpoint when stopOnEntry is enabled', async () => {
             (session as any).launchConfiguration = { stopOnEntry: false };
@@ -478,10 +479,10 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.isAtDebuggerPrompt = true;
             evalStub = sinon.stub(rokuAdapter, 'evaluate').callsFake((args) => {
                 console.log('called with', args);
-                return {
+                return Promise.resolve({
                     message: undefined,
                     type: 'message'
-                };
+                });
             });
             getVarStub = sinon.stub(rokuAdapter, 'getVariable').callsFake(() => {
                 return Promise.resolve(getVarValue);
@@ -555,6 +556,42 @@ describe('BrightScriptDebugSession', () => {
                 variablesReference: 0
             });
             expect(session['variables']).to.be.empty;
+        });
+
+        describe('stackTraceRequest', () => {
+            it('gracefully handles missing files', async () => {
+                session.projectManager.mainProject = new Project({
+                    rootDir: rootDir,
+                    outDir: stagingDir
+                } as Partial<AddProjectParams> as any);
+                session.projectManager['mainProject'].fileMappings = [];
+
+                session.projectManager.componentLibraryProjects.push(
+                    new ComponentLibraryProject({
+                        rootDir: complib1Dir,
+                        stagingFolderPath: stagingDir,
+                        outDir: outDir,
+                        libraryIndex: 1
+                    } as Partial<ComponentLibraryConstructorParams> as any)
+                );
+                session.projectManager['componentLibraryProjects'][0].fileMappings = [];
+
+                sinon.stub(rokuAdapter, 'getStackTrace').returns(Promise.resolve([{
+                    filePath: 'customComplib:/source/lib/AdManager__lib1.brs',
+                    lineNumber: 500,
+                    functionIdentifier: 'doSomething'
+                }, {
+                    filePath: 'roku_ads_lib:/libsource/Roku_Ads.brs',
+                    lineNumber: 400,
+                    functionIdentifier: 'roku_ads__showads'
+                }, {
+                    filePath: 'pkg:/source/main.brs',
+                    lineNumber: 10,
+                    functionIdentifier: 'main'
+                }] as StackFrame[]));
+                await session['stackTraceRequest']({} as any, { threadId: 1 });
+                expect(errorSpy.getCalls()[0]?.args ?? []).to.eql([]);
+            });
         });
 
         describe('repl', () => {
