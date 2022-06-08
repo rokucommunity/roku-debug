@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.13.0](https://github.com/rokucommunity/roku-debug/compare/v0.12.2...v0.13.0) - 2022-06-08
+### Added
+ - Support for dynamic breakpoints when using Debug Protocol ([#84](https://github.com/rokucommunity/roku-debug/pull/84))
+### Fixed
+ - crash when RAF files show up in stacktrace ([#88](https://github.com/rokucommunity/roku-debug/pull/88))
+
+
+
 ## [0.12.2](https://github.com/rokucommunity/roku-debug/compare/v0.12.1...v0.12.2) - 2022-05-31
 ### Changed
  - upgrade to [brighterscript@0.51.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0513---2022-05-31)
