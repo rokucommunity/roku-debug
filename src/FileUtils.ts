@@ -173,6 +173,33 @@ export class FileUtils {
     }
 
     /**
+     * Append a postfix to the filename BEFORE its file extension
+     */
+    public postfixFilePath(filePath: string, postfix: string, fileExtensions: string[]) {
+        let parsedPath = path.parse(filePath);
+
+        if (fileExtensions.includes(parsedPath.ext)) {
+            const regexp = new RegExp(parsedPath.ext + '$', 'i');
+            return filePath.replace(regexp, postfix + parsedPath.ext);
+        } else {
+            return filePath;
+        }
+    }
+
+    /**
+     * Given a file path, return a new path with the component library postfix removed
+     */
+    public unPostfixFilePath(filePath: string, postfix: string) {
+        let parts = path.parse(filePath);
+        const search = `${postfix}${parts.ext}`;
+        if (filePath.toLowerCase().endsWith(search.toLowerCase())) {
+            return fileUtils.replaceCaseInsensitive(filePath, search, parts.ext);
+        } else {
+            return filePath;
+        }
+    }
+
+    /**
      * Replace all directory separators with current OS separators,
      * force all drive letters to lower case (because that's what VSCode does sometimes so this makes it consistent)
      * @param thePath

@@ -261,4 +261,28 @@ describe('FileUtils', () => {
             expect(fileUtils.removeTrailingSlash('a')).to.equal('a');
         });
     });
+
+    describe('unPostfixFilePath', () => {
+        it('removes postfix from paths that contain it', () => {
+            expect(fileUtils.unPostfixFilePath(`source/main__lib1.brs`, '__lib1')).to.equal('source/main.brs');
+            expect(fileUtils.unPostfixFilePath(`components/component1__lib1.brs`, '__lib1')).to.equal('components/component1.brs');
+        });
+
+        it('removes postfix case insensitive', () => {
+            expect(fileUtils.unPostfixFilePath(`source/main__LIB1.brs`, '__lib1')).to.equal('source/main.brs');
+            expect(fileUtils.unPostfixFilePath(`source/MAIN__lib1.brs`, '__lib1')).to.equal('source/MAIN.brs');
+        });
+
+        it('does nothing to files without the postfix', () => {
+            expect(fileUtils.unPostfixFilePath(`source/main.brs`, '__lib1')).to.equal('source/main.brs');
+        });
+
+        it('does nothing to files with a different postfix', () => {
+            expect(fileUtils.unPostfixFilePath(`source/main__lib1.brs`, '__lib0')).to.equal('source/main__lib1.brs');
+        });
+
+        it('only removes the postfix from the end of the file', () => {
+            expect(fileUtils.unPostfixFilePath(`source/__lib1.brs/main.brs`, '__lib1')).to.equal('source/__lib1.brs/main.brs');
+        });
+    });
 });

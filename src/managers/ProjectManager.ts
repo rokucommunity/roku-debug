@@ -110,8 +110,8 @@ export class ProjectManager {
 
         //remove the component library postfix if present
         if (project instanceof ComponentLibraryProject) {
-            stagingFileInfo.absolutePath = project.removeFileNamePostfix(stagingFileInfo.absolutePath);
-            stagingFileInfo.relativePath = project.removeFileNamePostfix(stagingFileInfo.relativePath);
+            stagingFileInfo.absolutePath = fileUtils.unPostfixFilePath(stagingFileInfo.absolutePath, project.postfix);
+            stagingFileInfo.relativePath = fileUtils.unPostfixFilePath(stagingFileInfo.relativePath, project.postfix);
         }
 
         let sourceLocation = await this.locationManager.getSourceLocation({
@@ -251,6 +251,11 @@ export class Project {
     public raleTrackerTaskFileLocation: string;
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
+
+    //the default project doesn't have a postfix, but component libraries will have a postfix, so just use empty string to standardize the postfix logic
+    public get postfix() {
+        return '';
+    }
 
     private logger = logger.createLogger(`[${ProjectManager.name}]`);
 
@@ -577,22 +582,12 @@ export class ComponentLibraryProject extends Project {
             let relativePath = fileUtils.removeLeadingSlash(
                 fileUtils.getRelativePath(this.stagingFolderPath, fileMapping.dest)
             );
-            let parsedPath = path.parse(relativePath);
-
-            if (parsedPath.ext) {
-                let originalRelativePath = relativePath;
-
-                if (parsedPath.ext === '.brs') {
-                    // Create the new file name to be used
-                    let newFileName = `${parsedPath.name}${this.postfix}${parsedPath.ext}`;
-                    relativePath = path.join(parsedPath.dir, newFileName);
-
-                    // Rename the brs files to include the postfix namespacing tag
-                    await fsExtra.move(fileMapping.dest, path.join(this.stagingFolderPath, relativePath));
-                }
-
+            let postfixedPath = fileUtils.postfixFilePath(relativePath, this.postfix, ['.brs']);
+            if (postfixedPath !== relativePath) {
+                // Rename the brs files to include the postfix namespacing tag
+                await fsExtra.move(fileMapping.dest, path.join(this.stagingFolderPath, postfixedPath));
                 // Add to the map of original paths and the new paths
-                pathDetails[relativePath] = originalRelativePath;
+                pathDetails[postfixedPath] = relativePath;
             }
         }));
 
@@ -607,18 +602,5 @@ export class ComponentLibraryProject extends Project {
                 return match.replace('.brs', this.postfix + '.brs');
             }
         });
-    }
-
-    /**
-     * Given a file path, return a new path with the component library postfix removed
-     */
-    public removeFileNamePostfix(filePath: string) {
-        let parts = path.parse(filePath);
-        let postfix = `${this.postfix}${parts.ext}`;
-        if (filePath.toLowerCase().endsWith(postfix.toLowerCase())) {
-            return fileUtils.replaceCaseInsensitive(filePath, postfix, parts.ext);
-        } else {
-            return filePath;
-        }
     }
 }

@@ -23,6 +23,8 @@ describe('BreakpointManager', () => {
     const srcPath = s`${rootDir}/source/main.brs`;
     const complib1RootDir = s`${tmpDir}/complib1/rootDir`;
     const complib1OutDir = s`${tmpDir}/complib1/outDir`;
+    const complib2RootDir = s`${tmpDir}/complib2/rootDir`;
+    const complib2OutDir = s`${tmpDir}/complib2/outDir`;
 
     let bpManager: BreakpointManager;
     let locationManager: LocationManager;
@@ -53,6 +55,15 @@ describe('BreakpointManager', () => {
                 libraryIndex: 0,
                 outDir: complib1OutDir,
                 outFile: s`${complib1OutDir}/complib1.zip`
+            })
+        );
+        projectManager.addComponentLibraryProject(
+            new ComponentLibraryProject({
+                rootDir: complib2RootDir,
+                files: [],
+                libraryIndex: 1,
+                outDir: complib2OutDir,
+                outFile: s`${complib2OutDir}/complib2.zip`
             })
         );
     });
@@ -944,7 +955,6 @@ describe('BreakpointManager', () => {
         });
 
         it('detects column number change (roku does not support this yet, but we might as well...)', async () => {
-            //add breakpoint with hit condition
             bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
                 line: 2,
                 column: 4
@@ -957,7 +967,6 @@ describe('BreakpointManager', () => {
                 }]
             });
 
-            //change the breakpoint hit condition
             bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
                 line: 2,
                 column: 8
@@ -976,7 +985,6 @@ describe('BreakpointManager', () => {
         });
 
         it('maintains breakpoint IDs', async () => {
-            //add breakpoint with hit condition
             bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
                 line: 2,
                 column: 4
@@ -989,7 +997,6 @@ describe('BreakpointManager', () => {
                 }]
             });
 
-            //change the breakpoint hit condition
             bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
                 line: 2,
                 column: 8
@@ -1006,5 +1013,33 @@ describe('BreakpointManager', () => {
                 }]
             });
         });
+
+        it('accounts for complib filename postfixes', async () => {
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 1
+            }]);
+
+            bpManager.replaceBreakpoints(s`${complib1RootDir}/source/main.brs`, [{
+                line: 2
+            }]);
+
+            bpManager.replaceBreakpoints(s`${complib2RootDir}/source/main.brs`, [{
+                line: 3
+            }]);
+
+            await testDiffEquals({
+                added: [{
+                    line: 1,
+                    pkgPath: 'pkg:/source/main.brs'
+                }, {
+                    line: 2,
+                    pkgPath: 'pkg:/source/main__lib0.brs'
+                }, {
+                    line: 3,
+                    pkgPath: 'pkg:/source/main__lib1.brs'
+                }], removed: [], unchanged: []
+            });
+        });
+
     });
 });
