@@ -20,6 +20,7 @@ module.exports = {
     ],
     rules: {
         '@typescript-eslint/array-type': 'off',
+        '@typescript-eslint/class-literal-property-style': 'off',
         '@typescript-eslint/consistent-type-assertions': 'off',
         '@typescript-eslint/explicit-function-return-type': 'off',
         '@typescript-eslint/explicit-member-accessibility': 'off',
