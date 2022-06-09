@@ -589,6 +589,8 @@ export class BreakpointManager {
                     for (const filePath in work) {
                         const fileWork = work[filePath];
                         for (const bp of fileWork) {
+                            bp.stagingFilePath = fileUtils.postfixFilePath(bp.stagingFilePath, project.postfix, ['.brs']);
+                            bp.pkgPath = fileUtils.postfixFilePath(bp.pkgPath, project.postfix, ['.brs']);
                             const key = [
                                 bp.stagingFilePath,
                                 bp.line,
