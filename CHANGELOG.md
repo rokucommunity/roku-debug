@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.13.1](https://github.com/rokucommunity/roku-debug/compare/v0.13.0...v0.13.1) - 2022-06-09
+### Fixed
+ - dynamic breakpoints bug where component library breakpoints weren't being hit ([#89](https://github.com/rokucommunity/roku-debug/pull/89))
+
+
+
 ## [0.13.0](https://github.com/rokucommunity/roku-debug/compare/v0.12.2...v0.13.0) - 2022-06-08
 ### Added
  - Support for dynamic breakpoints when using Debug Protocol ([#84](https://github.com/rokucommunity/roku-debug/pull/84))
