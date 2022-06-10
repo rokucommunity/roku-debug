@@ -200,7 +200,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } catch (e) {
             const errorMessage = `Could not resolve ip address for "${this.launchConfiguration.host}"`;
             this.showPopupMessage(errorMessage, 'error');
-            throw new Error(errorMessage, { cause: e });
+            throw e;
         }
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
