@@ -70,6 +70,18 @@ export class LaunchStartEvent implements DebugProtocol.Event {
     public type: string;
 }
 
+export class PopupMessageEvent implements DebugProtocol.Event {
+    constructor(message: string, severity: 'error' | 'info' | 'warn') {
+        this.body = { message, severity };
+        this.event = 'BSPopupMessageEvent';
+    }
+
+    public body: any;
+    public event: string;
+    public seq: number;
+    public type: string;
+}
+
 export class ChannelPublishedEvent implements DebugProtocol.Event {
     constructor(
         body: {
