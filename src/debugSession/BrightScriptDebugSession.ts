@@ -38,7 +38,8 @@ import {
     StoppedEventReason,
     ChanperfEvent,
     DebugServerLogOutputEvent,
-    ChannelPublishedEvent
+    ChannelPublishedEvent,
+    PopupMessageEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -180,6 +181,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('initializeRequest finished');
     }
 
+    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info') {
+        this.sendEvent(new PopupMessageEvent(message, severity));
+    }
+
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         this.logger.log('[launchRequest] begin');
         this.launchConfiguration = config;
@@ -190,7 +195,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         //do a DNS lookup for the host to fix issues with roku rejecting ECP
-        this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
+        try {
+            this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
+        } catch (e) {
+            const errorMessage = `Could not resolve ip address for "${this.launchConfiguration.host}"`;
+            this.showPopupMessage(errorMessage, 'error');
+            throw new Error(errorMessage, { cause: e });
+        }
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
