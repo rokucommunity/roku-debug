@@ -18,7 +18,7 @@ import {
     UpdateThreadsResponse,
     VariableResponse
 } from './responses';
-import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS } from './Constants';
+import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../logging';
 import { ERROR_CODES, UPDATE_TYPES } from '..';
@@ -238,16 +238,50 @@ export class Debugger {
         }
     }
 
+    /**
+     * @param variablePathEntries One or more path entries to the variable to be inspected. E.g., m.top.myObj["someKey"] can be accessed with ["m","top","myobj","\"someKey\""].
+     *
+     *                            If no path is specified, the variables accessible from the specified stack frame are returned.
+     *
+     *                            Starting in protocol v3.1.0, The keys for indexed gets (i.e. obj["key"]) should be wrapped in quotes so they can be handled in a case-sensitive fashion (if applicable on device).
+     *                            All non-quoted keys (i.e. strings without leading and trailing quotes inside them) will be treated as case-insensitive).
+     * @param getChildKeys  If set, VARIABLES response include the child keys for container types like lists and associative arrays
+     * @param stackFrameIndex 0 = first function called, nframes-1 = last function. This indexing does not match the order of the frames returned from the STACKTRACE command
+     * @param threadIndex the index (or perhaps ID?) of the thread to get variables for
+     */
     public async getVariables(variablePathEntries: Array<string> = [], getChildKeys = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
         if (this.stopped && threadIndex > -1) {
+            //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
+            const sendCaseInsensitiveData = semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0;
             let buffer = new SmartBuffer({ size: 17 });
-            buffer.writeUInt8(getChildKeys ? 1 : 0); // variable_request_flags
+            let flags = 0;
+            if (getChildKeys) {
+                // eslint-disable-next-line no-bitwise
+                flags |= VARIABLE_REQUEST_FLAGS.GET_CHILD_KEYS;
+            }
+            if (sendCaseInsensitiveData) {
+                // eslint-disable-next-line no-bitwise
+                flags |= VARIABLE_REQUEST_FLAGS.CASE_SENSITIVITY_OPTIONS;
+            }
+            buffer.writeUInt8(flags); // variable_request_flags
             buffer.writeUInt32LE(threadIndex); // thread_index
             buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
             buffer.writeUInt32LE(variablePathEntries.length); // variable_path_len
-            variablePathEntries.forEach(variablePathEntry => {
-                buffer.writeStringNT(variablePathEntry); // variable_path_entries - optional
+            variablePathEntries.forEach(entry => {
+                if (entry.startsWith('"') && entry.endsWith('"')) {
+                    //remove leading and trailing quotes
+                    entry = entry.substring(1, entry.length - 1);
+                }
+                buffer.writeStringNT(entry); // variable_path_entries - optional
             });
+            if (sendCaseInsensitiveData) {
+                variablePathEntries.forEach(entry => {
+                    buffer.writeUInt8(
+                        //0 means case SENSITIVE lookup, 1 means case INsensitive lookup
+                        entry.startsWith('"') ? 0 : 1
+                    );
+                });
+            }
             return this.makeRequest<VariableResponse>(buffer, COMMANDS.VARIABLES, variablePathEntries);
         }
     }

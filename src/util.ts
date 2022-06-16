@@ -308,8 +308,7 @@ class Util {
             } else if (isIndexedGetExpression(value)) {
                 if (isLiteralExpression(value.index)) {
                     parts.unshift(
-                        //remove leading and trailing quotes (won't hurt for numeric literals)
-                        value.index.token.text?.replace(/^"/, '').replace(/"$/, '')
+                        value.index.token.text
                     );
                 } else {
                     //if we found a non-literal value, this entire variable path is NOT a true variable path
