@@ -268,18 +268,18 @@ describe('Util', () => {
             expect(util.getVariablePath('a[0]')).to.eql(['a', '0']);
             expect(util.getVariablePath('a[0].b')).to.eql(['a', '0', 'b']);
             expect(util.getVariablePath('a[0].b[0]')).to.eql(['a', '0', 'b', '0']);
-            expect(util.getVariablePath('a["b"]')).to.eql(['a', 'b']);
-            expect(util.getVariablePath('a["b"]["c"]')).to.eql(['a', 'b', 'c']);
-            expect(util.getVariablePath('a["b"][0]')).to.eql(['a', 'b', '0']);
-            expect(util.getVariablePath('a["b"].c[0]')).to.eql(['a', 'b', 'c', '0']);
-            expect(util.getVariablePath(`m_that["this -that.thing"]  .other[9]`)).to.eql(['m_that', 'this -that.thing', 'other', '9']);
+            expect(util.getVariablePath('a["b"]')).to.eql(['a', '"b"']);
+            expect(util.getVariablePath('a["b"]["c"]')).to.eql(['a', '"b"', '"c"']);
+            expect(util.getVariablePath('a["b"][0]')).to.eql(['a', '"b"', '0']);
+            expect(util.getVariablePath('a["b"].c[0]')).to.eql(['a', '"b"', 'c', '0']);
+            expect(util.getVariablePath(`m_that["this -that.thing"]  .other[9]`)).to.eql(['m_that', '"this -that.thing"', 'other', '9']);
             expect(util.getVariablePath(`a`)).to.eql(['a']);
             expect(util.getVariablePath(`boy5`)).to.eql(['boy5']);
             expect(util.getVariablePath(`super_man$`)).to.eql(['super_man$']);
             expect(util.getVariablePath(`_super_man$`)).to.eql(['_super_man$']);
-            expect(util.getVariablePath(`a["something with a quote"].c`)).to.eql(['a', 'something with a quote', 'c']);
+            expect(util.getVariablePath(`a["something with a quote"].c`)).to.eql(['a', '"something with a quote"', 'c']);
             expect(util.getVariablePath(`m.global.initialInputEvent`)).to.eql(['m', 'global', 'initialInputEvent']);
-            expect(util.getVariablePath(`m.["that"]`)).to.eql(['m', 'that']);
+            expect(util.getVariablePath(`m.["that"]`)).to.eql(['m', '"that"']);
         });
 
         it('rejects invalid patterns', () => {

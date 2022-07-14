@@ -51,13 +51,42 @@ export enum UPDATE_TYPES {
     THREAD_ATTACHED = 3
 }
 
+export enum VARIABLE_REQUEST_FLAGS {
+    GET_CHILD_KEYS = 0x01,
+    CASE_SENSITIVITY_OPTIONS = 0x02
+}
+
 export enum VARIABLE_FLAGS {
+    /**
+     * value is a child of the requested variable
+     * e.g., an element of an array or field of an AA
+     */
     isChildKey = 0x01,
+    /**
+     * value is constant
+     */
     isConst = 0x02,
+    /**
+     * The referenced value is a container (e.g., a list or array)
+     */
     isContainer = 0x04,
+    /**
+     * The name is included in this VariableInfo
+     */
     isNameHere = 0x08,
+    /**
+     * value is reference-counted.
+     */
     isRefCounted = 0x10,
-    isValueHere = 0x20
+    /**
+     * value is included in this VariableInfo
+     */
+    isValueHere = 0x20,
+    /**
+     * Value is container, key lookup is case sensitive
+     * @since protocol 3.1.0
+     */
+    isKeysCaseSensitive = 0x40
 }
 
 export enum VARIABLE_TYPES {

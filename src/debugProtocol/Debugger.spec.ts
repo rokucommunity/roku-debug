@@ -5,7 +5,7 @@ import { MockDebugProtocolServer } from './MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
 import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from './responses/responseCreationHelpers.spec';
 import { HandshakeResponseV3, ProtocolEventV3 } from './responses';
-import { ERROR_CODES, UPDATE_TYPES } from './Constants';
+import { ERROR_CODES, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from './Constants';
 const sinon = createSandbox();
 
 describe('debugProtocol Debugger', () => {
@@ -145,6 +145,73 @@ describe('debugProtocol Debugger', () => {
             let calls = stub.getCalls();
             expect(calls[0].args[0]).instanceOf(HandshakeResponseV3);
             expect(calls[1].args[0]).instanceOf(ProtocolEventV3);
+        });
+    });
+
+    describe('getVariables', () => {
+        function getVariablesRequestBufferToJson(buffer: SmartBuffer) {
+            const result = {
+                flags: buffer.readUInt8(),
+                threadIndex: buffer.readUInt32LE(),
+                stackFrameIndex: buffer.readUInt32LE(),
+                variablePathEntries: [],
+                pathForceCaseInsensitive: []
+            };
+
+            const pathLength = buffer.readUInt32LE();
+            if (pathLength > 0) {
+                result.variablePathEntries = [];
+                for (let i = 0; i < pathLength; i++) {
+                    result.variablePathEntries.push(
+                        buffer.readBufferNT().toString()
+                    );
+                }
+            }
+            // eslint-disable-next-line no-bitwise
+            if (result.flags & VARIABLE_REQUEST_FLAGS.CASE_SENSITIVITY_OPTIONS) {
+                result.pathForceCaseInsensitive = [];
+                for (let i = 0; i < pathLength; i++) {
+                    result.pathForceCaseInsensitive.push(
+                        buffer.readUInt8() === 0 ? false : true
+                    );
+                }
+            }
+            return result;
+        }
+
+        it('skips case sensitivity info on lower protocol versions', async () => {
+            bsDebugger.protocolVersion = '2.0.0';
+            bsDebugger['stopped'] = true;
+            const stub = sinon.stub(bsDebugger as any, 'makeRequest').callsFake(() => { });
+            await bsDebugger.getVariables(['m', 'top'], false, 1, 2);
+            expect(
+                getVariablesRequestBufferToJson(stub.getCalls()[0].args[0])
+            ).to.eql({
+                flags: 0,
+                stackFrameIndex: 1,
+                threadIndex: 2,
+                variablePathEntries: ['m', 'top'],
+                //should be empty
+                pathForceCaseInsensitive: []
+            });
+        });
+
+        it('marks strings as case-sensitive', async () => {
+            bsDebugger.protocolVersion = '3.1.0';
+            bsDebugger['stopped'] = true;
+            const stub = sinon.stub(bsDebugger as any, 'makeRequest').callsFake(() => { });
+            await bsDebugger.getVariables(['m', 'top', '"someKey"', '""someKeyWithInternalQuotes""'], true, 1, 2);
+            expect(
+                getVariablesRequestBufferToJson(stub.getCalls()[0].args[0])
+            ).to.eql({
+                // eslint-disable-next-line no-bitwise
+                flags: VARIABLE_REQUEST_FLAGS.GET_CHILD_KEYS | VARIABLE_REQUEST_FLAGS.CASE_SENSITIVITY_OPTIONS,
+                stackFrameIndex: 1,
+                threadIndex: 2,
+                variablePathEntries: ['m', 'top', 'someKey', '"someKeyWithInternalQuotes"'],
+                //should be empty
+                pathForceCaseInsensitive: [true, true, false, false]
+            });
         });
     });
 });
