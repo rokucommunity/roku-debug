@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.14.0](https://github.com/rokucommunity/roku-debug/compare/v0.13.1...0.14.0) - 2022-07-14
+### Added
+ - debug protocol: support for case-sensitivity in getVariables protocol request ([#91](https://github.com/rokucommunity/roku-debug/pull/91))
+ - Show error when cannot resolve hostname ([#90](https://github.com/rokucommunity/roku-debug/pull/90))
+### Changed
+ - upgrade to [brighterscript@0.53.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0530---undefined)
+
+
+
 ## [0.13.1](https://github.com/rokucommunity/roku-debug/compare/v0.13.0...v0.13.1) - 2022-06-09
 ### Fixed
  - dynamic breakpoints bug where component library breakpoints weren't being hit ([#89](https://github.com/rokucommunity/roku-debug/pull/89))
