@@ -431,7 +431,7 @@ describe('Util', () => {
         });
     });
 
-    describe.only('retry', () => {
+    describe('retry', () => {
         it('kills on first error encountered', async () => {
             let tryCount = 0;
             let cancelCount = 0;
