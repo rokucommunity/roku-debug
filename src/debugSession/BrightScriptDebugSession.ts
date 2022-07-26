@@ -389,12 +389,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async connectAndPublish() {
-        const promises = [] as Promise<any>[];
         //connect to the roku debug via sockets
         if (this.enableDebugProtocol) {
-            promises.push(
-                this.connectRokuAdapter()
-            );
+            void this.connectRokuAdapter();
         }
 
         let packageIsPublished = false;
@@ -404,6 +401,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         });
 
         await publishPromise;
+        //if the package was published, but the adapter isn't connected yet
         if (packageIsPublished && !this.rokuAdapter.connected) {
             //wait a little while for the adapter to finish connecting
             await util.sleep(5000);
