@@ -46,6 +46,9 @@ export class DebugProtocolAdapter {
 
     private logger = logger.createLogger(`[${DebugProtocolAdapter.name}]`);
 
+    /**
+     * Indicates whether the adapter has successfully established a connection with the device
+     */
     public connected: boolean;
 
     /**

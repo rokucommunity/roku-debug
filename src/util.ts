@@ -385,6 +385,49 @@ class Util {
         options.brightScriptConsolePort ??= 8085;
         options.remotePort ??= 8060;
     }
+
+    public async retry<T>(action: () => T, options: {
+        /**
+         * The max number of milliseconds an individual try can run
+         */
+        maxTryMs: number;
+        /**
+         * The max number of milliseconds this entire operation can run.
+         */
+        maxTotalMs: number;
+        /**
+         * A callback that is run every time a try is canceled
+         */
+        onCancel?: (error: Error) => void;
+    }): Promise<T> {
+        options = {
+            maxTryMs: 100,
+            maxTotalMs: 1000,
+            onCancel: () => { },
+            ...options ?? {}
+        };
+        const startTime = Date.now();
+        while (true) {
+            if (Date.now() - startTime >= options.maxTotalMs) {
+                throw new Error('Total allotted time exceeded');
+            }
+            let timedOut = false;
+            const actionResult = Promise.resolve(action());
+            const timeoutResult = this.sleep(options.maxTryMs).then(() => {
+                timedOut = true;
+            });
+            const result = await Promise.race([actionResult, timeoutResult]);
+            if (timedOut) {
+                await Promise.resolve(
+                    options?.onCancel?.(
+                        new Error('Try timed out')
+                    )
+                );
+            } else {
+                return result as T;
+            }
+        }
+    }
 }
 
 export function defer<T>() {

@@ -26,6 +26,7 @@ import { ExecuteResponseV3 } from './responses/ExecuteResponseV3';
 import { ListBreakpointsResponse } from './responses/ListBreakpointsResponse';
 import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
+import { util } from '../util';
 
 export class Debugger {
 
@@ -70,6 +71,13 @@ export class Debugger {
     /**
      * Get a promise that resolves after an event occurs exactly once
      */
+    public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
+    public once(eventName: 'data'): Promise<any>;
+    public once(eventName: 'runtime-error' | 'suspend'): Promise<UpdateThreadsResponse>;
+    public once(eventName: 'connected'): Promise<boolean>;
+    public once(eventName: 'io-output'): Promise<string>;
+    public once(eventName: 'protocol-version'): Promise<ProtocolVersionDetails>;
+    public once(eventName: 'handshake-verified'): Promise<HandshakeResponse>;
     public once(eventName: string) {
         return new Promise((resolve) => {
             const disconnect = this.on(eventName as Parameters<Debugger['on']>[0], (...args) => {
@@ -113,21 +121,35 @@ export class Debugger {
         const debugSetupEnd = 'total socket debugger setup time';
         console.time(debugSetupEnd);
 
-        // Create a new TCP client.`
-        this.controllerClient = new Net.Socket();
-        // Send a connection request to the server.
-
-        this.controllerClient.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
-            // If there is no error, the server has accepted the request and created a new
-            // socket dedicated to us.
-            this.logger.log('TCP connection established with the server.');
-
-            // The client can also receive data from the server by reading from its socket.
-            // The client can now send data to the server by writing to its socket.
-            let buffer = new SmartBuffer({ size: Buffer.byteLength(Debugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(Debugger.DEBUGGER_MAGIC).toBuffer();
-            this.logger.log('Sending magic to server');
-            this.controllerClient.write(buffer);
+        await util.retry(() => {
+            this.controllerClient = new Net.Socket();
+            return new Promise((resolve, reject) => {
+                this.controllerClient.once('error', (error) => {
+                    reject(error);
+                    this.shutdown('close');
+                });
+                this.controllerClient.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
+                    resolve(this.controllerClient);
+                });
+            });
+        }, {
+            onCancel: async () => {
+                this.controllerClient?.destroy();
+                //small timeout to let the connection destroy settle
+                await util.sleep(5);
+            },
+            maxTotalMs: 5 * 60 * 1000,
+            maxTryMs: 500
         });
+
+        // If there is no error, the server has accepted the request and created a new dedicated socket
+        this.logger.log('TCP connection established with the server.');
+
+        // The client can also receive data from the server by reading from its socket.
+        // The client can now send data to the server by writing to its socket.
+        let buffer = new SmartBuffer({ size: Buffer.byteLength(Debugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(Debugger.DEBUGGER_MAGIC).toBuffer();
+        this.logger.log('Sending magic to server');
+        this.controllerClient.write(buffer);
 
         this.controllerClient.on('data', (buffer) => {
             if (this.unhandledData) {
@@ -150,19 +172,9 @@ export class Debugger {
             this.shutdown('close');
         });
 
-        let connectPromise: Promise<boolean> = new Promise((resolve, reject) => {
-            let disconnect = this.on('connected', (connected) => {
-                disconnect();
-                console.timeEnd(debugSetupEnd);
-                if (connected) {
-                    resolve(connected);
-                } else {
-                    reject(connected);
-                }
-            });
-        });
-
-        return connectPromise;
+        const isConnected = await this.once('connected');
+        console.timeEnd(debugSetupEnd);
+        return isConnected;
     }
 
     public async continue() {

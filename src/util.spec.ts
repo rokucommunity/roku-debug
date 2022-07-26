@@ -430,4 +430,60 @@ describe('Util', () => {
             ).to.be.true;
         });
     });
+
+    describe.only('retry', () => {
+        it('kills on first error encountered', async () => {
+            let tryCount = 0;
+            let cancelCount = 0;
+            await util.retry(() => {
+                tryCount++;
+                throw new Error('Crash');
+            }, {
+                onCancel: () => {
+                    cancelCount++;
+                },
+                maxTryMs: 4,
+                maxTotalMs: 10
+            }).catch(() => { /*ignore the error */ });
+            expect(tryCount).to.equal(1);
+            expect(cancelCount).to.equal(0);
+        });
+
+        it('kills long-running tries', async () => {
+            let tryCount = 0;
+            let cancelCount = 0;
+            const result = await util.retry(() => {
+                tryCount++;
+                if (tryCount >= 3) {
+                    return true;
+                } else {
+                    return util.sleep(50);
+                }
+            }, {
+                onCancel: () => {
+                    cancelCount++;
+                },
+                maxTryMs: 4,
+                maxTotalMs: 100
+            });
+            expect(result).to.be.true;
+            expect(tryCount).to.equal(3);
+            expect(cancelCount).to.equal(tryCount - 1);
+        });
+
+        it('kills tries that exceed the total runtime', async () => {
+            try {
+                await util.retry(() => {
+                    return util.sleep(50);
+                }, {
+                    onCancel: () => {
+                    },
+                    maxTryMs: 4000,
+                    maxTotalMs: 10
+                });
+            } catch (e) {
+                expect(e.message).to.equal('Total allotted time exceeded');
+            }
+        });
+    });
 });

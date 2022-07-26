@@ -49,6 +49,7 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
+import { waitForDebugger } from 'inspector';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -327,17 +328,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // Set the remote debug flag on the args to be passed to roku deploy so the socket debugger can be started if needed.
             (this.launchConfiguration as any).remoteDebug = this.enableDebugProtocol;
 
-            //publish the package to the target Roku
-            await this.rokuDeploy.publish(this.launchConfiguration as any as RokuDeployOptions);
+            await this.connectAndPublish();
 
             this.sendEvent(new ChannelPublishedEvent({
                 launchConfiguration: this.launchConfiguration
             }));
-
-            if (this.enableDebugProtocol) {
-                //connect to the roku debug via sockets
-                await this.connectRokuAdapter();
-            }
 
             //tell the adapter adapter that the channel has been launched.
             await this.rokuAdapter.activate();
@@ -390,6 +385,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     return err ? reject(err) : resolve(response);
                 });
             });
+        }
+    }
+
+    private async connectAndPublish() {
+        const promises = [] as Promise<any>[];
+        //connect to the roku debug via sockets
+        if (this.enableDebugProtocol) {
+            promises.push(
+                this.connectRokuAdapter()
+            );
+        }
+
+        let packageIsPublished = false;
+        //publish the package to the target Roku
+        const publishPromise = this.rokuDeploy.publish(this.launchConfiguration as any as RokuDeployOptions).then(() => {
+            packageIsPublished = true;
+        });
+
+        await publishPromise;
+        if (packageIsPublished && !this.rokuAdapter.connected) {
+            //wait a little while for the adapter to finish connecting
+            await util.sleep(5000);
+            //if the adapter is still not connected, then it will probably never connect. Abort.
+            if (packageIsPublished && !this.rokuAdapter.connected) {
+                //kill the session cuz it won't ever come back
+                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                this.logger.error('Unable to connectd to the debug protocol socket. Terminating debug session');
+                this.shutdown();
+                this.sendEvent(new TerminatedEvent());
+            }
         }
     }
 
@@ -1058,6 +1083,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.rokuAdapter.on('cannot-continue', () => {
             this.sendEvent(new TerminatedEvent());
         });
+
         //make the connection
         await this.rokuAdapter.connect();
         this.rokuAdapterDeferred.resolve(this.rokuAdapter);
