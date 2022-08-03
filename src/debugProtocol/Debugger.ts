@@ -126,7 +126,7 @@ export class Debugger {
             return new Promise((resolve, reject) => {
                 this.controllerClient.once('error', (error) => {
                     reject(error);
-                    this.shutdown('close');
+                    console.error('Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
                 });
                 this.controllerClient.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
                     resolve(this.controllerClient);
