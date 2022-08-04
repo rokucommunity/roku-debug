@@ -389,9 +389,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async connectAndPublish() {
+        let connectPromise: Promise<any>;
         //connect to the roku debug via sockets
         if (this.enableDebugProtocol) {
-            void this.connectRokuAdapter();
+            connectPromise = this.connectRokuAdapter().catch(e => this.logger.error(e));
         }
 
         let packageIsPublished = false;
@@ -401,18 +402,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         });
 
         await publishPromise;
-        //if the package was published, but the adapter isn't connected yet
+
+        //the channel has been deployed. Wait for the adapter to finish connecting.
+        //if it hasn't connected after 5 seconds, it probably will never connect.
+        await Promise.race([
+            connectPromise,
+            util.sleep(5000)
+        ]);
+        this.logger.log('Finished racing promises');
+        //if the adapter is still not connected, then it will probably never connect. Abort.
         if (packageIsPublished && !this.rokuAdapter.connected) {
-            //wait a little while for the adapter to finish connecting
-            await util.sleep(5000);
-            //if the adapter is still not connected, then it will probably never connect. Abort.
-            if (packageIsPublished && !this.rokuAdapter.connected) {
-                //kill the session cuz it won't ever come back
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-                this.logger.error('Unable to connectd to the debug protocol socket. Terminating debug session');
-                this.shutdown();
-                this.sendEvent(new TerminatedEvent());
-            }
+            //kill the session cuz it won't ever come back
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            const message = 'Debug session cancelled: failed to connect to debug protocol control port.';
+            this.showPopupMessage(message, 'error');
+            this.logger.error(message);
+            this.shutdown();
+            this.sendEvent(new TerminatedEvent());
         }
     }
 
@@ -1018,6 +1024,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Registers the main events for the RokuAdapter
      */
     private async connectRokuAdapter() {
+        await util.sleep(999999999);
         this.rokuAdapter.on('start', () => {
             if (!this.firstRunDeferred.isCompleted) {
                 this.firstRunDeferred.resolve();
