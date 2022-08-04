@@ -1024,7 +1024,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Registers the main events for the RokuAdapter
      */
     private async connectRokuAdapter() {
-        await util.sleep(999999999);
         this.rokuAdapter.on('start', () => {
             if (!this.firstRunDeferred.isCompleted) {
                 this.firstRunDeferred.resolve();
