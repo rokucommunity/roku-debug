@@ -390,30 +390,30 @@ class Util {
         /**
          * The max number of milliseconds an individual try can run
          */
-        maxTryMs: number;
+        tryTime: number;
         /**
          * The max number of milliseconds this entire operation can run.
          */
-        maxTotalMs: number;
+        totalTime: number;
         /**
          * A callback that is run every time a try is canceled
          */
         onCancel?: (error: Error) => void;
     }): Promise<T> {
         options = {
-            maxTryMs: 100,
-            maxTotalMs: 1000,
+            tryTime: 100,
+            totalTime: 1000,
             onCancel: () => { },
             ...options ?? {}
         };
         const startTime = Date.now();
         while (true) {
-            if (Date.now() - startTime >= options.maxTotalMs) {
+            if (Date.now() - startTime >= options.totalTime) {
                 throw new Error('Total allotted time exceeded');
             }
             let timedOut = false;
             const actionResult = Promise.resolve(action());
-            const timeoutResult = this.sleep(options.maxTryMs).then(() => {
+            const timeoutResult = this.sleep(options.tryTime).then(() => {
                 timedOut = true;
             });
             const result = await Promise.race([actionResult, timeoutResult]);

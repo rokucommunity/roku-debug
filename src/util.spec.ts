@@ -442,8 +442,8 @@ describe('Util', () => {
                 onCancel: () => {
                     cancelCount++;
                 },
-                maxTryMs: 4,
-                maxTotalMs: 10
+                tryTime: 4,
+                totalTime: 10
             }).catch(() => { /*ignore the error */ });
             expect(tryCount).to.equal(1);
             expect(cancelCount).to.equal(0);
@@ -463,8 +463,8 @@ describe('Util', () => {
                 onCancel: () => {
                     cancelCount++;
                 },
-                maxTryMs: 4,
-                maxTotalMs: 100
+                tryTime: 4,
+                totalTime: 100
             });
             expect(result).to.be.true;
             expect(tryCount).to.equal(3);
@@ -478,8 +478,8 @@ describe('Util', () => {
                 }, {
                     onCancel: () => {
                     },
-                    maxTryMs: 4000,
-                    maxTotalMs: 10
+                    tryTime: 4000,
+                    totalTime: 10
                 });
             } catch (e) {
                 expect(e.message).to.equal('Total allotted time exceeded');

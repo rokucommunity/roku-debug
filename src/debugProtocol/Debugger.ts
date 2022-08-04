@@ -123,10 +123,10 @@ export class Debugger {
 
         await util.retry(() => {
             this.controllerClient = new Net.Socket();
-            return new Promise((resolve, reject) => {
+            return new Promise((resolve) => {
                 this.controllerClient.once('error', (error) => {
-                    reject(error);
                     console.error('Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
+                    this.controllerClient?.destroy();
                 });
                 this.controllerClient.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
                     resolve(this.controllerClient);
@@ -135,11 +135,12 @@ export class Debugger {
         }, {
             onCancel: async () => {
                 this.controllerClient?.destroy();
+                this.controllerClient = undefined;
                 //small timeout to let the connection destroy settle
                 await util.sleep(5);
             },
-            maxTotalMs: 5 * 60 * 1000,
-            maxTryMs: 500
+            tryTime: this.options.controllerConnectInterval ?? 250,
+            totalTime: this.options.controllerConnectMaxTime ?? 5 * 60 * 1000 //5 minutes
         });
 
         // If there is no error, the server has accepted the request and created a new dedicated socket
@@ -630,7 +631,6 @@ export interface BreakpointSpec {
     hitCount?: number;
 }
 
-
 export interface ConstructorOptions {
     /**
      * The host/ip address of the Roku
@@ -641,4 +641,17 @@ export interface ConstructorOptions {
      * but is configurable here to support unit testing or alternate runtimes (i.e. https://www.npmjs.com/package/brs)
      */
     controllerPort?: number;
+    /**
+     * The interval (in milliseconds) for how frequently the `connect`
+     * call should retry connecting to the controller port. At the start of a debug session,
+     * the protocol debugger will start trying to connect the moment the channel is sideloaded,
+     * and keep trying until a successful connection is established or the debug session is terminated
+     * @default 250
+     */
+    controllerConnectInterval?: number;
+    /**
+     * The maximum time (in milliseconds) the debugger will keep retrying connections.
+     * This is here to prevent infinitely pinging the Roku device.
+     */
+    controllerConnectMaxTime?: number;
 }

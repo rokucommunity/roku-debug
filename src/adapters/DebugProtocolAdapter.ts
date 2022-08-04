@@ -1,4 +1,4 @@
-import type { ProtocolVersionDetails } from '../debugProtocol/Debugger';
+import type { ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/Debugger';
 import { Debugger } from '../debugProtocol/Debugger';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
@@ -22,7 +22,7 @@ import { ActionQueue } from '../managers/ActionQueue';
  */
 export class DebugProtocolAdapter {
     constructor(
-        private options: AdapterOptions,
+        private options: AdapterOptions & ConstructorOptions,
         private projectManager: ProjectManager,
         private breakpointManager: BreakpointManager
     ) {
