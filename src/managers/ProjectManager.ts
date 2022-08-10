@@ -501,6 +501,10 @@ export class ComponentLibraryProject extends Project {
     }
     public outFile: string;
     public libraryIndex: number;
+    /**
+     * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
+     */
+    public name: string;
 
     /**
      * Takes a component Library and checks the outFile for replaceable values pulled from the libraries manifest
@@ -509,18 +513,16 @@ export class ComponentLibraryProject extends Project {
     private async computeOutFileName(manifestPath: string) {
         let regexp = /\$\{([\w\d_]*)\}/;
         let renamingMatch: RegExpExecArray;
-        let manifestValues: Record<string, string>;
+        let manifestValues = await util.convertManifestToObject(manifestPath);
+        if (!manifestValues) {
+            throw new Error(`Cannot find manifest file at "${manifestPath}"\n\nCould not complete automatic component library naming.`);
+        }
+
+        //load the component libary name from the manifest
+        this.name = manifestValues.sg_component_libs_provided;
 
         // search the outFile for replaceable values such as ${title}
         while ((renamingMatch = regexp.exec(this.outFile))) {
-            if (!manifestValues) {
-                // The first time a value is found we need to get the manifest values
-                manifestValues = await util.convertManifestToObject(manifestPath);
-
-                if (!manifestValues) {
-                    throw new Error(`Cannot find manifest file at "${manifestPath}"\n\nCould not complete automatic component library naming.`);
-                }
-            }
 
             // replace the replaceable key with the manifest value
             let manifestVariableName = renamingMatch[1];

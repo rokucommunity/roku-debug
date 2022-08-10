@@ -92,6 +92,8 @@ class Util {
                 let match = /(\w+)=(.+)/.exec(line);
                 if (match) {
                     manifestValues[match[1]] = match[2];
+                    //add match in all lower case too (for consistency)
+                    manifestValues[match[1]?.toLowerCase()] = match[2];
                 }
             }
 
