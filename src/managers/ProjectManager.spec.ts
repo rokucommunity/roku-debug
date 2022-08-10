@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
+import { util } from '../util';
 import { rokuDeploy } from 'roku-deploy';
 import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
@@ -676,6 +677,7 @@ describe('ComponentLibraryProject', () => {
                 { src: s`${rootDir}/source/main.brs`, dest: s`source/main.brs` }
             ]));
             sinon.stub(Project.prototype, 'stage').returns(Promise.resolve());
+            sinon.stub(util, 'convertManifestToObject').returns(Promise.resolve({}));
 
             await project.stage();
             expect(project.fileMappings[0]).to.eql({
