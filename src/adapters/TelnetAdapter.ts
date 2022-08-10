@@ -48,6 +48,9 @@ export class TelnetAdapter {
     }
 
     public logger = logger.createLogger(`[${TelnetAdapter.name}]`);
+    /**
+     * Indicates whether the adapter has successfully established a connection with the device
+     */
     public connected: boolean;
 
     private compileErrorProcessor: CompileErrorProcessor;
