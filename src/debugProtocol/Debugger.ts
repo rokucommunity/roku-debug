@@ -69,6 +69,14 @@ export class Debugger {
     private options: ConstructorOptions;
 
     /**
+     * Prior to protocol v3.1.0, the Roku device would regularly set the wrong thread as "active",
+     * so this flag lets us know if we should use our better-than-nothing workaround
+     */
+    private get enableThreadHoppingWorkaround() {
+        return semver.satisfies(this.protocolVersion, '<3.1.0');
+    }
+
+    /**
      * Get a promise that resolves after an event occurs exactly once
      */
     public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
@@ -229,16 +237,23 @@ export class Debugger {
     public async threads() {
         if (this.stopped) {
             let result = await this.makeRequest<ThreadsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
-            //TODO uncomment this once the device starts correctly reporting `isPrimary`. Right now our logic is better at tracking the primary thread.
-            // if (result.errorCode === ERROR_CODES.OK) {
-            //     for (let i = 0; i < result.threadsCount; i++) {
-            //         let thread = result.threads[i];
-            //         if (thread.isPrimary) {
-            //             this.primaryThread = i;
-            //             break;
-            //         }
-            //     }
-            // }
+
+            if (result.errorCode === ERROR_CODES.OK) {
+                //older versions of the debug protocol had issues with maintaining the active thread, so our workaround is to keep track of it elsewhere
+                if (this.enableThreadHoppingWorkaround) {
+                    //ignore the `isPrimary` flag on threads
+                    this.logger.debug(`Ignoring the 'isPrimary' flag from threads because protocol version ${this.protocolVersion} and lower has a bug`);
+                } else {
+                    //trust the debug protocol's `isPrimary` flag on threads
+                    for (let i = 0; i < result.threadsCount; i++) {
+                        let thread = result.threads[i];
+                        if (thread.isPrimary) {
+                            this.primaryThread = i;
+                            break;
+                        }
+                    }
+                }
+            }
             return result;
         }
     }
