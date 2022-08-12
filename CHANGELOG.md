@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.14.2](https://github.com/rokucommunity/roku-debug/compare/v0.14.1...0.14.2) - 2022-08-12
+### Changed
+ - Support complib breakpoints on 11.5.0 ([#96](https://github.com/rokucommunity/roku-debug/pull/96))
+ - Disable thread hopping workaround >= protocol v3.1.0 ([#95](https://github.com/rokucommunity/roku-debug/pull/95))
+ - Upload zip and connect to protocol socket in parallel ([#94](https://github.com/rokucommunity/roku-debug/pull/94))
+ - upgrade to [brighterscript@0.55.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0551---2022-08-07). Notable changes since 0.53.1:
+     - Fix typescript error for ast parent setting ([brighterscript#659](https://github.com/rokucommunity/brighterscript/pull/659))
+     - Performance boost: better function sorting during validation ([brighterscript#651](https://github.com/rokucommunity/brighterscript/pull/651))
+     - Export some vscode interfaces ([brighterscript#644](https://github.com/rokucommunity/brighterscript/pull/644))
+
+
+
 ## [0.14.1](https://github.com/rokucommunity/roku-debug/compare/v0.14.0...0.14.1) - 2022-07-16
 ### Changed
  - Bump moment from 2.29.2 to 2.29.4 ([#92](https://github.com/rokucommunity/roku-debug/pull/92))
