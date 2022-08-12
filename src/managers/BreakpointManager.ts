@@ -4,7 +4,7 @@ import type { CodeWithSourceMap } from 'source-map';
 import { SourceNode } from 'source-map';
 import type { DebugProtocol } from 'vscode-debugprotocol';
 import { fileUtils, standardizePath } from '../FileUtils';
-import type { Project } from './ProjectManager';
+import type { ComponentLibraryProject, Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
 import type { SourceMapManager } from './SourceMapManager';
 import type { LocationManager } from './LocationManager';
@@ -280,7 +280,8 @@ export class BreakpointManager {
                         column: stagingLocation.columnIndex,
                         stagingFilePath: stagingLocation.filePath,
                         type: stagingLocationsResult.type,
-                        pkgPath: pkgPath
+                        pkgPath: pkgPath,
+                        componentLibraryName: (project as ComponentLibraryProject).name
                     };
                     if (!result[stagingLocation.filePath]) {
                         result[stagingLocation.filePath] = [];
@@ -720,6 +721,10 @@ export interface BreakpointWorkItem {
      * If set, this breakpoint will emit a log message at runtime and will not actually stop at the breakpoint
      */
     logMessage?: string;
+    /**
+     * The name of the component library this belongs to. Will be null for the main project
+     */
+    componentLibraryName?: string;
     /**
      * `sourceMap` means derived from a source map.
      * `fileMap` means derived from the {src;dest} entry used by roku-deploy

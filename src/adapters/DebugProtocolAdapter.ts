@@ -689,7 +689,8 @@ export class DebugProtocolAdapter {
                     filePath: breakpoint.pkgPath,
                     lineNumber: breakpoint.line,
                     hitCount: !isNaN(hitCount) ? hitCount : undefined,
-                    key: breakpoint.hash
+                    key: breakpoint.hash,
+                    componentLibraryName: breakpoint.componentLibraryName
                 };
             });
 

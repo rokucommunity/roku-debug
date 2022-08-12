@@ -77,6 +77,14 @@ export class Debugger {
     }
 
     /**
+     * Starting in protocol v3.1.0, component libary breakpoints must be added in the format `lib:/<library_name>/<filepath>`, but prior they didn't require this.
+     * So this flag tells us which format to support
+     */
+    private get enableComponentLibrarySpecificBreakpoints() {
+        return semver.satisfies(this.protocolVersion, '>=3.1.0');
+    }
+
+    /**
      * Get a promise that resolves after an event occurs exactly once
      */
     public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
@@ -325,12 +333,21 @@ export class Debugger {
         }
     }
 
-    public async addBreakpoints(breakpoints: BreakpointSpec[]): Promise<AddBreakpointsResponse> {
+    public async addBreakpoints(breakpoints: Array<BreakpointSpec & { componentLibraryName: string }>): Promise<AddBreakpointsResponse> {
+        const { enableComponentLibrarySpecificBreakpoints } = this;
         if (breakpoints?.length > 0) {
             let buffer = new SmartBuffer();
             buffer.writeUInt32LE(breakpoints.length); // num_breakpoints - The number of breakpoints in the breakpoints array.
             breakpoints.forEach((breakpoint) => {
-                buffer.writeStringNT(breakpoint.filePath); // file_path - The path of the source file where the breakpoint is to be inserted.
+                let { filePath } = breakpoint;
+                //protocol >= v3.1.0 requires complib breakpoints have a special prefix
+                if (enableComponentLibrarySpecificBreakpoints) {
+                    if (breakpoint.componentLibraryName) {
+                        filePath = filePath.replace(/^pkg:\//i, `lib:/${breakpoint.componentLibraryName}/`);
+                    }
+                }
+
+                buffer.writeStringNT(filePath); // file_path - The path of the source file where the breakpoint is to be inserted.
                 buffer.writeUInt32LE(breakpoint.lineNumber); // line_number - The line number in the channel application code where the breakpoint is to be executed.
                 buffer.writeUInt32LE(breakpoint.hitCount ?? 0); // ignore_count - The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
             });

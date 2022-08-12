@@ -1066,7 +1066,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.clearState();
             const event: StoppedEvent = new StoppedEvent(
                 StoppedEventReason.breakpoint,
-                activeThread.threadId,
+                //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
+                activeThread?.threadId ?? 0,
                 '' //exception text
             );
             // Socket debugger will always stop all threads and supports multi thread inspection.
