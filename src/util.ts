@@ -388,6 +388,24 @@ class Util {
         options.remotePort ??= 8060;
     }
 
+    /**
+     * Set an interval that can be cleared by calling the callback
+     * @param intervalMs the number of milliseconds to wait for the next interval
+     */
+    public setInterval(callback: (cancel: () => void) => any, intervalMs: number) {
+        const cancel = () => {
+            clearInterval(handle);
+        };
+        const handle = setInterval(() => {
+            callback(cancel);
+        }, intervalMs);
+
+        //call immediately
+        callback(cancel);
+
+        return cancel;
+    }
+
     public async retry<T>(action: () => T, options: {
         /**
          * The max number of milliseconds an individual try can run
