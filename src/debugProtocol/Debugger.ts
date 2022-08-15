@@ -18,10 +18,9 @@ import {
     UpdateThreadsResponse,
     VariableResponse
 } from './responses';
-import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS } from './Constants';
+import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../logging';
-import { ERROR_CODES, UPDATE_TYPES } from '..';
 import { ExecuteResponseV3 } from './responses/ExecuteResponseV3';
 import { ListBreakpointsResponse } from './responses/ListBreakpointsResponse';
 import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
