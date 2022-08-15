@@ -469,7 +469,7 @@ export class Debugger {
                             //we do nothing with breakpoint errors at this time.
                             return this.checkResponse(response, buffer, packetLength);
                         case UPDATE_TYPES.COMPILE_ERROR:
-                            return this.checkResponse(new BreakpointErrorResponse(slicedBuffer, packetLength), buffer, packetLength);
+                            return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                         default:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }
