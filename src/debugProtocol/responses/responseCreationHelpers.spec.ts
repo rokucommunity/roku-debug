@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { ERROR_CODES, UPDATE_TYPES } from '../Constants';
+import { ERROR_CODES, UPDATE_TYPES } from '../Constants';
 import type { BreakpointInfo } from './ListBreakpointsResponse';
 
 interface Handshake {
@@ -93,6 +93,9 @@ export function createProtocolEventV3(protocolEvent: ProtocolEvent, extraBufferD
     return addPacketLength(buffer);
 }
 
+/**
+ * Add packetLength to the beginning of the buffer
+ */
 function addPacketLength(buffer: SmartBuffer): SmartBuffer {
     return buffer.insertUInt32LE(buffer.length + 4, 0); // packet_length - The size of the packet to be sent.
 }
@@ -117,6 +120,44 @@ export function createListBreakpointsResponse(params: { requestId?: number; erro
     writeIfSet(params.extraBufferData, x => buffer.writeBuffer(x));
 
     return addPacketLength(buffer);
+}
+
+/**
+ * Contains a list of breakpoint errors
+ */
+export function createBreakpointErrorUpdateResponse(params: { errorCode?: number; flags?: number; breakpoint_id?: number; compile_errors?: string[]; runtime_errors?: string[]; other_errors?: string[]; extraBufferData?: Buffer; includePacketLength?: boolean }): SmartBuffer {
+    let buffer = new SmartBuffer();
+
+    writeIfSet(0, x => buffer.writeUInt32LE(x)); //request_id
+    writeIfSet(ERROR_CODES.OK, x => buffer.writeUInt32LE(x)); //error_code
+    writeIfSet(UPDATE_TYPES.BREAKPOINT_ERROR, x => buffer.writeUInt32LE(x)); //update_type
+
+    writeIfSet(params.flags, x => buffer.writeUInt32LE(x)); //flags
+
+    writeIfSet(params.breakpoint_id, x => buffer.writeUInt32LE(x)); //breakpoint_id
+
+    writeIfSet(params.compile_errors?.length, x => buffer.writeUInt32LE(x));
+    for (const error of params.compile_errors ?? []) {
+        buffer.writeStringNT(error);
+    }
+
+    writeIfSet(params.runtime_errors?.length, x => buffer.writeUInt32LE(x));
+    for (const error of params.runtime_errors ?? []) {
+        buffer.writeStringNT(error);
+    }
+
+    writeIfSet(params.other_errors?.length, x => buffer.writeUInt32LE(x));
+    for (const error of params.other_errors ?? []) {
+        buffer.writeStringNT(error);
+    }
+
+    // write any extra data for testing
+    writeIfSet(params.extraBufferData, x => buffer.writeBuffer(x));
+
+    if (params.includePacketLength) {
+        buffer = addPacketLength(buffer);
+    }
+    return buffer;
 }
 
 /**

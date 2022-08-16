@@ -26,7 +26,7 @@ import { ListBreakpointsResponse } from './responses/ListBreakpointsResponse';
 import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 import { util } from '../util';
-import { BreakpointErrorResponse } from './responses/BreakpointErrorResponse';
+import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
 
 export class Debugger {
 
@@ -465,7 +465,7 @@ export class Debugger {
                         case UPDATE_TYPES.UNDEF:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                         case UPDATE_TYPES.BREAKPOINT_ERROR:
-                            const response = new BreakpointErrorResponse(slicedBuffer, packetLength);
+                            const response = new BreakpointErrorUpdateResponse(slicedBuffer);
                             //we do nothing with breakpoint errors at this time.
                             return this.checkResponse(response, buffer, packetLength);
                         case UPDATE_TYPES.COMPILE_ERROR:
