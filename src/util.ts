@@ -388,47 +388,22 @@ class Util {
         options.remotePort ??= 8060;
     }
 
-    public async retry<T>(action: () => T, options: {
-        /**
-         * The max number of milliseconds an individual try can run
-         */
-        tryTime: number;
-        /**
-         * The max number of milliseconds this entire operation can run.
-         */
-        totalTime: number;
-        /**
-         * A callback that is run every time a try is canceled
-         */
-        onCancel?: (error: Error) => void;
-    }): Promise<T> {
-        options = {
-            tryTime: 100,
-            totalTime: 1000,
-            onCancel: () => { },
-            ...options ?? {}
+    /**
+     * Set an interval that can be cleared by calling the callback
+     * @param intervalMs the number of milliseconds to wait for the next interval
+     */
+    public setInterval(callback: (cancel: () => void) => any, intervalMs: number) {
+        const cancel = () => {
+            clearInterval(handle);
         };
-        const startTime = Date.now();
-        while (true) {
-            if (Date.now() - startTime >= options.totalTime) {
-                throw new Error('Total allotted time exceeded');
-            }
-            let timedOut = false;
-            const actionResult = Promise.resolve(action());
-            const timeoutResult = this.sleep(options.tryTime).then(() => {
-                timedOut = true;
-            });
-            const result = await Promise.race([actionResult, timeoutResult]);
-            if (timedOut) {
-                await Promise.resolve(
-                    options?.onCancel?.(
-                        new Error('Try timed out')
-                    )
-                );
-            } else {
-                return result as T;
-            }
-        }
+        const handle = setInterval(() => {
+            callback(cancel);
+        }, intervalMs);
+
+        //call immediately
+        callback(cancel);
+
+        return cancel;
     }
 }
 

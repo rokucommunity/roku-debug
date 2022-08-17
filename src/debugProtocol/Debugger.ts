@@ -18,15 +18,15 @@ import {
     UpdateThreadsResponse,
     VariableResponse
 } from './responses';
-import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS } from './Constants';
+import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../logging';
-import { ERROR_CODES, UPDATE_TYPES } from '..';
 import { ExecuteResponseV3 } from './responses/ExecuteResponseV3';
 import { ListBreakpointsResponse } from './responses/ListBreakpointsResponse';
 import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 import { util } from '../util';
+import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
 
 export class Debugger {
 
@@ -85,6 +85,13 @@ export class Debugger {
     }
 
     /**
+     * Starting in protocol v3.1.0, breakpoints can support conditional expressions. This flag indicates whether the current sessuion supports that functionality.
+     */
+    private get supportsConditionalBreakpoints() {
+        return semver.satisfies(this.protocolVersion, '>=3.1.0');
+    }
+
+    /**
      * Get a promise that resolves after an event occurs exactly once
      */
     public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
@@ -137,26 +144,29 @@ export class Debugger {
         const debugSetupEnd = 'total socket debugger setup time';
         console.time(debugSetupEnd);
 
-        await util.retry(() => {
-            this.controllerClient = new Net.Socket();
-            return new Promise((resolve) => {
-                this.controllerClient.once('error', (error) => {
+        this.controllerClient = await new Promise<Net.Socket>((resolve) => {
+            const pendingSockets = new Set<Net.Socket>();
+            util.setInterval((cancelInterval) => {
+                const socket = new Net.Socket();
+                pendingSockets.add(socket);
+                socket.once('error', (error) => {
                     console.error('Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
-                    this.controllerClient?.destroy();
+                    socket?.destroy();
+                    pendingSockets.delete(socket);
                 });
-                this.controllerClient.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
-                    resolve(this.controllerClient);
+                socket.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
+                    this.logger.debug(`Connected to debug protocol controller port. Socket ${[...pendingSockets].indexOf(socket)} of ${pendingSockets.size} was the winner`);
+                    //this socket successfully connected.
+                    //remove this socket from the list of pending sockets
+                    pendingSockets.delete(socket);
+                    //clean up all remaining pending sockets
+                    for (const pendingSocket of pendingSockets) {
+                        pendingSocket?.destroy();
+                    }
+                    resolve(socket);
+                    cancelInterval();
                 });
-            });
-        }, {
-            onCancel: async () => {
-                this.controllerClient?.destroy();
-                this.controllerClient = undefined;
-                //small timeout to let the connection destroy settle
-                await util.sleep(5);
-            },
-            tryTime: this.options.controllerConnectInterval ?? 250,
-            totalTime: this.options.controllerConnectMaxTime ?? 5 * 60 * 1000 //5 minutes
+            }, this.options.controllerConnectInterval ?? 250);
         });
 
         // If there is no error, the server has accepted the request and created a new dedicated socket
@@ -337,6 +347,10 @@ export class Debugger {
         const { enableComponentLibrarySpecificBreakpoints } = this;
         if (breakpoints?.length > 0) {
             let buffer = new SmartBuffer();
+            //set the `FLAGS` value if supported
+            if (this.supportsConditionalBreakpoints) {
+                buffer.writeUInt32LE(0); // flags - Should always be passed as 0. Unused, reserved for future use.
+            }
             buffer.writeUInt32LE(breakpoints.length); // num_breakpoints - The number of breakpoints in the breakpoints array.
             breakpoints.forEach((breakpoint) => {
                 let { filePath } = breakpoint;
@@ -350,8 +364,16 @@ export class Debugger {
                 buffer.writeStringNT(filePath); // file_path - The path of the source file where the breakpoint is to be inserted.
                 buffer.writeUInt32LE(breakpoint.lineNumber); // line_number - The line number in the channel application code where the breakpoint is to be executed.
                 buffer.writeUInt32LE(breakpoint.hitCount ?? 0); // ignore_count - The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
+                //if the protocol supports conditional breakpoints, add any present condition
+                if (this.supportsConditionalBreakpoints) {
+                    //There's a bug in 3.1 where empty conditional expressions would crash the breakpoints, so just default to `true` which always succeeds
+                    buffer.writeStringNT(breakpoint.conditionalExpression ?? 'true'); // cond_expr - the condition that must evaluate to `true` in order to hit the breakpoint
+                }
             });
-            return this.makeRequest<AddBreakpointsResponse>(buffer, COMMANDS.ADD_BREAKPOINTS);
+            return this.makeRequest<AddBreakpointsResponse>(buffer,
+                this.supportsConditionalBreakpoints ? COMMANDS.ADD_CONDITIONAL_BREAKPOINTS : COMMANDS.ADD_BREAKPOINTS
+                //COMMANDS.ADD_BREAKPOINTS
+            );
         }
         return new AddBreakpointsResponse(null);
     }
@@ -381,6 +403,7 @@ export class Debugger {
 
         this.activeRequests[requestId] = {
             commandType: command,
+            commandTypeText: COMMANDS[command],
             extraData: extraData
         };
 
@@ -393,6 +416,7 @@ export class Debugger {
             });
 
             if (this.controllerClient) {
+                this.logger.debug('makeRequest', `requestId=${requestId}`, this.activeRequests[requestId]);
                 this.controllerClient.write(buffer.toBuffer());
             } else {
                 throw new Error(`Controller connection was closed - Command: ${COMMANDS[command]}`);
@@ -440,6 +464,12 @@ export class Debugger {
                             return false;
                         case UPDATE_TYPES.UNDEF:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
+                        case UPDATE_TYPES.BREAKPOINT_ERROR:
+                            const response = new BreakpointErrorUpdateResponse(slicedBuffer);
+                            //we do nothing with breakpoint errors at this time.
+                            return this.checkResponse(response, buffer, packetLength);
+                        case UPDATE_TYPES.COMPILE_ERROR:
+                            return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                         default:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }
@@ -455,6 +485,7 @@ export class Debugger {
                         case COMMANDS.EXECUTE:
                             return this.checkResponse(new ExecuteResponseV3(slicedBuffer), buffer, packetLength);
                         case COMMANDS.ADD_BREAKPOINTS:
+                        case COMMANDS.ADD_CONDITIONAL_BREAKPOINTS:
                             return this.checkResponse(new AddBreakpointsResponse(slicedBuffer), buffer, packetLength);
                         case COMMANDS.LIST_BREAKPOINTS:
                             return this.checkResponse(new ListBreakpointsResponse(slicedBuffer), buffer, packetLength);
@@ -503,6 +534,7 @@ export class Debugger {
     }
 
     private removedProcessedBytes(responseHandler: { requestId: number; readOffset: number }, unhandledData: Buffer, packetLength = 0) {
+        const activeRequest = this.activeRequests[responseHandler.requestId];
         if (responseHandler.requestId > 0 && this.activeRequests[responseHandler.requestId]) {
             delete this.activeRequests[responseHandler.requestId];
         }
@@ -510,7 +542,7 @@ export class Debugger {
         this.emit('data', responseHandler);
 
         this.unhandledData = unhandledData.slice(packetLength ? packetLength : responseHandler.readOffset);
-        this.logger.debug('[raw]', (responseHandler as any)?.constructor?.name ?? '', responseHandler);
+        this.logger.debug('[raw]', `requestId=${responseHandler?.requestId}`, activeRequest, (responseHandler as any)?.constructor?.name ?? '', responseHandler);
         this.parseUnhandledData(this.unhandledData);
     }
 
@@ -661,6 +693,13 @@ export interface BreakpointSpec {
      * The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
      */
     hitCount?: number;
+    /**
+     * BrightScript code that evaluates to a boolean value. The expression is compiled and executed in
+     * the context where the breakpoint is located. If specified, the hitCount is only be
+     * updated if this evaluates to true.
+     * @avaiable since protocol version 3.1.0
+     */
+    conditionalExpression?: string;
 }
 
 export interface ConstructorOptions {

@@ -689,6 +689,7 @@ export class DebugProtocolAdapter {
                     filePath: breakpoint.pkgPath,
                     lineNumber: breakpoint.line,
                     hitCount: !isNaN(hitCount) ? hitCount : undefined,
+                    conditionalExpression: breakpoint.condition,
                     key: breakpoint.hash,
                     componentLibraryName: breakpoint.componentLibraryName
                 };
