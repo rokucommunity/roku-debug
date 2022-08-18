@@ -127,8 +127,13 @@ export class VariableInfo {
                     this.value = 'Unknown';
                     this.success = true;
                     break;
+                case 'Invalid':
+                    this.value = 'Invalid';
+                    this.success = true;
+                    break;
                 case 'AA':
                 case 'Array':
+                case 'List':
                     this.value = null;
                     this.success = true;
                     break;
