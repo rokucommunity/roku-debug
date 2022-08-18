@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-loop-func */
+/* eslint-disable no-bitwise */
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES, UPDATE_TYPES } from '../Constants';
+import { ERROR_CODES, UPDATE_TYPES, VARIABLE_FLAGS, VARIABLE_TYPES } from '../Constants';
 import type { BreakpointInfo } from './ListBreakpointsResponse';
 
 interface Handshake {
@@ -120,6 +122,107 @@ export function createListBreakpointsResponse(params: { requestId?: number; erro
     writeIfSet(params.extraBufferData, x => buffer.writeBuffer(x));
 
     return addPacketLength(buffer);
+}
+
+interface Variable {
+    variableType: VARIABLE_TYPES;
+    name: string;
+    flags?: number;
+    refCount: number;
+    isConst: boolean;
+    children?: Variable[];
+    value: any;
+    keyType?: VARIABLE_TYPES;
+}
+
+export function createVariableResponse(params: {
+    requestId?: number; variables?: Variable[]; errorCode?: number; extraBufferData?: Buffer; includePacketLength?: boolean;
+}): SmartBuffer {
+    let buffer = new SmartBuffer();
+
+    writeIfSet(params.requestId, x => buffer.writeUInt32LE(x));
+    writeIfSet(params.errorCode, x => buffer.writeUInt32LE(x));
+
+    const variables = [...params.variables];
+    for (let i = 0; i < variables.length; i++) {
+        const variable = variables[i];
+        if (variable.children) {
+            variables.splice(i + 1, 0, ...variable.children);
+        }
+    }
+
+    writeIfSet(variables?.length, x => buffer.writeUInt32LE(x));
+
+    while (variables.length > 0) {
+        const variable = variables.shift();
+        let flags = 0;
+        if (variable.isConst) {
+            flags |= VARIABLE_FLAGS.isConst;
+        }
+        if (variable.children) {
+            flags |= VARIABLE_FLAGS.isContainer;
+        }
+        if (variable.name !== undefined) {
+            flags |= VARIABLE_FLAGS.isNameHere;
+        }
+        if (variable.refCount !== undefined) {
+            flags |= VARIABLE_FLAGS.isRefCounted;
+        }
+        if (variable.value !== undefined) {
+            flags |= VARIABLE_FLAGS.isValueHere;
+        }
+        buffer.writeUInt8(flags); //flags
+        writeIfSet(variable.variableType, x => buffer.writeUInt8(x)); //variable_type
+        writeIfSet(variable.name, x => buffer.writeStringNT(variable.name));
+        if (variable.refCount !== undefined) {
+            writeIfSet(variable.refCount, x => buffer.writeUInt32LE(variable.refCount));
+        }
+        if (variable.children) {
+            for (const child of variable.children) {
+                child.flags = (child.flags ?? 0) | VARIABLE_FLAGS.isChildKey;
+            }
+            writeIfSet(variable.keyType, x => buffer.writeUInt8(variable.keyType));
+            //element_count
+            writeIfSet(variable.children.length, x => buffer.writeUInt32LE(variable.keyType));
+        }
+
+        switch (variable.variableType) {
+            case VARIABLE_TYPES.Interface:
+            case VARIABLE_TYPES.Object:
+            case VARIABLE_TYPES.String:
+            case VARIABLE_TYPES.Subroutine:
+            case VARIABLE_TYPES.Function:
+                buffer.writeStringNT(variable.value);
+                break;
+            case VARIABLE_TYPES.Subtyped_Object:
+                buffer.writeStringNT(variable.value[0]);
+                buffer.writeStringNT(variable.value[1]);
+                break;
+            case VARIABLE_TYPES.Boolean:
+                buffer.writeUInt8(variable.value ? 1 : 0);
+                break;
+            case VARIABLE_TYPES.Double:
+                buffer.writeDoubleLE(variable.value);
+                break;
+            case VARIABLE_TYPES.Float:
+                buffer.writeFloatLE(variable.value);
+                break;
+            case VARIABLE_TYPES.Integer:
+                buffer.writeInt32LE(variable.value);
+                break;
+            case VARIABLE_TYPES.Long_Integer:
+                buffer.writeBigInt64LE(variable.value);
+                break;
+            default:
+                //nothing to write
+                break;
+        }
+    }
+
+    if (params.includePacketLength) {
+        buffer = addPacketLength(buffer);
+    }
+    return buffer;
 }
 
 /**
