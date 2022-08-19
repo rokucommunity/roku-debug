@@ -379,9 +379,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.rokuAdapter.continue();
             //kill the app on the roku
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            //convert a hostname to an ip address
+            const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
             //send the deep link http request
             await new Promise((resolve, reject) => {
-                request.post(this.launchConfiguration.deepLinkUrl, (err, response) => {
+                request.post(deepLinkUrl, (err, response) => {
                     return err ? reject(err) : resolve(response);
                 });
             });
@@ -1184,7 +1186,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async handleEntryBreakpoint() {
         if (!this.enableDebugProtocol) {
             this.entryBreakpointWasHandled = true;
-            if (this.launchConfiguration.stopOnEntry) {
+            if (this.launchConfiguration.stopOnEntry || this.launchConfiguration.deepLinkUrl) {
                 await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
             }
         }

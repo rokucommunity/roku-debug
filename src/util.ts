@@ -324,6 +324,19 @@ class Util {
         }
     }
 
+    /**
+     * Given a full URL, convert any dns name into its IP address and then return the full URL with the name replaced
+     */
+    public async resolveUrl(url: string, skipCache = false) {
+        //https://regex101.com/r/cSkoTx/1
+        const [, protocol, host] = /^((?:http[s]?|ftp):\/\/)?([^:\/\s]+)(:\d+)?([^?#]+)?(\?[^#]+)?(#.*)?$/.exec(url) ?? [];
+        if (host) {
+            const ipAddress = await this.dnsLookup(host);
+            url = protocol + ipAddress + url.substring(protocol.length + host.length);
+        }
+        return url;
+    }
+
     /*
      * Look up the ip address for a hostname. This is cached for the lifetime of the app, or bypassed with the `skipCache` parameter
      * @param host
