@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.15.0](https://github.com/rokucommunity/roku-debug/compare/v0.14.2...0.15.0) - 2022-08-23
+### Added
+ - support for conditional breakpoints over the debug protocol([#97](https://github.com/rokucommunity/roku-debug/pull/97))
+### Changed
+- upgrade to [brighterscript@0.56.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0560---2022-08-23). Notable changes since 0.55.1:
+     - Fix compile crash for scope-less files ([brighterscript#674](https://github.com/rokucommunity/brighterscript/pull/674))
+     - Allow const as variable name ([brighterscript#670](https://github.com/rokucommunity/brighterscript/pull/670))
+### Fixed
+ - `stopOnEntry` bug with `deepLinkUrl`. ([#100](https://github.com/rokucommunity/roku-debug/pull/100))
+ - bug that was omitting `invalid` data types over the debug protocol ([#99](https://github.com/rokucommunity/roku-debug/pull/99))
+ 
+
+
 ## [0.14.2](https://github.com/rokucommunity/roku-debug/compare/v0.14.1...0.14.2) - 2022-08-12
 ### Changed
  - Support complib breakpoints on 11.5.0 ([#96](https://github.com/rokucommunity/roku-debug/pull/96))
