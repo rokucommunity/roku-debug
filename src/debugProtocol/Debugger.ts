@@ -172,7 +172,7 @@ export class Debugger {
     public async connect(): Promise<boolean> {
         this.logger.log('connect', this.options);
 
-        // If there is no error, the server has accepted the request and created a new dedicated socket
+        // If there is no error, the server has accepted the request and created a new dedicated control socket
         this.controllerClient = await this.establishControllerConnection();
 
         this.controllerClient.on('data', (buffer) => {
@@ -199,7 +199,7 @@ export class Debugger {
         // Don't forget to catch error, for your own sake.
         this.controllerClient.once('error', (error) => {
             //the Roku closed the connection for some unknown reason...
-            console.error(`TCP connection error`, error);
+            console.error(`TCP connection error on control port`, error);
             this.shutdown('close');
         });
 
