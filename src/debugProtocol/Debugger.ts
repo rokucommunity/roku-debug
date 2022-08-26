@@ -146,7 +146,7 @@ export class Debugger {
                 const socket = new Net.Socket();
                 pendingSockets.add(socket);
                 socket.on('error', (error) => {
-                    console.info(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
+                    console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
                 });
                 socket.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
                     cancelInterval();
@@ -182,13 +182,13 @@ export class Debugger {
                 this.unhandledData = buffer;
             }
 
-            this.logger.info(`on('data'): incoming bytes`, buffer.length);
+            this.logger.debug(`on('data'): incoming bytes`, buffer.length);
             const startBufferSize = this.unhandledData.length;
 
             this.parseUnhandledData(this.unhandledData);
 
             const endBufferSize = this.unhandledData?.length ?? 0;
-            this.logger.info(`buffer size before:`, startBufferSize, ', buffer size after:', endBufferSize, ', bytes consumed:', startBufferSize - endBufferSize);
+            this.logger.debug(`buffer size before:`, startBufferSize, ', buffer size after:', endBufferSize, ', bytes consumed:', startBufferSize - endBufferSize);
         });
 
         this.controllerClient.on('end', () => {
