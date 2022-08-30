@@ -4,12 +4,13 @@ import * as fsExtra from 'fs-extra';
 import * as getPort from 'get-port';
 import * as net from 'net';
 import * as path from 'path';
-import * as sinonActual from 'sinon';
-import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
+import type { BSDebugDiagnostic } from './CompileErrorProcessor';
 import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 import * as dedent from 'dedent';
 import { util } from './util';
-let sinon = sinonActual.createSandbox();
+import { util as bscUtil } from 'brighterscript';
+import { createSandbox } from 'sinon';
+const sinon = createSandbox();
 
 beforeEach(() => {
     sinon.restore();
@@ -217,37 +218,25 @@ describe('Util', () => {
 
     describe('filterGenericErrors', () => {
         it('should remove generic errors IF a more specific exists', () => {
-            const err1: BrightScriptDebugCompileError = {
+            const err1: BSDebugDiagnostic = {
                 path: 'file1.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: 'Some other error',
-                errorText: 'err1'
+                range: bscUtil.createRange(0, 0, 0, 0),
+                message: 'Some other error'
             };
-            const err2: BrightScriptDebugCompileError = {
+            const err2: BSDebugDiagnostic = {
                 path: 'file1.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: GENERAL_XML_ERROR,
-                errorText: 'err2'
+                range: bscUtil.createRange(0, 0, 0, 0),
+                message: GENERAL_XML_ERROR
             };
-            const err3: BrightScriptDebugCompileError = {
+            const err3: BSDebugDiagnostic = {
                 path: 'file2.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: GENERAL_XML_ERROR,
-                errorText: 'err3'
+                range: bscUtil.createRange(0, 0, 0, 0),
+                message: GENERAL_XML_ERROR
             };
-            const err4: BrightScriptDebugCompileError = {
+            const err4: BSDebugDiagnostic = {
                 path: 'file3.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: 'Some other error',
-                errorText: 'err4'
+                range: bscUtil.createRange(0, 0, 0, 0),
+                message: 'Some other error'
             };
             const expected = [
                 err1,

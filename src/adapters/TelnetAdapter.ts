@@ -3,6 +3,7 @@ import * as EventEmitter from 'eventemitter3';
 import { Socket } from 'net';
 import { rokuDeploy } from 'roku-deploy';
 import { PrintedObjectParser } from '../PrintedObjectParser';
+import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
@@ -81,7 +82,7 @@ export class TelnetAdapter {
     public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
+    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void);
     public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
@@ -98,6 +99,7 @@ export class TelnetAdapter {
         };
     }
 
+    private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
     private emit(
         /* eslint-disable @typescript-eslint/indent */
         eventName:
@@ -105,7 +107,6 @@ export class TelnetAdapter {
             'cannot-continue' |
             'chanperf' |
             'close' |
-            'compile-errors' |
             'connected' |
             'console-output' |
             'rendezvous' |
@@ -114,8 +115,8 @@ export class TelnetAdapter {
             'suspend' |
             'unhandled-console-output',
         /* eslint-enable @typescript-eslint/indent */
-        data?
-    ) {
+        data?);
+    private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
@@ -264,8 +265,8 @@ export class TelnetAdapter {
             });
 
             //listen for any compile errors
-            this.compileErrorProcessor.on('compile-errors', (errors) => {
-                this.emit('compile-errors', errors);
+            this.compileErrorProcessor.on('diagnostics', (errors) => {
+                this.emit('diagnostics', errors);
             });
 
             //listen for any console output that was not handled by other methods in the adapter

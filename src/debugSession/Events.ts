@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-useless-constructor */
 import type { DebugProtocol } from 'vscode-debugprotocol';
-import type { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
+import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { ChanperfData } from '../ChanperfTracker';
 import type { RendezvousHistory } from '../RendezvousTracker';
@@ -29,17 +29,17 @@ export class CustomEvent<T> implements DebugProtocol.Event {
  * Emitted when compile errors were encountered during the current debug session,
  * usually during the initial sideload process as the Roku is compiling the app.
  */
-export class CompileFailureEvent extends CustomEvent<{ compileErrors: BrightScriptDebugCompileError[] }> {
-    constructor(compileErrors: BrightScriptDebugCompileError[]) {
-        super({ compileErrors });
+export class DiagnosticsEvent extends CustomEvent<{ diagnostics: BSDebugDiagnostic[] }> {
+    constructor(diagnostics: BSDebugDiagnostic[]) {
+        super({ diagnostics });
     }
 }
 
 /**
- * Is the object a `CompileFailureEvent`
+ * Is the object a `DiagnosticsEvent`
  */
-export function isCompileFailureEvent(event: any): event is CompileFailureEvent {
-    return !!event && event.event === CompileFailureEvent.name;
+export function isDiagnosticsEventEvent(event: any): event is DiagnosticsEvent {
+    return !!event && event.event === DiagnosticsEvent.name;
 }
 
 /**
