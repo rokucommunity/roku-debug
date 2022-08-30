@@ -2,8 +2,7 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as request from 'request';
-import { rokuDeploy } from 'roku-deploy';
-import { CompileError } from 'roku-deploy/dist/Errors';
+import { rokuDeploy, CompileError } from 'roku-deploy';
 import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,

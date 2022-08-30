@@ -38,7 +38,7 @@ export class DiagnosticsEvent extends CustomEvent<{ diagnostics: BSDebugDiagnost
 /**
  * Is the object a `DiagnosticsEvent`
  */
-export function isDiagnosticsEventEvent(event: any): event is DiagnosticsEvent {
+export function isDiagnosticsEvent(event: any): event is DiagnosticsEvent {
     return !!event && event.event === DiagnosticsEvent.name;
 }
 
