@@ -277,26 +277,21 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // handle any compile errors
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
-            this.rokuAdapter.on('diagnostics', async (errors: BSDebugDiagnostic[]) => {
-                // remove redundant errors and adjust the line number:
-                // - Roku device and sourcemap work with 1-based line numbers,
-                // - VS expects 0-based lines.
-                const compileErrors = util.filterGenericErrors(errors);
-                for (let compileError of compileErrors) {
-                    let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.range.start.line + 1);
+            this.rokuAdapter.on('diagnostics', async (diagnostics: BSDebugDiagnostic[]) => {
+                // - Roku device and sourcemap work with 1-based line numbers, VSCode expects 0-based lines.
+                for (let diagnostic of diagnostics) {
+                    let sourceLocation = await this.projectManager.getSourceLocation(diagnostic.path, diagnostic.range.start.line + 1);
                     if (sourceLocation) {
-                        compileError.path = sourceLocation.filePath;
-                        compileError.range.start.line = sourceLocation.lineNumber - 1; //sourceLocation is 1-based, but we need 0-based
-                        compileError.range.end.line = sourceLocation.lineNumber - 1; //sourceLocation is 1-based, but we need 0-based
+                        diagnostic.path = sourceLocation.filePath;
+                        diagnostic.range.start.line = sourceLocation.lineNumber - 1; //sourceLocation is 1-based, but we need 0-based
+                        diagnostic.range.end.line = sourceLocation.lineNumber - 1; //sourceLocation is 1-based, but we need 0-based
                     } else {
                         // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
-                        compileError.path = fileUtils.removeLeadingSlash(util.removeFileScheme(compileError.path));
-                        compileError.range.start.line = (compileError.range.start.line || 1) - 1; // compile-error is 1-based, but we need 0-based
-                        compileError.range.end.line = compileError.range.start.line; // compile-error is 1-based, but we need 0-based
+                        diagnostic.path = fileUtils.removeLeadingSlash(util.removeFileScheme(diagnostic.path));
                     }
                 }
 
-                this.sendEvent(new DiagnosticsEvent(compileErrors));
+                this.sendEvent(new DiagnosticsEvent(diagnostics));
                 //stop the roku adapter and exit the channel
                 void this.rokuAdapter.destroy();
                 void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);

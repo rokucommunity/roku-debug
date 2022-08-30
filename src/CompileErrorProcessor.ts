@@ -3,8 +3,6 @@ import type { Diagnostic } from 'vscode-languageserver-protocol/node';
 import { logger } from './logging';
 import { util as bscUtil } from 'brighterscript';
 
-export const GENERAL_XML_ERROR = 'General XML compilation error';
-
 export class CompileErrorProcessor {
 
     private logger = logger.createLogger(`[${CompileErrorProcessor.name}]`);

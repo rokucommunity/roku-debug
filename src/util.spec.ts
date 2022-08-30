@@ -5,7 +5,6 @@ import * as getPort from 'get-port';
 import * as net from 'net';
 import * as path from 'path';
 import type { BSDebugDiagnostic } from './CompileErrorProcessor';
-import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 import * as dedent from 'dedent';
 import { util } from './util';
 import { util as bscUtil } from 'brighterscript';
@@ -213,38 +212,6 @@ describe('Util', () => {
             expect(
                 util.ensureDebugPromptOnOwnLine(`Brightscript Debugger> 10-29 15:39:24.956 [beacon.header] __________________________________________`)
             ).to.eql(`Brightscript Debugger> \n10-29 15:39:24.956 [beacon.header] __________________________________________`);
-        });
-    });
-
-    describe('filterGenericErrors', () => {
-        it('should remove generic errors IF a more specific exists', () => {
-            const err1: BSDebugDiagnostic = {
-                path: 'file1.xml',
-                range: bscUtil.createRange(0, 0, 0, 0),
-                message: 'Some other error'
-            };
-            const err2: BSDebugDiagnostic = {
-                path: 'file1.xml',
-                range: bscUtil.createRange(0, 0, 0, 0),
-                message: GENERAL_XML_ERROR
-            };
-            const err3: BSDebugDiagnostic = {
-                path: 'file2.xml',
-                range: bscUtil.createRange(0, 0, 0, 0),
-                message: GENERAL_XML_ERROR
-            };
-            const err4: BSDebugDiagnostic = {
-                path: 'file3.xml',
-                range: bscUtil.createRange(0, 0, 0, 0),
-                message: 'Some other error'
-            };
-            const expected = [
-                err1,
-                err3,
-                err4
-            ];
-            const actual = util.filterGenericErrors([err1, err2, err3, err4]);
-            expect(actual).to.deep.equal(expected);
         });
     });
 
