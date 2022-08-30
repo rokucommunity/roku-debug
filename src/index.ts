@@ -4,6 +4,7 @@ export * from './managers/BreakpointManager';
 export * from './LaunchConfiguration';
 export * from './debugProtocol/Debugger';
 export * from './debugSession/BrightScriptDebugSession';
+export * from './debugSession/Events';
 export * from './ComponentLibraryServer';
 export * from './CompileErrorProcessor';
 export * from './debugProtocol/Constants';

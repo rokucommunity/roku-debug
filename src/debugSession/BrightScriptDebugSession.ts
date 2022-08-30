@@ -2,7 +2,7 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as request from 'request';
-import { rokuDeploy } from 'roku-deploy';
+import { rokuDeploy, CompileError } from 'roku-deploy';
 import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
@@ -330,9 +330,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.connectAndPublish();
 
-            this.sendEvent(new ChannelPublishedEvent({
-                launchConfiguration: this.launchConfiguration
-            }));
+            this.sendEvent(new ChannelPublishedEvent(
+                this.launchConfiguration
+            ));
 
             //tell the adapter adapter that the channel has been launched.
             await this.rokuAdapter.activate();
@@ -356,16 +356,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
-            //TODO: look into the reason why we are getting the 'Invalid response code: 400' on compile errors
-            if (e.message !== 'compileErrors' && e.message !== 'Invalid response code: 400') {
-                //TODO make the debugger stop!
+            if (!(e instanceof CompileError)) {
                 util.log('Encountered an issue during the publish process');
                 util.log((e as Error).message);
                 this.sendErrorResponse(response, -1, (e as Error).message);
-            } else {
-                //request adapter to send errors (even empty) before ending the session
-                await this.rokuAdapter.sendErrors();
             }
+
+            //send any compile errors to the client
+            await this.rokuAdapter.sendErrors();
             this.logger.error('Error. Shutting down.', e);
             this.shutdown();
             return;
@@ -399,7 +397,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         let packageIsPublished = false;
         //publish the package to the target Roku
-        const publishPromise = this.rokuDeploy.publish(this.launchConfiguration as any as RokuDeployOptions).then(() => {
+        const publishPromise = this.rokuDeploy.publish({
+            ...this.launchConfiguration,
+            failOnCompileError: true
+        } as any as RokuDeployOptions).then(() => {
             packageIsPublished = true;
         });
 
