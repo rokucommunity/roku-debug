@@ -330,9 +330,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.connectAndPublish();
 
-            this.sendEvent(new ChannelPublishedEvent({
-                launchConfiguration: this.launchConfiguration
-            }));
+            this.sendEvent(new ChannelPublishedEvent(
+                this.launchConfiguration
+            ));
 
             //tell the adapter adapter that the channel has been launched.
             await this.rokuAdapter.activate();
