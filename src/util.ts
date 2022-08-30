@@ -405,6 +405,19 @@ class Util {
 
         return cancel;
     }
+
+    /**
+     * Create a throttler that fires the callback whenever it settles
+     */
+    public createThrottler() {
+        let handle: NodeJS.Timeout;
+        return (callback: () => void, timeout: number) => {
+            if (handle) {
+                clearTimeout(handle);
+            }
+            handle = setTimeout(callback, timeout);
+        };
+    }
 }
 
 export function defer<T>() {

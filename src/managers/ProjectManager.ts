@@ -206,6 +206,14 @@ export class ProjectManager {
             return undefined;
         }
     }
+
+    /**
+     * Given a component library name, return the name in its proper casing (from manifest) if found. Returns the input string if not found.
+     */
+    public getComplibName(name: string) {
+        const match = this.componentLibraryProjects.find(x => x.name.toLowerCase() === name?.toLowerCase());
+        return match?.name ?? name;
+    }
 }
 
 export interface AddProjectParams {

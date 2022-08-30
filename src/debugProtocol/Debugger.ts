@@ -27,6 +27,7 @@ import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 import { util } from '../util';
 import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
+import { CompileErrorUpdateResponse } from './responses/CompileErrorUpdateResponse';
 
 export class Debugger {
 
@@ -116,6 +117,7 @@ export class Debugger {
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
     public on(eventName: 'data', handler: (data: any) => void);
     public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
+    public on(eventName: 'compile-error', handler: (data: CompileErrorUpdateResponse) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
@@ -130,6 +132,7 @@ export class Debugger {
     }
 
     private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
+    private emit(eventName: 'compile-error', data: CompileErrorUpdateResponse);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'connected' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
@@ -139,38 +142,41 @@ export class Debugger {
         }, 0);
     }
 
-    public async connect(): Promise<boolean> {
-        this.logger.log('connect', this.options);
-        const debugSetupEnd = 'total socket debugger setup time';
-        console.time(debugSetupEnd);
-
-        this.controllerClient = await new Promise<Net.Socket>((resolve) => {
-            const pendingSockets = new Set<Net.Socket>();
+    private async establishControllerConnection() {
+        const pendingSockets = new Set<Net.Socket>();
+        const connection = await new Promise<Net.Socket>((resolve) => {
             util.setInterval((cancelInterval) => {
                 const socket = new Net.Socket();
                 pendingSockets.add(socket);
-                socket.once('error', (error) => {
-                    console.error('Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
-                    socket?.destroy();
-                    pendingSockets.delete(socket);
+                socket.on('error', (error) => {
+                    console.info(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
                 });
                 socket.connect({ port: this.options.controllerPort, host: this.options.host }, () => {
+                    cancelInterval();
+
                     this.logger.debug(`Connected to debug protocol controller port. Socket ${[...pendingSockets].indexOf(socket)} of ${pendingSockets.size} was the winner`);
-                    //this socket successfully connected.
-                    //remove this socket from the list of pending sockets
-                    pendingSockets.delete(socket);
                     //clean up all remaining pending sockets
                     for (const pendingSocket of pendingSockets) {
-                        pendingSocket?.destroy();
+                        pendingSocket.removeAllListeners();
+                        //cleanup and destroy all other sockets
+                        if (pendingSocket !== socket) {
+                            pendingSocket.end();
+                            pendingSocket?.destroy();
+                        }
                     }
+                    pendingSockets.clear();
                     resolve(socket);
-                    cancelInterval();
                 });
             }, this.options.controllerConnectInterval ?? 250);
         });
+        return connection;
+    }
+
+    public async connect(): Promise<boolean> {
+        this.logger.log('connect', this.options);
 
         // If there is no error, the server has accepted the request and created a new dedicated socket
-        this.logger.log('TCP connection established with the server.');
+        this.controllerClient = await this.establishControllerConnection();
 
         // The client can also receive data from the server by reading from its socket.
         // The client can now send data to the server by writing to its socket.
@@ -185,7 +191,13 @@ export class Debugger {
                 this.unhandledData = buffer;
             }
 
+            this.logger.info(`on('data'): incoming bytes`, buffer.length);
+            const startBufferSize = this.unhandledData.length;
+
             this.parseUnhandledData(this.unhandledData);
+
+            const endBufferSize = this.unhandledData?.length ?? 0;
+            this.logger.info(`buffer size before:`, startBufferSize, ', buffer size after:', endBufferSize, ', bytes consumed:', startBufferSize - endBufferSize);
         });
 
         this.controllerClient.on('end', () => {
@@ -199,8 +211,8 @@ export class Debugger {
             this.shutdown('close');
         });
 
+        //wait for the handshake response from the device
         const isConnected = await this.once('connected');
-        console.timeEnd(debugSetupEnd);
         return isConnected;
     }
 
@@ -415,8 +427,8 @@ export class Debugger {
                 }
             });
 
+            this.logger.debug('makeRequest', `requestId=${requestId}`, this.activeRequests[requestId]);
             if (this.controllerClient) {
-                this.logger.debug('makeRequest', `requestId=${requestId}`, this.activeRequests[requestId]);
                 this.controllerClient.write(buffer.toBuffer());
             } else {
                 throw new Error(`Controller connection was closed - Command: ${COMMANDS[command]}`);
@@ -434,8 +446,8 @@ export class Debugger {
             let debuggerRequestResponse = this.watchPacketLength ? new ProtocolEventV3(buffer) : new ProtocolEvent(buffer);
             let packetLength = debuggerRequestResponse.packetLength;
             let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
-
             this.logger.log('incoming data - ', `bytes: ${buffer.length}`, debuggerRequestResponse);
+
             if (debuggerRequestResponse.success) {
                 if (debuggerRequestResponse.requestId > this.totalRequests) {
                     this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);
@@ -465,11 +477,13 @@ export class Debugger {
                         case UPDATE_TYPES.UNDEF:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                         case UPDATE_TYPES.BREAKPOINT_ERROR:
-                            const response = new BreakpointErrorUpdateResponse(slicedBuffer);
+                            const breakpointErrorUpdateResponse = new BreakpointErrorUpdateResponse(slicedBuffer);
                             //we do nothing with breakpoint errors at this time.
-                            return this.checkResponse(response, buffer, packetLength);
+                            return this.checkResponse(breakpointErrorUpdateResponse, buffer, packetLength);
                         case UPDATE_TYPES.COMPILE_ERROR:
-                            return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
+                            const compileErrorUpdateResponse = new CompileErrorUpdateResponse(slicedBuffer);
+                            this.emit('compile-error', compileErrorUpdateResponse);
+                            return this.checkResponse(compileErrorUpdateResponse, buffer, packetLength);
                         default:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }
@@ -508,6 +522,8 @@ export class Debugger {
         } else {
             let debuggerHandshake: HandshakeResponse | HandshakeResponseV3;
             debuggerHandshake = new HandshakeResponseV3(buffer);
+            this.logger.log('incoming data - ', `bytes: ${buffer.length}`, debuggerHandshake);
+
             if (!debuggerHandshake.success) {
                 debuggerHandshake = new HandshakeResponse(buffer);
             }
@@ -516,6 +532,8 @@ export class Debugger {
                 this.handshakeComplete = true;
                 this.verifyHandshake(debuggerHandshake);
                 this.removedProcessedBytes(debuggerHandshake, buffer);
+                //once the handshake is complete, we have successfully "connected"
+                this.emit('connected', true);
                 return true;
             }
         }
@@ -541,8 +559,15 @@ export class Debugger {
 
         this.emit('data', responseHandler);
 
+        //log the raw binary data for this request (IF we have packet length)
+        let hexData: string;
+        if (this.logger.isLogLevelEnabled('trace') && packetLength) {
+            const slicedData = unhandledData.slice(0, packetLength ? packetLength : responseHandler.readOffset);
+            hexData = '0x' + slicedData.toString('hex');
+        }
         this.unhandledData = unhandledData.slice(packetLength ? packetLength : responseHandler.readOffset);
-        this.logger.debug('[raw]', `requestId=${responseHandler?.requestId}`, activeRequest, (responseHandler as any)?.constructor?.name ?? '', responseHandler);
+        this.logger.debug('[raw]', `requestId=${responseHandler?.requestId}`, activeRequest, (responseHandler as any)?.constructor?.name ?? '', responseHandler, 'data: ', hexData ?? '');
+
         this.parseUnhandledData(this.unhandledData);
     }
 
@@ -564,7 +589,7 @@ export class Debugger {
                     errorCode: PROTOCOL_ERROR_CODES.SUPPORTED
                 });
             } else if (semver.gtr(this.protocolVersion, this.supportedVersionRange)) {
-                this.logger.log('not tested');
+                this.logger.log('roku-debug has not been tested against protocol version', this.protocolVersion);
                 this.emit('protocol-version', {
                     message: `Protocol Version ${this.protocolVersion} has not been tested and my not work as intended.\nPlease open any issues you have with this version to https://github.com/rokucommunity/roku-debug/issues`,
                     errorCode: PROTOCOL_ERROR_CODES.NOT_TESTED
@@ -590,6 +615,7 @@ export class Debugger {
     }
 
     private connectToIoPort(connectIoPortResponse: ConnectIOPortResponse, unhandledData: Buffer, packetLength = 0) {
+        this.logger.log('Connecting to IO port. response status success =', connectIoPortResponse.success);
         if (connectIoPortResponse.success) {
             // Create a new TCP client.
             this.ioClient = new Net.Socket();
@@ -625,10 +651,8 @@ export class Debugger {
                 // Don't forget to catch error, for your own sake.
                 this.ioClient.once('error', (err) => {
                     this.ioClient.end();
-                    this.logger.log(`Error: ${err}`);
+                    this.logger.error(`Error: ${err}`);
                 });
-
-                this.emit('connected', true);
             });
 
             this.removedProcessedBytes(connectIoPortResponse, unhandledData, packetLength);

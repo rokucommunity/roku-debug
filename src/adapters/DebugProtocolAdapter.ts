@@ -2,6 +2,7 @@ import type { ConstructorOptions, ProtocolVersionDetails } from '../debugProtoco
 import { Debugger } from '../debugProtocol/Debugger';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
+import type { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
@@ -16,6 +17,7 @@ import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from 
 import type { BreakpointManager } from '../managers/BreakpointManager';
 import type { ProjectManager } from '../managers/ProjectManager';
 import { ActionQueue } from '../managers/ActionQueue';
+
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -86,7 +88,7 @@ export class DebugProtocolAdapter {
     public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
+    public on(eventName: 'compile-errors', handler: (compileErrors: BrightScriptDebugCompileError[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
     public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
@@ -105,7 +107,8 @@ export class DebugProtocolAdapter {
     }
 
     private emit(eventName: 'suspend');
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'compile-errors' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
+    private emit(eventName: 'compile-errors', data: BrightScriptDebugCompileError[]);
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
@@ -220,6 +223,25 @@ export class DebugProtocolAdapter {
                 this.supportsExecuteCommand = semver.satisfies(this.activeProtocolVersion, '>=3.0.0');
             });
 
+
+            const throttle = util.createThrottler();
+            let compileErrors = [] as BrightScriptDebugCompileError[];
+            //debounce compile errors in case we get several in a row
+            this.socketDebugger.on('compile-error', (compileError) => {
+                compileErrors.push({
+                    path: compileError.filePath,
+                    lineNumber: compileError.lineNumber,
+                    charStart: 0,
+                    charEnd: 999,
+                    message: compileError.errorMessage,
+                    complibName: compileError.libraryName
+                });
+                throttle(() => {
+                    this.emit('compile-errors', compileErrors);
+                    compileErrors = [];
+                }, 100);
+            });
+
             // Listen for the close event
             this.socketDebugger.on('close', () => {
                 this.emit('close');
@@ -275,6 +297,9 @@ export class DebugProtocolAdapter {
         }, 200);
     }
 
+    /**
+     * Watch the telnet output for compile errors
+     */
     public async watchCompileOutput() {
         let deferred = defer();
         try {

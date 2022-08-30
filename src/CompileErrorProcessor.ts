@@ -367,13 +367,32 @@ export class CompileErrorProcessor {
     }
 }
 
+
 export interface BrightScriptDebugCompileError {
     path: string;
+    /**
+     * The 1-based line number for this compile error
+     */
     lineNumber: number;
+    /**
+     * The error message
+     */
     message: string;
-    errorText: string;
+    /**
+     * An error code associated with this compile error (like the Roku runtime error hex codes for example)
+     */
+    code?: string;
+    /**
+     * A human-readable string describing the source of this
+     * diagnostic, e.g. 'typescript' or 'super lint'. This is _not_ a file path.
+     */
+    errorText?: string;
     charStart: number;
     charEnd: number;
+    /**
+     * If the compile error is located within a component library, this will be set to the sg_component_libs_provided name from that complib's manifest
+     */
+    complibName?: string;
 }
 
 export enum CompileStatus {

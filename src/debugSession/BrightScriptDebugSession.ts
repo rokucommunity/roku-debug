@@ -277,27 +277,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // handle any compile errors
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
-            this.rokuAdapter.on('compile-errors', async (errors: BrightScriptDebugCompileError[]) => {
-                // remove redundant errors and adjust the line number:
-                // - Roku device and sourcemap work with 1-based line numbers,
-                // - VS expects 0-based lines.
-                const compileErrors = util.filterGenericErrors(errors);
-                for (let compileError of compileErrors) {
-                    let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.lineNumber);
-                    if (sourceLocation) {
-                        compileError.path = sourceLocation.filePath;
-                        compileError.lineNumber = sourceLocation.lineNumber - 1; //0-based
-                    } else {
-                        // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
-                        compileError.path = fileUtils.removeLeadingSlash(util.removeFileScheme(compileError.path));
-                        compileError.lineNumber = (compileError.lineNumber || 1) - 1; //0-based
-                    }
-                }
-
-                this.sendEvent(new CompileFailureEvent(compileErrors));
-                //stop the roku adapter and exit the channel
-                void this.rokuAdapter.destroy();
-                void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            this.rokuAdapter.on('compile-errors', (compileErrors) => {
+                return this.handleCompileErrors(compileErrors);
             });
 
             // close disconnect if required when the app is exited
@@ -397,8 +378,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         let packageIsPublished = false;
         //publish the package to the target Roku
-        const publishPromise = this.rokuDeploy.publish(this.launchConfiguration as any as RokuDeployOptions).then(() => {
+        const publishPromise = this.rokuDeploy.publish({
+            ...this.launchConfiguration,
+            failOnCompileError: true,
+            //enable the "connect early" feature
+            remoteDebugConnectEarly: true
+        } as any as RokuDeployOptions).then(() => {
             packageIsPublished = true;
+        }, (err) => {
+            console.error(err);
         });
 
         await publishPromise;
@@ -407,7 +395,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
             connectPromise,
-            util.sleep(15000)
+            util.sleep(5000)
         ]);
         this.logger.log('Finished racing promises');
         //if the adapter is still not connected, then it will probably never connect. Abort.
@@ -1188,6 +1176,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
             }
         }
+    }
+
+    private async handleCompileErrors(compileErrors: BrightScriptDebugCompileError[]) {
+        // remove redundant errors and adjust the line number:
+        // - Roku device and sourcemap work with 1-based line numbers,
+        // - VS expects 0-based lines.
+        compileErrors = util.filterGenericErrors(compileErrors);
+        delete compileErrors[0].complibName;
+        for (let compileError of compileErrors) {
+            let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.lineNumber);
+            if (sourceLocation) {
+                compileError.path = sourceLocation.filePath;
+                compileError.lineNumber = sourceLocation.lineNumber - 1; //0-based
+            } else {
+                // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
+                compileError.path = fileUtils.removeLeadingSlash(util.removeFileScheme(compileError.path));
+                compileError.lineNumber = (compileError.lineNumber || 1) - 1; //0-based
+            }
+            //convert the all-lower-case complib name send by the device into the actual casing as found in the libary's manifest
+            if (compileError.complibName) {
+                compileError.errorText = `brsDebug lib:${this.projectManager.getComplibName(compileError.complibName)}`;
+            } else {
+                compileError.errorText = `brsDebug dev`;
+            }
+        }
+
+        this.sendEvent(new CompileFailureEvent(compileErrors));
+        // //stop the roku adapter and exit the channel
+        // void this.rokuAdapter.destroy();
+        // void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
     }
 
     /**
