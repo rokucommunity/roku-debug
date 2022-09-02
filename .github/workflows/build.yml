@@ -9,7 +9,7 @@ jobs:
       COVERALLS_REPO_TOKEN: "NMGk1IhVG2Ds5VQKiEuXpZE8xftkORa7W"
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-latest, ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@master
       - uses: actions/setup-node@master
