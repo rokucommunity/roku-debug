@@ -29,12 +29,12 @@ import { ProjectManager, Project, ComponentLibraryProject } from '../managers/Pr
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
-import type { BrightScriptDebugCompileError } from '../CompileErrorProcessor';
+import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import {
     LaunchStartEvent,
     LogOutputEvent,
     RendezvousEvent,
-    CompileFailureEvent,
+    DiagnosticsEvent,
     StoppedEventReason,
     ChanperfEvent,
     DebugServerLogOutputEvent,
@@ -276,28 +276,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             });
 
             // handle any compile errors
-            // eslint-disable-next-line @typescript-eslint/no-misused-promises
-            this.rokuAdapter.on('compile-errors', async (errors: BrightScriptDebugCompileError[]) => {
-                // remove redundant errors and adjust the line number:
-                // - Roku device and sourcemap work with 1-based line numbers,
-                // - VS expects 0-based lines.
-                const compileErrors = util.filterGenericErrors(errors);
-                for (let compileError of compileErrors) {
-                    let sourceLocation = await this.projectManager.getSourceLocation(compileError.path, compileError.lineNumber);
-                    if (sourceLocation) {
-                        compileError.path = sourceLocation.filePath;
-                        compileError.lineNumber = sourceLocation.lineNumber - 1; //0-based
-                    } else {
-                        // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
-                        compileError.path = fileUtils.removeLeadingSlash(util.removeFileScheme(compileError.path));
-                        compileError.lineNumber = (compileError.lineNumber || 1) - 1; //0-based
-                    }
-                }
-
-                this.sendEvent(new CompileFailureEvent(compileErrors));
-                //stop the roku adapter and exit the channel
-                void this.rokuAdapter.destroy();
-                void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            this.rokuAdapter.on('diagnostics', (diagnostics: BSDebugDiagnostic[]) => {
+                void this.handleDiagnostics(diagnostics);
             });
 
             // close disconnect if required when the app is exited
@@ -386,6 +366,29 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             });
         }
+    }
+
+    /**
+     * Anytime a roku adapter emits diagnostics, this methid is called to handle it.
+     */
+    private async handleDiagnostics(diagnostics: BSDebugDiagnostic[]) {
+        // Roku device and sourcemap work with 1-based line numbers, VSCode expects 0-based lines.
+        for (let diagnostic of diagnostics) {
+            let sourceLocation = await this.projectManager.getSourceLocation(diagnostic.path, diagnostic.range.start.line + 1);
+            if (sourceLocation) {
+                diagnostic.path = sourceLocation.filePath;
+                diagnostic.range.start.line = sourceLocation.lineNumber - 1; //sourceLocation is 1-based, but we need 0-based
+                diagnostic.range.end.line = sourceLocation.lineNumber - 1; //sourceLocation is 1-based, but we need 0-based
+            } else {
+                // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
+                diagnostic.path = fileUtils.removeLeadingSlash(util.removeFileScheme(diagnostic.path));
+            }
+        }
+
+        this.sendEvent(new DiagnosticsEvent(diagnostics));
+        //stop the roku adapter and exit the channel
+        void this.rokuAdapter.destroy();
+        void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
     }
 
     private async connectAndPublish() {

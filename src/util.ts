@@ -7,8 +7,6 @@ import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugS
 import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
 import { DiagnosticSeverity, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
-import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
-import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
 import type { AdapterOptions } from './interfaces';
@@ -251,23 +249,6 @@ class Util {
         } else {
             return text;
         }
-    }
-
-    public filterGenericErrors(errors: BrightScriptDebugCompileError[]) {
-        const specificErrors: Record<string, BrightScriptDebugCompileError> = {};
-
-        //ignore generic errors when a specific error exists
-        return errors.filter(e => {
-            const path = e.path.toLowerCase();
-            if (e.message === GENERAL_XML_ERROR) {
-                if (specificErrors[path]) {
-                    return false;
-                }
-            } else {
-                specificErrors[path] = e;
-            }
-            return true;
-        });
     }
 
     /**

@@ -2,6 +2,7 @@ import type { ConstructorOptions, ProtocolVersionDetails } from '../debugProtoco
 import { Debugger } from '../debugProtocol/Debugger';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
+import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory } from '../RendezvousTracker';
 import { RendezvousTracker } from '../RendezvousTracker';
@@ -86,7 +87,7 @@ export class DebugProtocolAdapter {
     public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
+    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
     public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
@@ -105,7 +106,8 @@ export class DebugProtocolAdapter {
     }
 
     private emit(eventName: 'suspend');
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'compile-errors' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
+    private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
@@ -279,9 +281,9 @@ export class DebugProtocolAdapter {
         let deferred = defer();
         try {
             this.compileClient = new Socket();
-            this.compileErrorProcessor.on('compile-errors', (errors) => {
+            this.compileErrorProcessor.on('diagnostics', (errors) => {
                 this.compileClient.end();
-                this.emit('compile-errors', errors);
+                this.emit('diagnostics', errors);
             });
 
             //if the connection fails, reject the connect promise

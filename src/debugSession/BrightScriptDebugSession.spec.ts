@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
-import { Breakpoint, DebugSession } from 'vscode-debugadapter';
+import { DebugSession } from 'vscode-debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
 import type { EvaluateContainer, StackFrame, TelnetAdapter } from '../adapters/TelnetAdapter';
@@ -13,15 +13,14 @@ import { defer } from '../util';
 import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
-import { standardizePath as s } from 'brighterscript';
+import { util as bscUtil, standardizePath as s } from 'brighterscript';
 import { DefaultFiles } from 'roku-deploy';
-import type { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
-const rootDir = s`${tempDir}/rootDir}`;
+const rootDir = s`${tempDir}/rootDir`;
 const outDir = s`${tempDir}/outDir`;
 const stagingDir = s`${outDir}/stagingDir`;
 const complib1Dir = s`${tempDir}/complib1`;
@@ -465,6 +464,34 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('handleDiagnostics', () => {
+        it('finds source location for file-only path', async () => {
+            session['rokuAdapter'] = { destroy: () => { } } as any;
+            session.projectManager.mainProject = new Project({
+                rootDir: rootDir,
+                outDir: stagingDir
+            } as Partial<AddProjectParams> as any);
+            session.projectManager['mainProject'].fileMappings = [];
+
+            fsExtra.outputFileSync(`${stagingDir}/.roku-deploy-staging/components/SomeComponent.xml`, '');
+            fsExtra.outputFileSync(`${rootDir}/components/SomeComponent.xml`, '');
+
+            const stub = sinon.stub(session, 'sendEvent').callsFake(() => { });
+            await session['handleDiagnostics']([{
+                message: 'Crash',
+                path: 'SomeComponent.xml',
+                range: bscUtil.createRange(1, 2, 3, 4)
+            }]);
+            expect(stub.getCall(0).args[0]?.body).to.eql({
+                diagnostics: [{
+                    message: 'Crash',
+                    path: s`${stagingDir}/.roku-deploy-staging/components/SomeComponent.xml`,
+                    range: bscUtil.createRange(1, 2, 1, 4)
+                }]
+            });
+        });
+    });
+
     describe('evaluateRequest', () => {
         const frameId = 12;
         let evalStub: SinonStub;
@@ -620,7 +647,5 @@ describe('BrightScriptDebugSession', () => {
                 expect(getVarStub.calledWith('person.name', frameId, true));
             });
         });
-
     });
-
 });

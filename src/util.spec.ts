@@ -4,12 +4,12 @@ import * as fsExtra from 'fs-extra';
 import * as getPort from 'get-port';
 import * as net from 'net';
 import * as path from 'path';
-import * as sinonActual from 'sinon';
-import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
-import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
+import type { BSDebugDiagnostic } from './CompileErrorProcessor';
 import * as dedent from 'dedent';
 import { util } from './util';
-let sinon = sinonActual.createSandbox();
+import { util as bscUtil } from 'brighterscript';
+import { createSandbox } from 'sinon';
+const sinon = createSandbox();
 
 beforeEach(() => {
     sinon.restore();
@@ -212,50 +212,6 @@ describe('Util', () => {
             expect(
                 util.ensureDebugPromptOnOwnLine(`Brightscript Debugger> 10-29 15:39:24.956 [beacon.header] __________________________________________`)
             ).to.eql(`Brightscript Debugger> \n10-29 15:39:24.956 [beacon.header] __________________________________________`);
-        });
-    });
-
-    describe('filterGenericErrors', () => {
-        it('should remove generic errors IF a more specific exists', () => {
-            const err1: BrightScriptDebugCompileError = {
-                path: 'file1.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: 'Some other error',
-                errorText: 'err1'
-            };
-            const err2: BrightScriptDebugCompileError = {
-                path: 'file1.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: GENERAL_XML_ERROR,
-                errorText: 'err2'
-            };
-            const err3: BrightScriptDebugCompileError = {
-                path: 'file2.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: GENERAL_XML_ERROR,
-                errorText: 'err3'
-            };
-            const err4: BrightScriptDebugCompileError = {
-                path: 'file3.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: 'Some other error',
-                errorText: 'err4'
-            };
-            const expected = [
-                err1,
-                err3,
-                err4
-            ];
-            const actual = util.filterGenericErrors([err1, err2, err3, err4]);
-            expect(actual).to.deep.equal(expected);
         });
     });
 
