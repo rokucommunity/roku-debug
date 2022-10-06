@@ -4,13 +4,13 @@ import type { Socket } from 'net';
 import type { ProtocolRequest } from '../requests/ProtocolRequest';
 
 export interface ProtocolPlugin {
-    onClientConnected: Handler<OnClientConnectedEvent>;
+    onClientConnected?: Handler<OnClientConnectedEvent>;
 
-    provideRequest: Handler<ProvideRequestEvent>;
+    provideRequest?: Handler<ProvideRequestEvent>;
     provideResponse: Handler<ProvideResponseEvent>;
 
-    beforeSendResponse: Handler<BeforeSendResponseEvent>;
-    afterSendResponse: Handler<AfterSendResponseEvent>;
+    beforeSendResponse?: Handler<BeforeSendResponseEvent>;
+    afterSendResponse?: Handler<AfterSendResponseEvent>;
 }
 
 export interface OnClientConnectedEvent {

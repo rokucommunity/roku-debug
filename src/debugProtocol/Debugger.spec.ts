@@ -9,6 +9,9 @@ import { ERROR_CODES, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from './Constants';
 import { DebugProtocolServer, DebugProtocolServerOptions } from './server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../util';
+import { BeforeSendResponseEvent, Handler, OnClientConnectedEvent, ProtocolPlugin, ProvideRequestEvent, ProvideResponseEvent } from './server/ProtocolPlugin';
+import { ProtocolResponse } from './responses/ProtocolResponse';
+import { ProtocolRequest } from './requests/ProtocolRequest';
 
 const sinon = createSandbox();
 
@@ -220,10 +223,50 @@ describe('debugProtocol Debugger', () => {
     });
 });
 
+/**
+ * A class that intercepts all debug server events and provides test data for them
+ */
+class TestPlugin implements ProtocolPlugin {
+    /**
+     * A list of responses to be sent by the server in this exact order.
+     * One of these will be sent for every `provideResponse` event received.
+     */
+    public responseQueue: ProtocolResponse[] = [];
+
+    /**
+     * A running list of requests received by the server during this test
+     */
+    public readonly requests: ReadonlyArray<ProtocolRequest> = [];
+
+    /**
+     * A running list of responses sent by the server during this test
+     */
+    public readonly responses: ReadonlyArray<ProtocolResponse> = [];
+
+    /**
+     * Whenever the server receives a request, this event allows us to send back a response
+     */
+    provideResponse(event: ProvideResponseEvent) {
+        //store the request for testing purposes
+        (this.requests as Array<ProtocolRequest>).push(event.request);
+
+        const response = this.responseQueue.shift();
+        if (!response) {
+            throw new Error('There was no response available to send back');
+        }
+        event.response = response;
+    }
+
+    beforeSendResponse(event: BeforeSendResponseEvent) {
+        //store the response for testing purposes
+        (this.responses as Array<ProtocolResponse>).push(event.response);
+    }
+}
 
 describe.only('Debugger new tests', () => {
     let server: DebugProtocolServer;
     let client: Debugger;
+    let plugin: TestPlugin;
     const options = {
         controllerPort: undefined as number,
         host: '127.0.0.1'
@@ -234,6 +277,7 @@ describe.only('Debugger new tests', () => {
             options.controllerPort = await portfinder.getPortPromise();
         }
         server = new DebugProtocolServer(options);
+        plugin = server.plugins.add(new TestPlugin());
         await server.start();
 
         client = new Debugger(options);
@@ -248,5 +292,12 @@ describe.only('Debugger new tests', () => {
 
     it('receives magic and sends response', async () => {
         await client.connect();
+        expect(plugin.responses[0].data).to.eql({
+            magic: 'bsdebug',
+            majorVersion: 3,
+            minorVersion: 1,
+            patchVersion: 0,
+            revisionTimeStamp: new Date(2022, 1, 1)
+        } as HandshakeResponseV3['data']);
     });
 });
