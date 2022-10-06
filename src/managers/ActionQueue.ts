@@ -8,11 +8,11 @@ import { defer } from '../util';
 export class ActionQueue {
 
     private queueItems: Array<{
-        action: () => Promise<boolean>;
+        action: () => boolean | Promise<boolean>;
         deferred: Deferred<any>;
     }> = [];
 
-    public async run(action: () => Promise<boolean>) {
+    public async run(action: () => boolean | Promise<boolean>) {
         this.queueItems.push({
             action: action,
             deferred: defer()
@@ -24,7 +24,7 @@ export class ActionQueue {
         while (this.queueItems.length > 0) {
             const queueItem = this.queueItems[0];
             try {
-                const isFinished = await queueItem.action();
+                const isFinished = await Promise.resolve(queueItem.action());
                 if (isFinished) {
                     this.queueItems.shift();
                     queueItem.deferred.resolve();

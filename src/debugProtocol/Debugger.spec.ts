@@ -6,6 +6,10 @@ import { createSandbox } from 'sinon';
 import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from './responses/responseCreationHelpers.spec';
 import { HandshakeResponseV3, ProtocolEventV3 } from './responses';
 import { ERROR_CODES, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from './Constants';
+import { DebugProtocolServer, DebugProtocolServerOptions } from './server/DebugProtocolServer';
+import * as portfinder from 'portfinder';
+import { util } from '../util';
+
 const sinon = createSandbox();
 
 describe('debugProtocol Debugger', () => {
@@ -213,5 +217,36 @@ describe('debugProtocol Debugger', () => {
                 pathForceCaseInsensitive: [true, true, false, false]
             });
         });
+    });
+});
+
+
+describe.only('Debugger new tests', () => {
+    let server: DebugProtocolServer;
+    let client: Debugger;
+    const options = {
+        controllerPort: undefined as number,
+        host: '127.0.0.1'
+    };
+
+    beforeEach(async () => {
+        if (!options.controllerPort) {
+            options.controllerPort = await portfinder.getPortPromise();
+        }
+        server = new DebugProtocolServer(options);
+        await server.start();
+
+        client = new Debugger(options);
+    });
+
+    afterEach(async () => {
+        client?.destroy();
+        //shut down and destroy the server after each test
+        await server?.stop();
+        await util.sleep(10);
+    });
+
+    it('receives magic and sends response', async () => {
+        await client.connect();
     });
 });
