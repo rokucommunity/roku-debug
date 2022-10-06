@@ -9,9 +9,11 @@ import { ERROR_CODES, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from './Constants';
 import { DebugProtocolServer, DebugProtocolServerOptions } from './server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../util';
-import { BeforeSendResponseEvent, Handler, OnClientConnectedEvent, ProtocolPlugin, ProvideRequestEvent, ProvideResponseEvent } from './server/ProtocolPlugin';
-import { ProtocolResponse } from './responses/ProtocolResponse';
-import { ProtocolRequest } from './requests/ProtocolRequest';
+import type { BeforeSendResponseEvent, ProtocolPlugin, ProvideResponseEvent } from './server/ProtocolPlugin';
+import { Handler, OnClientConnectedEvent, ProvideRequestEvent } from './server/ProtocolPlugin';
+import type { ProtocolResponse } from './responses/ProtocolResponse';
+import type { ProtocolRequest } from './requests/ProtocolRequest';
+import { HandshakeRequestV3 } from './requests/HandshakeRequestV3';
 
 const sinon = createSandbox();
 
@@ -231,7 +233,14 @@ class TestPlugin implements ProtocolPlugin {
      * A list of responses to be sent by the server in this exact order.
      * One of these will be sent for every `provideResponse` event received.
      */
-    public responseQueue: ProtocolResponse[] = [];
+    private responseQueue: ProtocolResponse[] = [];
+
+    /**
+     * Adds a response to the queue, which should be returned from the server in first-in-first-out order, one for each request received by the server
+     */
+    public pushResponse(response: ProtocolResponse) {
+        this.responseQueue.push(response);
+    }
 
     /**
      * A running list of requests received by the server during this test
@@ -251,7 +260,8 @@ class TestPlugin implements ProtocolPlugin {
         (this.requests as Array<ProtocolRequest>).push(event.request);
 
         const response = this.responseQueue.shift();
-        if (!response) {
+        //if there's no response, AND this isn't the handshake, fail. (we want the protocol to handle the handshake most of the time)
+        if (!response && !(event.request instanceof HandshakeRequestV3)) {
             throw new Error('There was no response available to send back');
         }
         event.response = response;
@@ -299,5 +309,22 @@ describe.only('Debugger new tests', () => {
             patchVersion: 0,
             revisionTimeStamp: new Date(2022, 1, 1)
         } as HandshakeResponseV3['data']);
+    });
+
+    it('throws on magic mismatch', async () => {
+        plugin.pushResponse(new HandshakeResponseV3({
+            magic: 'not correct magic',
+            majorVersion: 3,
+            minorVersion: 1,
+            patchVersion: 0,
+            revisionTimeStamp: new Date(2022, 1, 1)
+        }));
+
+        const verifyHandshakePromise = client.once('handshake-verified');
+
+        await client.connect();
+
+        //wait for the debugger to finish verifying the handshake
+        expect(await verifyHandshakePromise).to.be.false;
     });
 });

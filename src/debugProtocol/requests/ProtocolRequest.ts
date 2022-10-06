@@ -5,6 +5,11 @@ export abstract class ProtocolRequest<TData = any> {
     public success = false;
 
     /**
+     * The number of bytes that were read from a buffer if this was a success
+     */
+    public readOffset: number;
+
+    /**
      * Convert the current object into the debug protocol binary format,
      * stored in a `Buffer`
      */

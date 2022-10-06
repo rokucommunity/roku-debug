@@ -4,7 +4,7 @@ import { SmartBuffer } from 'smart-buffer';
 import { ActionQueue } from '../../managers/ActionQueue';
 import { HandshakeRequestV3 } from '../requests/HandshakeRequestV3';
 import type { ProtocolRequest } from '../requests/ProtocolRequest';
-import { HandshakeResponseV3 } from '../responses';
+import { HandshakeResponse, HandshakeResponseV3 } from '../responses';
 import type { ProtocolResponse } from '../responses/ProtocolResponse';
 import PluginInterface from './PluginInterface';
 import type { ProtocolPlugin } from './ProtocolPlugin';
@@ -104,48 +104,71 @@ export class DebugProtocolServer {
         });
     }
 
-    private async process() {
+    /**
+     * Given a buffer, find the request that matches it
+     */
+    private getRequest(buffer: Buffer) {
         let request: ProtocolRequest;
-
-        //handle the handshake flow
+        //if we haven't seen the handshake yet, look for the handshake first
         if (!this.isHandshakeComplete) {
-            //the client should send a magic string to kick off the debugger
-            const request = new HandshakeRequestV3(this.buffer);
-            if (request.success && request.data.magic === this.magic) {
-                //send the handshake response
-
-                //the handshake has been completed.
-                this.isHandshakeComplete = true;
-
-                await this.sendResponse(new HandshakeResponseV3({
-                    magic: this.magic,
-                    majorVersion: 3,
-                    minorVersion: 1,
-                    patchVersion: 0,
-                    //TODO update this to an actual date from the device
-                    revisionTimeStamp: new Date(2022, 1, 1)
-                }));
+            request = new HandshakeRequestV3(buffer);
+            if (request.success) {
+                return request;
             }
-        } else {
-            //at this point, there is an active debug session. The plugin must provide us all the real-world data
-            const requestEvent = await this.plugins.emit('provideRequest', {
-                server: this,
-                buffer: this.buffer,
-                request: undefined
-            });
-
-            //assume the plugin gave back a new buffer with the processed data removed
-            this.buffer = requestEvent.buffer;
-
-            //now ask the plugin to provide a response for the given request
-            const responseEvent = await this.plugins.emit('provideResponse', {
-                server: this,
-                request: request,
-                response: undefined
-            });
-
-            await this.sendResponse(responseEvent.response);
         }
+
+        //TODO handle all the other request types (variables, step, etc...)
+    }
+
+    private getResponse(request: ProtocolRequest) {
+        if (request instanceof HandshakeRequestV3) {
+            return new HandshakeResponseV3({
+                magic: this.magic,
+                majorVersion: 3,
+                minorVersion: 1,
+                patchVersion: 0,
+                //TODO update this to an actual date from the device
+                revisionTimeStamp: new Date(2022, 1, 1)
+            });
+        }
+    }
+
+    private async process() {
+        //at this point, there is an active debug session. The plugin must provide us all the real-world data
+        let { buffer, request } = await this.plugins.emit('provideRequest', {
+            server: this,
+            buffer: this.buffer,
+            request: undefined
+        });
+
+        //we must build the request if the plugin didn't supply one (most plugins won't provide a request...)
+        if (!request) {
+            request = this.getRequest(buffer);
+        }
+
+        //trim the buffer now that the request has been processed
+        this.buffer = buffer.slice(request.readOffset);
+
+        //now ask the plugin to provide a response for the given request
+        let { response } = await this.plugins.emit('provideResponse', {
+            server: this,
+            request: request,
+            response: undefined
+        });
+
+
+        //if the plugin didn't provide a response, we need to try our best to make one (we only support a few...plugins should provide most of them)
+        if (request instanceof HandshakeRequestV3 && !response) {
+            response = this.getResponse(request);
+        }
+
+        //the client should send a magic string to kick off the debugger
+        if (response instanceof HandshakeResponseV3 && request.data.magic === this.magic) {
+            this.isHandshakeComplete = true;
+        }
+
+        //send the response to the client. (TODO handle when the response is missing)
+        await this.sendResponse(response);
     }
 
     /**
