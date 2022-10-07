@@ -2,7 +2,7 @@ import { EventEmitter } from 'eventemitter3';
 import * as Net from 'net';
 import { SmartBuffer } from 'smart-buffer';
 import { ActionQueue } from '../../managers/ActionQueue';
-import { HandshakeRequestV3 } from '../requests/HandshakeRequestV3';
+import { HandshakeRequest } from '../requests/HandshakeRequest';
 import type { ProtocolRequest } from '../requests/ProtocolRequest';
 import { HandshakeResponse, HandshakeResponseV3 } from '../responses';
 import type { ProtocolResponse } from '../responses/ProtocolResponse';
@@ -111,7 +111,7 @@ export class DebugProtocolServer {
         let request: ProtocolRequest;
         //if we haven't seen the handshake yet, look for the handshake first
         if (!this.isHandshakeComplete) {
-            request = new HandshakeRequestV3(buffer);
+            request = new HandshakeRequest(buffer);
             if (request.success) {
                 return request;
             }
@@ -121,7 +121,7 @@ export class DebugProtocolServer {
     }
 
     private getResponse(request: ProtocolRequest) {
-        if (request instanceof HandshakeRequestV3) {
+        if (request instanceof HandshakeRequest) {
             return new HandshakeResponseV3({
                 magic: this.magic,
                 majorVersion: 3,
@@ -158,12 +158,12 @@ export class DebugProtocolServer {
 
 
         //if the plugin didn't provide a response, we need to try our best to make one (we only support a few...plugins should provide most of them)
-        if (request instanceof HandshakeRequestV3 && !response) {
+        if (request instanceof HandshakeRequest && !response) {
             response = this.getResponse(request);
         }
 
         //the client should send a magic string to kick off the debugger
-        if (response instanceof HandshakeResponseV3 && request.data.magic === this.magic) {
+        if ((response instanceof HandshakeResponse || response instanceof HandshakeResponseV3) && request.data.magic === this.magic) {
             this.isHandshakeComplete = true;
         }
 
@@ -175,17 +175,25 @@ export class DebugProtocolServer {
      * Send a response from the server to the client. This involves writing the response buffer to the client socket
      */
     private async sendResponse(response: ProtocolResponse) {
-        await this.plugins.emit('beforeSendResponse', {
+        const event = await this.plugins.emit('beforeSendResponse', {
             server: this,
             response: response
         });
 
-        this.client.write(response.toBuffer());
+        this.client.write(event.response.toBuffer());
 
         await this.plugins.emit('afterSendResponse', {
             server: this,
-            response: response
+            response: event.response
         });
+        return event.response;
+    }
+
+    /**
+     * Send an update from the server to the client. This can be things like ALL_THREADS_STOPPED
+     */
+    public sendUpdate(update: ProtocolResponse) {
+        return this.sendResponse(update);
     }
 
     /**

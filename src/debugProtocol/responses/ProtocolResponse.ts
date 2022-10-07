@@ -18,6 +18,14 @@ export abstract class ProtocolResponse<TData = any> {
     public abstract toBuffer(): Buffer;
 
     /**
+     * Load the payload in json form
+     */
+    protected loadJson(data: any) {
+        this.data = data;
+        this.success = true;
+    }
+
+    /**
      * Contains the actual response data
      */
     public data: TData;
@@ -26,14 +34,14 @@ export abstract class ProtocolResponse<TData = any> {
      * Helper function for buffer loading.
      * Handles things like try/catch, setting buffer read offset, etc
      */
-    protected bufferLoaderHelper(buffer: Buffer, minByteLength: number, processor: (buffer: SmartBuffer) => boolean) {
+    protected bufferLoaderHelper(buffer: Buffer, minByteLength: number, data: Record<string, any> | string | number | null, processor: (buffer: SmartBuffer) => boolean | void) {
         // Required size of this processor
         if (buffer.byteLength >= minByteLength) {
             try {
                 let smartBuffer = SmartBuffer.fromBuffer(buffer);
 
                 //have the processor consume the requred bytes.
-                this.success = processor(smartBuffer) ?? true;
+                this.success = (processor(smartBuffer) ?? true) as boolean;
 
                 this.readOffset = smartBuffer.readOffset;
             } catch (error) {
@@ -42,5 +50,13 @@ export abstract class ProtocolResponse<TData = any> {
                 this.success = true;
             }
         }
+    }
+
+    /**
+     * Given a buffer, prepend the packet_length based on the size of the buffer and return the new buffer
+     */
+    protected getBufferWithPacketLength(smartBuffer: SmartBuffer) {
+        smartBuffer.insertUInt32LE(smartBuffer.length + 4, 0);
+        return smartBuffer.toBuffer();
     }
 }

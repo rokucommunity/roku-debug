@@ -135,3 +135,12 @@ export function getUpdateType(value: number): UPDATE_TYPES {
             return UPDATE_TYPES.UNDEF;
     }
 }
+
+/**
+ * Common properties found on all Command `.data` objects
+ */
+export interface CommandData {
+    packetLength: number;
+    requestId: number;
+    commandCode: number;
+}

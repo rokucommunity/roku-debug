@@ -12,12 +12,12 @@ export class HandshakeResponseV3 extends ProtocolResponse {
         if (Buffer.isBuffer(arg)) {
             this.loadFromBuffer(arg);
         } else {
-            this.loadFromJson(arg);
+            this.loadJson(arg);
         }
     }
 
     private loadFromBuffer(buffer: Buffer) {
-        this.bufferLoaderHelper(buffer, 20, (smartBuffer: SmartBuffer) => {
+        this.bufferLoaderHelper(buffer, 20, null, (smartBuffer: SmartBuffer) => {
             this.data.magic = util.readStringNT(smartBuffer); // debugger_magic
             this.data.majorVersion = smartBuffer.readInt32LE(); // protocol_major_version
             this.data.minorVersion = smartBuffer.readInt32LE(); // protocol_minor_version
@@ -39,12 +39,13 @@ export class HandshakeResponseV3 extends ProtocolResponse {
             if (!semver.satisfies(this.getVersion(), '>=3.0.0')) {
                 throw new Error(`unsupported version ${this.getVersion()}`);
             }
-            return true;
+            this.watchPacketLength = true;
         });
     }
 
-    private loadFromJson(data: HandshakeResponseV3['data']) {
-        this.data = data;
+    protected loadJson(data: HandshakeResponseV3['data']) {
+        super.loadJson(data);
+        this.watchPacketLength = true;
     }
 
     /**
@@ -72,7 +73,7 @@ export class HandshakeResponseV3 extends ProtocolResponse {
         return buffer.toBuffer();
     }
 
-    public watchPacketLength = true; // this will always be true for the new protocol versions
+    public watchPacketLength = false; // this will always be true for the new protocol versions
     public success = false;
     public readOffset = 0;
     public requestId = 0;

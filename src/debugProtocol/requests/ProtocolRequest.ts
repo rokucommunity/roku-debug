@@ -1,22 +1,28 @@
-export abstract class ProtocolRequest<TData = any> {
+import type { COMMANDS } from '../Constants';
+
+export interface ProtocolRequest<TData extends HasCommandCode = HasCommandCode> {
     /**
-     * Was this class successful in parsing/ingesting the data in its constructor
+     * Was this event successful in parsing/ingesting the data in its constructor
      */
-    public success = false;
+    success: boolean;
 
     /**
      * The number of bytes that were read from a buffer if this was a success
      */
-    public readOffset: number;
+    readOffset: number;
 
     /**
-     * Convert the current object into the debug protocol binary format,
+     * Serialize this event into Convert the current object into the debug protocol binary format,
      * stored in a `Buffer`
      */
-    public abstract toBuffer(): Buffer;
+    toBuffer(): Buffer;
 
     /**
-     * Contains the actual request data
+     * Contains the actual event data
      */
-    public abstract data: any;
+    data: TData;
+}
+
+export interface HasCommandCode {
+    commandCode: COMMANDS;
 }

@@ -12,12 +12,12 @@ export class HandshakeResponse extends ProtocolResponse {
         if (Buffer.isBuffer(arg)) {
             this.loadFromBuffer(arg);
         } else {
-            this.loadFromJson(arg);
+            this.loadJson(arg);
         }
     }
 
     loadFromBuffer(buffer: Buffer) {
-        this.bufferLoaderHelper(buffer, 20, (smartBuffer: SmartBuffer) => {
+        this.bufferLoaderHelper(buffer, 20, null, (smartBuffer: SmartBuffer) => {
             this.data.magic = util.readStringNT(smartBuffer); // magic_number
             this.data.majorVersion = smartBuffer.readInt32LE(); // protocol_major_version
             this.data.minorVersion = smartBuffer.readInt32LE(); // protocol_minor_version
@@ -31,8 +31,9 @@ export class HandshakeResponse extends ProtocolResponse {
         });
     }
 
-    private loadFromJson(data: HandshakeResponse['data']) {
+    protected loadJson(data: HandshakeResponse['data']) {
         this.data = data;
+        this.success = true;
     }
 
     public toBuffer() {

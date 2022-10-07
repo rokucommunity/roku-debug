@@ -27,6 +27,20 @@ import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 import { util } from '../util';
 import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
+import type { ProtocolRequest } from './requests/ProtocolRequest';
+import { ContinueRequest } from './requests/ContinueRequest';
+import { StopRequest } from './requests/StopRequest';
+import { ExitChannelRequest } from './requests/ExitChannelRequest';
+import { ProtocolResponse } from './responses/ProtocolResponse';
+import { StepRequest } from './requests/StepRequest';
+import { RemoveBreakpointsRequest } from './requests/RemoveBreakpointsRequest';
+import { ListBreakpointsRequest } from './requests/ListBreakpointsRequest';
+import { VariablesRequest } from './requests/VariablesRequest';
+import { StackTraceRequest } from './requests/StackTraceRequest';
+import { ThreadsRequest } from './requests/ThreadsRequest';
+import { ExecuteRequest } from './requests/ExecuteRequest';
+import { AddBreakpointsRequest } from './requests/AddBreakpointsRequest';
+import { AddConditionalBreakpointsRequest } from './requests/AddConditionalBreakpointsRequest';
 
 export class Debugger {
 
@@ -65,7 +79,7 @@ export class Debugger {
     private unhandledData: Buffer;
     private stopped = false;
     private totalRequests = 0;
-    private activeRequests = {};
+    private activeRequests1 = new Map<number, ProtocolRequest>();
     private options: ConstructorOptions;
 
     /**
@@ -220,40 +234,59 @@ export class Debugger {
     public async continue() {
         if (this.stopped) {
             this.stopped = false;
-            return this.makeRequest<ProtocolEvent>(new SmartBuffer({ size: 12 }), COMMANDS.CONTINUE);
+            return this.makeRequest<ProtocolEvent>(
+                ContinueRequest.fromJson({
+                    requestId: this.totalRequests++
+                })
+            );
         }
     }
 
     public async pause(force = false) {
         if (!this.stopped || force) {
-            return this.makeRequest<ProtocolEvent>(new SmartBuffer({ size: 12 }), COMMANDS.STOP);
+            return this.makeRequest<ProtocolEvent>(
+                StopRequest.fromJson({
+                    requestId: this.totalRequests++
+                })
+            );
         }
     }
 
     public async exitChannel() {
-        return this.makeRequest<ProtocolEvent>(new SmartBuffer({ size: 12 }), COMMANDS.EXIT_CHANNEL);
+        return this.makeRequest<ProtocolEvent>(
+            ExitChannelRequest.fromJson({
+                requestId: this.totalRequests++
+            })
+        );
     }
 
-    public async stepIn(threadId: number = this.primaryThread) {
-        return this.step(STEP_TYPE.STEP_TYPE_LINE, threadId);
+    public async stepIn(threadIndex: number = this.primaryThread) {
+        return this.step(STEP_TYPE.STEP_TYPE_LINE, threadIndex);
     }
 
-    public async stepOver(threadId: number = this.primaryThread) {
-        return this.step(STEP_TYPE.STEP_TYPE_OVER, threadId);
+    public async stepOver(threadIndex: number = this.primaryThread) {
+        return this.step(STEP_TYPE.STEP_TYPE_OVER, threadIndex);
     }
 
-    public async stepOut(threadId: number = this.primaryThread) {
-        return this.step(STEP_TYPE.STEP_TYPE_OUT, threadId);
+    public async stepOut(threadIndex: number = this.primaryThread) {
+        return this.step(STEP_TYPE.STEP_TYPE_OUT, threadIndex);
     }
 
-    private async step(stepType: STEP_TYPE, threadId: number): Promise<ProtocolEvent> {
-        this.logger.log('[step]', { stepType: STEP_TYPE[stepType], threadId, stopped: this.stopped });
+    private async step(stepType: STEP_TYPE, threadIndex: number): Promise<ProtocolEvent> {
+        this.logger.log('[step]', { stepType: STEP_TYPE[stepType], threadId: threadIndex, stopped: this.stopped });
+
         let buffer = new SmartBuffer({ size: 17 });
-        buffer.writeUInt32LE(threadId); // thread_index
+        buffer.writeUInt32LE(threadIndex); // thread_index
         buffer.writeUInt8(stepType); // step_type
         if (this.stopped) {
             this.stopped = false;
-            let stepResult = await this.makeRequest<ProtocolEvent>(buffer, COMMANDS.STEP);
+            let stepResult = await this.makeRequest<ProtocolEvent>(
+                StepRequest.fromJson({
+                    requestId: this.totalRequests++,
+                    stepType: stepType,
+                    threadIndex: threadIndex
+                })
+            );
             if (stepResult.errorCode === ERROR_CODES.OK) {
                 // this.stopped = true;
                 // this.emit('suspend');
@@ -267,7 +300,10 @@ export class Debugger {
 
     public async threads() {
         if (this.stopped) {
-            let result = await this.makeRequest<ThreadsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.THREADS);
+            let result = await this.makeRequest<ThreadsResponse>(
+                ThreadsRequest.fromJson({
+                    requestId: this.totalRequests++
+                }));
 
             if (result.errorCode === ERROR_CODES.OK) {
                 //older versions of the debug protocol had issues with maintaining the active thread, so our workaround is to keep track of it elsewhere
@@ -293,7 +329,12 @@ export class Debugger {
         let buffer = new SmartBuffer({ size: 16 });
         buffer.writeUInt32LE(threadIndex); // thread_index
         if (this.stopped && threadIndex > -1) {
-            return this.makeRequest<StackTraceResponse>(buffer, COMMANDS.STACKTRACE);
+            return this.makeRequest<StackTraceResponse>(
+                StackTraceRequest.fromJson({
+                    requestId: this.totalRequests++,
+                    threadIndex: threadIndex
+                })
+            );
         }
     }
 
@@ -310,115 +351,84 @@ export class Debugger {
      */
     public async getVariables(variablePathEntries: Array<string> = [], getChildKeys = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
         if (this.stopped && threadIndex > -1) {
-            //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
-            const sendCaseInsensitiveData = semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0;
-            let buffer = new SmartBuffer({ size: 17 });
-            let flags = 0;
-            if (getChildKeys) {
-                // eslint-disable-next-line no-bitwise
-                flags |= VARIABLE_REQUEST_FLAGS.GET_CHILD_KEYS;
-            }
-            if (sendCaseInsensitiveData) {
-                // eslint-disable-next-line no-bitwise
-                flags |= VARIABLE_REQUEST_FLAGS.CASE_SENSITIVITY_OPTIONS;
-            }
-            buffer.writeUInt8(flags); // variable_request_flags
-            buffer.writeUInt32LE(threadIndex); // thread_index
-            buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
-            buffer.writeUInt32LE(variablePathEntries.length); // variable_path_len
-            variablePathEntries.forEach(entry => {
-                if (entry.startsWith('"') && entry.endsWith('"')) {
+            const request = VariablesRequest.fromJson({
+                requestId: this.totalRequests++,
+                threadIndex: threadIndex,
+                stackFrameIndex: stackFrameIndex,
+                getChildKeys: getChildKeys,
+                variablePathEntries: variablePathEntries.map(x => ({
                     //remove leading and trailing quotes
-                    entry = entry.substring(1, entry.length - 1);
-                }
-                buffer.writeStringNT(entry); // variable_path_entries - optional
+                    name: x.replace(/^"/, '').replace(/"$/, ''),
+                    isCaseSensitive: x.startsWith('"') && x.endsWith('"')
+                })),
+                //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
+                enableCaseInsensitivityFlag: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
             });
-            if (sendCaseInsensitiveData) {
-                variablePathEntries.forEach(entry => {
-                    buffer.writeUInt8(
-                        //0 means case SENSITIVE lookup, 1 means case INsensitive lookup
-                        entry.startsWith('"') ? 0 : 1
-                    );
-                });
-            }
-            return this.makeRequest<VariableResponse>(buffer, COMMANDS.VARIABLES, variablePathEntries);
+            return this.makeRequest<VariableResponse>(request);
         }
     }
 
     public async executeCommand(sourceCode: string, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
         if (this.stopped && threadIndex > -1) {
-            console.log(sourceCode);
-            let buffer = new SmartBuffer({ size: 8 });
-            buffer.writeUInt32LE(threadIndex); // thread_index
-            buffer.writeUInt32LE(stackFrameIndex); // stack_frame_index
-            buffer.writeStringNT(sourceCode); // source_code
-            return this.makeRequest<ExecuteResponseV3>(buffer, COMMANDS.EXECUTE, sourceCode);
+            return this.makeRequest<ExecuteResponseV3>(
+                ExecuteRequest.fromJson({
+                    requestId: this.totalRequests++,
+                    threadIndex: threadIndex,
+                    stackFrameIndex: stackFrameIndex,
+                    sourceCode: sourceCode
+                })
+            );
         }
     }
 
     public async addBreakpoints(breakpoints: Array<BreakpointSpec & { componentLibraryName: string }>): Promise<AddBreakpointsResponse> {
         const { enableComponentLibrarySpecificBreakpoints } = this;
         if (breakpoints?.length > 0) {
-            let buffer = new SmartBuffer();
-            //set the `FLAGS` value if supported
-            if (this.supportsConditionalBreakpoints) {
-                buffer.writeUInt32LE(0); // flags - Should always be passed as 0. Unused, reserved for future use.
-            }
-            buffer.writeUInt32LE(breakpoints.length); // num_breakpoints - The number of breakpoints in the breakpoints array.
-            breakpoints.forEach((breakpoint) => {
-                let { filePath } = breakpoint;
-                //protocol >= v3.1.0 requires complib breakpoints have a special prefix
-                if (enableComponentLibrarySpecificBreakpoints) {
-                    if (breakpoint.componentLibraryName) {
-                        filePath = filePath.replace(/^pkg:\//i, `lib:/${breakpoint.componentLibraryName}/`);
-                    }
-                }
+            const json = {
+                requestId: this.totalRequests++,
+                breakpoints: breakpoints.map(x => ({
+                    ...x,
+                    ignoreCount: x.hitCount
+                }))
+            };
 
-                buffer.writeStringNT(filePath); // file_path - The path of the source file where the breakpoint is to be inserted.
-                buffer.writeUInt32LE(breakpoint.lineNumber); // line_number - The line number in the channel application code where the breakpoint is to be executed.
-                buffer.writeUInt32LE(breakpoint.hitCount ?? 0); // ignore_count - The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
-                //if the protocol supports conditional breakpoints, add any present condition
-                if (this.supportsConditionalBreakpoints) {
-                    //There's a bug in 3.1 where empty conditional expressions would crash the breakpoints, so just default to `true` which always succeeds
-                    buffer.writeStringNT(breakpoint.conditionalExpression ?? 'true'); // cond_expr - the condition that must evaluate to `true` in order to hit the breakpoint
-                }
-            });
-            return this.makeRequest<AddBreakpointsResponse>(buffer,
-                this.supportsConditionalBreakpoints ? COMMANDS.ADD_CONDITIONAL_BREAKPOINTS : COMMANDS.ADD_BREAKPOINTS
-                //COMMANDS.ADD_BREAKPOINTS
-            );
+            if (this.supportsConditionalBreakpoints) {
+                return this.makeRequest<AddBreakpointsResponse>(
+                    AddBreakpointsRequest.fromJson(json)
+                );
+            } else {
+                return this.makeRequest<AddBreakpointsResponse>(
+                    AddConditionalBreakpointsRequest.fromJson(json)
+                );
+            }
         }
         return new AddBreakpointsResponse(null);
     }
 
     public async listBreakpoints(): Promise<ListBreakpointsResponse> {
-        return this.makeRequest<ListBreakpointsResponse>(new SmartBuffer({ size: 12 }), COMMANDS.LIST_BREAKPOINTS);
+        return this.makeRequest<ListBreakpointsResponse>(
+            ListBreakpointsRequest.fromJson({
+                requestId: this.totalRequests++
+            })
+        );
     }
 
     public async removeBreakpoints(breakpointIds: number[]): Promise<RemoveBreakpointsResponse> {
         if (breakpointIds?.length > 0) {
-            let buffer = new SmartBuffer();
-            buffer.writeUInt32LE(breakpointIds.length); // num_breakpoints - The number of breakpoints in the breakpoints array.
-            breakpointIds.forEach((breakpointId) => {
-                buffer.writeUInt32LE(breakpointId); // breakpoint_ids - An array of breakpoint IDs representing the breakpoints to be removed.
+            const command = RemoveBreakpointsRequest.fromJson({
+                requestId: this.totalRequests++,
+                breakpointIds: breakpointIds
             });
-            return this.makeRequest<RemoveBreakpointsResponse>(buffer, COMMANDS.REMOVE_BREAKPOINTS);
+            return this.makeRequest<RemoveBreakpointsResponse>(command);
         }
         return new RemoveBreakpointsResponse(null);
     }
 
-    private async makeRequest<T>(buffer: SmartBuffer, command: COMMANDS, extraData?) {
+    private async makeRequest<T>(request: ProtocolRequest) {
         this.totalRequests++;
         let requestId = this.totalRequests;
-        buffer.insertUInt32LE(command, 0); // command_code - An enum representing the debugging command being sent. See the COMMANDS enum
-        buffer.insertUInt32LE(requestId, 0); // request_id - The ID of the debugger request (must be >=1). This ID is included in the debugger response.
-        buffer.insertUInt32LE(buffer.writeOffset + 4, 0); // packet_length - The size of the packet to be sent.
 
-        this.activeRequests[requestId] = {
-            commandType: command,
-            commandTypeText: COMMANDS[command],
-            extraData: extraData
-        };
+        this.activeRequests1.set(requestId, request);
 
         return new Promise<T>((resolve, reject) => {
             let unsubscribe = this.on('data', (data) => {
@@ -428,11 +438,11 @@ export class Debugger {
                 }
             });
 
-            this.logger.debug('makeRequest', `requestId=${requestId}`, this.activeRequests[requestId]);
+            this.logger.debug('makeRequest', `requestId=${requestId}`, this.activeRequests1.get(requestId));
             if (this.controllerClient) {
-                this.controllerClient.write(buffer.toBuffer());
+                this.controllerClient.write(request.toBuffer());
             } else {
-                throw new Error(`Controller connection was closed - Command: ${COMMANDS[command]}`);
+                throw new Error(`Controller connection was closed - Command: ${COMMANDS[request.data.commandCode]}`);
             }
         });
     }
@@ -487,8 +497,9 @@ export class Debugger {
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }
                 } else {
-                    this.logger.log('Command Type:', COMMANDS[this.activeRequests[debuggerRequestResponse.requestId].commandType]);
-                    switch (this.activeRequests[debuggerRequestResponse.requestId].commandType) {
+                    const request = this.activeRequests1.get(debuggerRequestResponse.requestId);
+                    this.logger.log('Command Type:', COMMANDS[request.data.commandCode]);
+                    switch (request.data.commandCode) {
                         case COMMANDS.STOP:
                         case COMMANDS.CONTINUE:
                         case COMMANDS.STEP:
@@ -551,9 +562,9 @@ export class Debugger {
     }
 
     private removedProcessedBytes(responseHandler: { requestId: number; readOffset: number }, unhandledData: Buffer, packetLength = 0) {
-        const activeRequest = this.activeRequests[responseHandler.requestId];
-        if (responseHandler.requestId > 0 && this.activeRequests[responseHandler.requestId]) {
-            delete this.activeRequests[responseHandler.requestId];
+        const activeRequest = this.activeRequests1.get(responseHandler.requestId);
+        if (responseHandler.requestId > 0 && activeRequest) {
+            this.activeRequests1.delete(responseHandler.requestId);
         }
 
         this.emit('data', responseHandler);
