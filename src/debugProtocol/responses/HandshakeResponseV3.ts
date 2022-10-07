@@ -35,11 +35,9 @@ export class HandshakeResponseV3 extends ProtocolResponse {
             //set the buffer offset
             smartBuffer.readOffset = requiredBufferSize;
 
-            const versionString = `${this.data.majorVersion}.${this.data.minorVersion}.${this.data.patchVersion}`;
-
             // We only support v3 or above with this handshake
-            if (!semver.satisfies(versionString, '>=3.0.0')) {
-                throw new Error(`unsupported version ${versionString}`);
+            if (!semver.satisfies(this.getVersion(), '>=3.0.0')) {
+                throw new Error(`unsupported version ${this.getVersion()}`);
             }
             return true;
         });
@@ -74,10 +72,14 @@ export class HandshakeResponseV3 extends ProtocolResponse {
         return buffer.toBuffer();
     }
 
-    public watchPacketLength = true; // this will always be false for the new protocol versions
+    public watchPacketLength = true; // this will always be true for the new protocol versions
     public success = false;
     public readOffset = 0;
     public requestId = 0;
+
+    public getVersion() {
+        return [this.data.majorVersion, this.data.minorVersion, this.data.patchVersion].join('.');
+    }
 
     public data = {
         /**

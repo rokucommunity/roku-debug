@@ -563,11 +563,11 @@ export class Debugger {
         this.parseUnhandledData(this.unhandledData);
     }
 
-    private verifyHandshake(debuggerHandshake: HandshakeResponse): boolean {
-        const magicIsValid = (Debugger.DEBUGGER_MAGIC === debuggerHandshake.magic);
+    private verifyHandshake(debuggerHandshake: HandshakeResponse | HandshakeResponseV3): boolean {
+        const magicIsValid = (Debugger.DEBUGGER_MAGIC === debuggerHandshake.data.magic);
         if (magicIsValid) {
             this.logger.log('Magic is valid.');
-            this.protocolVersion = [debuggerHandshake.majorVersion, debuggerHandshake.minorVersion, debuggerHandshake.patchVersion].join('.');
+            this.protocolVersion = debuggerHandshake.getVersion();
             this.logger.log('Protocol Version:', this.protocolVersion);
 
             this.watchPacketLength = debuggerHandshake.watchPacketLength;
@@ -599,7 +599,7 @@ export class Debugger {
             this.emit('handshake-verified', handshakeVerified);
             return handshakeVerified;
         } else {
-            this.logger.log('Closing connection due to bad debugger magic', debuggerHandshake.magic);
+            this.logger.log('Closing connection due to bad debugger magic', debuggerHandshake.data.magic);
             this.emit('handshake-verified', false);
             this.shutdown('close');
             return false;

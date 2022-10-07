@@ -32,11 +32,10 @@ export abstract class ProtocolResponse<TData = any> {
             try {
                 let smartBuffer = SmartBuffer.fromBuffer(buffer);
 
-                //have the processor consume the requred bytes
-                this.success = processor(smartBuffer);
+                //have the processor consume the requred bytes.
+                this.success = processor(smartBuffer) ?? true;
 
                 this.readOffset = smartBuffer.readOffset;
-                this.success = true;
             } catch (error) {
                 // Could not parse
                 this.readOffset = 0;

@@ -61,20 +61,6 @@ describe('debugProtocol Debugger', () => {
                 await bsDebugger.once('handshake-verified')
             ).to.be.true;
         });
-
-        it('throws on magic mismatch', async () => {
-            roku.waitForMagic();
-            roku.sendHandshakeResponse('not correct magic');
-
-            void bsDebugger.connect();
-
-            void roku.processActions();
-
-            //wait for the debugger to finish verifying the handshake
-            expect(
-                await bsDebugger.once('handshake-verified')
-            ).to.be.false;
-        });
     });
 
     describe('parseUnhandledData', () => {
@@ -94,27 +80,6 @@ describe('debugProtocol Debugger', () => {
             expect(bsDebugger['parseUnhandledData'](bsDebugger['unhandledData'])).to.be.equal(true);
 
             expect(bsDebugger.watchPacketLength).to.be.equal(false);
-            expect(bsDebugger.handshakeComplete).to.be.equal(true);
-            expect(bsDebugger['unhandledData'].byteLength).to.be.equal(0);
-        });
-
-        it('handles v3 handshake', () => {
-            let mockResponse = createHandShakeResponseV3({
-                magic: Debugger.DEBUGGER_MAGIC,
-                major: 3,
-                minor: 0,
-                patch: 0,
-                revisionTimeStamp: Date.now()
-            });
-
-            bsDebugger['unhandledData'] = mockResponse.toBuffer();
-
-            expect(bsDebugger.watchPacketLength).to.be.equal(false);
-            expect(bsDebugger.handshakeComplete).to.be.equal(false);
-
-            expect(bsDebugger['parseUnhandledData'](bsDebugger['unhandledData'])).to.be.equal(true);
-
-            expect(bsDebugger.watchPacketLength).to.be.equal(true);
             expect(bsDebugger.handshakeComplete).to.be.equal(true);
             expect(bsDebugger['unhandledData'].byteLength).to.be.equal(0);
         });
@@ -300,7 +265,11 @@ describe.only('Debugger new tests', () => {
         await util.sleep(10);
     });
 
-    it('receives magic and sends response', async () => {
+    it('handles v3 handshake', async () => {
+        //these are false by default
+        expect(client.watchPacketLength).to.be.equal(false);
+        expect(client.handshakeComplete).to.be.equal(false);
+
         await client.connect();
         expect(plugin.responses[0].data).to.eql({
             magic: 'bsdebug',
@@ -309,6 +278,10 @@ describe.only('Debugger new tests', () => {
             patchVersion: 0,
             revisionTimeStamp: new Date(2022, 1, 1)
         } as HandshakeResponseV3['data']);
+
+        //version 3.0 includes packet length, so these should be true now
+        expect(client.watchPacketLength).to.be.equal(true);
+        expect(client.handshakeComplete).to.be.equal(true);
     });
 
     it('throws on magic mismatch', async () => {
