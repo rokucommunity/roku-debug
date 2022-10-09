@@ -3,18 +3,18 @@ import { expect } from 'chai';
 import type { SmartBuffer } from 'smart-buffer';
 import { MockDebugProtocolServer } from './MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
-import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from './responses/responseCreationHelpers.spec';
-import { HandshakeResponse, HandshakeResponseV3, ProtocolEventV3 } from './responses';
+import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from './events/zzresponsesOld/responseCreationHelpers.spec';
+import { HandshakeResponse, HandshakeResponseV3, ProtocolEventV3 } from './events/zzresponsesOld';
 import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from './Constants';
 import { DebugProtocolServer, DebugProtocolServerOptions } from './server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../util';
 import type { BeforeSendResponseEvent, ProtocolPlugin, ProvideResponseEvent } from './server/ProtocolPlugin';
 import { Handler, OnClientConnectedEvent, ProvideRequestEvent } from './server/ProtocolPlugin';
-import type { ProtocolResponse } from './responses/ProtocolResponse';
-import type { ProtocolRequest } from './requests/ProtocolRequest';
-import { HandshakeRequest } from './requests/HandshakeRequest';
-import { AllThreadsStoppedUpdateResponse } from './responses/updates/AllThreadsStoppedUpdateResponse';
+import type { ProtocolResponse } from './events/zzresponsesOld/ProtocolResponse';
+import type { ProtocolRequest } from './events/requests/ProtocolRequest';
+import { HandshakeRequest } from './events/requests/HandshakeRequest';
+import { AllThreadsStoppedUpdateResponse } from './events/updates/AllThreadsStoppedUpdate';
 
 const sinon = createSandbox();
 
@@ -212,7 +212,7 @@ describe.skip('Debugger new tests', () => {
     it('handles v3 handshake', async () => {
         //these are false by default
         expect(client.watchPacketLength).to.be.equal(false);
-        expect(client.handshakeComplete).to.be.equal(false);
+        expect(client.isHandshakeComplete).to.be.equal(false);
 
         await client.connect();
         expect(plugin.responses[0].data).to.eql({
@@ -225,7 +225,7 @@ describe.skip('Debugger new tests', () => {
 
         //version 3.0 includes packet length, so these should be true now
         expect(client.watchPacketLength).to.be.equal(true);
-        expect(client.handshakeComplete).to.be.equal(true);
+        expect(client.isHandshakeComplete).to.be.equal(true);
     });
 
     it('throws on magic mismatch', async () => {
@@ -248,7 +248,7 @@ describe.skip('Debugger new tests', () => {
     it('handles legacy handshake', async () => {
 
         expect(client.watchPacketLength).to.be.equal(false);
-        expect(client.handshakeComplete).to.be.equal(false);
+        expect(client.isHandshakeComplete).to.be.equal(false);
 
         plugin.pushResponse(new HandshakeResponse({
             magic: Debugger.DEBUGGER_MAGIC,
@@ -260,7 +260,7 @@ describe.skip('Debugger new tests', () => {
         await client.connect();
 
         expect(client.watchPacketLength).to.be.equal(false);
-        expect(client.handshakeComplete).to.be.equal(true);
+        expect(client.isHandshakeComplete).to.be.equal(true);
     });
 
     it('handles events after handshake', async () => {

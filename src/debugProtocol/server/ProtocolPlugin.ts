@@ -1,7 +1,7 @@
 import type { DebugProtocolServer } from './DebugProtocolServer';
-import type { ProtocolResponse } from '../responses/ProtocolResponse';
+import type { ProtocolResponse } from '../events/zzresponsesOld/ProtocolResponse';
 import type { Socket } from 'net';
-import type { ProtocolRequest } from '../requests/ProtocolRequest';
+import type { ProtocolRequest } from '../events/requests/ProtocolRequest';
 
 export interface ProtocolPlugin {
     onClientConnected?: Handler<OnClientConnectedEvent>;

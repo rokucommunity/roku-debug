@@ -3,8 +3,8 @@ import { expect } from 'chai';
 import { Debugger } from '../debugProtocol/Debugger';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
-import type { VariableInfo } from '../debugProtocol/responses';
-import { VariableResponse } from '../debugProtocol/responses';
+import type { VariableInfo } from '../debugProtocol/events/zzresponsesOld';
+import { VariableResponse } from '../debugProtocol/events/zzresponsesOld';
 import { ERROR_CODES } from './../debugProtocol/Constants';
 const sinon = createSandbox();
 

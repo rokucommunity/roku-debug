@@ -1,11 +1,10 @@
 import { EventEmitter } from 'eventemitter3';
 import * as Net from 'net';
-import { SmartBuffer } from 'smart-buffer';
 import { ActionQueue } from '../../managers/ActionQueue';
-import { HandshakeRequest } from '../requests/HandshakeRequest';
-import type { ProtocolRequest } from '../requests/ProtocolRequest';
-import { HandshakeResponse, HandshakeResponseV3 } from '../responses';
-import type { ProtocolResponse } from '../responses/ProtocolResponse';
+import type { ProtocolRequest, ProtocolResponse } from '../events/ProtocolEvent';
+import { HandshakeRequest } from '../events/requests/HandshakeRequest';
+import { HandshakeResponse } from '../events/responses/HandshakeResponse';
+import { HandshakeResponseV3 } from '../events/responses/HandshakeResponseV3';
 import PluginInterface from './PluginInterface';
 import type { ProtocolPlugin } from './ProtocolPlugin';
 
@@ -111,7 +110,7 @@ export class DebugProtocolServer {
         let request: ProtocolRequest;
         //if we haven't seen the handshake yet, look for the handshake first
         if (!this.isHandshakeComplete) {
-            request = new HandshakeRequest(buffer);
+            request = HandshakeRequest.fromBuffer(buffer);
             if (request.success) {
                 return request;
             }
@@ -122,13 +121,11 @@ export class DebugProtocolServer {
 
     private getResponse(request: ProtocolRequest) {
         if (request instanceof HandshakeRequest) {
-            return new HandshakeResponseV3({
+            return HandshakeResponseV3.fromJson({
                 magic: this.magic,
-                majorVersion: 3,
-                minorVersion: 1,
-                patchVersion: 0,
+                protocolVersion: '3.1.0',
                 //TODO update this to an actual date from the device
-                revisionTimeStamp: new Date(2022, 1, 1)
+                revisionTimestamp: new Date(2022, 1, 1)
             });
         }
     }
@@ -147,7 +144,7 @@ export class DebugProtocolServer {
         }
 
         //trim the buffer now that the request has been processed
-        this.buffer = buffer.slice(request.readOffset);
+        this.buffer = buffer.slice((request as ProtocolRequest).readOffset);
 
         //now ask the plugin to provide a response for the given request
         let { response } = await this.plugins.emit('provideResponse', {

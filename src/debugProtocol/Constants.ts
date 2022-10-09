@@ -139,8 +139,9 @@ export function getUpdateType(value: number): UPDATE_TYPES {
 /**
  * Common properties found on all Command `.data` objects
  */
-export interface CommandData {
+export interface RequestData {
     packetLength: number;
     requestId: number;
     commandCode: number;
 }
+ 

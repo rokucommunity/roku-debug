@@ -7,7 +7,7 @@ export * from './ComponentLibraryServer';
 export * from './CompileErrorProcessor';
 export * from './debugProtocol/Constants';
 export * from './debugProtocol/Debugger';
-export * from './debugProtocol/responses';
+export * from './debugProtocol/events/zzresponsesOld';
 export * from './FileUtils';
 export * from './managers/ProjectManager';
 export * from './RendezvousTracker';

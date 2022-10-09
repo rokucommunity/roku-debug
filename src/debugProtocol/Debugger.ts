@@ -4,11 +4,9 @@ import * as semver from 'semver';
 import type {
     ThreadAttached,
     ThreadsStopped
-} from './responses';
+} from './events/zzresponsesOld';
 import {
     ConnectIOPortResponse,
-    HandshakeResponse,
-    HandshakeResponseV3,
     ProtocolEvent,
     ProtocolEventV3,
     StackTraceResponse,
@@ -17,30 +15,32 @@ import {
     UndefinedResponse,
     UpdateThreadsResponse,
     VariableResponse
-} from './responses';
+} from './events/zzresponsesOld';
 import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../logging';
-import { ExecuteResponseV3 } from './responses/ExecuteResponseV3';
-import { ListBreakpointsResponse } from './responses/ListBreakpointsResponse';
-import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
-import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
+import { ExecuteResponseV3 } from './events/zzresponsesOld/ExecuteResponseV3';
+import { ListBreakpointsResponse } from './events/responses/ListBreakpointsResponse';
+import { AddBreakpointsResponse } from './events/zzresponsesOld/AddBreakpointsResponse';
+import { RemoveBreakpointsResponse } from './events/zzresponsesOld/RemoveBreakpointsResponse';
 import { util } from '../util';
-import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
-import type { ProtocolRequest } from './requests/ProtocolRequest';
-import { ContinueRequest } from './requests/ContinueRequest';
-import { StopRequest } from './requests/StopRequest';
-import { ExitChannelRequest } from './requests/ExitChannelRequest';
-import { ProtocolResponse } from './responses/ProtocolResponse';
-import { StepRequest } from './requests/StepRequest';
-import { RemoveBreakpointsRequest } from './requests/RemoveBreakpointsRequest';
-import { ListBreakpointsRequest } from './requests/ListBreakpointsRequest';
-import { VariablesRequest } from './requests/VariablesRequest';
-import { StackTraceRequest } from './requests/StackTraceRequest';
-import { ThreadsRequest } from './requests/ThreadsRequest';
-import { ExecuteRequest } from './requests/ExecuteRequest';
-import { AddBreakpointsRequest } from './requests/AddBreakpointsRequest';
-import { AddConditionalBreakpointsRequest } from './requests/AddConditionalBreakpointsRequest';
+import { BreakpointErrorUpdateResponse } from './events/zzresponsesOld/BreakpointErrorUpdateResponse';
+import { ContinueRequest } from './events/requests/ContinueRequest';
+import { StopRequest } from './events/requests/StopRequest';
+import { ExitChannelRequest } from './events/requests/ExitChannelRequest';
+import { StepRequest } from './events/requests/StepRequest';
+import { RemoveBreakpointsRequest } from './events/requests/RemoveBreakpointsRequest';
+import { ListBreakpointsRequest } from './events/requests/ListBreakpointsRequest';
+import { VariablesRequest } from './events/requests/VariablesRequest';
+import { StackTraceRequest } from './events/requests/StackTraceRequest';
+import { ThreadsRequest } from './events/requests/ThreadsRequest';
+import { ExecuteRequest } from './events/requests/ExecuteRequest';
+import { AddBreakpointsRequest } from './events/requests/AddBreakpointsRequest';
+import { AddConditionalBreakpointsRequest } from './events/requests/AddConditionalBreakpointsRequest';
+import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events/ProtocolEvent';
+import { HandshakeResponse } from './events/responses/HandshakeResponse';
+import { HandshakeResponseV3 } from './events/responses/HandshakeResponseV3';
+import { HandshakeRequest } from './events/requests/HandshakeRequest';
 
 export class Debugger {
 
@@ -66,7 +66,7 @@ export class Debugger {
     public static DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
 
     public scriptTitle: string;
-    public handshakeComplete = false;
+    public isHandshakeComplete = false;
     public connectedToIoPort = false;
     public watchPacketLength = false;
     public protocolVersion: string;
@@ -76,7 +76,7 @@ export class Debugger {
     private emitter = new EventEmitter();
     private controllerClient: Net.Socket;
     private ioClient: Net.Socket;
-    private unhandledData: Buffer;
+    private buffer = Buffer.alloc(0);
     private stopped = false;
     private totalRequests = 0;
     private activeRequests1 = new Map<number, ProtocolRequest>();
@@ -111,7 +111,6 @@ export class Debugger {
     public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
     public once(eventName: 'data'): Promise<any>;
     public once(eventName: 'runtime-error' | 'suspend'): Promise<UpdateThreadsResponse>;
-    public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: 'io-output'): Promise<string>;
     public once(eventName: 'protocol-version'): Promise<ProtocolVersionDetails>;
     public once(eventName: 'handshake-verified'): Promise<HandshakeResponse>;
@@ -124,13 +123,9 @@ export class Debugger {
         });
     }
 
-    /**
-     * Subscribe to various events
-     */
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
-    public on(eventName: 'data', handler: (data: any) => void);
+    public on(eventName: 'data', handler: (data: ProtocolResponse | ProtocolUpdate) => void);
     public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
-    public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
     public on(eventName: 'handshake-verified', handler: (data: HandshakeResponse) => void);
@@ -143,8 +138,9 @@ export class Debugger {
         };
     }
 
+    private emit(eventName: 'response', data: { request: ProtocolRequest; response: ProtocolResponse });
     private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'connected' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
@@ -189,19 +185,15 @@ export class Debugger {
         // If there is no error, the server has accepted the request and created a new dedicated control socket
         this.controllerClient = await this.establishControllerConnection();
 
-        this.controllerClient.on('data', (buffer) => {
-            if (this.unhandledData) {
-                this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
-            } else {
-                this.unhandledData = buffer;
-            }
+        this.controllerClient.on('data', (data) => {
+            this.buffer = Buffer.concat([this.buffer, data]);
 
-            this.logger.debug(`on('data'): incoming bytes`, buffer.length);
-            const startBufferSize = this.unhandledData.length;
+            this.logger.debug(`on('data'): incoming bytes`, data.length);
+            const startBufferSize = this.buffer.length;
 
-            this.parseUnhandledData(this.unhandledData);
+            this.process();
 
-            const endBufferSize = this.unhandledData?.length ?? 0;
+            const endBufferSize = this.buffer?.length ?? 0;
             this.logger.debug(`buffer size before:`, startBufferSize, ', buffer size after:', endBufferSize, ', bytes consumed:', startBufferSize - endBufferSize);
         });
 
@@ -218,17 +210,17 @@ export class Debugger {
         });
 
         //send the magic, which triggers the debug session
-        this.sendMagic();
-
-        //wait for the handshake response from the device
-        const isConnected = await this.once('connected');
-        return isConnected;
-    }
-
-    private sendMagic() {
-        let buffer = new SmartBuffer({ size: Buffer.byteLength(Debugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(Debugger.DEBUGGER_MAGIC).toBuffer();
         this.logger.log('Sending magic to server');
-        this.controllerClient.write(buffer);
+        //send the handshake request, and wait for the handshake response from the device
+        const response = await this.makeRequest<HandshakeResponseV3 | HandshakeResponse>(
+            HandshakeRequest.fromJson({
+                magic: Debugger.DEBUGGER_MAGIC
+            })
+        );
+
+        this.verifyHandshake(response);
+        this.isHandshakeComplete = true;
+        return response.success;
     }
 
     public async continue() {
@@ -431,10 +423,10 @@ export class Debugger {
         this.activeRequests1.set(requestId, request);
 
         return new Promise<T>((resolve, reject) => {
-            let unsubscribe = this.on('data', (data) => {
-                if (data.requestId === requestId) {
+            let unsubscribe = this.on('data', (event) => {
+                if (event.data.requestId === requestId) {
                     unsubscribe();
-                    resolve(data as T);
+                    resolve(event as T);
                 }
             });
 
@@ -447,104 +439,127 @@ export class Debugger {
         });
     }
 
-    private parseUnhandledData(buffer: Buffer): boolean {
-        if (buffer.length < 1) {
+    private process(): boolean {
+        if (this.buffer.length < 1) {
             // short circuit if the buffer is empty
             return false;
         }
 
-        if (this.handshakeComplete) {
-            let debuggerRequestResponse = this.watchPacketLength ? new ProtocolEventV3(buffer) : new ProtocolEvent(buffer);
-            let packetLength = debuggerRequestResponse.packetLength;
-            let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
+        const event = this.getResponseOrUpdate(this.buffer);
 
-            this.logger.log(`incoming bytes: ${buffer.length}`, debuggerRequestResponse);
-            if (debuggerRequestResponse.success) {
-                if (debuggerRequestResponse.requestId > this.totalRequests) {
-                    this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);
-                    return true;
-                }
+        //we got a response
+        if (event) {
+            //find any matching request for this response/update
+            const request = this.activeRequests1.get(event.data.requestId);
 
-                if (debuggerRequestResponse.errorCode !== ERROR_CODES.OK) {
-                    this.logger.error(debuggerRequestResponse.errorCode, debuggerRequestResponse);
-                    this.removedProcessedBytes(debuggerRequestResponse, buffer, packetLength);
-                    return true;
-                }
-
-                if (debuggerRequestResponse.updateType > 0) {
-                    this.logger.log('Update Type:', UPDATE_TYPES[debuggerRequestResponse.updateType]);
-                    switch (debuggerRequestResponse.updateType) {
-                        case UPDATE_TYPES.IO_PORT_OPENED:
-                            return this.connectToIoPort(new ConnectIOPortResponse(slicedBuffer), buffer, packetLength);
-                        case UPDATE_TYPES.ALL_THREADS_STOPPED:
-                        case UPDATE_TYPES.THREAD_ATTACHED:
-                            let debuggerUpdateThreads = new UpdateThreadsResponse(slicedBuffer);
-                            if (debuggerUpdateThreads.success) {
-                                this.handleThreadsUpdate(debuggerUpdateThreads);
-                                this.removedProcessedBytes(debuggerUpdateThreads, slicedBuffer, packetLength);
-                                return true;
-                            }
-                            return false;
-                        case UPDATE_TYPES.UNDEF:
-                            return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
-                        case UPDATE_TYPES.BREAKPOINT_ERROR:
-                            const response = new BreakpointErrorUpdateResponse(slicedBuffer);
-                            //we do nothing with breakpoint errors at this time.
-                            return this.checkResponse(response, buffer, packetLength);
-                        case UPDATE_TYPES.COMPILE_ERROR:
-                            return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
-                        default:
-                            return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
-                    }
-                } else {
-                    const request = this.activeRequests1.get(debuggerRequestResponse.requestId);
-                    this.logger.log('Command Type:', COMMANDS[request.data.commandCode]);
-                    switch (request.data.commandCode) {
-                        case COMMANDS.STOP:
-                        case COMMANDS.CONTINUE:
-                        case COMMANDS.STEP:
-                        case COMMANDS.EXIT_CHANNEL:
-                            this.removedProcessedBytes(debuggerRequestResponse, buffer, packetLength);
-                            return true;
-                        case COMMANDS.EXECUTE:
-                            return this.checkResponse(new ExecuteResponseV3(slicedBuffer), buffer, packetLength);
-                        case COMMANDS.ADD_BREAKPOINTS:
-                        case COMMANDS.ADD_CONDITIONAL_BREAKPOINTS:
-                            return this.checkResponse(new AddBreakpointsResponse(slicedBuffer), buffer, packetLength);
-                        case COMMANDS.LIST_BREAKPOINTS:
-                            return this.checkResponse(new ListBreakpointsResponse(slicedBuffer), buffer, packetLength);
-                        case COMMANDS.REMOVE_BREAKPOINTS:
-                            return this.checkResponse(new RemoveBreakpointsResponse(slicedBuffer), buffer, packetLength);
-                        case COMMANDS.VARIABLES:
-                            return this.checkResponse(new VariableResponse(slicedBuffer), buffer, packetLength);
-                        case COMMANDS.STACKTRACE:
-                            return this.checkResponse(
-                                packetLength ? new StackTraceResponseV3(slicedBuffer) : new StackTraceResponse(slicedBuffer),
-                                buffer,
-                                packetLength);
-                        case COMMANDS.THREADS:
-                            return this.checkResponse(new ThreadsResponse(slicedBuffer), buffer, packetLength);
-                        default:
-                            return this.checkResponse(debuggerRequestResponse, buffer, packetLength);
-                    }
-                }
-            }
-        } else {
-            let debuggerHandshake: HandshakeResponse | HandshakeResponseV3;
-            debuggerHandshake = new HandshakeResponseV3(buffer);
-            this.logger.log(`incoming bytes: ${buffer.length}`, debuggerHandshake);
-
-            if (!debuggerHandshake.success) {
-                debuggerHandshake = new HandshakeResponse(buffer);
+            if (request) {
+                // we received a response for this request, so remove the request from the list
+                this.activeRequests1.delete(event.data.requestId);
             }
 
-            if (debuggerHandshake.success) {
-                this.handshakeComplete = true;
-                this.verifyHandshake(debuggerHandshake);
-                this.removedProcessedBytes(debuggerHandshake, buffer);
-                //once the handshake is complete, we have successfully "connected"
-                this.emit('connected', true);
+            this.emit('data', event);
+
+            //remove the processed data from the buffer
+            this.buffer = this.buffer.slice(event.readOffset);
+            this.logger.debug('[raw]', `requestId=${event.data.requestId}`, request, event.constructor?.name ?? '', event);
+
+        }
+
+        // process again (will run recursively until the buffer is empty)
+        this.process();
+    }
+
+    /**
+     * Given a buffer, try to parse into a specific ProtocolResponse or ProtocolUpdate
+     */
+    private getResponseOrUpdate(buffer: Buffer): ProtocolResponse {
+        //if we haven't seen a handshake yet, try to convert the buffer into a handshake
+        if (!this.isHandshakeComplete) {
+            //try building the v3 handshake response first
+            let handshakev3 = HandshakeResponseV3.fromBuffer(buffer);
+            if (handshakev3.success) {
+                return handshakev3;
+            }
+            //we didn't get a v3 handshake. try building an older handshake response
+            let handshake = HandshakeResponse.fromBuffer(buffer);
+            if (handshake.success) {
+                return handshake;
+            }
+        }
+
+        let debuggerRequestResponse = this.watchPacketLength ? new ProtocolEventV3(buffer) : new ProtocolEvent(buffer);
+        let packetLength = debuggerRequestResponse.packetLength;
+        let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
+
+        this.logger.log(`incoming bytes: ${buffer.length}`, debuggerRequestResponse);
+        if (debuggerRequestResponse.success) {
+            if (debuggerRequestResponse.requestId > this.totalRequests) {
+                this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);
                 return true;
+            }
+
+            if (debuggerRequestResponse.errorCode !== ERROR_CODES.OK) {
+                this.logger.error(debuggerRequestResponse.errorCode, debuggerRequestResponse);
+                this.removedProcessedBytes(debuggerRequestResponse, buffer, packetLength);
+                return true;
+            }
+
+            if (debuggerRequestResponse.updateType > 0) {
+                this.logger.log('Update Type:', UPDATE_TYPES[debuggerRequestResponse.updateType]);
+                switch (debuggerRequestResponse.updateType) {
+                    case UPDATE_TYPES.IO_PORT_OPENED:
+                        return this.connectToIoPort(new ConnectIOPortResponse(slicedBuffer), buffer, packetLength);
+                    case UPDATE_TYPES.ALL_THREADS_STOPPED:
+                    case UPDATE_TYPES.THREAD_ATTACHED:
+                        let debuggerUpdateThreads = new UpdateThreadsResponse(slicedBuffer);
+                        if (debuggerUpdateThreads.success) {
+                            this.handleThreadsUpdate(debuggerUpdateThreads);
+                            this.removedProcessedBytes(debuggerUpdateThreads, slicedBuffer, packetLength);
+                            return true;
+                        }
+                        return false;
+                    case UPDATE_TYPES.UNDEF:
+                        return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
+                    case UPDATE_TYPES.BREAKPOINT_ERROR:
+                        const response = new BreakpointErrorUpdateResponse(slicedBuffer);
+                        //we do nothing with breakpoint errors at this time.
+                        return this.checkResponse(response, buffer, packetLength);
+                    case UPDATE_TYPES.COMPILE_ERROR:
+                        return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
+                    default:
+                        return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
+                }
+            } else {
+                const request = this.activeRequests1.get(debuggerRequestResponse.requestId);
+                this.logger.log('Command Type:', COMMANDS[request.data.commandCode]);
+                switch (request.data.commandCode) {
+                    case COMMANDS.STOP:
+                    case COMMANDS.CONTINUE:
+                    case COMMANDS.STEP:
+                    case COMMANDS.EXIT_CHANNEL:
+                        this.removedProcessedBytes(debuggerRequestResponse, buffer, packetLength);
+                        return true;
+                    case COMMANDS.EXECUTE:
+                        return this.checkResponse(new ExecuteResponseV3(slicedBuffer), buffer, packetLength);
+                    case COMMANDS.ADD_BREAKPOINTS:
+                    case COMMANDS.ADD_CONDITIONAL_BREAKPOINTS:
+                        return this.checkResponse(new AddBreakpointsResponse(slicedBuffer), buffer, packetLength);
+                    case COMMANDS.LIST_BREAKPOINTS:
+                        return this.checkResponse(new ListBreakpointsResponse(slicedBuffer), buffer, packetLength);
+                    case COMMANDS.REMOVE_BREAKPOINTS:
+                        return this.checkResponse(new RemoveBreakpointsResponse(slicedBuffer), buffer, packetLength);
+                    case COMMANDS.VARIABLES:
+                        return this.checkResponse(new VariableResponse(slicedBuffer), buffer, packetLength);
+                    case COMMANDS.STACKTRACE:
+                        return this.checkResponse(
+                            packetLength ? new StackTraceResponseV3(slicedBuffer) : new StackTraceResponse(slicedBuffer),
+                            buffer,
+                            packetLength);
+                    case COMMANDS.THREADS:
+                        return this.checkResponse(new ThreadsResponse(slicedBuffer), buffer, packetLength);
+                    default:
+                        return this.checkResponse(debuggerRequestResponse, buffer, packetLength);
+                }
             }
         }
 
@@ -561,27 +576,30 @@ export class Debugger {
         return false;
     }
 
-    private removedProcessedBytes(responseHandler: { requestId: number; readOffset: number }, unhandledData: Buffer, packetLength = 0) {
-        const activeRequest = this.activeRequests1.get(responseHandler.requestId);
-        if (responseHandler.requestId > 0 && activeRequest) {
-            this.activeRequests1.delete(responseHandler.requestId);
+    private removedProcessedBytes(response: { requestId?: number; readOffset: number }, unhandledData: Buffer, packetLength = 0) {
+        const request = this.activeRequests1.get(response.requestId);
+        if (response?.requestId > 0 && request) {
+            this.activeRequests1.delete(response.requestId);
         }
 
-        this.emit('data', responseHandler);
+        this.emit('data', response);
 
-        this.unhandledData = unhandledData.slice(packetLength ? packetLength : responseHandler.readOffset);
-        this.logger.debug('[raw]', `requestId=${responseHandler?.requestId}`, activeRequest, (responseHandler as any)?.constructor?.name ?? '', responseHandler);
-        this.parseUnhandledData(this.unhandledData);
+        this.buffer = unhandledData.slice(packetLength ? packetLength : response.readOffset);
+        this.logger.debug('[raw]', `requestId=${response?.requestId}`, request, (response as any)?.constructor?.name ?? '', response);
+        this.process(this.buffer);
     }
 
-    private verifyHandshake(debuggerHandshake: HandshakeResponse | HandshakeResponseV3): boolean {
-        const magicIsValid = (Debugger.DEBUGGER_MAGIC === debuggerHandshake.data.magic);
-        if (magicIsValid) {
+    /**
+     * Verify all the handshake data
+     */
+    private verifyHandshake(response: HandshakeResponse | HandshakeResponseV3): boolean {
+        if (Debugger.DEBUGGER_MAGIC === response.data.magic) {
             this.logger.log('Magic is valid.');
-            this.protocolVersion = debuggerHandshake.getVersion();
+
+            this.protocolVersion = response.data.protocolVersion;
             this.logger.log('Protocol Version:', this.protocolVersion);
 
-            this.watchPacketLength = debuggerHandshake.watchPacketLength;
+            this.watchPacketLength = response.watchPacketLength;
 
             let handshakeVerified = true;
 
@@ -610,7 +628,7 @@ export class Debugger {
             this.emit('handshake-verified', handshakeVerified);
             return handshakeVerified;
         } else {
-            this.logger.log('Closing connection due to bad debugger magic', debuggerHandshake.data.magic);
+            this.logger.log('Closing connection due to bad debugger magic', response.data.magic);
             this.emit('handshake-verified', false);
             this.shutdown('close');
             return false;
