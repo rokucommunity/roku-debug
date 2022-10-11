@@ -5,7 +5,7 @@ import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import type { VariableInfo } from '../debugProtocol/events/zzresponsesOld';
 import { VariablesResponse } from '../debugProtocol/events/zzresponsesOld';
-import { ERROR_CODES } from './../debugProtocol/Constants';
+import { ErrorCode } from './../debugProtocol/Constants';
 const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
@@ -30,7 +30,7 @@ describe('DebugProtocolAdapter', () => {
 
         beforeEach(() => {
             response = new VariablesResponse(Buffer.alloc(5));
-            response.errorCode = ERROR_CODES.OK;
+            response.errorCode = ErrorCode.OK;
             variables = [];
             sinon.stub(adapter as any, 'getStackFrameById').returns({});
             sinon.stub(socketDebugger, 'getVariables').callsFake(() => {

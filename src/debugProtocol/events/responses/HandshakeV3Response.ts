@@ -2,7 +2,7 @@ import { SmartBuffer } from 'smart-buffer';
 import * as semver from 'semver';
 import type { ProtocolResponse } from '../ProtocolEvent';
 import { protocolUtils } from '../../ProtocolUtil';
-import { ERROR_CODES } from '../../Constants';
+import { ErrorCode } from '../../Constants';
 
 export class HandshakeV3Response implements ProtocolResponse {
 
@@ -108,6 +108,6 @@ export class HandshakeV3Response implements ProtocolResponse {
         packetLength: undefined as number,
         //hardcode the max integer value. This must be the same value as the HandshakeResponse class
         requestId: Number.MAX_SAFE_INTEGER,
-        errorCode: ERROR_CODES.OK
+        errorCode: ErrorCode.OK
     };
 }

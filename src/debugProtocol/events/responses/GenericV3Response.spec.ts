@@ -1,18 +1,18 @@
 import { GenericV3Response } from './GenericV3Response';
 import { expect } from 'chai';
-import { ERROR_CODES } from '../../Constants';
+import { ErrorCode } from '../../Constants';
 import { SmartBuffer } from 'smart-buffer';
 
 describe('GenericV3Response', () => {
     it('serializes and deserializes properly', () => {
         const response = GenericV3Response.fromJson({
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             requestId: 3
         });
 
         expect(response.data).to.eql({
             packetLength: undefined,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             requestId: 3
         });
 
@@ -20,20 +20,20 @@ describe('GenericV3Response', () => {
             GenericV3Response.fromBuffer(response.toBuffer()).data
         ).to.eql({
             packetLength: 12, // 4 bytes
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             requestId: 3 // 4 bytes
         });
     });
 
     it('consumes excess buffer data', () => {
         const response = GenericV3Response.fromJson({
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             requestId: 3
         });
 
         expect(response.data).to.eql({
             packetLength: undefined,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             requestId: 3
         });
 
@@ -53,7 +53,7 @@ describe('GenericV3Response', () => {
             newResponse.data
         ).to.eql({
             packetLength: 32, // 4 bytes
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             requestId: 3 // 4 bytes
         });
     });

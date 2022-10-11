@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ERROR_CODES, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, UPDATE_TYPES } from '../../Constants';
 import { BreakpointErrorUpdate } from './BreakpointErrorUpdate';
 
 describe('BreakpointErrorUpdate', () => {
@@ -20,7 +20,7 @@ describe('BreakpointErrorUpdate', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 0,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             updateType: UPDATE_TYPES.BREAKPOINT_ERROR,
 
             breakpointId: 3,
@@ -40,7 +40,7 @@ describe('BreakpointErrorUpdate', () => {
         ).to.eql({
             packetLength: 64, // 4 bytes
             requestId: 0, // 4 bytes
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             updateType: UPDATE_TYPES.BREAKPOINT_ERROR, // 4 bytes
 
             //flags // 4 bytes
@@ -72,7 +72,7 @@ describe('BreakpointErrorUpdate', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 0,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             updateType: UPDATE_TYPES.BREAKPOINT_ERROR,
 
             breakpointId: 3,
@@ -86,7 +86,7 @@ describe('BreakpointErrorUpdate', () => {
         ).to.eql({
             packetLength: 36, // 4 bytes
             requestId: 0, // 4 bytes
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             updateType: UPDATE_TYPES.BREAKPOINT_ERROR, // 4 bytes
 
             //flags // 4 bytes

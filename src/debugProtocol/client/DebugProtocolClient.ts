@@ -1,7 +1,7 @@
 import * as Net from 'net';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
-import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, StopReasonCode, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from '../Constants';
+import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, StopReasonCode, VARIABLE_REQUEST_FLAGS, ErrorCode, UPDATE_TYPES } from '../Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../../logging';
 import { ExecuteV3Response } from '../events/responses/ExecuteV3Response';
@@ -27,10 +27,15 @@ import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { GenericV3Response } from '../events/responses/GenericV3Response';
-import { GenericResponse, IOPortOpenedUpdate, StackTraceResponse, StackTraceResponseV3, ThreadAttachedUpdate, ThreadsResponse, UndefinedResponse, VariablesResponse } from '../events/zzresponsesOld';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 import { buffer } from 'rxjs';
 import { CompileErrorUpdate } from '../events/updates/CompileErrorUpdate';
+import { GenericResponse } from '../events/responses/GenericResponse';
+import { StackTraceResponse } from '../events/responses/StackTraceResponse';
+import { ThreadsResponse } from '../events/responses/ThreadsResponse';
+import { VariablesResponse } from '../events/responses/VariablesResponse';
+import { IOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
+import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
 
 export class DebugProtocolClient {
 
@@ -279,7 +284,7 @@ export class DebugProtocolClient {
                     threadIndex: threadIndex
                 })
             );
-            if (stepResult.data.errorCode === ERROR_CODES.OK) {
+            if (stepResult.data.errorCode === ErrorCode.OK) {
                 // this.stopped = true;
                 // this.emit('suspend');
             } else {
@@ -297,7 +302,7 @@ export class DebugProtocolClient {
                     requestId: this.totalRequests++
                 }));
 
-            if (result.errorCode === ERROR_CODES.OK) {
+            if (result.errorCode === ErrorCode.OK) {
                 //older versions of the debug protocol had issues with maintaining the active thread, so our workaround is to keep track of it elsewhere
                 if (this.enableThreadHoppingWorkaround) {
                     //ignore the `isPrimary` flag on threads
@@ -455,7 +460,7 @@ export class DebugProtocolClient {
             return true;
         }
 
-        if (event.data.errorCode !== ERROR_CODES.OK) {
+        if (event.data.errorCode !== ErrorCode.OK) {
             this.logger.error(event.data.errorCode, event);
             this.removedProcessedBytes(genericResponse, buffer, packetLength);
             return true;
@@ -578,12 +583,12 @@ export class DebugProtocolClient {
 
             if (update.data.updateType === UPDATE_TYPES.ALL_THREADS_STOPPED) {
                 if (stopReason === StopReasonCode.RuntimeError || stopReason === StopReasonCode.Break || stopReason === StopReasonCode.StopStatement) {
-                    this.primaryThread = (update.data as ThreadsStopped).primaryThreadIndex;
+                    this.primaryThread = (update.data as AllThreadsStoppedUpdate).data.primaryThreadIndex;
                     this.stackFrameIndex = 0;
                     this.emit(eventName, update);
                 }
             } else if (stopReason === StopReasonCode.RuntimeError || stopReason === StopReasonCode.Break || stopReason === StopReasonCode.StopStatement) {
-                this.primaryThread = (update.data as ThreadAttached).threadIndex;
+                this.primaryThread = (update.data as ThreadAttachedUpdate).data.threadIndex;
                 this.emit(eventName, update);
             }
         } else if (update instanceof IOPortOpenedUpdate) {
@@ -611,7 +616,7 @@ export class DebugProtocolClient {
 
         this.buffer = unhandledData.slice(packetLength ? packetLength : response.readOffset);
         this.logger.debug('[raw]', `requestId=${response?.requestId}`, request, (response as any)?.constructor?.name ?? '', response);
-        this.process(this.buffer);
+        this.process();
     }
 
     /**

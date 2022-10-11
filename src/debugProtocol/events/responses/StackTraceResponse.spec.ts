@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { StackTraceResponse } from './StackTraceResponse';
-import { ERROR_CODES } from '../../Constants';
-import { getRandomBuffer } from '../zzresponsesOld/responseCreationHelpers.spec';
+import { ErrorCode } from '../../Constants';
+import { getRandomBuffer } from '../../responseCreationHelpers.spec';
 
 describe('StackTraceResponse', () => {
     it('serializes and deserializes multiple breakpoints properly', () => {
@@ -21,7 +21,7 @@ describe('StackTraceResponse', () => {
         expect(response.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             entries: [{
                 lineNumber: 2,
                 functionName: 'main',
@@ -40,7 +40,7 @@ describe('StackTraceResponse', () => {
         ).to.eql({
             packetLength: undefined, // 0 bytes
             requestId: 3, // 4 bytes,
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             // num_entries // 4 bytes
             entries: [{
                 lineNumber: 2, // 4 bytes
@@ -65,7 +65,7 @@ describe('StackTraceResponse', () => {
         expect(response.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             entries: []
         });
 
@@ -76,7 +76,7 @@ describe('StackTraceResponse', () => {
         ).to.eql({
             packetLength: undefined, // 0 bytes
             requestId: 3, // 4 bytes,
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             // num_entries // 4 bytes
             entries: []
         });

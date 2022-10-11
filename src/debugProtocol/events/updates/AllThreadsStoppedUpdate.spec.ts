@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ERROR_CODES, StopReasonCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, StopReasonCode, UPDATE_TYPES } from '../../Constants';
 import { AllThreadsStoppedUpdate } from './AllThreadsStoppedUpdate';
 
 describe('AllThreadsStoppedUpdate', () => {
@@ -13,7 +13,7 @@ describe('AllThreadsStoppedUpdate', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 0,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             updateType: UPDATE_TYPES.ALL_THREADS_STOPPED,
 
             primaryThreadIndex: 1,
@@ -26,7 +26,7 @@ describe('AllThreadsStoppedUpdate', () => {
         ).to.eql({
             packetLength: 29, // 4 bytes
             requestId: 0, // 4 bytes
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             updateType: UPDATE_TYPES.ALL_THREADS_STOPPED, // 4 bytes
 
             primaryThreadIndex: 1, // 4 bytes

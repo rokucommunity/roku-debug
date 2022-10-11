@@ -3,7 +3,7 @@ import * as semver from 'semver';
 import { util } from '../../../util';
 import type { ProtocolEvent, ProtocolResponse } from '../ProtocolEvent';
 import { protocolUtils } from '../../ProtocolUtil';
-import { ERROR_CODES } from '../../Constants';
+import { ErrorCode } from '../../Constants';
 
 export class HandshakeResponse implements ProtocolResponse {
     public static fromJson(data: {
@@ -76,6 +76,6 @@ export class HandshakeResponse implements ProtocolResponse {
         packetLength: undefined as number,
         //hardcode the max integer value. This must be the same value as the HandshakeResponse class
         requestId: Number.MAX_SAFE_INTEGER,
-        errorCode: ERROR_CODES.OK
+        errorCode: ErrorCode.OK
     };
 }

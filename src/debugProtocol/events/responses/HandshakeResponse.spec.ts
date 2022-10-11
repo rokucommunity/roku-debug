@@ -1,6 +1,5 @@
 import { HandshakeResponse } from './HandshakeResponse';
 import { DebugProtocolClient } from '../../client/DebugProtocolClient';
-import { createHandShakeResponse } from '../zzresponsesOld/responseCreationHelpers.spec';
 import { expect } from 'chai';
 
 describe('HandshakeResponse', () => {

@@ -3,18 +3,16 @@ import { expect } from 'chai';
 import type { SmartBuffer } from 'smart-buffer';
 import { MockDebugProtocolServer } from '../MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
-import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from '../events/zzresponsesOld/responseCreationHelpers.spec';
-import { HandshakeResponse, HandshakeResponseV3, ProtocolEventV3 } from '../events/zzresponsesOld';
-import { ERROR_CODES, StopReasonCode, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from '../Constants';
-import { DebugProtocolServer, DebugProtocolServerOptions } from '../server/DebugProtocolServer';
+import { StopReasonCode, VARIABLE_REQUEST_FLAGS } from '../Constants';
+import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../../util';
 import type { BeforeSendResponseEvent, ProtocolPlugin, ProvideResponseEvent } from '../server/ProtocolPlugin';
-import { Handler, OnClientConnectedEvent, ProvideRequestEvent } from '../server/ProtocolPlugin';
-import type { ProtocolResponse } from './events/zzresponsesOld/ProtocolResponse';
-import type { ProtocolRequest } from './events/requests/ProtocolRequest';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
-import { AllThreadsStoppedUpdateResponse } from '../events/updates/AllThreadsStoppedUpdate';
+import type { ProtocolResponse, ProtocolRequest } from '../events/ProtocolEvent';
+import { HandshakeResponse } from '../events/responses/HandshakeResponse';
+import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
+import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 
 const sinon = createSandbox();
 
@@ -217,11 +215,9 @@ describe.skip('Debugger new tests', () => {
         await client.connect();
         expect(plugin.responses[0].data).to.eql({
             magic: 'bsdebug',
-            majorVersion: 3,
-            minorVersion: 1,
-            patchVersion: 0,
-            revisionTimeStamp: new Date(2022, 1, 1)
-        } as HandshakeResponseV3['data']);
+            protocolVersion: '3.1.0',
+            revisionTimestamp: new Date(2022, 1, 1)
+        } as HandshakeV3Response['data']);
 
         //version 3.0 includes packet length, so these should be true now
         expect(client.watchPacketLength).to.be.equal(true);
@@ -229,13 +225,13 @@ describe.skip('Debugger new tests', () => {
     });
 
     it('throws on magic mismatch', async () => {
-        plugin.pushResponse(new HandshakeResponseV3({
-            magic: 'not correct magic',
-            majorVersion: 3,
-            minorVersion: 1,
-            patchVersion: 0,
-            revisionTimeStamp: new Date(2022, 1, 1)
-        }));
+        plugin.pushResponse(
+            HandshakeV3Response.fromJson({
+                magic: 'not correct magic',
+                protocolVersion: '3.1.0',
+                revisionTimestamp: new Date(2022, 1, 1)
+            })
+        );
 
         const verifyHandshakePromise = client.once('handshake-verified');
 
@@ -250,12 +246,12 @@ describe.skip('Debugger new tests', () => {
         expect(client.watchPacketLength).to.be.equal(false);
         expect(client.isHandshakeComplete).to.be.equal(false);
 
-        plugin.pushResponse(new HandshakeResponse({
-            magic: DebugProtocolClient.DEBUGGER_MAGIC,
-            majorVersion: 1,
-            minorVersion: 0,
-            patchVersion: 0
-        }));
+        plugin.pushResponse(
+            HandshakeResponse.fromJson({
+                magic: DebugProtocolClient.DEBUGGER_MAGIC,
+                protocolVersion: '1.0.0'
+            })
+        );
 
         await client.connect();
 
@@ -267,7 +263,7 @@ describe.skip('Debugger new tests', () => {
         await client.connect();
 
         await server.sendUpdate(
-            new AllThreadsStoppedUpdateResponse({
+            AllThreadsStoppedUpdate.fromJson({
                 primaryThreadIndex: 1,
                 stopReason: StopReasonCode.Break,
                 stopReasonDetail: 'test'

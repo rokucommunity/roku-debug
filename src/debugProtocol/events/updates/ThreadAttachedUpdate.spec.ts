@@ -1,12 +1,11 @@
 import { expect } from 'chai';
-import { ERROR_CODES, StopReasonCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, StopReasonCode, UPDATE_TYPES } from '../../Constants';
 import { ThreadAttachedUpdate } from './ThreadAttachedUpdate';
 
 describe('AllThreadsStoppedUpdate', () => {
     it('serializes and deserializes properly', () => {
         const update = ThreadAttachedUpdate.fromJson({
             threadIndex: 1,
-            errorCode: ERROR_CODES.OK,
             stopReason: StopReasonCode.Break,
             stopReasonDetail: 'because'
         });
@@ -14,7 +13,7 @@ describe('AllThreadsStoppedUpdate', () => {
         expect(update.data).to.eql({
             packetLength: undefined,
             requestId: 0,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             updateType: UPDATE_TYPES.THREAD_ATTACHED,
 
             threadIndex: 1,
@@ -27,7 +26,7 @@ describe('AllThreadsStoppedUpdate', () => {
         ).to.eql({
             packetLength: 29, // 4 bytes
             requestId: 0, // 4 bytes
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             updateType: UPDATE_TYPES.THREAD_ATTACHED, // 4 bytes
 
             threadIndex: 1, // 4 bytes

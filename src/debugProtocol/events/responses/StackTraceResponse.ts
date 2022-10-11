@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES } from '../../Constants';
+import { ErrorCode } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { StackEntry } from './StackTraceV3Response';
 
@@ -75,7 +75,7 @@ export class StackTraceResponse {
         // response fields
         packetLength: undefined as number,
         requestId: undefined as number,
-        errorCode: ERROR_CODES.OK
+        errorCode: ErrorCode.OK
     };
 
 }

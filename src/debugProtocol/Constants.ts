@@ -27,7 +27,7 @@ export enum STEP_TYPE {
 }
 
 //#region RESPONSE CONSTS
-export enum ERROR_CODES {
+export enum ErrorCode {
     OK = 0,
     OTHER_ERR = 1,
     UNDEFINED_COMMAND = 2,
@@ -66,39 +66,6 @@ export enum UPDATE_TYPES {
 export enum VARIABLE_REQUEST_FLAGS {
     GET_CHILD_KEYS = 0x01,
     CASE_SENSITIVITY_OPTIONS = 0x02
-}
-
-export enum VARIABLE_FLAGS {
-    /**
-     * value is a child of the requested variable
-     * e.g., an element of an array or field of an AA
-     */
-    isChildKey = 1,
-    /**
-     * value is constant
-     */
-    isConst = 2,
-    /**
-     * The referenced value is a container (e.g., a list or array)
-     */
-    isContainer = 4,
-    /**
-     * The name is included in this VariableInfo
-     */
-    isNameHere = 8,
-    /**
-     * value is reference-counted.
-     */
-    isRefCounted = 16,
-    /**
-     * value is included in this VariableInfo
-     */
-    isValueHere = 32,
-    /**
-     * Value is container, key lookup is case sensitive
-     * @since protocol 3.1.0
-     */
-    isKeysCaseSensitive = 64
 }
 
 

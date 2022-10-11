@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { StopReasonCode } from '../../Constants';
-import { ERROR_CODES } from '../../Constants';
+import { ErrorCode } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
 export class ExecuteV3Response {
@@ -110,6 +110,6 @@ export class ExecuteV3Response {
         //common props
         packetLength: undefined as number,
         requestId: undefined as number,
-        errorCode: ERROR_CODES.OK
+        errorCode: ErrorCode.OK
     };
 }

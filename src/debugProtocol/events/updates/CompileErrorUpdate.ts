@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { util } from '../../../util';
-import { ERROR_CODES, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, UPDATE_TYPES } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
 /**
@@ -87,7 +87,7 @@ export class CompileErrorUpdate {
         //common props
         packetLength: undefined as number,
         requestId: 0, //all updates have requestId === 0
-        errorCode: ERROR_CODES.OK,
+        errorCode: ErrorCode.OK,
         updateType: UPDATE_TYPES.COMPILE_ERROR
     };
 }

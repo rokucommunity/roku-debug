@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ERROR_CODES, StopReasonCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, StopReasonCode, UPDATE_TYPES } from '../../Constants';
 import { ExecuteV3Response } from './ExecuteV3Response';
 
 describe('ExecuteV3Response', () => {
@@ -22,7 +22,7 @@ describe('ExecuteV3Response', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
 
             executeSuccess: true,
             runtimeStopCode: StopReasonCode.Break,
@@ -42,7 +42,7 @@ describe('ExecuteV3Response', () => {
         ).to.eql({
             packetLength: 54, // 4 bytes
             requestId: 3, // 4 bytes
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
 
             executeSuccess: true, // 1 byte
             runtimeStopCode: StopReasonCode.Break, // 1 byte
@@ -76,7 +76,7 @@ describe('ExecuteV3Response', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
 
             executeSuccess: true,
             runtimeStopCode: StopReasonCode.Break,
@@ -90,7 +90,7 @@ describe('ExecuteV3Response', () => {
         ).to.eql({
             packetLength: 26, // 4 bytes
             requestId: 3, // 4 bytes
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
 
             executeSuccess: true, // 1 byte
             runtimeStopCode: StopReasonCode.Break, // 1 byte

@@ -1,11 +1,11 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { ERROR_CODES } from '../../Constants';
+import type { ErrorCode } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
 export class GenericResponse {
     public static fromJson(data: {
         requestId: number;
-        errorCode: ERROR_CODES;
+        errorCode: ErrorCode;
     }) {
         const response = new GenericResponse();
         protocolUtils.loadJson(response, data);
@@ -38,6 +38,6 @@ export class GenericResponse {
         //this response doesn't actually contain packetLength, but we need to add it here just to make this response look like a regular response
         packetLength: undefined as number,
         requestId: Number.MAX_SAFE_INTEGER,
-        errorCode: undefined as ERROR_CODES
+        errorCode: undefined as ErrorCode
     };
 }

@@ -9,7 +9,7 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { ERROR_CODES, PROTOCOL_ERROR_CODES, StopReasonCode } from '../debugProtocol/Constants';
+import { ErrorCode, PROTOCOL_ERROR_CODES, StopReasonCode } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
@@ -17,6 +17,7 @@ import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from 
 import type { BreakpointManager } from '../managers/BreakpointManager';
 import type { ProjectManager } from '../managers/ProjectManager';
 import { ActionQueue } from '../managers/ActionQueue';
+import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -390,7 +391,7 @@ export class DebugProtocolAdapter {
 
             const response = await this.socketDebugger.executeCommand(command, stackFrame.frameIndex, stackFrame.threadIndex);
             this.logger.info('evaluate response', { command, response });
-            if (response.executeSuccess) {
+            if (response.data.executeSuccess) {
                 return {
                     message: undefined,
                     type: 'message'
@@ -417,14 +418,14 @@ export class DebugProtocolAdapter {
             let thread = await this.getThreadByThreadId(threadId);
             let frames: StackFrame[] = [];
             let stackTraceData = await this.socketDebugger.stackTrace(threadId);
-            for (let i = 0; i < stackTraceData.stackSize; i++) {
-                let frameData = stackTraceData.entries[i];
+            for (let i = 0; i < stackTraceData.data.entries.length; i++) {
+                let frameData = stackTraceData.data.entries[i];
                 let stackFrame: StackFrame = {
                     frameId: this.nextFrameId++,
                     // frame index is the reverse of the returned order.
-                    frameIndex: stackTraceData.stackSize - i - 1,
+                    frameIndex: stackTraceData.data.entries.length - i - 1,
                     threadIndex: threadId,
-                    filePath: frameData.fileName,
+                    filePath: frameData.filePath,
                     lineNumber: frameData.lineNumber,
                     // eslint-disable-next-line no-nested-ternary
                     functionIdentifier: this.cleanUpFunctionName(i === 0 ? (frameData.functionName) ? frameData.functionName : thread.functionName : frameData.functionName)
@@ -476,7 +477,7 @@ export class DebugProtocolAdapter {
 
         let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
 
-        if (this.enableVariablesLowerCaseRetry && response.errorCode !== ERROR_CODES.OK) {
+        if (this.enableVariablesLowerCaseRetry && response.data.errorCode !== ErrorCode.OK) {
             // Temporary workaround related to casing issues over the protocol
             logger.log(`Retrying expression as lower case:`, expression);
             variablePath = expression === '' ? [] : util.getVariablePath(expression?.toLowerCase());
@@ -484,13 +485,13 @@ export class DebugProtocolAdapter {
         }
 
 
-        if (response.errorCode === ERROR_CODES.OK) {
+        if (response.data.errorCode === ErrorCode.OK) {
             let mainContainer: EvaluateContainer;
             let children: EvaluateContainer[] = [];
             let firstHandled = false;
-            for (let variable of response.variables) {
+            for (let variable of response.data.variables) {
                 let value;
-                let variableType = variable.variableType;
+                let variableType = variable.type;
                 if (variable.value === null) {
                     value = 'roInvalid';
                 } else if (variableType === 'String') {
@@ -499,12 +500,12 @@ export class DebugProtocolAdapter {
                     value = variable.value;
                 }
 
-                if (variableType === 'Subtyped_Object') {
+                if (variableType === VariableType.SubtypedObject) {
                     //subtyped objects can only have string values
                     let parts = (variable.value as string).split('; ');
                     variableType = `${parts[0]} (${parts[1]})`;
                 } else if (variableType === 'AA') {
-                    variableType = 'AssociativeArray';
+                    variableType = VariableType.AA;
                 }
 
                 let container = <EvaluateContainer>{
@@ -578,16 +579,16 @@ export class DebugProtocolAdapter {
         }
         return this.resolve('threads', async () => {
             let threads: Thread[] = [];
-            let threadsData = await this.socketDebugger.threads();
+            let threadsResponse = await this.socketDebugger.threads();
 
-            for (let i = 0; i < threadsData.threadsCount; i++) {
-                let threadInfo = threadsData.threads[i];
+            for (let i = 0; i < threadsResponse.data.threads.length; i++) {
+                let threadInfo = threadsResponse.data.threads[i];
                 let thread = <Thread>{
                     // NOTE: On THREAD_ATTACHED events the threads request is marking the wrong thread as primary.
                     // NOTE: Rely on the thead index from the threads update event.
                     isSelected: this.socketDebugger.primaryThread === i,
                     // isSelected: threadInfo.isPrimary,
-                    filePath: threadInfo.fileName,
+                    filePath: threadInfo.filePath,
                     functionName: threadInfo.functionName,
                     lineNumber: threadInfo.lineNumber + 1, //protocol is 0-based but 1-based is expected
                     lineContents: threadInfo.codeSnippet,
@@ -680,7 +681,7 @@ export class DebugProtocolAdapter {
                     diff.removed.map(x => x.deviceId)
                 );
                 //return true to mark this action as complete, or false to retry the task again in the future
-                return response.success && response.errorCode === ERROR_CODES.OK;
+                return response.success && response.data.errorCode === ErrorCode.OK;
             });
         }
 
@@ -700,10 +701,10 @@ export class DebugProtocolAdapter {
             //send these new breakpoints to the device
             await this.actionQueue.run(async () => {
                 const response = await this.socketDebugger.addBreakpoints(breakpointsToSendToDevice);
-                if (response.errorCode === ERROR_CODES.OK) {
+                if (response.data.errorCode === ErrorCode.OK) {
                     //mark the breakpoints as verified
-                    for (let i = 0; i < response.breakpoints.length; i++) {
-                        const deviceBreakpoint = response.breakpoints[i];
+                    for (let i = 0; i < response.data.breakpoints.length; i++) {
+                        const deviceBreakpoint = response.data.breakpoints[i];
                         if (deviceBreakpoint.isVerified) {
                             this.breakpointManager.verifyBreakpoint(
                                 breakpointsToSendToDevice[i].key,

@@ -1,17 +1,17 @@
 import { GenericResponse } from './GenericResponse';
 import { expect } from 'chai';
-import { ERROR_CODES } from '../../Constants';
+import { ErrorCode } from '../../Constants';
 
 describe('GenericResponse', () => {
     it('Handles a Protocol update events', () => {
         let response = GenericResponse.fromJson({
             requestId: 3,
-            errorCode: ERROR_CODES.CANT_CONTINUE
+            errorCode: ErrorCode.CANT_CONTINUE
         });
 
         expect(response.data).to.eql({
             packetLength: undefined,
-            errorCode: ERROR_CODES.CANT_CONTINUE,
+            errorCode: ErrorCode.CANT_CONTINUE,
             requestId: 3
         });
 
@@ -20,7 +20,7 @@ describe('GenericResponse', () => {
             response.data
         ).to.eql({
             packetLength: 8, // 0 bytes -- this version of the response doesn't have a packet length
-            errorCode: ERROR_CODES.CANT_CONTINUE, // 4 bytes
+            errorCode: ErrorCode.CANT_CONTINUE, // 4 bytes
             requestId: 3 // 4 bytes
         });
 

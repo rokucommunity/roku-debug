@@ -1,7 +1,7 @@
 /* eslint-disable no-bitwise */
 import { SmartBuffer } from 'smart-buffer';
 import type { StopReason } from '../../Constants';
-import { ERROR_CODES, StopReasonCode } from '../../Constants';
+import { ErrorCode, StopReasonCode } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
 export class ThreadsResponse {
@@ -79,7 +79,7 @@ export class ThreadsResponse {
         // response fields
         packetLength: undefined as number,
         requestId: undefined as number,
-        errorCode: ERROR_CODES.OK
+        errorCode: ErrorCode.OK
     };
 }
 

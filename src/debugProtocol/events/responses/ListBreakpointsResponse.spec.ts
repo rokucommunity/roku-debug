@@ -1,19 +1,18 @@
 import { expect } from 'chai';
 import { ListBreakpointsResponse } from './ListBreakpointsResponse';
-import { ERROR_CODES } from '../../Constants';
-import { getRandomBuffer } from '../zzresponsesOld/responseCreationHelpers.spec';
+import { ErrorCode } from '../../Constants';
+import { getRandomBuffer } from '../../../testHelpers.spec';
 
 describe('ListBreakpointsResponse', () => {
     it('serializes and deserializes multiple breakpoints properly', () => {
         let response = ListBreakpointsResponse.fromJson({
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
             breakpoints: [{
-                errorCode: ERROR_CODES.OK,
+                errorCode: ErrorCode.OK,
                 id: 10,
                 ignoreCount: 2
             }, {
-                errorCode: ERROR_CODES.OK,
+                errorCode: ErrorCode.OK,
                 id: 20,
                 ignoreCount: 3
             }]
@@ -22,13 +21,13 @@ describe('ListBreakpointsResponse', () => {
         expect(response.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             breakpoints: [{
-                errorCode: ERROR_CODES.OK,
+                errorCode: ErrorCode.OK,
                 id: 10,
                 ignoreCount: 2
             }, {
-                errorCode: ERROR_CODES.OK,
+                errorCode: ErrorCode.OK,
                 id: 20,
                 ignoreCount: 3
             }]
@@ -41,14 +40,14 @@ describe('ListBreakpointsResponse', () => {
         ).to.eql({
             packetLength: 40, // 4 bytes
             requestId: 3, // 4 bytes,
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             //num_breakpoints // 4 bytes
             breakpoints: [{
-                errorCode: ERROR_CODES.OK, // 4 bytes
+                errorCode: ErrorCode.OK, // 4 bytes
                 id: 10, // 4 bytes
                 ignoreCount: 2 // 4 bytes
             }, {
-                errorCode: ERROR_CODES.OK, // 4 bytes
+                errorCode: ErrorCode.OK, // 4 bytes
                 id: 20, // 4 bytes
                 ignoreCount: 3 // 4 bytes
             }]
@@ -58,14 +57,13 @@ describe('ListBreakpointsResponse', () => {
     it('handles empty breakpoints array', () => {
         let response = ListBreakpointsResponse.fromJson({
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
             breakpoints: []
         });
 
         expect(response.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             breakpoints: []
         });
 
@@ -76,7 +74,7 @@ describe('ListBreakpointsResponse', () => {
         ).to.eql({
             packetLength: 16, // 4 bytes
             requestId: 3, // 4 bytes,
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             //num_breakpoints // 4 bytes
             breakpoints: []
         });
@@ -108,9 +106,8 @@ describe('ListBreakpointsResponse', () => {
     it('gracefully handles mismatched breakpoint count', () => {
         let buffer = ListBreakpointsResponse.fromJson({
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
             breakpoints: [{
-                errorCode: ERROR_CODES.OK,
+                errorCode: ErrorCode.OK,
                 id: 1,
                 ignoreCount: 0
             }]
@@ -126,7 +123,7 @@ describe('ListBreakpointsResponse', () => {
         const response = ListBreakpointsResponse.fromBuffer(buffer);
         expect(response.success).to.be.false;
         expect(response.data.breakpoints).to.eql([{
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             id: 1,
             ignoreCount: 0
         }]);
@@ -135,13 +132,12 @@ describe('ListBreakpointsResponse', () => {
     it('handles malformed breakpoint data', () => {
         let buffer = ListBreakpointsResponse.fromJson({
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
             breakpoints: [{
-                errorCode: ERROR_CODES.OK,
+                errorCode: ErrorCode.OK,
                 id: 1,
                 ignoreCount: 0
             }, {
-                errorCode: ERROR_CODES.OK,
+                errorCode: ErrorCode.OK,
                 id: 2,
                 ignoreCount: 0
             }]
@@ -155,7 +151,7 @@ describe('ListBreakpointsResponse', () => {
         const response = ListBreakpointsResponse.fromBuffer(buffer);
         expect(response.success).to.be.false;
         expect(response.data.breakpoints).to.eql([{
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             id: 1,
             ignoreCount: 0
         }]);

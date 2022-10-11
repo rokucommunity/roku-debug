@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { ThreadsResponse } from './ThreadsResponse';
-import { ERROR_CODES } from '../../Constants';
-import { getRandomBuffer } from '../zzresponsesOld/responseCreationHelpers.spec';
+import { ErrorCode } from '../../Constants';
+import { getRandomBuffer } from '../../responseCreationHelpers.spec';
 
 describe('ThreadsResponse', () => {
     it('serializes and deserializes multiple breakpoints properly', () => {
@@ -21,7 +21,7 @@ describe('ThreadsResponse', () => {
         expect(response.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             threads: [{
                 isPrimary: true,
                 stopReason: 'Break',
@@ -40,7 +40,7 @@ describe('ThreadsResponse', () => {
         ).to.eql({
             packetLength: 70, // 4 bytes
             requestId: 3, // 4 bytes,
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             // threads_count // 4 bytes
             threads: [{
                 // flags // 4 bytes
@@ -64,7 +64,7 @@ describe('ThreadsResponse', () => {
         expect(response.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            errorCode: ERROR_CODES.OK,
+            errorCode: ErrorCode.OK,
             threads: []
         });
 
@@ -75,7 +75,7 @@ describe('ThreadsResponse', () => {
         ).to.eql({
             packetLength: 16, // 4 bytes
             requestId: 3, // 4 bytes,
-            errorCode: ERROR_CODES.OK, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
             // threads_count // 4 bytes
             threads: []
         });
