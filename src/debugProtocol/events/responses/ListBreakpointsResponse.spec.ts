@@ -4,11 +4,6 @@ import { ERROR_CODES } from '../../Constants';
 import { getRandomBuffer } from '../zzresponsesOld/responseCreationHelpers.spec';
 
 describe('ListBreakpointsResponse', () => {
-    let response: ListBreakpointsResponse;
-    beforeEach(() => {
-        response = undefined;
-    });
-
     it('serializes and deserializes multiple breakpoints properly', () => {
         let response = ListBreakpointsResponse.fromJson({
             requestId: 3,
@@ -88,13 +83,13 @@ describe('ListBreakpointsResponse', () => {
     });
 
     it('handles empty buffer', () => {
-        response = ListBreakpointsResponse.fromBuffer(null);
+        const response = ListBreakpointsResponse.fromBuffer(null);
         //Great, it didn't explode!
         expect(response.success).to.be.false;
     });
 
     it('handles undersized buffers', () => {
-        response = ListBreakpointsResponse.fromBuffer(
+        let response = ListBreakpointsResponse.fromBuffer(
             getRandomBuffer(0)
         );
         expect(response.success).to.be.false;

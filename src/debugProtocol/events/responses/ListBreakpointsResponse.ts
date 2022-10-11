@@ -1,12 +1,11 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { ERROR_CODES } from '../../Constants';
+import { ERROR_CODES } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
 export class ListBreakpointsResponse {
 
     public static fromJson(data: {
         requestId: number;
-        errorCode: ERROR_CODES;
         breakpoints: BreakpointInfo[];
     }) {
         const response = new ListBreakpointsResponse();
@@ -68,7 +67,7 @@ export class ListBreakpointsResponse {
         // response fields
         packetLength: undefined as number,
         requestId: undefined as number,
-        errorCode: undefined as ERROR_CODES
+        errorCode: ERROR_CODES.OK
     };
 }
 

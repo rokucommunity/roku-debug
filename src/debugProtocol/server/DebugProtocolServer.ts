@@ -4,7 +4,7 @@ import { ActionQueue } from '../../managers/ActionQueue';
 import type { ProtocolRequest, ProtocolResponse } from '../events/ProtocolEvent';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
-import { HandshakeResponseV3 } from '../events/responses/HandshakeResponseV3';
+import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import PluginInterface from './PluginInterface';
 import type { ProtocolPlugin } from './ProtocolPlugin';
 
@@ -121,7 +121,7 @@ export class DebugProtocolServer {
 
     private getResponse(request: ProtocolRequest) {
         if (request instanceof HandshakeRequest) {
-            return HandshakeResponseV3.fromJson({
+            return HandshakeV3Response.fromJson({
                 magic: this.magic,
                 protocolVersion: '3.1.0',
                 //TODO update this to an actual date from the device
@@ -160,7 +160,7 @@ export class DebugProtocolServer {
         }
 
         //the client should send a magic string to kick off the debugger
-        if ((response instanceof HandshakeResponse || response instanceof HandshakeResponseV3) && request.data.magic === this.magic) {
+        if ((response instanceof HandshakeResponse || response instanceof HandshakeV3Response) && request.data.magic === this.magic) {
             this.isHandshakeComplete = true;
         }
 

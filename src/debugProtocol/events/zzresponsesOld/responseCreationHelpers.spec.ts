@@ -284,7 +284,7 @@ function writeIfSet<T, R>(value: T, writer: (x: T) => R, defaultValue?: T) {
 export function getRandomBuffer(byteCount: number) {
     const result = new SmartBuffer();
     for (let i = 0; i < byteCount; i++) {
-        result.writeUInt32LE(i);
+        result.writeUInt8(i);
     }
     return result.toBuffer();
 }

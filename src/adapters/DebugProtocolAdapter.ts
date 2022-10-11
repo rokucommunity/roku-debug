@@ -9,7 +9,7 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { ERROR_CODES, PROTOCOL_ERROR_CODES, STOP_REASONS } from '../debugProtocol/Constants';
+import { ERROR_CODES, PROTOCOL_ERROR_CODES, StopReasonCode } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
@@ -242,7 +242,7 @@ export class DebugProtocolAdapter {
                 console.debug('hasRuntimeError!!', data);
                 this.emit('runtime-error', <BrightScriptRuntimeError>{
                     message: data.data.stopReasonDetail,
-                    errorCode: STOP_REASONS[data.data.stopReason]
+                    errorCode: StopReasonCode[data.data.stopReason]
                 });
             });
 

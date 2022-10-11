@@ -5,7 +5,7 @@ import { MockDebugProtocolServer } from '../MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
 import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from '../events/zzresponsesOld/responseCreationHelpers.spec';
 import { HandshakeResponse, HandshakeResponseV3, ProtocolEventV3 } from '../events/zzresponsesOld';
-import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from '../Constants';
+import { ERROR_CODES, StopReasonCode, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from '../Constants';
 import { DebugProtocolServer, DebugProtocolServerOptions } from '../server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../../util';
@@ -269,14 +269,14 @@ describe.skip('Debugger new tests', () => {
         await server.sendUpdate(
             new AllThreadsStoppedUpdateResponse({
                 primaryThreadIndex: 1,
-                stopReason: STOP_REASONS.BREAK,
+                stopReason: StopReasonCode.Break,
                 stopReasonDetail: 'test'
             })
         );
         const event = await client.once('suspend');
         expect(event.data).include({
             primaryThreadIndex: 1,
-            stopReason: STOP_REASONS.BREAK,
+            stopReason: StopReasonCode.Break,
             stopReasonDetail: 'test'
         });
         // let protocolEvent = createProtocolEventV3({

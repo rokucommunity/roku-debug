@@ -378,6 +378,13 @@ class Util {
 
         return cancel;
     }
+
+    /**
+     * Is the given value null or undefined
+     */
+    public isNullish(value: any) {
+        return value === undefined || value === null;
+    }
 }
 
 export function defer<T>() {

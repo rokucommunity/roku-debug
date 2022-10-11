@@ -1,18 +1,17 @@
 import { SmartBuffer } from 'smart-buffer';
 import * as semver from 'semver';
-import { util } from '../../../util';
-import type { ProtocolEvent, ProtocolResponse } from '../ProtocolEvent';
+import type { ProtocolResponse } from '../ProtocolEvent';
 import { protocolUtils } from '../../ProtocolUtil';
 import { ERROR_CODES } from '../../Constants';
 
-export class HandshakeResponseV3 implements ProtocolResponse {
+export class HandshakeV3Response implements ProtocolResponse {
 
     public static fromJson(data: {
         magic: string;
         protocolVersion: string;
         revisionTimestamp: Date;
     }) {
-        const response = new HandshakeResponseV3();
+        const response = new HandshakeV3Response();
         protocolUtils.loadJson(response, data);
         // We only support v3 or above with this handshake
         if (!semver.satisfies(response.data.protocolVersion, '<3.0.0')) {
@@ -22,7 +21,7 @@ export class HandshakeResponseV3 implements ProtocolResponse {
     }
 
     public static fromBuffer(buffer: Buffer) {
-        const response = new HandshakeResponseV3();
+        const response = new HandshakeV3Response();
         protocolUtils.bufferLoaderHelper(response, buffer, 20, (smartBuffer: SmartBuffer) => {
             response.data.magic = protocolUtils.readStringNT(smartBuffer); // magic_number
 

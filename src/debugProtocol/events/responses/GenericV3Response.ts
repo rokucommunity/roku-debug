@@ -2,18 +2,18 @@ import { SmartBuffer } from 'smart-buffer';
 import type { ERROR_CODES } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
-export class GenericResponseV3 {
+export class GenericV3Response {
     public static fromJson(data: {
         requestId: number;
         errorCode: ERROR_CODES;
     }) {
-        const response = new GenericResponseV3();
+        const response = new GenericV3Response();
         protocolUtils.loadJson(response, data);
         return response;
     }
 
     public static fromBuffer(buffer: Buffer) {
-        const response = new GenericResponseV3();
+        const response = new GenericV3Response();
         protocolUtils.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
             response.data.packetLength = smartBuffer.readUInt32LE(); // packet_length
             response.data.requestId = smartBuffer.readUInt32LE(); // request_id

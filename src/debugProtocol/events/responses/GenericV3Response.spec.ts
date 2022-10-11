@@ -1,11 +1,11 @@
-import { GenericResponseV3 } from './GenericResponseV3';
+import { GenericV3Response } from './GenericV3Response';
 import { expect } from 'chai';
 import { ERROR_CODES } from '../../Constants';
 import { SmartBuffer } from 'smart-buffer';
 
-describe('GenericResponseV3', () => {
+describe('GenericV3Response', () => {
     it('serializes and deserializes properly', () => {
-        const response = GenericResponseV3.fromJson({
+        const response = GenericV3Response.fromJson({
             errorCode: ERROR_CODES.OK,
             requestId: 3
         });
@@ -17,7 +17,7 @@ describe('GenericResponseV3', () => {
         });
 
         expect(
-            GenericResponseV3.fromBuffer(response.toBuffer()).data
+            GenericV3Response.fromBuffer(response.toBuffer()).data
         ).to.eql({
             packetLength: 12, // 4 bytes
             errorCode: ERROR_CODES.OK, // 4 bytes
@@ -26,7 +26,7 @@ describe('GenericResponseV3', () => {
     });
 
     it('consumes excess buffer data', () => {
-        const response = GenericResponseV3.fromJson({
+        const response = GenericV3Response.fromJson({
             errorCode: ERROR_CODES.OK,
             requestId: 3
         });
@@ -46,7 +46,7 @@ describe('GenericResponseV3', () => {
         }
         buffer.insertUInt32LE(buffer.length + 4, 0); //packet_length
 
-        const newResponse = GenericResponseV3.fromBuffer(buffer.toBuffer());
+        const newResponse = GenericV3Response.fromBuffer(buffer.toBuffer());
         expect(newResponse.readOffset).to.eql(32);
 
         expect(

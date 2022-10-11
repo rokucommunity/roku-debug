@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES } from '../../Constants';
+import { ERROR_CODES, StopReasonCode, UPDATE_TYPES } from '../../Constants';
 import { CompileErrorUpdate } from './CompileErrorUpdate';
 
 describe('CompileErrorUpdate', () => {

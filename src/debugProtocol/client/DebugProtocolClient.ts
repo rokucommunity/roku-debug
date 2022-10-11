@@ -1,10 +1,10 @@
 import * as Net from 'net';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
-import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from '../Constants';
+import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, StopReasonCode, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from '../Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../../logging';
-import { ExecuteResponseV3 } from '../events/responses/ExecuteResponseV3';
+import { ExecuteV3Response } from '../events/responses/ExecuteV3Response';
 import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResponse';
 import { AddBreakpointsResponse } from '../events/responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from '../events/responses/RemoveBreakpointsResponse';
@@ -24,10 +24,10 @@ import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest'
 import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
 import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from '../events/ProtocolEvent';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
-import { HandshakeResponseV3 } from '../events/responses/HandshakeResponseV3';
+import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
-import { GenericResponseV3 } from '../events/responses/GenericResponseV3';
-import { GenericResponse, IOPortOpenedUpdate, StackTraceResponse, StackTraceResponseV3, ThreadAttachedUpdate, ThreadsResponse, UndefinedResponse, VariableResponse } from '../events/zzresponsesOld';
+import { GenericV3Response } from '../events/responses/GenericV3Response';
+import { GenericResponse, IOPortOpenedUpdate, StackTraceResponse, StackTraceResponseV3, ThreadAttachedUpdate, ThreadsResponse, UndefinedResponse, VariablesResponse } from '../events/zzresponsesOld';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 import { buffer } from 'rxjs';
 import { CompileErrorUpdate } from '../events/updates/CompileErrorUpdate';
@@ -212,7 +212,7 @@ export class DebugProtocolClient {
         this.logger.log('Sending magic to server');
 
         //send the handshake request, and wait for the handshake response from the device
-        const response = await this.makeRequest<HandshakeResponseV3 | HandshakeResponse>(
+        const response = await this.makeRequest<HandshakeV3Response | HandshakeResponse>(
             HandshakeRequest.fromJson({
                 magic: DebugProtocolClient.DEBUGGER_MAGIC
             })
@@ -356,13 +356,13 @@ export class DebugProtocolClient {
                 //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
                 enableCaseInsensitivityFlag: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
             });
-            return this.makeRequest<VariableResponse>(request);
+            return this.makeRequest<VariablesResponse>(request);
         }
     }
 
     public async executeCommand(sourceCode: string, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
         if (this.stopped && threadIndex > -1) {
-            return this.makeRequest<ExecuteResponseV3>(
+            return this.makeRequest<ExecuteV3Response>(
                 ExecuteRequest.fromJson({
                     requestId: this.totalRequests++,
                     threadIndex: threadIndex,
@@ -492,7 +492,7 @@ export class DebugProtocolClient {
         //if we haven't seen a handshake yet, try to convert the buffer into a handshake
         if (!this.isHandshakeComplete) {
             //try building the v3 handshake response first
-            let handshakev3 = HandshakeResponseV3.fromBuffer(buffer);
+            let handshakev3 = HandshakeV3Response.fromBuffer(buffer);
             if (handshakev3.success) {
                 return handshakev3;
             }
@@ -503,7 +503,7 @@ export class DebugProtocolClient {
             }
         }
 
-        let genericResponse = this.watchPacketLength ? GenericResponseV3.fromBuffer(buffer) : GenericResponse.fromBuffer(buffer);
+        let genericResponse = this.watchPacketLength ? GenericV3Response.fromBuffer(buffer) : GenericResponse.fromBuffer(buffer);
         // a nonzero requestId means this is a response to a request that we sent
         if (genericResponse.data.requestId !== 0) {
             //requestId 0 means this is an update
@@ -513,7 +513,7 @@ export class DebugProtocolClient {
         }
     }
 
-    private getResponse(genericResponse: GenericResponseV3): ProtocolResponse {
+    private getResponse(genericResponse: GenericV3Response): ProtocolResponse {
         const request = this.activeRequests1.get(genericResponse.data.requestId);
         if (!request) {
             return;
@@ -525,7 +525,7 @@ export class DebugProtocolClient {
             case COMMANDS.EXIT_CHANNEL:
                 return genericResponse;
             case COMMANDS.EXECUTE:
-                return new ExecuteResponseV3(this.buffer);
+                return new ExecuteV3Response(this.buffer);
             case COMMANDS.ADD_BREAKPOINTS:
             case COMMANDS.ADD_CONDITIONAL_BREAKPOINTS:
                 return new AddBreakpointsResponse(this.buffer);
@@ -534,7 +534,7 @@ export class DebugProtocolClient {
             case COMMANDS.REMOVE_BREAKPOINTS:
                 return RemoveBreakpointsResponse.fromBuffer(this.buffer);
             case COMMANDS.VARIABLES:
-                return new VariableResponse(this.buffer);
+                return new VariablesResponse(this.buffer);
             case COMMANDS.STACKTRACE:
                 return this.checkResponse(
                     packetLength ? new StackTraceResponseV3(slicedBuffer) : new StackTraceResponse(slicedBuffer),
@@ -547,7 +547,7 @@ export class DebugProtocolClient {
         }
     }
 
-    private getUpdate(genericResponse: GenericResponseV3): ProtocolUpdate {
+    private getUpdate(genericResponse: GenericV3Response): ProtocolUpdate {
         //read the update_type from the buffer (save some buffer parsing time by narrowing to the exact update type)
         const updateType = this.buffer.readUInt32LE(genericResponse.readOffset) as UPDATE_TYPES;
 
@@ -574,15 +574,15 @@ export class DebugProtocolClient {
         if (update instanceof AllThreadsStoppedUpdate || update instanceof ThreadAttachedUpdate) {
             this.stopped = true;
             let stopReason = update.data.stopReason;
-            let eventName: 'runtime-error' | 'suspend' = stopReason === STOP_REASONS.RUNTIME_ERROR ? 'runtime-error' : 'suspend';
+            let eventName: 'runtime-error' | 'suspend' = stopReason === StopReasonCode.RuntimeError ? 'runtime-error' : 'suspend';
 
             if (update.data.updateType === UPDATE_TYPES.ALL_THREADS_STOPPED) {
-                if (stopReason === STOP_REASONS.RUNTIME_ERROR || stopReason === STOP_REASONS.BREAK || stopReason === STOP_REASONS.STOP_STATEMENT) {
+                if (stopReason === StopReasonCode.RuntimeError || stopReason === StopReasonCode.Break || stopReason === StopReasonCode.StopStatement) {
                     this.primaryThread = (update.data as ThreadsStopped).primaryThreadIndex;
                     this.stackFrameIndex = 0;
                     this.emit(eventName, update);
                 }
-            } else if (stopReason === STOP_REASONS.RUNTIME_ERROR || stopReason === STOP_REASONS.BREAK || stopReason === STOP_REASONS.STOP_STATEMENT) {
+            } else if (stopReason === StopReasonCode.RuntimeError || stopReason === StopReasonCode.Break || stopReason === StopReasonCode.StopStatement) {
                 this.primaryThread = (update.data as ThreadAttached).threadIndex;
                 this.emit(eventName, update);
             }
@@ -617,7 +617,7 @@ export class DebugProtocolClient {
     /**
      * Verify all the handshake data
      */
-    private verifyHandshake(response: HandshakeResponse | HandshakeResponseV3): boolean {
+    private verifyHandshake(response: HandshakeResponse | HandshakeV3Response): boolean {
         if (DebugProtocolClient.DEBUGGER_MAGIC === response.data.magic) {
             this.logger.log('Magic is valid.');
 

@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { STOP_REASONS } from '../../Constants';
+import type { StopReasonCode } from '../../Constants';
 import { ERROR_CODES, UPDATE_TYPES } from '../../Constants';
 import { util } from '../../../util';
 import { protocolUtils } from '../../ProtocolUtil';
@@ -44,7 +44,7 @@ export class ThreadAttachedUpdate {
 
     public data = {
         threadIndex: undefined as number,
-        stopReason: undefined as STOP_REASONS,
+        stopReason: undefined as StopReasonCode,
         stopReasonDetail: undefined as string,
 
         //common props

@@ -1,12 +1,11 @@
 import { expect } from 'chai';
-import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES } from '../../Constants';
+import { ERROR_CODES, StopReasonCode, UPDATE_TYPES } from '../../Constants';
 import { IOPortOpenedUpdate } from './IOPortOpenedUpdate';
 
-describe.only('IOPortOpenedUpdate', () => {
+describe('IOPortOpenedUpdate', () => {
     it('serializes and deserializes properly', () => {
         const command = IOPortOpenedUpdate.fromJson({
-            port: 1234,
-            errorCode: ERROR_CODES.OK
+            port: 1234
         });
 
         expect(command.data).to.eql({

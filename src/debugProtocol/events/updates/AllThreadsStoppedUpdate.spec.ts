@@ -1,12 +1,12 @@
 import { expect } from 'chai';
-import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES } from '../../Constants';
+import { ERROR_CODES, StopReasonCode, UPDATE_TYPES } from '../../Constants';
 import { AllThreadsStoppedUpdate } from './AllThreadsStoppedUpdate';
 
 describe('AllThreadsStoppedUpdate', () => {
     it('serializes and deserializes properly', () => {
         const command = AllThreadsStoppedUpdate.fromJson({
             primaryThreadIndex: 1,
-            stopReason: STOP_REASONS.BREAK,
+            stopReason: StopReasonCode.Break,
             stopReasonDetail: 'because'
         });
 
@@ -17,7 +17,7 @@ describe('AllThreadsStoppedUpdate', () => {
             updateType: UPDATE_TYPES.ALL_THREADS_STOPPED,
 
             primaryThreadIndex: 1,
-            stopReason: STOP_REASONS.BREAK,
+            stopReason: StopReasonCode.Break,
             stopReasonDetail: 'because'
         });
 
@@ -30,7 +30,7 @@ describe('AllThreadsStoppedUpdate', () => {
             updateType: UPDATE_TYPES.ALL_THREADS_STOPPED, // 4 bytes
 
             primaryThreadIndex: 1, // 4 bytes
-            stopReason: STOP_REASONS.BREAK, // 1 bytes
+            stopReason: StopReasonCode.Break, // 1 bytes
             stopReasonDetail: 'because' // 8 bytes
         });
     });

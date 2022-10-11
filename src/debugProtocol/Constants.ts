@@ -36,13 +36,14 @@ export enum ERROR_CODES {
     INVALID_ARGS = 5
 }
 
-export enum STOP_REASONS {
-    UNDEFINED = 0,
-    NOT_STOPPED = 1,
-    NORMAL_EXIT = 2,
-    STOP_STATEMENT = 3,
-    BREAK = 4,
-    RUNTIME_ERROR = 5
+export type StopReason = 'Undefined' | 'NotStopped' | 'NormalExit' | 'StopStatement' | 'Break' | 'RuntimeError';
+export enum StopReasonCode {
+    Undefined = 0,
+    NotStopped = 1,
+    NormalExit = 2,
+    StopStatement = 3,
+    Break = 4,
+    RuntimeError = 5
 }
 
 export enum UPDATE_TYPES {
@@ -72,53 +73,35 @@ export enum VARIABLE_FLAGS {
      * value is a child of the requested variable
      * e.g., an element of an array or field of an AA
      */
-    isChildKey = 0x01,
+    isChildKey = 1,
     /**
      * value is constant
      */
-    isConst = 0x02,
+    isConst = 2,
     /**
      * The referenced value is a container (e.g., a list or array)
      */
-    isContainer = 0x04,
+    isContainer = 4,
     /**
      * The name is included in this VariableInfo
      */
-    isNameHere = 0x08,
+    isNameHere = 8,
     /**
      * value is reference-counted.
      */
-    isRefCounted = 0x10,
+    isRefCounted = 16,
     /**
      * value is included in this VariableInfo
      */
-    isValueHere = 0x20,
+    isValueHere = 32,
     /**
      * Value is container, key lookup is case sensitive
      * @since protocol 3.1.0
      */
-    isKeysCaseSensitive = 0x40
+    isKeysCaseSensitive = 64
 }
 
-export enum VARIABLE_TYPES {
-    AA = 1,
-    Array = 2,
-    Boolean = 3,
-    Double = 4,
-    Float = 5,
-    Function = 6,
-    Integer = 7,
-    Interface = 8,
-    Invalid = 9,
-    List = 10,
-    Long_Integer = 11,
-    Object = 12,
-    String = 13,
-    Subroutine = 14,
-    Subtyped_Object = 15,
-    Uninitialized = 16,
-    Unknown = 17
-}
+
 //#endregion
 
 export function getUpdateType(value: number): UPDATE_TYPES {
