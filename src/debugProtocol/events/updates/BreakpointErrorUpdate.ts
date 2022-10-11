@@ -46,7 +46,7 @@ export class BreakpointErrorUpdate {
             update.data.compileErrors = [];
             for (let i = 0; i < compileErrorCount; i++) {
                 update.data.compileErrors.push(
-                    util.readStringNT(smartBuffer)
+                    protocolUtils.readStringNT(smartBuffer)
                 );
             }
 
@@ -54,7 +54,7 @@ export class BreakpointErrorUpdate {
             update.data.runtimeErrors = [];
             for (let i = 0; i < runtimeErrorCount; i++) {
                 update.data.runtimeErrors.push(
-                    util.readStringNT(smartBuffer)
+                    protocolUtils.readStringNT(smartBuffer)
                 );
             }
 
@@ -62,7 +62,7 @@ export class BreakpointErrorUpdate {
             update.data.otherErrors = [];
             for (let i = 0; i < otherErrorCount; i++) {
                 update.data.otherErrors.push(
-                    util.readStringNT(smartBuffer)
+                    protocolUtils.readStringNT(smartBuffer)
                 );
             }
         });

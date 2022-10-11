@@ -1,6 +1,6 @@
 
 import { expect } from 'chai';
-import { Debugger } from '../debugProtocol/Debugger';
+import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import type { VariableInfo } from '../debugProtocol/events/zzresponsesOld';
@@ -10,7 +10,7 @@ const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
     let adapter: DebugProtocolAdapter;
-    let socketDebugger: Debugger;
+    let socketDebugger: DebugProtocolClient;
     beforeEach(() => {
 
         adapter = new DebugProtocolAdapter(
@@ -20,7 +20,7 @@ describe('DebugProtocolAdapter', () => {
             undefined,
             undefined
         );
-        socketDebugger = new Debugger(undefined);
+        socketDebugger = new DebugProtocolClient(undefined);
         adapter['socketDebugger'] = socketDebugger;
     });
 

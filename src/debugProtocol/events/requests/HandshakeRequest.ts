@@ -19,7 +19,7 @@ export class HandshakeRequest implements ProtocolRequest {
     public static fromBuffer(buffer: Buffer) {
         const request = new HandshakeRequest();
         protocolUtils.bufferLoaderHelper(request, buffer, 0, (smartBuffer) => {
-            request.data.magic = util.readStringNT(smartBuffer);
+            request.data.magic = protocolUtils.readStringNT(smartBuffer);
         });
         return request;
     }

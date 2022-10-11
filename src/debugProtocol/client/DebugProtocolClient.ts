@@ -1,40 +1,40 @@
 import * as Net from 'net';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
-import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from './Constants';
+import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from '../Constants';
 import { SmartBuffer } from 'smart-buffer';
-import { logger } from '../logging';
-import { ExecuteResponseV3 } from './events/zzresponsesOld/ExecuteResponseV3';
-import { ListBreakpointsResponse } from './events/responses/ListBreakpointsResponse';
-import { AddBreakpointsResponse } from './events/responses/AddBreakpointsResponse';
-import { RemoveBreakpointsResponse } from './events/responses/RemoveBreakpointsResponse';
-import { util } from '../util';
-import { BreakpointErrorUpdate, BreakpointErrorUpdateResponse } from './events/updates/BreakpointErrorUpdate';
-import { ContinueRequest } from './events/requests/ContinueRequest';
-import { StopRequest } from './events/requests/StopRequest';
-import { ExitChannelRequest } from './events/requests/ExitChannelRequest';
-import { StepRequest } from './events/requests/StepRequest';
-import { RemoveBreakpointsRequest } from './events/requests/RemoveBreakpointsRequest';
-import { ListBreakpointsRequest } from './events/requests/ListBreakpointsRequest';
-import { VariablesRequest } from './events/requests/VariablesRequest';
-import { StackTraceRequest } from './events/requests/StackTraceRequest';
-import { ThreadsRequest } from './events/requests/ThreadsRequest';
-import { ExecuteRequest } from './events/requests/ExecuteRequest';
-import { AddBreakpointsRequest } from './events/requests/AddBreakpointsRequest';
-import { AddConditionalBreakpointsRequest } from './events/requests/AddConditionalBreakpointsRequest';
-import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events/ProtocolEvent';
-import { HandshakeResponse } from './events/responses/HandshakeResponse';
-import { HandshakeResponseV3 } from './events/responses/HandshakeResponseV3';
-import { HandshakeRequest } from './events/requests/HandshakeRequest';
-import { GenericResponseV3 } from './events/responses/GenericResponseV3';
-import { GenericResponse, IOPortOpenedUpdate, StackTraceResponse, StackTraceResponseV3, ThreadAttachedUpdate, ThreadsResponse, UndefinedResponse, VariableResponse } from './events/zzresponsesOld';
-import { AllThreadsStoppedUpdate } from './events/updates/AllThreadsStoppedUpdate';
+import { logger } from '../../logging';
+import { ExecuteResponseV3 } from '../events/responses/ExecuteResponseV3';
+import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResponse';
+import { AddBreakpointsResponse } from '../events/responses/AddBreakpointsResponse';
+import { RemoveBreakpointsResponse } from '../events/responses/RemoveBreakpointsResponse';
+import { util } from '../../util';
+import { BreakpointErrorUpdate } from '../events/updates/BreakpointErrorUpdate';
+import { ContinueRequest } from '../events/requests/ContinueRequest';
+import { StopRequest } from '../events/requests/StopRequest';
+import { ExitChannelRequest } from '../events/requests/ExitChannelRequest';
+import { StepRequest } from '../events/requests/StepRequest';
+import { RemoveBreakpointsRequest } from '../events/requests/RemoveBreakpointsRequest';
+import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsRequest';
+import { VariablesRequest } from '../events/requests/VariablesRequest';
+import { StackTraceRequest } from '../events/requests/StackTraceRequest';
+import { ThreadsRequest } from '../events/requests/ThreadsRequest';
+import { ExecuteRequest } from '../events/requests/ExecuteRequest';
+import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
+import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
+import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from '../events/ProtocolEvent';
+import { HandshakeResponse } from '../events/responses/HandshakeResponse';
+import { HandshakeResponseV3 } from '../events/responses/HandshakeResponseV3';
+import { HandshakeRequest } from '../events/requests/HandshakeRequest';
+import { GenericResponseV3 } from '../events/responses/GenericResponseV3';
+import { GenericResponse, IOPortOpenedUpdate, StackTraceResponse, StackTraceResponseV3, ThreadAttachedUpdate, ThreadsResponse, UndefinedResponse, VariableResponse } from '../events/zzresponsesOld';
+import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 import { buffer } from 'rxjs';
-import { CompileErrorUpdate } from './events/updates/CompileErrorUpdate';
+import { CompileErrorUpdate } from '../events/updates/CompileErrorUpdate';
 
-export class Debugger {
+export class DebugProtocolClient {
 
-    private logger = logger.createLogger(`[${Debugger.name}]`);
+    private logger = logger.createLogger(`[${DebugProtocolClient.name}]`);
 
     public get isStopped(): boolean {
         return this.stopped;
@@ -110,7 +110,7 @@ export class Debugger {
     public once(eventName: 'handshake-verified'): Promise<HandshakeResponse>;
     public once(eventName: string) {
         return new Promise((resolve) => {
-            const disconnect = this.on(eventName as Parameters<Debugger['on']>[0], (...args) => {
+            const disconnect = this.on(eventName as Parameters<DebugProtocolClient['on']>[0], (...args) => {
                 disconnect();
                 resolve(...args);
             });
@@ -118,7 +118,8 @@ export class Debugger {
     }
 
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
-    public on(eventName: 'data', handler: (data: ProtocolResponse | ProtocolUpdate) => void);
+    public on(eventName: 'response', handler: (update: ProtocolResponse) => void);
+    public on(eventName: 'update', handler: (update: ProtocolUpdate) => void);
     public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
@@ -132,8 +133,8 @@ export class Debugger {
         };
     }
 
-    private emit(eventName: 'response', data: { request: ProtocolRequest; response: ProtocolResponse });
-    private emit(eventName: 'update', data: { update: ProtocolUpdate });
+    private emit(eventName: 'response', response: ProtocolResponse);
+    private emit(eventName: 'update', update: ProtocolUpdate);
     private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
@@ -204,12 +205,16 @@ export class Debugger {
             this.shutdown('close');
         });
 
+        //subscribe to all unsolicited updates
+        this.on('update', this.handleUpdate.bind(this));
+
         //send the magic, which triggers the debug session
         this.logger.log('Sending magic to server');
+
         //send the handshake request, and wait for the handshake response from the device
         const response = await this.makeRequest<HandshakeResponseV3 | HandshakeResponse>(
             HandshakeRequest.fromJson({
-                magic: Debugger.DEBUGGER_MAGIC
+                magic: DebugProtocolClient.DEBUGGER_MAGIC
             })
         );
 
@@ -418,7 +423,7 @@ export class Debugger {
         this.activeRequests1.set(requestId, request);
 
         return new Promise<T>((resolve, reject) => {
-            let unsubscribe = this.on('data', (event) => {
+            let unsubscribe = this.on('response', (event) => {
                 if (event.data.requestId === requestId) {
                     unsubscribe();
                     resolve(event as T);
@@ -474,6 +479,7 @@ export class Debugger {
         }
 
         //TODO remove processed bytes no matter what the response was
+        //TODO if the event's readOffset is larger than the current buffer, we haven't received enough data yet. Don't clear the buffer
 
         // process again (will run recursively until the buffer is empty)
         this.process();
@@ -497,20 +503,13 @@ export class Debugger {
             }
         }
 
-        //try to get a response
-        let result: ProtocolResponse | ProtocolUpdate;
-
         let genericResponse = this.watchPacketLength ? GenericResponseV3.fromBuffer(buffer) : GenericResponse.fromBuffer(buffer);
         // a nonzero requestId means this is a response to a request that we sent
         if (genericResponse.data.requestId !== 0) {
             //requestId 0 means this is an update
-            result = this.getResponse(genericResponse);
+            return this.getResponse(genericResponse);
         } else {
-            result = this.getUpdate(genericResponse);
-            this.emit('update', result);
-        }
-        if (result) {
-            return
+            return this.getUpdate(genericResponse);
         }
     }
 
@@ -619,7 +618,7 @@ export class Debugger {
      * Verify all the handshake data
      */
     private verifyHandshake(response: HandshakeResponse | HandshakeResponseV3): boolean {
-        if (Debugger.DEBUGGER_MAGIC === response.data.magic) {
+        if (DebugProtocolClient.DEBUGGER_MAGIC === response.data.magic) {
             this.logger.log('Magic is valid.');
 
             this.protocolVersion = response.data.protocolVersion;

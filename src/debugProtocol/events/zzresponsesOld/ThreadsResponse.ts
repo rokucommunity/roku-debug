@@ -2,6 +2,7 @@ import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
 import { STOP_REASONS } from '../../Constants';
 import { util } from '../../../util';
+import { protocolUtils } from '../../ProtocolUtil';
 
 export class ThreadsResponse {
 
@@ -50,11 +51,11 @@ export class ThreadInfo {
         // eslint-disable-next-line no-bitwise
         this.isPrimary = (bufferReader.readUInt32LE() & 0x01) > 0;
         this.stopReason = STOP_REASONS[bufferReader.readUInt8()];
-        this.stopReasonDetail = util.readStringNT(bufferReader);
+        this.stopReasonDetail = protocolUtils.readStringNT(bufferReader);
         this.lineNumber = bufferReader.readUInt32LE();
-        this.functionName = util.readStringNT(bufferReader);
-        this.fileName = util.readStringNT(bufferReader);
-        this.codeSnippet = util.readStringNT(bufferReader);
+        this.functionName = protocolUtils.readStringNT(bufferReader);
+        this.fileName = protocolUtils.readStringNT(bufferReader);
+        this.codeSnippet = protocolUtils.readStringNT(bufferReader);
 
         let fileExtension = path.extname(this.fileName).toLowerCase();
         // NOTE: Make sure we have a full valid path (?? can be valid because the device might not know the file) and that we have a codeSnippet.

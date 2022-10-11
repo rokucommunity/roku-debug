@@ -34,7 +34,7 @@ export class AddBreakpointsRequest implements ProtocolRequest {
             request.data.breakpoints = [];
             for (let i = 0; i < numBreakpoints; i++) {
                 request.data.breakpoints.push({
-                    filePath: util.readStringNT(smartBuffer), // file_path
+                    filePath: protocolUtils.readStringNT(smartBuffer), // file_path
                     lineNumber: smartBuffer.readUInt32LE(), // line_number
                     ignoreCount: smartBuffer.readUInt32LE() // ignore_count
                 });

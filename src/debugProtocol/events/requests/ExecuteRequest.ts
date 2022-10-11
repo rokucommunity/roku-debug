@@ -24,7 +24,7 @@ export class ExecuteRequest implements ProtocolRequest {
 
             request.data.threadIndex = smartBuffer.readUInt32LE(); // thread_index
             request.data.stackFrameIndex = smartBuffer.readUInt32LE(); // stack_frame_index
-            request.data.sourceCode = smartBuffer.readStringNT(); // source_code
+            request.data.sourceCode = protocolUtils.readStringNT(smartBuffer); // source_code
         });
         return request;
     }

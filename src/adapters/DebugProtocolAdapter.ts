@@ -1,5 +1,5 @@
-import type { ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/Debugger';
-import { Debugger } from '../debugProtocol/Debugger';
+import type { ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/client/DebugProtocolClient';
+import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
@@ -63,7 +63,7 @@ export class DebugProtocolAdapter {
     private emitter: EventEmitter;
     private chanperfTracker: ChanperfTracker;
     private rendezvousTracker: RendezvousTracker;
-    private socketDebugger: Debugger;
+    private socketDebugger: DebugProtocolClient;
     private nextFrameId = 1;
 
     private stackFramesCache: Record<number, StackFrame> = {};
@@ -188,7 +188,7 @@ export class DebugProtocolAdapter {
      */
     public async connect() {
         let deferred = defer();
-        this.socketDebugger = new Debugger(this.options);
+        this.socketDebugger = new DebugProtocolClient(this.options);
         try {
             // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises

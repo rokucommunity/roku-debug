@@ -22,7 +22,7 @@ export class ThreadAttachedUpdate {
             protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
             update.data.threadIndex = smartBuffer.readInt32LE();
             update.data.stopReason = smartBuffer.readUInt8();
-            update.data.stopReasonDetail = util.readStringNT(smartBuffer);
+            update.data.stopReasonDetail = protocolUtils.readStringNT(smartBuffer);
         });
         return update;
     }

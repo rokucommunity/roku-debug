@@ -4,6 +4,7 @@ import { ReplaySubject } from 'rxjs';
 import { SmartBuffer } from 'smart-buffer';
 import type { Deferred } from '../util';
 import { util, defer } from '../util';
+import { protocolUtils } from './ProtocolUtil';
 
 export class MockDebugProtocolServer {
     /**
@@ -137,7 +138,7 @@ class WaitForMagicAction extends Action<string> {
     public process(client: Client) {
         const b = SmartBuffer.fromBuffer(client.buffer);
         try {
-            const str = util.readStringNT(b);
+            const str = protocolUtils.readStringNT(b);
             this.deferred.resolve(str);
             client.buffer = client.buffer.slice(b.readOffset);
             return Promise.resolve(true);

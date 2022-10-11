@@ -1,5 +1,5 @@
 import { HandshakeResponse } from './HandshakeResponse';
-import { Debugger } from '../../Debugger';
+import { DebugProtocolClient } from '../../client/DebugProtocolClient';
 import { createHandShakeResponse } from '../zzresponsesOld/responseCreationHelpers.spec';
 import { expect } from 'chai';
 
@@ -29,7 +29,7 @@ describe('HandshakeResponse', () => {
         let handshake = HandshakeResponse.fromBuffer(
             //create a response
             HandshakeResponse.fromJson({
-                magic: Debugger.DEBUGGER_MAGIC,
+                magic: DebugProtocolClient.DEBUGGER_MAGIC,
                 protocolVersion: '1.0.0'
                 //slice a few bytes off the end
             }).toBuffer().slice(-3)

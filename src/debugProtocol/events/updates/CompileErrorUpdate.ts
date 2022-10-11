@@ -35,10 +35,10 @@ export class CompileErrorUpdate {
         protocolUtils.bufferLoaderHelper(update, buffer, 20, (smartBuffer) => {
             protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
 
-            update.data.errorMessage = util.readStringNT(smartBuffer); // error_string
-            update.data.filePath = util.readStringNT(smartBuffer); // file_spec
+            update.data.errorMessage = protocolUtils.readStringNT(smartBuffer); // error_string
+            update.data.filePath = protocolUtils.readStringNT(smartBuffer); // file_spec
             update.data.lineNumber = smartBuffer.readUInt32LE(); // line_number
-            update.data.libraryName = util.readStringNT(smartBuffer); // library_name
+            update.data.libraryName = protocolUtils.readStringNT(smartBuffer); // library_name
         });
         return update;
     }
@@ -63,7 +63,7 @@ export class CompileErrorUpdate {
     public data = {
         /**
          * A text message describing the compiler error.
-         * 
+         *
          * This is completely unrelated to the DebuggerUpdate.errorCode field.
          */
         errorMessage: undefined as string,

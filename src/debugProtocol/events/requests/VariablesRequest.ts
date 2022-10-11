@@ -47,7 +47,7 @@ export class VariablesRequest implements ProtocolRequest {
             if (variablePathLength > 0) {
                 for (let i = 0; i < variablePathLength; i++) {
                     request.data.variablePathEntries.push({
-                        name: util.readStringNT(smartBuffer), // variable_path_entries - optional
+                        name: protocolUtils.readStringNT(smartBuffer), // variable_path_entries - optional
                         isCaseSensitive: true
                     });
                 }

@@ -1,5 +1,5 @@
 import { HandshakeResponseV3 } from './HandshakeResponseV3';
-import { Debugger } from '../../Debugger';
+import { DebugProtocolClient } from '../../client/DebugProtocolClient';
 import { expect } from 'chai';
 import { SmartBuffer } from 'smart-buffer';
 
@@ -61,7 +61,7 @@ describe('HandshakeResponseV3', () => {
         let handshake = HandshakeResponseV3.fromBuffer(
             //create a response
             HandshakeResponseV3.fromJson({
-                magic: Debugger.DEBUGGER_MAGIC,
+                magic: DebugProtocolClient.DEBUGGER_MAGIC,
                 protocolVersion: '1.0.0',
                 revisionTimestamp: date
                 //slice a few bytes off the end

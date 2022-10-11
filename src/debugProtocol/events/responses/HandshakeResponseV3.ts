@@ -24,7 +24,7 @@ export class HandshakeResponseV3 implements ProtocolResponse {
     public static fromBuffer(buffer: Buffer) {
         const response = new HandshakeResponseV3();
         protocolUtils.bufferLoaderHelper(response, buffer, 20, (smartBuffer: SmartBuffer) => {
-            response.data.magic = util.readStringNT(smartBuffer); // magic_number
+            response.data.magic = protocolUtils.readStringNT(smartBuffer); // magic_number
 
             response.data.protocolVersion = [
                 smartBuffer.readInt32LE(), // protocol_major_version

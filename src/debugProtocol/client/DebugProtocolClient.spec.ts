@@ -1,25 +1,25 @@
-import { Debugger } from './Debugger';
+import { DebugProtocolClient } from './DebugProtocolClient';
 import { expect } from 'chai';
 import type { SmartBuffer } from 'smart-buffer';
-import { MockDebugProtocolServer } from './MockDebugProtocolServer.spec';
+import { MockDebugProtocolServer } from '../MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
-import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from './events/zzresponsesOld/responseCreationHelpers.spec';
-import { HandshakeResponse, HandshakeResponseV3, ProtocolEventV3 } from './events/zzresponsesOld';
-import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from './Constants';
-import { DebugProtocolServer, DebugProtocolServerOptions } from './server/DebugProtocolServer';
+import { createHandShakeResponse, createHandShakeResponseV3, createProtocolEventV3 } from '../events/zzresponsesOld/responseCreationHelpers.spec';
+import { HandshakeResponse, HandshakeResponseV3, ProtocolEventV3 } from '../events/zzresponsesOld';
+import { ERROR_CODES, STOP_REASONS, UPDATE_TYPES, VARIABLE_REQUEST_FLAGS } from '../Constants';
+import { DebugProtocolServer, DebugProtocolServerOptions } from '../server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
-import { util } from '../util';
-import type { BeforeSendResponseEvent, ProtocolPlugin, ProvideResponseEvent } from './server/ProtocolPlugin';
-import { Handler, OnClientConnectedEvent, ProvideRequestEvent } from './server/ProtocolPlugin';
+import { util } from '../../util';
+import type { BeforeSendResponseEvent, ProtocolPlugin, ProvideResponseEvent } from '../server/ProtocolPlugin';
+import { Handler, OnClientConnectedEvent, ProvideRequestEvent } from '../server/ProtocolPlugin';
 import type { ProtocolResponse } from './events/zzresponsesOld/ProtocolResponse';
 import type { ProtocolRequest } from './events/requests/ProtocolRequest';
-import { HandshakeRequest } from './events/requests/HandshakeRequest';
-import { AllThreadsStoppedUpdateResponse } from './events/updates/AllThreadsStoppedUpdate';
+import { HandshakeRequest } from '../events/requests/HandshakeRequest';
+import { AllThreadsStoppedUpdateResponse } from '../events/updates/AllThreadsStoppedUpdate';
 
 const sinon = createSandbox();
 
-describe('debugProtocol Debugger', () => {
-    let bsDebugger: Debugger;
+describe('DebugProtocolClient', () => {
+    let bsDebugger: DebugProtocolClient;
     let roku: MockDebugProtocolServer;
 
     beforeEach(async () => {
@@ -27,7 +27,7 @@ describe('debugProtocol Debugger', () => {
         roku = new MockDebugProtocolServer();
         await roku.initialize();
 
-        bsDebugger = new Debugger({
+        bsDebugger = new DebugProtocolClient({
             host: 'localhost',
             controllerPort: roku.controllerPort
         });
@@ -46,7 +46,7 @@ describe('debugProtocol Debugger', () => {
             void bsDebugger.connect();
             void roku.processActions();
             let magic = await action.promise;
-            expect(magic).to.equal(Debugger.DEBUGGER_MAGIC);
+            expect(magic).to.equal(DebugProtocolClient.DEBUGGER_MAGIC);
         });
 
         it('validates magic from server on connect', async () => {
@@ -182,7 +182,7 @@ class TestPlugin implements ProtocolPlugin {
 
 describe.skip('Debugger new tests', () => {
     let server: DebugProtocolServer;
-    let client: Debugger;
+    let client: DebugProtocolClient;
     let plugin: TestPlugin;
     const options = {
         controllerPort: undefined as number,
@@ -197,7 +197,7 @@ describe.skip('Debugger new tests', () => {
         plugin = server.plugins.add(new TestPlugin());
         await server.start();
 
-        client = new Debugger(options);
+        client = new DebugProtocolClient(options);
         //disable logging for tests because they clutter the test output
         client['logger'].logLevel = 'off';
     });
@@ -251,7 +251,7 @@ describe.skip('Debugger new tests', () => {
         expect(client.isHandshakeComplete).to.be.equal(false);
 
         plugin.pushResponse(new HandshakeResponse({
-            magic: Debugger.DEBUGGER_MAGIC,
+            magic: DebugProtocolClient.DEBUGGER_MAGIC,
             majorVersion: 1,
             minorVersion: 0,
             patchVersion: 0

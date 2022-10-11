@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { SmartBuffer } from 'smart-buffer';
 import { util } from '../../../util';
+import { protocolUtils } from '../../ProtocolUtil';
 
 export class StackTraceResponseV3 {
 
@@ -47,8 +48,8 @@ export class StackEntryV3 {
     constructor(bufferReader: SmartBuffer) {
         this.lineNumber = bufferReader.readUInt32LE();
         // NOTE: this is documented as being function name then file name but it is being returned by the device backwards.
-        this.functionName = util.readStringNT(bufferReader);
-        this.fileName = util.readStringNT(bufferReader);
+        this.functionName = protocolUtils.readStringNT(bufferReader);
+        this.fileName = protocolUtils.readStringNT(bufferReader);
 
         let fileExtension = path.extname(this.fileName).toLowerCase();
         // NOTE:Make sure we have a full valid path (?? can be valid because the device might not know the file).

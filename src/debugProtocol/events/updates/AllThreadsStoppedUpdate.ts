@@ -29,7 +29,7 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
 
             update.data.primaryThreadIndex = smartBuffer.readInt32LE();
             update.data.stopReason = smartBuffer.readUInt8();
-            update.data.stopReasonDetail = util.readStringNT(smartBuffer);
+            update.data.stopReasonDetail = protocolUtils.readStringNT(smartBuffer);
         });
         return update;
     }

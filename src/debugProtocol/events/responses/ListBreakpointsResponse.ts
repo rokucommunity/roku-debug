@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ERROR_CODES } from '../../Constants';
+import type { ERROR_CODES } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
 export class ListBreakpointsResponse {
@@ -87,34 +87,4 @@ export interface BreakpointInfo {
      * Current state, decreases as breakpoint is executed. This argument is only present if the breakpoint_id is valid.
      */
     ignoreCount: number;
-}
-
-export class BreakpointInfo2 {
-    constructor(bufferReader: SmartBuffer) {
-        // breakpoint_id - The ID assigned to the breakpoint. An ID greater than 0 indicates an active breakpoint. An ID of 0 denotes that the breakpoint has an error.
-        this.breakpointId = bufferReader.readUInt32LE();
-        // error_code - Indicates whether the breakpoint was successfully returned.
-        this.errorCode = bufferReader.readUInt32LE();
-
-        if (this.breakpointId > 0) {
-            // This argument is only present if the breakpoint_id is valid.
-            // ignore_count - Current state, decreases as breakpoint is executed.
-            this.hitCount = bufferReader.readUInt32LE();
-        }
-        this.success = true;
-    }
-
-    public get isVerified() {
-        return this.breakpointId > 0;
-    }
-    public success = false;
-    public breakpointId: number;
-    public errorCode: number;
-    /**
-     * The textual description of the error code
-     */
-    public get errorText() {
-        return ERROR_CODES[this.errorCode];
-    }
-    public hitCount: number;
 }
