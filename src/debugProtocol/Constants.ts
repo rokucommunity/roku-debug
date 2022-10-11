@@ -144,4 +144,3 @@ export interface RequestData {
     requestId: number;
     commandCode: number;
 }
- 

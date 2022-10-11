@@ -48,7 +48,6 @@ export class HandshakeResponseV3 implements ProtocolResponse {
             if (!semver.satisfies(response.data.protocolVersion, '<3.0.0')) {
                 throw new Error(`unsupported version ${response.data.protocolVersion}`);
             }
-            response.watchPacketLength = true;
         });
         return response;
     }
@@ -78,8 +77,6 @@ export class HandshakeResponseV3 implements ProtocolResponse {
 
         return smartBuffer.toBuffer();
     }
-
-    public watchPacketLength = false; // this will always be true for the new protocol versions
 
     public success = false;
 

@@ -1,30 +1,15 @@
 import * as Net from 'net';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
-import type {
-    ThreadAttached,
-    ThreadsStopped
-} from './events/zzresponsesOld';
-import {
-    ConnectIOPortResponse,
-    ProtocolEvent,
-    ProtocolEventV3,
-    StackTraceResponse,
-    StackTraceResponseV3,
-    ThreadsResponse,
-    UndefinedResponse,
-    UpdateThreadsResponse,
-    VariableResponse
-} from './events/zzresponsesOld';
 import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, STOP_REASONS, VARIABLE_REQUEST_FLAGS, ERROR_CODES, UPDATE_TYPES } from './Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../logging';
 import { ExecuteResponseV3 } from './events/zzresponsesOld/ExecuteResponseV3';
 import { ListBreakpointsResponse } from './events/responses/ListBreakpointsResponse';
-import { AddBreakpointsResponse } from './events/zzresponsesOld/AddBreakpointsResponse';
-import { RemoveBreakpointsResponse } from './events/zzresponsesOld/RemoveBreakpointsResponse';
+import { AddBreakpointsResponse } from './events/responses/AddBreakpointsResponse';
+import { RemoveBreakpointsResponse } from './events/responses/RemoveBreakpointsResponse';
 import { util } from '../util';
-import { BreakpointErrorUpdateResponse } from './events/zzresponsesOld/BreakpointErrorUpdateResponse';
+import { BreakpointErrorUpdate, BreakpointErrorUpdateResponse } from './events/updates/BreakpointErrorUpdate';
 import { ContinueRequest } from './events/requests/ContinueRequest';
 import { StopRequest } from './events/requests/StopRequest';
 import { ExitChannelRequest } from './events/requests/ExitChannelRequest';
@@ -41,6 +26,11 @@ import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events
 import { HandshakeResponse } from './events/responses/HandshakeResponse';
 import { HandshakeResponseV3 } from './events/responses/HandshakeResponseV3';
 import { HandshakeRequest } from './events/requests/HandshakeRequest';
+import { GenericResponseV3 } from './events/responses/GenericResponseV3';
+import { GenericResponse, IOPortOpenedUpdate, StackTraceResponse, StackTraceResponseV3, ThreadAttachedUpdate, ThreadsResponse, UndefinedResponse, VariableResponse } from './events/zzresponsesOld';
+import { AllThreadsStoppedUpdate } from './events/updates/AllThreadsStoppedUpdate';
+import { buffer } from 'rxjs';
+import { CompileErrorUpdate } from './events/updates/CompileErrorUpdate';
 
 export class Debugger {
 
@@ -68,6 +58,10 @@ export class Debugger {
     public scriptTitle: string;
     public isHandshakeComplete = false;
     public connectedToIoPort = false;
+    /**
+     * Debug protocol version 3.0.0 introduced a packet_length to all responses. Prior to that, most responses had no packet length at all.
+     * This field indicates whether we should be looking for packet_length or not in the responses we get from the device
+     */
     public watchPacketLength = false;
     public protocolVersion: string;
     public primaryThread: number;
@@ -139,6 +133,7 @@ export class Debugger {
     }
 
     private emit(eventName: 'response', data: { request: ProtocolRequest; response: ProtocolResponse });
+    private emit(eventName: 'update', data: { update: ProtocolUpdate });
     private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
@@ -226,7 +221,7 @@ export class Debugger {
     public async continue() {
         if (this.stopped) {
             this.stopped = false;
-            return this.makeRequest<ProtocolEvent>(
+            return this.makeRequest<GenericResponse>(
                 ContinueRequest.fromJson({
                     requestId: this.totalRequests++
                 })
@@ -236,7 +231,7 @@ export class Debugger {
 
     public async pause(force = false) {
         if (!this.stopped || force) {
-            return this.makeRequest<ProtocolEvent>(
+            return this.makeRequest<GenericResponse>(
                 StopRequest.fromJson({
                     requestId: this.totalRequests++
                 })
@@ -245,7 +240,7 @@ export class Debugger {
     }
 
     public async exitChannel() {
-        return this.makeRequest<ProtocolEvent>(
+        return this.makeRequest<GenericResponse>(
             ExitChannelRequest.fromJson({
                 requestId: this.totalRequests++
             })
@@ -264,7 +259,7 @@ export class Debugger {
         return this.step(STEP_TYPE.STEP_TYPE_OUT, threadIndex);
     }
 
-    private async step(stepType: STEP_TYPE, threadIndex: number): Promise<ProtocolEvent> {
+    private async step(stepType: STEP_TYPE, threadIndex: number): Promise<GenericResponse> {
         this.logger.log('[step]', { stepType: STEP_TYPE[stepType], threadId: threadIndex, stopped: this.stopped });
 
         let buffer = new SmartBuffer({ size: 17 });
@@ -272,14 +267,14 @@ export class Debugger {
         buffer.writeUInt8(stepType); // step_type
         if (this.stopped) {
             this.stopped = false;
-            let stepResult = await this.makeRequest<ProtocolEvent>(
+            let stepResult = await this.makeRequest<GenericResponse>(
                 StepRequest.fromJson({
                     requestId: this.totalRequests++,
                     stepType: stepType,
                     threadIndex: threadIndex
                 })
             );
-            if (stepResult.errorCode === ERROR_CODES.OK) {
+            if (stepResult.data.errorCode === ERROR_CODES.OK) {
                 // this.stopped = true;
                 // this.emit('suspend');
             } else {
@@ -394,7 +389,7 @@ export class Debugger {
                 );
             }
         }
-        return new AddBreakpointsResponse(null);
+        return AddBreakpointsResponse.fromBuffer(null);
     }
 
     public async listBreakpoints(): Promise<ListBreakpointsResponse> {
@@ -413,7 +408,7 @@ export class Debugger {
             });
             return this.makeRequest<RemoveBreakpointsResponse>(command);
         }
-        return new RemoveBreakpointsResponse(null);
+        return RemoveBreakpointsResponse.fromJson(null);
     }
 
     private async makeRequest<T>(request: ProtocolRequest) {
@@ -446,6 +441,20 @@ export class Debugger {
         }
 
         const event = this.getResponseOrUpdate(this.buffer);
+        if (!event.success) {
+            //TODO do something about this
+        }
+        //TODO do something about this too
+        if (event.data.requestId > this.totalRequests) {
+            this.removedProcessedBytes(genericResponse, slicedBuffer, packetLength);
+            return true;
+        }
+
+        if (event.data.errorCode !== ERROR_CODES.OK) {
+            this.logger.error(event.data.errorCode, event);
+            this.removedProcessedBytes(genericResponse, buffer, packetLength);
+            return true;
+        }
 
         //we got a response
         if (event) {
@@ -462,8 +471,9 @@ export class Debugger {
             //remove the processed data from the buffer
             this.buffer = this.buffer.slice(event.readOffset);
             this.logger.debug('[raw]', `requestId=${event.data.requestId}`, request, event.constructor?.name ?? '', event);
-
         }
+
+        //TODO remove processed bytes no matter what the response was
 
         // process again (will run recursively until the buffer is empty)
         this.process();
@@ -487,83 +497,99 @@ export class Debugger {
             }
         }
 
-        let debuggerRequestResponse = this.watchPacketLength ? new ProtocolEventV3(buffer) : new ProtocolEvent(buffer);
-        let packetLength = debuggerRequestResponse.packetLength;
-        let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
+        //try to get a response
+        let result: ProtocolResponse | ProtocolUpdate;
 
-        this.logger.log(`incoming bytes: ${buffer.length}`, debuggerRequestResponse);
-        if (debuggerRequestResponse.success) {
-            if (debuggerRequestResponse.requestId > this.totalRequests) {
-                this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);
-                return true;
-            }
-
-            if (debuggerRequestResponse.errorCode !== ERROR_CODES.OK) {
-                this.logger.error(debuggerRequestResponse.errorCode, debuggerRequestResponse);
-                this.removedProcessedBytes(debuggerRequestResponse, buffer, packetLength);
-                return true;
-            }
-
-            if (debuggerRequestResponse.updateType > 0) {
-                this.logger.log('Update Type:', UPDATE_TYPES[debuggerRequestResponse.updateType]);
-                switch (debuggerRequestResponse.updateType) {
-                    case UPDATE_TYPES.IO_PORT_OPENED:
-                        return this.connectToIoPort(new ConnectIOPortResponse(slicedBuffer), buffer, packetLength);
-                    case UPDATE_TYPES.ALL_THREADS_STOPPED:
-                    case UPDATE_TYPES.THREAD_ATTACHED:
-                        let debuggerUpdateThreads = new UpdateThreadsResponse(slicedBuffer);
-                        if (debuggerUpdateThreads.success) {
-                            this.handleThreadsUpdate(debuggerUpdateThreads);
-                            this.removedProcessedBytes(debuggerUpdateThreads, slicedBuffer, packetLength);
-                            return true;
-                        }
-                        return false;
-                    case UPDATE_TYPES.UNDEF:
-                        return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
-                    case UPDATE_TYPES.BREAKPOINT_ERROR:
-                        const response = new BreakpointErrorUpdateResponse(slicedBuffer);
-                        //we do nothing with breakpoint errors at this time.
-                        return this.checkResponse(response, buffer, packetLength);
-                    case UPDATE_TYPES.COMPILE_ERROR:
-                        return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
-                    default:
-                        return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
-                }
-            } else {
-                const request = this.activeRequests1.get(debuggerRequestResponse.requestId);
-                this.logger.log('Command Type:', COMMANDS[request.data.commandCode]);
-                switch (request.data.commandCode) {
-                    case COMMANDS.STOP:
-                    case COMMANDS.CONTINUE:
-                    case COMMANDS.STEP:
-                    case COMMANDS.EXIT_CHANNEL:
-                        this.removedProcessedBytes(debuggerRequestResponse, buffer, packetLength);
-                        return true;
-                    case COMMANDS.EXECUTE:
-                        return this.checkResponse(new ExecuteResponseV3(slicedBuffer), buffer, packetLength);
-                    case COMMANDS.ADD_BREAKPOINTS:
-                    case COMMANDS.ADD_CONDITIONAL_BREAKPOINTS:
-                        return this.checkResponse(new AddBreakpointsResponse(slicedBuffer), buffer, packetLength);
-                    case COMMANDS.LIST_BREAKPOINTS:
-                        return this.checkResponse(new ListBreakpointsResponse(slicedBuffer), buffer, packetLength);
-                    case COMMANDS.REMOVE_BREAKPOINTS:
-                        return this.checkResponse(new RemoveBreakpointsResponse(slicedBuffer), buffer, packetLength);
-                    case COMMANDS.VARIABLES:
-                        return this.checkResponse(new VariableResponse(slicedBuffer), buffer, packetLength);
-                    case COMMANDS.STACKTRACE:
-                        return this.checkResponse(
-                            packetLength ? new StackTraceResponseV3(slicedBuffer) : new StackTraceResponse(slicedBuffer),
-                            buffer,
-                            packetLength);
-                    case COMMANDS.THREADS:
-                        return this.checkResponse(new ThreadsResponse(slicedBuffer), buffer, packetLength);
-                    default:
-                        return this.checkResponse(debuggerRequestResponse, buffer, packetLength);
-                }
-            }
+        let genericResponse = this.watchPacketLength ? GenericResponseV3.fromBuffer(buffer) : GenericResponse.fromBuffer(buffer);
+        // a nonzero requestId means this is a response to a request that we sent
+        if (genericResponse.data.requestId !== 0) {
+            //requestId 0 means this is an update
+            result = this.getResponse(genericResponse);
+        } else {
+            result = this.getUpdate(genericResponse);
+            this.emit('update', result);
         }
+        if (result) {
+            return
+        }
+    }
 
-        return false;
+    private getResponse(genericResponse: GenericResponseV3): ProtocolResponse {
+        const request = this.activeRequests1.get(genericResponse.data.requestId);
+        if (!request) {
+            return;
+        }
+        switch (request.data.commandCode) {
+            case COMMANDS.STOP:
+            case COMMANDS.CONTINUE:
+            case COMMANDS.STEP:
+            case COMMANDS.EXIT_CHANNEL:
+                return genericResponse;
+            case COMMANDS.EXECUTE:
+                return new ExecuteResponseV3(this.buffer);
+            case COMMANDS.ADD_BREAKPOINTS:
+            case COMMANDS.ADD_CONDITIONAL_BREAKPOINTS:
+                return new AddBreakpointsResponse(this.buffer);
+            case COMMANDS.LIST_BREAKPOINTS:
+                return ListBreakpointsResponse.fromBuffer(this.buffer);
+            case COMMANDS.REMOVE_BREAKPOINTS:
+                return RemoveBreakpointsResponse.fromBuffer(this.buffer);
+            case COMMANDS.VARIABLES:
+                return new VariableResponse(this.buffer);
+            case COMMANDS.STACKTRACE:
+                return this.checkResponse(
+                    packetLength ? new StackTraceResponseV3(slicedBuffer) : new StackTraceResponse(slicedBuffer),
+                    buffer,
+                    packetLength);
+            case COMMANDS.THREADS:
+                return new ThreadsResponse(this.buffer);
+            default:
+                return undefined;
+        }
+    }
+
+    private getUpdate(genericResponse: GenericResponseV3): ProtocolUpdate {
+        //read the update_type from the buffer (save some buffer parsing time by narrowing to the exact update type)
+        const updateType = this.buffer.readUInt32LE(genericResponse.readOffset) as UPDATE_TYPES;
+
+        this.logger.log('Update Type:', updateType, UPDATE_TYPES[updateType]);
+        switch (updateType) {
+            case UPDATE_TYPES.IO_PORT_OPENED:
+                //TODO handle this
+                return IOPortOpenedUpdate.fromBuffer(this.buffer);
+            case UPDATE_TYPES.ALL_THREADS_STOPPED:
+                return AllThreadsStoppedUpdate.fromBuffer(this.buffer);
+            case UPDATE_TYPES.THREAD_ATTACHED:
+                return ThreadAttachedUpdate.fromBuffer(this.buffer);
+            case UPDATE_TYPES.BREAKPOINT_ERROR:
+                //we do nothing with breakpoint errors at this time.
+                return BreakpointErrorUpdate.fromBuffer(this.buffer);
+            case UPDATE_TYPES.COMPILE_ERROR:
+                return CompileErrorUpdate.fromBuffer(this.buffer);
+            default:
+                return undefined;
+        }
+    }
+
+    private handleUpdate(update: ProtocolUpdate) {
+        if (update instanceof AllThreadsStoppedUpdate || update instanceof ThreadAttachedUpdate) {
+            this.stopped = true;
+            let stopReason = update.data.stopReason;
+            let eventName: 'runtime-error' | 'suspend' = stopReason === STOP_REASONS.RUNTIME_ERROR ? 'runtime-error' : 'suspend';
+
+            if (update.data.updateType === UPDATE_TYPES.ALL_THREADS_STOPPED) {
+                if (stopReason === STOP_REASONS.RUNTIME_ERROR || stopReason === STOP_REASONS.BREAK || stopReason === STOP_REASONS.STOP_STATEMENT) {
+                    this.primaryThread = (update.data as ThreadsStopped).primaryThreadIndex;
+                    this.stackFrameIndex = 0;
+                    this.emit(eventName, update);
+                }
+            } else if (stopReason === STOP_REASONS.RUNTIME_ERROR || stopReason === STOP_REASONS.BREAK || stopReason === STOP_REASONS.STOP_STATEMENT) {
+                this.primaryThread = (update.data as ThreadAttached).threadIndex;
+                this.emit(eventName, update);
+            }
+        } else if (update instanceof IOPortOpenedUpdate) {
+            this.connectToIoPort(update);
+        }
     }
 
     private checkResponse(responseClass: { requestId: number; readOffset: number; success: boolean }, unhandledData: Buffer, packetLength = 0) {
@@ -599,7 +625,7 @@ export class Debugger {
             this.protocolVersion = response.data.protocolVersion;
             this.logger.log('Protocol Version:', this.protocolVersion);
 
-            this.watchPacketLength = response.watchPacketLength;
+            this.watchPacketLength = semver.satisfies(this.protocolVersion, '>=3.0.0');
 
             let handshakeVerified = true;
 
@@ -635,14 +661,17 @@ export class Debugger {
         }
     }
 
-    private connectToIoPort(connectIoPortResponse: ConnectIOPortResponse, unhandledData: Buffer, packetLength = 0) {
-        this.logger.log('Connecting to IO port. response status success =', connectIoPortResponse.success);
-        if (connectIoPortResponse.success) {
+    private connectToIoPort(update: IOPortOpenedUpdate, unhandledData: Buffer, packetLength = 0) {
+        this.logger.log('Connecting to IO port. response status success =', update.success);
+        if (update.success) {
             // Create a new TCP client.
             this.ioClient = new Net.Socket();
             // Send a connection request to the server.
-            this.logger.log('Connect to IO Port: port', connectIoPortResponse.data, 'host', this.options.host);
-            this.ioClient.connect({ port: connectIoPortResponse.data, host: this.options.host }, () => {
+            this.logger.log('Connect to IO Port: port', update.data, 'host', this.options.host);
+            this.ioClient.connect({
+                port: update.data.port,
+                host: this.options.host
+            }, () => {
                 // If there is no error, the server has accepted the request
                 this.logger.log('TCP connection established with the IO Port.');
                 this.connectedToIoPort = true;
@@ -676,27 +705,10 @@ export class Debugger {
                 });
             });
 
-            this.removedProcessedBytes(connectIoPortResponse, unhandledData, packetLength);
+            this.removedProcessedBytes(update, unhandledData, packetLength);
             return true;
         }
         return false;
-    }
-
-    private handleThreadsUpdate(update: UpdateThreadsResponse) {
-        this.stopped = true;
-        let stopReason = update.data.stopReason;
-        let eventName: 'runtime-error' | 'suspend' = stopReason === STOP_REASONS.RUNTIME_ERROR ? 'runtime-error' : 'suspend';
-
-        if (update.updateType === UPDATE_TYPES.ALL_THREADS_STOPPED) {
-            if (stopReason === STOP_REASONS.RUNTIME_ERROR || stopReason === STOP_REASONS.BREAK || stopReason === STOP_REASONS.STOP_STATEMENT) {
-                this.primaryThread = (update.data as ThreadsStopped).primaryThreadIndex;
-                this.stackFrameIndex = 0;
-                this.emit(eventName, update);
-            }
-        } else if (stopReason === STOP_REASONS.RUNTIME_ERROR || stopReason === STOP_REASONS.BREAK || stopReason === STOP_REASONS.STOP_STATEMENT) {
-            this.primaryThread = (update.data as ThreadAttached).threadIndex;
-            this.emit(eventName, update);
-        }
     }
 
     public destroy() {

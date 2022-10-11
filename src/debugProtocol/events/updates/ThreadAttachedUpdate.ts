@@ -3,31 +3,24 @@ import type { STOP_REASONS } from '../../Constants';
 import { ERROR_CODES, UPDATE_TYPES } from '../../Constants';
 import { util } from '../../../util';
 import { protocolUtils } from '../../ProtocolUtil';
-import type { ProtocolUpdate } from '../ProtocolEvent';
 
-/**
- * All threads are stopped and an ALL_THREADS_STOPPED message is sent to the debugging client.
- *
- * The data field includes information on why the threads were stopped.
- */
-export class AllThreadsStoppedUpdate implements ProtocolUpdate {
+export class ThreadAttachedUpdate {
 
     public static fromJson(data: {
-        primaryThreadIndex: number;
+        threadIndex: number;
         stopReason: number;
         stopReasonDetail: string;
     }) {
-        const update = new AllThreadsStoppedUpdate();
+        const update = new ThreadAttachedUpdate();
         protocolUtils.loadJson(update, data);
         return update;
     }
 
     public static fromBuffer(buffer: Buffer) {
-        const update = new AllThreadsStoppedUpdate();
-        protocolUtils.bufferLoaderHelper(update, buffer, 16, (smartBuffer) => {
+        const update = new ThreadAttachedUpdate();
+        protocolUtils.bufferLoaderHelper(update, buffer, 12, (smartBuffer) => {
             protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
-
-            update.data.primaryThreadIndex = smartBuffer.readInt32LE();
+            update.data.threadIndex = smartBuffer.readInt32LE();
             update.data.stopReason = smartBuffer.readUInt8();
             update.data.stopReasonDetail = util.readStringNT(smartBuffer);
         });
@@ -35,22 +28,22 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
     }
 
     public toBuffer() {
-        let smartBuffer = new SmartBuffer();
+        const smartBuffer = new SmartBuffer();
 
-        smartBuffer.writeInt32LE(this.data.primaryThreadIndex); // primary_thread_index
-        smartBuffer.writeUInt8(this.data.stopReason); // stop_reason
-        smartBuffer.writeStringNT(this.data.stopReasonDetail); //stop_reason_detail
+        smartBuffer.writeInt32LE(this.data.threadIndex);
+        smartBuffer.writeUInt8(this.data.stopReason);
+        smartBuffer.writeStringNT(this.data.stopReasonDetail);
 
         protocolUtils.insertCommonUpdateFields(this, smartBuffer);
+
         return smartBuffer.toBuffer();
     }
 
     public success = false;
-
-    public readOffset = -1;
+    public readOffset = 0;
 
     public data = {
-        primaryThreadIndex: undefined as number,
+        threadIndex: undefined as number,
         stopReason: undefined as STOP_REASONS,
         stopReasonDetail: undefined as string,
 
@@ -58,6 +51,6 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
         packetLength: undefined as number,
         requestId: 0, //all updates have requestId === 0
         errorCode: ERROR_CODES.OK,
-        updateType: UPDATE_TYPES.ALL_THREADS_STOPPED
+        updateType: UPDATE_TYPES.THREAD_ATTACHED
     };
 }

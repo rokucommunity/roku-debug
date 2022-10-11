@@ -1,6 +1,6 @@
 import { createBreakpointErrorUpdateResponse } from './responseCreationHelpers.spec';
 import { expect } from 'chai';
-import { BreakpointErrorUpdateResponse } from './BreakpointErrorUpdateResponse';
+import { BreakpointErrorUpdateResponse } from '../updates/BreakpointErrorUpdate';
 import { ERROR_CODES, UPDATE_TYPES } from '../../Constants';
 
 describe('BreakpointErrorUpdateResponse', () => {

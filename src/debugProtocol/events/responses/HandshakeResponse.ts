@@ -55,8 +55,6 @@ export class HandshakeResponse implements ProtocolResponse {
         return buffer.toBuffer();
     }
 
-    public watchPacketLength = false; // this will always be false for older protocol versions
-
     public success = false;
 
     public readOffset = 0;
