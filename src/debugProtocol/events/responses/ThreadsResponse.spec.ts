@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { ThreadsResponse } from './ThreadsResponse';
 import { ErrorCode } from '../../Constants';
-import { getRandomBuffer } from '../../responseCreationHelpers.spec';
+import { getRandomBuffer } from '../../../testHelpers.spec';
 
 describe('ThreadsResponse', () => {
     it('serializes and deserializes multiple breakpoints properly', () => {

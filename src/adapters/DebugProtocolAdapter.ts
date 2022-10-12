@@ -397,8 +397,13 @@ export class DebugProtocolAdapter {
                     type: 'message'
                 };
             } else {
+                const messages = [
+                    ...response?.data?.compileErrors ?? [],
+                    ...response?.data?.runtimeErrors ?? [],
+                    ...response?.data?.otherErrors ?? []
+                ];
                 return {
-                    message: response.compileErrors.messages[0] ?? response.runtimeErrors.messages[0] ?? response.otherErrors.messages[0] ?? 'Unknown error executing command',
+                    message: messages[0] ?? 'Unknown error executing command',
                     type: 'error'
                 };
             }
@@ -491,7 +496,7 @@ export class DebugProtocolAdapter {
             let firstHandled = false;
             for (let variable of response.data.variables) {
                 let value;
-                let variableType = variable.type;
+                let variableType = variable.type as string;
                 if (variable.value === null) {
                     value = 'roInvalid';
                 } else if (variableType === 'String') {
@@ -514,8 +519,10 @@ export class DebugProtocolAdapter {
                     variablePath: variablePath,
                     type: variableType,
                     value: value,
-                    keyType: variable.keyType,
-                    elementCount: variable.elementCount
+                    keyType: variable.keyType === VariableType.Integer ? 'Integer' : 'String',
+                    highLevelType: null,
+                    children: null,
+                    elementCount: variable.childCount
                 };
 
                 if (!firstHandled && variablePath.length > 0) {
@@ -533,7 +540,7 @@ export class DebugProtocolAdapter {
                             type: '',
                             value: null,
                             keyType: 'String',
-                            elementCount: response.numVariables
+                            elementCount: response.data.variables.length
                         };
                     }
 
@@ -705,10 +712,10 @@ export class DebugProtocolAdapter {
                     //mark the breakpoints as verified
                     for (let i = 0; i < response.data.breakpoints.length; i++) {
                         const deviceBreakpoint = response.data.breakpoints[i];
-                        if (deviceBreakpoint.isVerified) {
+                        if (deviceBreakpoint.errorCode === ErrorCode.OK) {
                             this.breakpointManager.verifyBreakpoint(
                                 breakpointsToSendToDevice[i].key,
-                                deviceBreakpoint.breakpointId
+                                deviceBreakpoint.id
                             );
                         }
                     }

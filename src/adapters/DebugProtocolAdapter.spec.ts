@@ -3,6 +3,9 @@ import { expect } from 'chai';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
+import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
+import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
+// eslint-disable-next-line @typescript-eslint/no-duplicate-imports
 import { VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
 const sinon = createSandbox();
 
@@ -24,7 +27,7 @@ describe('DebugProtocolAdapter', () => {
 
     describe('getVariable', () => {
         let response: VariablesResponse;
-        let variables: Partial<VariableInfo>[];
+        let variables: Partial<Variable>[];
 
         beforeEach(() => {
             response = VariablesResponse.fromJson({
@@ -33,7 +36,7 @@ describe('DebugProtocolAdapter', () => {
             });
             sinon.stub(adapter as any, 'getStackFrameById').returns({});
             sinon.stub(socketDebugger, 'getVariables').callsFake(() => {
-                response.variables = variables as any;
+                response.data.variables = variables as any;
                 return Promise.resolve(response);
             });
             socketDebugger['stopped'] = true;
@@ -57,9 +60,9 @@ describe('DebugProtocolAdapter', () => {
 
         it('works for object properties', async () => {
             variables.push(
-                { isContainer: true, elementCount: 2, isChildKey: false, variableType: 'AA' },
-                { name: 'name', isChildKey: true },
-                { name: 'age', isChildKey: true }
+                { isContainer: true, childCount: 2, variableType: VariableType.AA } as any,
+                { name: 'name', isChildKey: true } as any,
+                { name: 'age', isChildKey: true } as any
             );
 
             const vars = await adapter.getVariable('person', 1, true);

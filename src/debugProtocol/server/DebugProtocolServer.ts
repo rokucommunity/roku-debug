@@ -144,7 +144,7 @@ export class DebugProtocolServer {
         }
 
         //trim the buffer now that the request has been processed
-        this.buffer = buffer.slice((request as ProtocolRequest).readOffset);
+        this.buffer = buffer.slice(request.readOffset);
 
         //now ask the plugin to provide a response for the given request
         let { response } = await this.plugins.emit('provideResponse', {
@@ -160,7 +160,7 @@ export class DebugProtocolServer {
         }
 
         //the client should send a magic string to kick off the debugger
-        if ((response instanceof HandshakeResponse || response instanceof HandshakeV3Response) && request.data.magic === this.magic) {
+        if ((response instanceof HandshakeResponse || response instanceof HandshakeV3Response) && response.data.magic === this.magic) {
             this.isHandshakeComplete = true;
         }
 

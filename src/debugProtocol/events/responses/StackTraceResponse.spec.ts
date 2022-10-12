@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { StackTraceResponse } from './StackTraceResponse';
 import { ErrorCode } from '../../Constants';
-import { getRandomBuffer } from '../../responseCreationHelpers.spec';
+import { getRandomBuffer } from '../../../testHelpers.spec';
 
 describe('StackTraceResponse', () => {
     it('serializes and deserializes multiple breakpoints properly', () => {

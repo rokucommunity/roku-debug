@@ -1,7 +1,7 @@
 import * as Net from 'net';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
-import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, StopReasonCode, VARIABLE_REQUEST_FLAGS, ErrorCode, UPDATE_TYPES } from '../Constants';
+import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, StopReasonCode, ErrorCode, UPDATE_TYPES } from '../Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../../logging';
 import { ExecuteV3Response } from '../events/responses/ExecuteV3Response';
@@ -22,13 +22,12 @@ import { ThreadsRequest } from '../events/requests/ThreadsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
-import type { ProtocolEvent, ProtocolRequest, ProtocolResponse, ProtocolUpdate } from '../events/ProtocolEvent';
+import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from '../events/ProtocolEvent';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { GenericV3Response } from '../events/responses/GenericV3Response';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
-import { buffer } from 'rxjs';
 import { CompileErrorUpdate } from '../events/updates/CompileErrorUpdate';
 import { GenericResponse } from '../events/responses/GenericResponse';
 import { StackTraceResponse } from '../events/responses/StackTraceResponse';
@@ -438,7 +437,7 @@ export class DebugProtocolClient {
                 if (event.data.requestId === requestId) {
                     unsubscribe();
                     this.activeRequests1.delete(requestId);
-                    resolve(event as T);
+                    resolve(event as unknown as T);
                 }
             });
 
