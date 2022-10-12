@@ -3,9 +3,7 @@ import { expect } from 'chai';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
-import type { VariableInfo } from '../debugProtocol/events/zzresponsesOld';
-import { VariablesResponse } from '../debugProtocol/events/zzresponsesOld';
-import { ErrorCode } from './../debugProtocol/Constants';
+import { VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
 const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
@@ -29,9 +27,10 @@ describe('DebugProtocolAdapter', () => {
         let variables: Partial<VariableInfo>[];
 
         beforeEach(() => {
-            response = new VariablesResponse(Buffer.alloc(5));
-            response.errorCode = ErrorCode.OK;
-            variables = [];
+            response = VariablesResponse.fromJson({
+                requestId: 3,
+                variables: []
+            });
             sinon.stub(adapter as any, 'getStackFrameById').returns({});
             sinon.stub(socketDebugger, 'getVariables').callsFake(() => {
                 response.variables = variables as any;

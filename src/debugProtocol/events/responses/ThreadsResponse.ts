@@ -27,11 +27,10 @@ export class ThreadsResponse {
             // build the list of threads
             for (let i = 0; i < threadsCount; i++) {
                 const thread = {} as ThreadInfo;
-                // NOTE: The docs say the flags should be both unit8 AND uint32. In testing it seems like they are sending uint32 but meant to send unit8.
-                const flags = smartBuffer.readUInt32LE();
+                const flags = smartBuffer.readUInt8();
                 thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
 
-                thread.stopReason = StopReasonCode[smartBuffer.readUInt8()] as StopReason; // stop_reason
+                thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
                 thread.stopReasonDetail = protocolUtils.readStringNT(smartBuffer); // stop_reason_detail
                 thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
                 thread.functionName = protocolUtils.readStringNT(smartBuffer); // function_name

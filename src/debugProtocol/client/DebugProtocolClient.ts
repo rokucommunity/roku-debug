@@ -22,7 +22,7 @@ import { ThreadsRequest } from '../events/requests/ThreadsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
-import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from '../events/ProtocolEvent';
+import type { ProtocolEvent, ProtocolRequest, ProtocolResponse, ProtocolUpdate } from '../events/ProtocolEvent';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
@@ -36,6 +36,7 @@ import { ThreadsResponse } from '../events/responses/ThreadsResponse';
 import { VariablesResponse } from '../events/responses/VariablesResponse';
 import { IOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
 import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
+import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
 
 export class DebugProtocolClient {
 
@@ -108,8 +109,7 @@ export class DebugProtocolClient {
      * Get a promise that resolves after an event occurs exactly once
      */
     public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
-    public once(eventName: 'data'): Promise<any>;
-    public once(eventName: 'runtime-error' | 'suspend'): Promise<UpdateThreadsResponse>;
+    public once(eventName: 'runtime-error' | 'suspend'): Promise<AllThreadsStoppedUpdate | ThreadAttachedUpdate>;
     public once(eventName: 'io-output'): Promise<string>;
     public once(eventName: 'protocol-version'): Promise<ProtocolVersionDetails>;
     public once(eventName: 'handshake-verified'): Promise<HandshakeResponse>;
@@ -125,7 +125,7 @@ export class DebugProtocolClient {
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
     public on(eventName: 'response', handler: (update: ProtocolResponse) => void);
     public on(eventName: 'update', handler: (update: ProtocolUpdate) => void);
-    public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
+    public on(eventName: 'runtime-error' | 'suspend', handler: (data: AllThreadsStoppedUpdate | ThreadAttachedUpdate) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
     public on(eventName: 'handshake-verified', handler: (data: HandshakeResponse) => void);
@@ -140,8 +140,8 @@ export class DebugProtocolClient {
 
     private emit(eventName: 'response', response: ProtocolResponse);
     private emit(eventName: 'update', update: ProtocolUpdate);
-    private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
+    private emit(eventName: 'suspend' | 'runtime-error', data: AllThreadsStoppedUpdate | ThreadAttachedUpdate);
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
@@ -211,13 +211,15 @@ export class DebugProtocolClient {
         });
 
         //subscribe to all unsolicited updates
-        this.on('update', this.handleUpdate.bind(this));
+        this.on('update', (update) => {
+            this.handleUpdate(update);
+        });
 
         //send the magic, which triggers the debug session
         this.logger.log('Sending magic to server');
 
         //send the handshake request, and wait for the handshake response from the device
-        const response = await this.makeRequest<HandshakeV3Response | HandshakeResponse>(
+        const response = await this.sendRequest<HandshakeV3Response | HandshakeResponse>(
             HandshakeRequest.fromJson({
                 magic: DebugProtocolClient.DEBUGGER_MAGIC
             })
@@ -231,7 +233,7 @@ export class DebugProtocolClient {
     public async continue() {
         if (this.stopped) {
             this.stopped = false;
-            return this.makeRequest<GenericResponse>(
+            return this.sendRequest<GenericResponse>(
                 ContinueRequest.fromJson({
                     requestId: this.totalRequests++
                 })
@@ -241,7 +243,7 @@ export class DebugProtocolClient {
 
     public async pause(force = false) {
         if (!this.stopped || force) {
-            return this.makeRequest<GenericResponse>(
+            return this.sendRequest<GenericResponse>(
                 StopRequest.fromJson({
                     requestId: this.totalRequests++
                 })
@@ -250,7 +252,7 @@ export class DebugProtocolClient {
     }
 
     public async exitChannel() {
-        return this.makeRequest<GenericResponse>(
+        return this.sendRequest<GenericResponse>(
             ExitChannelRequest.fromJson({
                 requestId: this.totalRequests++
             })
@@ -277,7 +279,7 @@ export class DebugProtocolClient {
         buffer.writeUInt8(stepType); // step_type
         if (this.stopped) {
             this.stopped = false;
-            let stepResult = await this.makeRequest<GenericResponse>(
+            let stepResult = await this.sendRequest<GenericResponse>(
                 StepRequest.fromJson({
                     requestId: this.totalRequests++,
                     stepType: stepType,
@@ -297,20 +299,21 @@ export class DebugProtocolClient {
 
     public async threads() {
         if (this.stopped) {
-            let result = await this.makeRequest<ThreadsResponse>(
+            let result = await this.sendRequest<ThreadsResponse>(
                 ThreadsRequest.fromJson({
                     requestId: this.totalRequests++
-                }));
+                })
+            );
 
-            if (result.errorCode === ErrorCode.OK) {
+            if (result.data.errorCode === ErrorCode.OK) {
                 //older versions of the debug protocol had issues with maintaining the active thread, so our workaround is to keep track of it elsewhere
                 if (this.enableThreadHoppingWorkaround) {
                     //ignore the `isPrimary` flag on threads
-                    this.logger.debug(`Ignoring the 'isPrimary' flag from threads because protocol version ${this.protocolVersion} and lower has a bug`);
+                    this.logger.debug(`Ignoring the 'isPrimary' flag from threads because protocol version 3.0.0 and lower has a bug`);
                 } else {
                     //trust the debug protocol's `isPrimary` flag on threads
-                    for (let i = 0; i < result.threadsCount; i++) {
-                        let thread = result.threads[i];
+                    for (let i = 0; i < result.data.threads.length; i++) {
+                        let thread = result.data.threads[i];
                         if (thread.isPrimary) {
                             this.primaryThread = i;
                             break;
@@ -326,7 +329,7 @@ export class DebugProtocolClient {
         let buffer = new SmartBuffer({ size: 16 });
         buffer.writeUInt32LE(threadIndex); // thread_index
         if (this.stopped && threadIndex > -1) {
-            return this.makeRequest<StackTraceResponse>(
+            return this.sendRequest<StackTraceResponse>(
                 StackTraceRequest.fromJson({
                     requestId: this.totalRequests++,
                     threadIndex: threadIndex
@@ -361,13 +364,13 @@ export class DebugProtocolClient {
                 //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
                 enableCaseInsensitivityFlag: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
             });
-            return this.makeRequest<VariablesResponse>(request);
+            return this.sendRequest<VariablesResponse>(request);
         }
     }
 
     public async executeCommand(sourceCode: string, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
         if (this.stopped && threadIndex > -1) {
-            return this.makeRequest<ExecuteV3Response>(
+            return this.sendRequest<ExecuteV3Response>(
                 ExecuteRequest.fromJson({
                     requestId: this.totalRequests++,
                     threadIndex: threadIndex,
@@ -390,11 +393,11 @@ export class DebugProtocolClient {
             };
 
             if (this.supportsConditionalBreakpoints) {
-                return this.makeRequest<AddBreakpointsResponse>(
+                return this.sendRequest<AddBreakpointsResponse>(
                     AddBreakpointsRequest.fromJson(json)
                 );
             } else {
-                return this.makeRequest<AddBreakpointsResponse>(
+                return this.sendRequest<AddBreakpointsResponse>(
                     AddConditionalBreakpointsRequest.fromJson(json)
                 );
             }
@@ -403,7 +406,7 @@ export class DebugProtocolClient {
     }
 
     public async listBreakpoints(): Promise<ListBreakpointsResponse> {
-        return this.makeRequest<ListBreakpointsResponse>(
+        return this.sendRequest<ListBreakpointsResponse>(
             ListBreakpointsRequest.fromJson({
                 requestId: this.totalRequests++
             })
@@ -416,12 +419,15 @@ export class DebugProtocolClient {
                 requestId: this.totalRequests++,
                 breakpointIds: breakpointIds
             });
-            return this.makeRequest<RemoveBreakpointsResponse>(command);
+            return this.sendRequest<RemoveBreakpointsResponse>(command);
         }
         return RemoveBreakpointsResponse.fromJson(null);
     }
 
-    private async makeRequest<T>(request: ProtocolRequest) {
+    /**
+     * Send a request to the roku device, and get a promise that resolves once we have received the response
+     */
+    private async sendRequest<T>(request: ProtocolRequest) {
         this.totalRequests++;
         let requestId = this.totalRequests;
 
@@ -431,11 +437,12 @@ export class DebugProtocolClient {
             let unsubscribe = this.on('response', (event) => {
                 if (event.data.requestId === requestId) {
                     unsubscribe();
+                    this.activeRequests1.delete(requestId);
                     resolve(event as T);
                 }
             });
 
-            this.logger.debug('makeRequest', `requestId=${requestId}`, this.activeRequests1.get(requestId));
+            this.logger.debug('makeRequest', `requestId=${requestId}`, request);
             if (this.controllerClient) {
                 this.controllerClient.write(request.toBuffer());
             } else {
@@ -444,47 +451,43 @@ export class DebugProtocolClient {
         });
     }
 
-    private process(): boolean {
+    private process(): void {
         if (this.buffer.length < 1) {
             // short circuit if the buffer is empty
-            return false;
+            return;
         }
 
         const event = this.getResponseOrUpdate(this.buffer);
-        if (!event.success) {
+
+        //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
+        if (!event || !event.success || event.data.packetLength > this.buffer.length) {
             //TODO do something about this
+            return;
         }
-        //TODO do something about this too
-        if (event.data.requestId > this.totalRequests) {
-            this.removedProcessedBytes(genericResponse, slicedBuffer, packetLength);
-            return true;
-        }
+
+        //we have a valid event. Clear the buffer of this data
+        this.buffer = this.buffer.slice(event.readOffset);
+
+        //TODO why did we ever do this? Just to handle when we misread incoming data? I think this should be scrapped
+        // if (event.data.requestId > this.totalRequests) {
+        //     this.removedProcessedBytes(genericResponse, slicedBuffer, packetLength);
+        //     return true;
+        // }
 
         if (event.data.errorCode !== ErrorCode.OK) {
             this.logger.error(event.data.errorCode, event);
-            this.removedProcessedBytes(genericResponse, buffer, packetLength);
-            return true;
+            return;
         }
 
         //we got a response
         if (event) {
-            //find any matching request for this response/update
-            const request = this.activeRequests1.get(event.data.requestId);
-
-            if (request) {
-                // we received a response for this request, so remove the request from the list
-                this.activeRequests1.delete(event.data.requestId);
+            //emit the corresponding event
+            if (isProtocolUpdate(event)) {
+                this.emit('update', event);
+            } else {
+                this.emit('response', event);
             }
-
-            this.emit('data', event);
-
-            //remove the processed data from the buffer
-            this.buffer = this.buffer.slice(event.readOffset);
-            this.logger.debug('[raw]', `requestId=${event.data.requestId}`, request, event.constructor?.name ?? '', event);
         }
-
-        //TODO remove processed bytes no matter what the response was
-        //TODO if the event's readOffset is larger than the current buffer, we haven't received enough data yet. Don't clear the buffer
 
         // process again (will run recursively until the buffer is empty)
         this.process();
@@ -493,7 +496,7 @@ export class DebugProtocolClient {
     /**
      * Given a buffer, try to parse into a specific ProtocolResponse or ProtocolUpdate
      */
-    private getResponseOrUpdate(buffer: Buffer): ProtocolResponse {
+    private getResponseOrUpdate(buffer: Buffer): ProtocolResponse | ProtocolUpdate {
         //if we haven't seen a handshake yet, try to convert the buffer into a handshake
         if (!this.isHandshakeComplete) {
             //try building the v3 handshake response first
@@ -530,23 +533,20 @@ export class DebugProtocolClient {
             case COMMANDS.EXIT_CHANNEL:
                 return genericResponse;
             case COMMANDS.EXECUTE:
-                return new ExecuteV3Response(this.buffer);
+                return ExecuteV3Response.fromBuffer(this.buffer);
             case COMMANDS.ADD_BREAKPOINTS:
             case COMMANDS.ADD_CONDITIONAL_BREAKPOINTS:
-                return new AddBreakpointsResponse(this.buffer);
+                return AddBreakpointsResponse.fromBuffer(this.buffer);
             case COMMANDS.LIST_BREAKPOINTS:
                 return ListBreakpointsResponse.fromBuffer(this.buffer);
             case COMMANDS.REMOVE_BREAKPOINTS:
                 return RemoveBreakpointsResponse.fromBuffer(this.buffer);
             case COMMANDS.VARIABLES:
-                return new VariablesResponse(this.buffer);
+                return VariablesResponse.fromBuffer(this.buffer);
             case COMMANDS.STACKTRACE:
-                return this.checkResponse(
-                    packetLength ? new StackTraceResponseV3(slicedBuffer) : new StackTraceResponse(slicedBuffer),
-                    buffer,
-                    packetLength);
+                return this.watchPacketLength ? StackTraceV3Response.fromBuffer(this.buffer) : StackTraceResponse.fromBuffer(this.buffer);
             case COMMANDS.THREADS:
-                return new ThreadsResponse(this.buffer);
+                return ThreadsResponse.fromBuffer(this.buffer);
             default:
                 return undefined;
         }
@@ -575,48 +575,28 @@ export class DebugProtocolClient {
         }
     }
 
+    /**
+     * Handle/process any received updates from the debug protocol
+     */
     private handleUpdate(update: ProtocolUpdate) {
         if (update instanceof AllThreadsStoppedUpdate || update instanceof ThreadAttachedUpdate) {
             this.stopped = true;
-            let stopReason = update.data.stopReason;
-            let eventName: 'runtime-error' | 'suspend' = stopReason === StopReasonCode.RuntimeError ? 'runtime-error' : 'suspend';
+            let eventName: 'runtime-error' | 'suspend' = (update.data.stopReason === StopReasonCode.RuntimeError ? 'runtime-error' : 'suspend');
 
-            if (update.data.updateType === UPDATE_TYPES.ALL_THREADS_STOPPED) {
-                if (stopReason === StopReasonCode.RuntimeError || stopReason === StopReasonCode.Break || stopReason === StopReasonCode.StopStatement) {
-                    this.primaryThread = (update.data as AllThreadsStoppedUpdate).data.primaryThreadIndex;
-                    this.stackFrameIndex = 0;
-                    this.emit(eventName, update);
-                }
-            } else if (stopReason === StopReasonCode.RuntimeError || stopReason === StopReasonCode.Break || stopReason === StopReasonCode.StopStatement) {
-                this.primaryThread = (update.data as ThreadAttachedUpdate).data.threadIndex;
+            const isValidStopReason = [StopReasonCode.RuntimeError, StopReasonCode.Break, StopReasonCode.StopStatement].includes(update.data.stopReason);
+
+            if (update instanceof AllThreadsStoppedUpdate && isValidStopReason) {
+                this.primaryThread = update.data.threadIndex;
+                this.stackFrameIndex = 0;
+                this.emit(eventName, update);
+            } else if (update instanceof ThreadAttachedUpdate && isValidStopReason) {
+                this.primaryThread = update.data.threadIndex;
                 this.emit(eventName, update);
             }
+
         } else if (update instanceof IOPortOpenedUpdate) {
             this.connectToIoPort(update);
         }
-    }
-
-    private checkResponse(responseClass: { requestId: number; readOffset: number; success: boolean }, unhandledData: Buffer, packetLength = 0) {
-        if (responseClass.success) {
-            this.removedProcessedBytes(responseClass, unhandledData, packetLength);
-            return true;
-        } else if (packetLength > 0 && unhandledData.length >= packetLength) {
-            this.removedProcessedBytes(responseClass, unhandledData, packetLength);
-        }
-        return false;
-    }
-
-    private removedProcessedBytes(response: { requestId?: number; readOffset: number }, unhandledData: Buffer, packetLength = 0) {
-        const request = this.activeRequests1.get(response.requestId);
-        if (response?.requestId > 0 && request) {
-            this.activeRequests1.delete(response.requestId);
-        }
-
-        this.emit('data', response);
-
-        this.buffer = unhandledData.slice(packetLength ? packetLength : response.readOffset);
-        this.logger.debug('[raw]', `requestId=${response?.requestId}`, request, (response as any)?.constructor?.name ?? '', response);
-        this.process();
     }
 
     /**
@@ -665,7 +645,10 @@ export class DebugProtocolClient {
         }
     }
 
-    private connectToIoPort(update: IOPortOpenedUpdate, unhandledData: Buffer, packetLength = 0) {
+    /**
+     * When the debugger emits the IOPortOpenedUpdate, we need to immediately connect to the IO port to start receiving that data
+     */
+    private connectToIoPort(update: IOPortOpenedUpdate) {
         this.logger.log('Connecting to IO port. response status success =', update.success);
         if (update.success) {
             // Create a new TCP client.
@@ -708,8 +691,6 @@ export class DebugProtocolClient {
                     this.logger.error(err);
                 });
             });
-
-            this.removedProcessedBytes(update, unhandledData, packetLength);
             return true;
         }
         return false;
@@ -786,4 +767,17 @@ export interface ConstructorOptions {
      * This is here to prevent infinitely pinging the Roku device.
      */
     controllerConnectMaxTime?: number;
+}
+
+/**
+ * Is the event a ProtocolUpdate update
+ */
+export function isProtocolUpdate(event: ProtocolUpdate | ProtocolResponse): event is ProtocolUpdate {
+    return event.data.requestId === 0;
+}
+/**
+ * Is the event a ProtocolResponse
+ */
+export function isProtocolResponse(event: ProtocolUpdate | ProtocolResponse): event is ProtocolResponse {
+    return event.data.requestId !== 0;
 }

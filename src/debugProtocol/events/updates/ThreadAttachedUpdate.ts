@@ -43,6 +43,9 @@ export class ThreadAttachedUpdate {
     public readOffset = 0;
 
     public data = {
+        /**
+         * The index of the thread that was just attached
+         */
         threadIndex: undefined as number,
         stopReason: undefined as StopReasonCode,
         stopReasonDetail: undefined as string,

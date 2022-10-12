@@ -32,7 +32,7 @@ export interface ProtocolRequestData {
     requestId: number;
     commandCode: COMMANDS;
 }
-export type ProtocolRequest<TData extends ProtocolRequestData = ProtocolRequestData> = ProtocolEvent<TData>;
+export type ProtocolRequest = ProtocolEvent<ProtocolRequestData>;
 
 /**
  * The fields that every ProtocolUpdateResponse must have
@@ -43,7 +43,7 @@ export interface ProtocolUpdateData {
     errorCode: number;
     updateType: UPDATE_TYPES;
 }
-export type ProtocolUpdate<TData extends ProtocolUpdateData = ProtocolUpdateData> = ProtocolEvent<TData>;
+export type ProtocolUpdate = ProtocolEvent<ProtocolUpdateData>;
 
 /**
  * The fields that every ProtocolResponse must have
@@ -53,5 +53,5 @@ export interface ProtocolResponseData {
     requestId: number;
     errorCode: number;
 }
-export type ProtocolResponse<TData extends ProtocolResponseData = ProtocolResponseData> = ProtocolEvent<TData>;
+export type ProtocolResponse = ProtocolEvent<ProtocolResponseData>;
 

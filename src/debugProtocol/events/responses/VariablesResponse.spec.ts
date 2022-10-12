@@ -71,31 +71,34 @@ describe('VariablesResponse', () => {
         expect(
             response.data
         ).to.eql({
-            packetLength: undefined,
-            errorCode: ErrorCode.OK,
-            requestId: 2,
+            packetLength: undefined, // 4  bytes
+            errorCode: ErrorCode.OK, // 4 bytes
+            requestId: 2, // 4 bytes
+            // num_variables // 4 bytes
             variables: [{
-                name: 'person',
-                refCount: 2,
-                isConst: false,
-                isContainer: true,
-                type: VariableType.AA,
-                keyType: 'String',
-                value: undefined,
+                // flags // 1 byte
+                name: 'person', // 7 bytes
+                refCount: 2, // 4 bytes
+                isConst: false, // 0 bytes -- part of flags
+                isContainer: true, // 0 bytes -- part of flags
+                type: VariableType.AA, // 1 byte
+                keyType: 'String', // 1 byte
+                // element_count // 4 bytes
                 children: [{
-                    name: 'firstName',
-                    refCount: 1,
-                    value: 'Bob',
-                    type: VariableType.String,
-                    isContainer: false,
-                    isConst: false
+                    // flags // 1 byte
+                    name: 'firstName', // 10 bytes
+                    refCount: 1, // 4 bytes
+                    value: 'Bob', // 4 bytes
+                    type: VariableType.String, // 1 byte
+                    isContainer: false, // 0 bytes --part of flags
+                    isConst: false // 0 bytes -- part of flags
                 }, {
-                    name: 'lastName',
-                    refCount: 1,
-                    value: undefined,
-                    isContainer: false,
-                    type: VariableType.Invalid,
-                    isConst: false
+                    // flags // 1 byte
+                    name: 'lastName', // 9 bytes
+                    refCount: 1, // 4 bytes
+                    type: VariableType.Invalid, // 1 byte
+                    isContainer: false, // 0 bytes -- part of flags
+                    isConst: false // 0 bytes -- part of flags
                 }]
             }]
         });

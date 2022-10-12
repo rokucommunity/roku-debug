@@ -27,7 +27,7 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
         protocolUtils.bufferLoaderHelper(update, buffer, 16, (smartBuffer) => {
             protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
 
-            update.data.primaryThreadIndex = smartBuffer.readInt32LE();
+            update.data.threadIndex = smartBuffer.readInt32LE();
             update.data.stopReason = smartBuffer.readUInt8();
             update.data.stopReasonDetail = protocolUtils.readStringNT(smartBuffer);
         });
@@ -37,7 +37,7 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
     public toBuffer() {
         let smartBuffer = new SmartBuffer();
 
-        smartBuffer.writeInt32LE(this.data.primaryThreadIndex); // primary_thread_index
+        smartBuffer.writeInt32LE(this.data.threadIndex); // primary_thread_index
         smartBuffer.writeUInt8(this.data.stopReason); // stop_reason
         smartBuffer.writeStringNT(this.data.stopReasonDetail); //stop_reason_detail
 
@@ -50,7 +50,10 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
     public readOffset = -1;
 
     public data = {
-        primaryThreadIndex: undefined as number,
+        /**
+         * The index of the primary thread that triggered the stop
+         */
+        threadIndex: undefined as number,
         stopReason: undefined as StopReasonCode,
         stopReasonDetail: undefined as string,
 
