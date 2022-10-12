@@ -3,6 +3,7 @@ import * as semver from 'semver';
 import type { ProtocolResponse } from '../ProtocolEvent';
 import { protocolUtils } from '../../ProtocolUtil';
 import { ErrorCode } from '../../Constants';
+import { HandshakeRequest } from '../requests/HandshakeRequest';
 
 export class HandshakeV3Response implements ProtocolResponse {
 
@@ -14,7 +15,7 @@ export class HandshakeV3Response implements ProtocolResponse {
         const response = new HandshakeV3Response();
         protocolUtils.loadJson(response, data);
         // We only support v3 or above with this handshake
-        if (!semver.satisfies(response.data.protocolVersion, '<3.0.0')) {
+        if (semver.satisfies(response.data.protocolVersion, '<3.0.0')) {
             response.success = false;
         }
         return response;
@@ -26,9 +27,9 @@ export class HandshakeV3Response implements ProtocolResponse {
             response.data.magic = protocolUtils.readStringNT(smartBuffer); // magic_number
 
             response.data.protocolVersion = [
-                smartBuffer.readInt32LE(), // protocol_major_version
-                smartBuffer.readInt32LE(), // protocol_minor_version
-                smartBuffer.readInt32LE() //  protocol_patch_version
+                smartBuffer.readUInt32LE(), // protocol_major_version
+                smartBuffer.readUInt32LE(), // protocol_minor_version
+                smartBuffer.readUInt32LE() //  protocol_patch_version
             ].join('.');
 
             const legacyReadSize = smartBuffer.readOffset;
@@ -43,8 +44,8 @@ export class HandshakeV3Response implements ProtocolResponse {
             //set the buffer offset
             smartBuffer.readOffset = requiredBufferSize;
 
-            // We only support v3 or above with this handshake
-            if (!semver.satisfies(response.data.protocolVersion, '<3.0.0')) {
+            // We only support v3.0.0 or above with this handshake
+            if (semver.satisfies(response.data.protocolVersion, '<3.0.0')) {
                 throw new Error(`unsupported version ${response.data.protocolVersion}`);
             }
         });
@@ -106,8 +107,8 @@ export class HandshakeV3Response implements ProtocolResponse {
 
         //The handshake response isn't actually structured like like normal responses, but since they're the only unique response, just add dummy data for those fields
         packetLength: undefined as number,
-        //hardcode the max integer value. This must be the same value as the HandshakeResponse class
-        requestId: Number.MAX_SAFE_INTEGER,
+        //hardcode the max uint32 integer value. This must be the same value as the HandshakeRequest class
+        requestId: HandshakeRequest.REQUEST_ID,
         errorCode: ErrorCode.OK
     };
 }

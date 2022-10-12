@@ -9,6 +9,10 @@ import type { COMMANDS } from '../../Constants';
  * @since protocol v1.0.0
  */
 export class HandshakeRequest implements ProtocolRequest {
+    /**
+     * A hardcoded id for the handshake classes to help them flow through the request/response flow even though they don't look the same
+     */
+    public static REQUEST_ID = 4294967295;
 
     public static fromJson(data: { magic: string }) {
         const request = new HandshakeRequest();
@@ -41,7 +45,7 @@ export class HandshakeRequest implements ProtocolRequest {
         //just add dummy data for those fields
         packetLength: undefined as number,
         //hardcode the max integer value. This must be the same value as the HandshakeResponse class
-        requestId: Number.MAX_SAFE_INTEGER,
+        requestId: HandshakeRequest.REQUEST_ID,
         commandCode: undefined as COMMANDS
     };
 }

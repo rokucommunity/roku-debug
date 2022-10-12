@@ -4,6 +4,7 @@ import { util } from '../../../util';
 import type { ProtocolEvent, ProtocolResponse } from '../ProtocolEvent';
 import { protocolUtils } from '../../ProtocolUtil';
 import { ErrorCode } from '../../Constants';
+import { HandshakeRequest } from '../requests/HandshakeRequest';
 
 export class HandshakeResponse implements ProtocolResponse {
     public static fromJson(data: {
@@ -74,8 +75,8 @@ export class HandshakeResponse implements ProtocolResponse {
 
         //The handshake response isn't actually structured like like normal responses, but since they're the only unique response, just add dummy data for those fields
         packetLength: undefined as number,
-        //hardcode the max integer value. This must be the same value as the HandshakeResponse class
-        requestId: Number.MAX_SAFE_INTEGER,
+        //hardcode the max uint32 value. This must be the same value as the HandshakeRequest class
+        requestId: HandshakeRequest.REQUEST_ID,
         errorCode: ErrorCode.OK
     };
 }

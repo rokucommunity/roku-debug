@@ -2,6 +2,8 @@ import { HandshakeV3Response } from './HandshakeV3Response';
 import { DebugProtocolClient } from '../../client/DebugProtocolClient';
 import { expect } from 'chai';
 import { SmartBuffer } from 'smart-buffer';
+import { ErrorCode } from '../../Constants';
+import { HandshakeRequest } from '../requests/HandshakeRequest';
 
 describe('HandshakeV3Response', () => {
     const date = new Date(2022, 0, 0);
@@ -13,6 +15,10 @@ describe('HandshakeV3Response', () => {
         });
 
         expect(response.data).to.eql({
+            packetLength: undefined,
+            errorCode: ErrorCode.OK,
+            requestId: HandshakeRequest.REQUEST_ID,
+
             magic: 'bsdebug',
             protocolVersion: '3.0.0',
             revisionTimestamp: date
@@ -21,6 +27,10 @@ describe('HandshakeV3Response', () => {
         expect(
             HandshakeV3Response.fromBuffer(response.toBuffer()).data
         ).to.eql({
+            packetLength: undefined,
+            errorCode: ErrorCode.OK,
+            requestId: HandshakeRequest.REQUEST_ID,
+
             magic: 'bsdebug', // 8 bytes
             protocolVersion: '3.0.0', // 12 bytes (each number is sent as uint32)
             //remaining_packet_length // 4 bytes
@@ -30,7 +40,7 @@ describe('HandshakeV3Response', () => {
         expect(response.toBuffer().length).to.eql(32);
     });
 
-    it('Handles a extra packet length in handshake response', () => {
+    it('Handles trailing buffer data in handshake response', () => {
         const response = HandshakeV3Response.fromJson({
             magic: 'bsdebug',
             protocolVersion: '3.0.0',
@@ -39,15 +49,17 @@ describe('HandshakeV3Response', () => {
 
         //write some extra data to the buffer
         const smartBuffer = SmartBuffer.fromBuffer(response.toBuffer());
-        smartBuffer.writeStringNT('this is extra data');
+        smartBuffer.writeStringNT('this is extra data', smartBuffer.length);
 
-        const newResponse = HandshakeV3Response.fromBuffer(
-            smartBuffer.toBuffer()
-        );
+        const newResponse = HandshakeV3Response.fromBuffer(smartBuffer.toBuffer());
         expect(newResponse.success).to.be.true;
+
         expect(
             newResponse.data
         ).to.eql({
+            packetLength: undefined,
+            errorCode: ErrorCode.OK,
+            requestId: HandshakeRequest.REQUEST_ID,
             magic: 'bsdebug', // 8 bytes
             protocolVersion: '3.0.0', // 12 bytes (each number is sent as uint32)
             //remaining_packet_length // 4 bytes
@@ -73,7 +85,7 @@ describe('HandshakeV3Response', () => {
     it('Fails when the protocol version is less then 3.0.0', () => {
         const response = HandshakeV3Response.fromJson({
             magic: 'not bsdebug',
-            protocolVersion: '3.0.0',
+            protocolVersion: '2.0.0',
             revisionTimestamp: date
         });
 
