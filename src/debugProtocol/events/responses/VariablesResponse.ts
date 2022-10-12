@@ -13,6 +13,22 @@ export class VariablesResponse {
         const response = new VariablesResponse();
         protocolUtils.loadJson(response, data);
         response.data.variables ??= [];
+        //validate that any object marked as `isContainer` either has an array of children or has an element count
+        for (const variable of response.flattenVariables(response.data.variables)) {
+            const hasChildrenArray = Array.isArray(variable.children);
+            if (variable.childCount > 0 || hasChildrenArray) {
+                variable.isContainer = true;
+            }
+            if (hasChildrenArray) {
+                variable.childCount = variable.children.length;
+            }
+            if (util.isNullish(variable.isContainer)) {
+                variable.isContainer = [VariableType.AA, VariableType.Array, VariableType.List, VariableType.Object, VariableType.SubtypedObject].includes(variable.type);
+            }
+            if (variable.isContainer && util.isNullish(variable.childCount) && !hasChildrenArray) {
+                throw new Error('Container variable must either have one of these properties set: childCount, children');
+            }
+        }
         return response;
     }
 
@@ -134,20 +150,25 @@ export class VariablesResponse {
         }
     }
 
-    public toBuffer() {
-        const smartBuffer = new SmartBuffer();
+    private flattenVariables(variables: Variable[]) {
         //flatten the variables
-        const variables = [] as Variable[];
-        for (let rootVariable of this.data.variables ?? []) {
-            variables.push(rootVariable);
+        const result = [] as Variable[];
+        for (let rootVariable of variables ?? []) {
+            result.push(rootVariable);
             //add all child variables to the array
             for (const child of rootVariable.children ?? []) {
-                if (variables.includes(child) && Array.isArray(child.childCount)) {
+                if (result.includes(child) && Array.isArray(child.childCount)) {
                     throw new Error('This variable already exists in the list. You have a circular reference in your variables that needs to be resolved');
                 }
-                variables.push(child);
+                result.push(child);
             }
         }
+        return result;
+    }
+
+    public toBuffer() {
+        const smartBuffer = new SmartBuffer();
+        const variables = this.flattenVariables(this.data.variables);
         smartBuffer.writeUInt32LE(variables.length ?? 0); // num_variables
         for (const variable of variables) {
             this.writeVariable(variable, smartBuffer);
