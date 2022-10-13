@@ -1,8 +1,7 @@
 import * as Net from 'net';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
-import { PROTOCOL_ERROR_CODES, Command, StepType, StopReasonCode, ErrorCode, UpdateType, UpdateTypeCode, StepTypeCode } from '../Constants';
-import { SmartBuffer } from 'smart-buffer';
+import { PROTOCOL_ERROR_CODES, Command, StepType, StopReasonCode, ErrorCode, UpdateType, UpdateTypeCode, StopReason } from '../Constants';
 import { logger } from '../../logging';
 import { ExecuteV3Response } from '../events/responses/ExecuteV3Response';
 import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResponse';
@@ -282,8 +281,9 @@ export class DebugProtocolClient {
                 })
             );
             if (stepResult.data.errorCode === ErrorCode.OK) {
-                // this.stopped = true;
-                // this.emit('suspend');
+                this.isStopped = true;
+                //TODO this is not correct. Do we get a new threads event after a step? Perhaps that should be what triggers the event instead of us?
+                this.emit('suspend', stepResult as AllThreadsStoppedUpdate);
             } else {
                 // there is a CANT_CONTINUE error code but we can likely treat all errors like a CANT_CONTINUE
                 this.emit('cannot-continue');
@@ -320,16 +320,20 @@ export class DebugProtocolClient {
         }
     }
 
-    public async stackTrace(threadIndex: number = this.primaryThread) {
-        let buffer = new SmartBuffer({ size: 16 });
-        buffer.writeUInt32LE(threadIndex); // thread_index
+    /**
+     * Get the stackTrace from the device IF currently stopped
+     */
+    public async getStackTrace(threadIndex: number = this.primaryThread) {
         if (this.isStopped && threadIndex > -1) {
+            this.logger.log('getStackTrace()', { threadIndex: threadIndex });
             return this.sendRequest<StackTraceResponse>(
                 StackTraceRequest.fromJson({
                     requestId: this.requestIdSequence++,
                     threadIndex: threadIndex
                 })
             );
+        } else {
+            this.logger.log('[getStackTrace] skipped. ', { isStopped: this.isStopped, threadIndex: threadIndex });
         }
     }
 
@@ -450,45 +454,56 @@ export class DebugProtocolClient {
     }
 
     private process(): void {
-        if (this.buffer.length < 1) {
-            // short circuit if the buffer is empty
-            return;
-        }
-
-        const event = this.getResponseOrUpdate(this.buffer);
-
-        //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
-        if (!event || !event.success || event.data.packetLength > this.buffer.length) {
-            //TODO do something about this
-            return;
-        }
-
-        //we have a valid event. Clear the buffer of this data
-        this.buffer = this.buffer.slice(event.readOffset);
-
-        //TODO why did we ever do this? Just to handle when we misread incoming data? I think this should be scrapped
-        // if (event.data.requestId > this.totalRequests) {
-        //     this.removedProcessedBytes(genericResponse, slicedBuffer, packetLength);
-        //     return true;
-        // }
-
-        if (event.data.errorCode !== ErrorCode.OK) {
-            this.logger.error(event.data.errorCode, event);
-            return;
-        }
-
-        //we got a response
-        if (event) {
-            //emit the corresponding event
-            if (isProtocolUpdate(event)) {
-                this.emit('update', event);
-            } else {
-                this.emit('response', event);
+        try {
+            if (this.buffer.length < 1) {
+                // short circuit if the buffer is empty
+                return;
             }
-        }
 
-        // process again (will run recursively until the buffer is empty)
-        this.process();
+            this.logger.log('process(): buffer=', this.buffer.toJSON());
+
+            const event = this.getResponseOrUpdate(this.buffer);
+
+            //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
+            if (!event) {
+                this.logger.log('Unable to convert buffer into anything meaningful');
+                //TODO what should we do about this?
+                return;
+            }
+            if (!event.success || event.data.packetLength > this.buffer.length) {
+                this.logger.log(`event parse failed. ${event?.data?.packetLength} bytes required, ${this.buffer.length} bytes available`);
+                return;
+            }
+
+            //we have a valid event. Clear the buffer of this data
+            this.buffer = this.buffer.slice(event.readOffset);
+
+            //TODO why did we ever do this? Just to handle when we misread incoming data? I think this should be scrapped
+            // if (event.data.requestId > this.totalRequests) {
+            //     this.removedProcessedBytes(genericResponse, slicedBuffer, packetLength);
+            //     return true;
+            // }
+
+            if (event.data.errorCode !== ErrorCode.OK) {
+                this.logger.error(event.data.errorCode, event);
+                return;
+            }
+
+            //we got a response
+            if (event) {
+                //emit the corresponding event
+                if (isProtocolUpdate(event)) {
+                    this.emit('update', event);
+                } else {
+                    this.emit('response', event);
+                }
+            }
+
+            // process again (will run recursively until the buffer is empty)
+            this.process();
+        } catch (e) {
+            this.logger.error(`process() failed:`, e);
+        }
     }
 
     /**
@@ -558,7 +573,7 @@ export class DebugProtocolClient {
         );
         const updateType = UpdateTypeCode[updateTypeCode] as UpdateType;
 
-        this.logger.log('Update Type:', updateType, updateType);
+        this.logger.log('getUpdate(): update Type:', updateType);
         switch (updateType) {
             case UpdateType.IOPortOpened:
                 //TODO handle this
@@ -583,9 +598,9 @@ export class DebugProtocolClient {
     private handleUpdate(update: ProtocolUpdate) {
         if (update instanceof AllThreadsStoppedUpdate || update instanceof ThreadAttachedUpdate) {
             this.isStopped = true;
-            let eventName: 'runtime-error' | 'suspend' = (update.data.stopReason === StopReasonCode.RuntimeError ? 'runtime-error' : 'suspend');
+            let eventName: 'runtime-error' | 'suspend' = (update.data.stopReason === StopReason.RuntimeError ? 'runtime-error' : 'suspend');
 
-            const isValidStopReason = [StopReasonCode.RuntimeError, StopReasonCode.Break, StopReasonCode.StopStatement].includes(update.data.stopReason);
+            const isValidStopReason = [StopReason.RuntimeError, StopReason.Break, StopReason.StopStatement].includes(update.data.stopReason);
 
             if (update instanceof AllThreadsStoppedUpdate && isValidStopReason) {
                 this.primaryThread = update.data.threadIndex;

@@ -1,14 +1,13 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { StopReasonCode } from '../../Constants';
-import { ErrorCode, UpdateType } from '../../Constants';
-import { util } from '../../../util';
+import type { StopReason } from '../../Constants';
+import { ErrorCode, StopReasonCode, UpdateType } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
 export class ThreadAttachedUpdate {
 
     public static fromJson(data: {
         threadIndex: number;
-        stopReason: number;
+        stopReason: StopReason;
         stopReasonDetail: string;
     }) {
         const update = new ThreadAttachedUpdate();
@@ -21,7 +20,7 @@ export class ThreadAttachedUpdate {
         protocolUtils.bufferLoaderHelper(update, buffer, 12, (smartBuffer) => {
             protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
             update.data.threadIndex = smartBuffer.readInt32LE();
-            update.data.stopReason = smartBuffer.readUInt8();
+            update.data.stopReason = StopReasonCode[smartBuffer.readUInt8()] as StopReason;
             update.data.stopReasonDetail = protocolUtils.readStringNT(smartBuffer);
         });
         return update;
@@ -31,7 +30,7 @@ export class ThreadAttachedUpdate {
         const smartBuffer = new SmartBuffer();
 
         smartBuffer.writeInt32LE(this.data.threadIndex);
-        smartBuffer.writeUInt8(this.data.stopReason);
+        smartBuffer.writeUInt8(StopReasonCode[this.data.stopReason]);
         smartBuffer.writeStringNT(this.data.stopReasonDetail);
 
         protocolUtils.insertCommonUpdateFields(this, smartBuffer);
@@ -47,7 +46,7 @@ export class ThreadAttachedUpdate {
          * The index of the thread that was just attached
          */
         threadIndex: undefined as number,
-        stopReason: undefined as StopReasonCode,
+        stopReason: undefined as StopReason,
         stopReasonDetail: undefined as string,
 
         //common props

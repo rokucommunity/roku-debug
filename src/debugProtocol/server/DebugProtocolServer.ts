@@ -20,6 +20,7 @@ import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import PluginInterface from './PluginInterface';
 import type { ProtocolPlugin } from './ProtocolPlugin';
+import { logger } from '../../logging';
 
 export const DEBUGGER_MAGIC = 'bsdebug';
 
@@ -33,6 +34,8 @@ export class DebugProtocolServer {
     ) {
 
     }
+
+    private logger = logger.createLogger(`[${DebugProtocolServer.name}]`);
 
     /**
      * Indicates whether the client has sent the magic string to kick off the debug session.
@@ -65,7 +68,7 @@ export class DebugProtocolServer {
      * Run the server. This opens a socket and listens for a connection.
      * The promise resolves when the server has started listening. It does NOT wait for a client to connect
      */
-    public start() {
+    public async start() {
         return new Promise<void>((resolve) => {
             this.server = new Net.Server({});
             //Roku only allows 1 connection, so we should too.
@@ -94,7 +97,10 @@ export class DebugProtocolServer {
             this.server.listen({
                 port: this.options.controllerPort ?? 8081,
                 hostName: this.options.host ?? '0.0.0.0'
-            }, resolve);
+            }, () => {
+                void this.plugins.emit('onServerStart', { server: this });
+                resolve();
+            });
         });
     }
 
@@ -166,49 +172,64 @@ export class DebugProtocolServer {
     }
 
     private async process() {
-        //at this point, there is an active debug session. The plugin must provide us all the real-world data
-        let { buffer, request } = await this.plugins.emit('provideRequest', {
-            server: this,
-            buffer: this.buffer,
-            request: undefined
-        });
+        try {
+            this.logger.log('process() start', { buffer: this.buffer.toJSON() });
 
-        //we must build the request if the plugin didn't supply one (most plugins won't provide a request...)
-        if (!request) {
-            request = this.getRequest(buffer);
+            //at this point, there is an active debug session. The plugin must provide us all the real-world data
+            let { buffer, request } = await this.plugins.emit('provideRequest', {
+                server: this,
+                buffer: this.buffer,
+                request: undefined
+            });
+
+            //we must build the request if the plugin didn't supply one (most plugins won't provide a request...)
+            if (!request) {
+                request = this.getRequest(buffer);
+            }
+
+
+            //if we couldn't construct a request this request, hard-fail
+            if (!request || !request.success) {
+                this.logger.error('process() invalid request', { request });
+                throw new Error(`Unable to parse request: ${JSON.stringify(this.buffer.toJSON().data)}`);
+            }
+
+            this.logger.log('process() constructed request', { request });
+
+            //trim the buffer now that the request has been processed
+            this.buffer = buffer.slice(request.readOffset);
+
+            this.logger.log('process() buffer sliced', { buffer: this.buffer.toJSON() });
+
+            //now ask the plugin to provide a response for the given request
+            let { response } = await this.plugins.emit('provideResponse', {
+                server: this,
+                request: request,
+                response: undefined
+            });
+
+
+            //if the plugin didn't provide a response, we need to try our best to make one (we only support a few...plugins should provide most of them)
+            if (!response) {
+                response = this.getResponse(request);
+            }
+
+            if (!response) {
+                this.logger.error('process() invalid response', { request, response });
+                throw new Error(`Server was unable to provide a response for ${JSON.stringify(request.data)}`);
+            }
+
+
+            //the client should send a magic string to kick off the debugger
+            if ((response instanceof HandshakeResponse || response instanceof HandshakeV3Response) && response.data.magic === this.magic) {
+                this.isHandshakeComplete = true;
+            }
+
+            //send the response to the client. (TODO handle when the response is missing)
+            await this.sendResponse(response);
+        } catch (e) {
+            this.logger.error('process() error', e);
         }
-
-        //if we couldn't construct a request this request, hard-fail
-        if (!request || !request.success) {
-            throw new Error(`Unable to parse request: ${JSON.stringify(this.buffer.toJSON().data)}`);
-        }
-
-        //trim the buffer now that the request has been processed
-        this.buffer = buffer.slice(request.readOffset);
-
-        //now ask the plugin to provide a response for the given request
-        let { response } = await this.plugins.emit('provideResponse', {
-            server: this,
-            request: request,
-            response: undefined
-        });
-
-
-        //if the plugin didn't provide a response, we need to try our best to make one (we only support a few...plugins should provide most of them)
-        if (!response) {
-            response = this.getResponse(request);
-        }
-
-        //the client should send a magic string to kick off the debugger
-        if ((response instanceof HandshakeResponse || response instanceof HandshakeV3Response) && response.data.magic === this.magic) {
-            this.isHandshakeComplete = true;
-        }
-        if (!response) {
-            throw new Error(`Server was unable to provide a response for ${JSON.stringify(request.data)}`);
-        }
-
-        //send the response to the client. (TODO handle when the response is missing)
-        await this.sendResponse(response);
     }
 
     /**
@@ -220,6 +241,7 @@ export class DebugProtocolServer {
             response: response
         });
 
+        this.logger.log('sendResponse()', { response });
         this.client.write(event.response.toBuffer());
 
         await this.plugins.emit('afterSendResponse', {

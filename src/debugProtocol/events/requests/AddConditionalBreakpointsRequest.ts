@@ -32,6 +32,8 @@ export class AddConditionalBreakpointsRequest implements ProtocolRequest {
         protocolUtils.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
             protocolUtils.loadCommonRequestFields(request, smartBuffer);
 
+            smartBuffer.readUInt32LE(); // flags - Should always be passed as 0. Unused, reserved for future use.
+
             const numBreakpoints = smartBuffer.readUInt32LE(); // num_breakpoints
             request.data.breakpoints = [];
             for (let i = 0; i < numBreakpoints; i++) {

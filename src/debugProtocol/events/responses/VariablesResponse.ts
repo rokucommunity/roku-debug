@@ -20,7 +20,7 @@ export class VariablesResponse {
                 variable.isContainer = true;
             }
             if (hasChildrenArray) {
-                variable.childCount = variable.children.length;
+                delete variable.childCount;
             }
             if (util.isNullish(variable.isContainer)) {
                 variable.isContainer = [VariableType.AA, VariableType.Array, VariableType.List, VariableType.Object, VariableType.SubtypedObject].includes(variable.type);
@@ -385,11 +385,13 @@ export interface Variable {
      */
     isContainer: boolean;
     /**
-     * If the variable is a container, it will have child elements. this is the number of those children. This field is ignored when serializing if `.children` is set
+     * If the variable is a container, it will have child elements. this is the number of those children. If `.children` is set, this field will be set to undefined
+     * (meaning it will be ignored during serialization)
      */
     childCount?: number;
     /**
-     * The full list of children for this variable. This list may not be more than 2 total levels deep (i.e. `parent` -> `children`). Children may not have additional children.
+     * The full list of children for this variable. The entire Variable response may not be more than 2 total levels deep.
+     * (i.e. `parent` -> `children[]`). Children may not have additional children, those would need to be resolve using subsequent `variables` requests.
      */
     children?: Variable[];
 }

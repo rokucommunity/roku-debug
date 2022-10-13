@@ -80,6 +80,32 @@ export class DebugProtocolAdapter {
     public readonly supportsMultipleRuns = false;
 
     /**
+     * Subscribe to an event exactly once
+     * @param eventName
+     */
+    public once(eventName: 'cannot-continue'): Promise<void>;
+    public once(eventname: 'chanperf'): Promise<ChanperfData>;
+    public once(eventName: 'close'): Promise<void>;
+    public once(eventName: 'app-exit'): Promise<void>;
+    public once(eventName: 'diagnostics'): Promise<BSDebugDiagnostic>;
+    public once(eventName: 'connected'): Promise<boolean>;
+    public once(eventname: 'console-output'): Promise<string>; // TODO: might be able to remove this at some point
+    public once(eventname: 'protocol-version'): Promise<ProtocolVersionDetails>;
+    public once(eventname: 'rendezvous'): Promise<RendezvousHistory>;
+    public once(eventName: 'runtime-error'): Promise<BrightScriptRuntimeError>;
+    public once(eventName: 'suspend'): Promise<void>;
+    public once(eventName: 'start'): Promise<void>;
+    public once(eventname: 'unhandled-console-output'): Promise<string>;
+    public once(eventName: string) {
+        return new Promise((resolve) => {
+            const disconnect = this.on(eventName as Parameters<DebugProtocolAdapter['on']>[0], (...args) => {
+                disconnect();
+                resolve(...args);
+            });
+        });
+    }
+
+    /**
      * Subscribe to various events
      * @param eventName
      * @param handler
@@ -243,7 +269,7 @@ export class DebugProtocolAdapter {
                 console.debug('hasRuntimeError!!', data);
                 this.emit('runtime-error', <BrightScriptRuntimeError>{
                     message: data.data.stopReasonDetail,
-                    errorCode: StopReasonCode[data.data.stopReason]
+                    errorCode: data.data.stopReason
                 });
             });
 
@@ -415,21 +441,21 @@ export class DebugProtocolAdapter {
         }
     }
 
-    public async getStackTrace(threadId: number = this.socketDebugger.primaryThread) {
+    public async getStackTrace(threadIndex: number = this.socketDebugger.primaryThread) {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get stack trace: debugger is not paused');
         }
-        return this.resolve(`stack trace for thread ${threadId}`, async () => {
-            let thread = await this.getThreadByThreadId(threadId);
+        return this.resolve(`stack trace for thread ${threadIndex}`, async () => {
+            let thread = await this.getThreadByThreadId(threadIndex);
             let frames: StackFrame[] = [];
-            let stackTraceData = await this.socketDebugger.stackTrace(threadId);
+            let stackTraceData = await this.socketDebugger.getStackTrace(threadIndex);
             for (let i = 0; i < stackTraceData.data.entries.length; i++) {
                 let frameData = stackTraceData.data.entries[i];
                 let stackFrame: StackFrame = {
                     frameId: this.nextFrameId++,
                     // frame index is the reverse of the returned order.
                     frameIndex: stackTraceData.data.entries.length - i - 1,
-                    threadIndex: threadId,
+                    threadIndex: threadIndex,
                     filePath: frameData.filePath,
                     lineNumber: frameData.lineNumber,
                     // eslint-disable-next-line no-nested-ternary

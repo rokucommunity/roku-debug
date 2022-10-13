@@ -1,70 +1,175 @@
 
 import { expect } from 'chai';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
+import * as portfinder from 'portfinder';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 // eslint-disable-next-line @typescript-eslint/no-duplicate-imports
 import { VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
+import { DebugProtocolServer } from '../debugProtocol/server/DebugProtocolServer';
+import { util } from '../util';
+import { DebugProtocolServerTestPlugin } from '../debugProtocol/DebugProtocolServerTestPlugin.spec';
+import { AllThreadsStoppedUpdate } from '../debugProtocol/events/updates/AllThreadsStoppedUpdate';
+import { StopReason } from '../debugProtocol/Constants';
+import { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
+import { StackTraceV3Response } from '../debugProtocol/events/responses/StackTraceV3Response';
+
 const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
     let adapter: DebugProtocolAdapter;
-    let socketDebugger: DebugProtocolClient;
-    beforeEach(() => {
+    let server: DebugProtocolServer;
+    let client: DebugProtocolClient;
+    let plugin: DebugProtocolServerTestPlugin;
 
-        adapter = new DebugProtocolAdapter(
-            {
-                host: '127.0.0.1'
-            },
-            undefined,
-            undefined
-        );
-        socketDebugger = new DebugProtocolClient(undefined);
-        adapter['socketDebugger'] = socketDebugger;
+    beforeEach(async () => {
+        // sinon.stub(console, 'log').callsFake((...args) => { });
+        const options = {
+            controllerPort: undefined as number,
+            host: '127.0.0.1'
+        };
+
+        adapter = new DebugProtocolAdapter(options, undefined, undefined);
+
+        if (!options.controllerPort) {
+            options.controllerPort = await portfinder.getPortPromise();
+        }
+        server = new DebugProtocolServer(options);
+        plugin = server.plugins.add(new DebugProtocolServerTestPlugin());
+        await server.start();
+
+        client = new DebugProtocolClient(options);
+        //disable logging for tests because they clutter the test output
+        client['logger'].logLevel = 'off';
     });
 
+    afterEach(async () => {
+        client?.destroy();
+        //shut down and destroy the server after each test
+        await server?.stop();
+        await util.sleep(10);
+        sinon.restore();
+    });
+
+    /**
+     * Handles the initial connection and the "stop at first byte code" flow
+     */
+    async function initialize() {
+        await adapter.connect();
+        await Promise.all([
+            adapter.once('suspend'),
+            plugin.server.sendUpdate(
+                AllThreadsStoppedUpdate.fromJson({
+                    stopReason: StopReason.Break,
+                    stopReasonDetail: 'initial stop',
+                    threadIndex: 0
+                })
+            )
+        ]);
+
+        //the stackTrace request first sends a threads request
+        plugin.pushResponse(
+            ThreadsResponse.fromJson({
+                requestId: undefined,
+                threads: [{
+                    filePath: 'pkg:/source/main.brs',
+                    lineNumber: 12,
+                    functionName: 'main',
+                    isPrimary: true,
+                    codeSnippet: '',
+                    stopReason: StopReason.Break,
+                    stopReasonDetail: 'because'
+                }]
+            })
+        );
+        //then it sends the stacktrace request
+        plugin.pushResponse(
+            StackTraceV3Response.fromJson({
+                requestId: undefined,
+                entries: [{
+                    filePath: 'pkg:/source/main.brs',
+                    functionName: 'main',
+                    lineNumber: 12
+                }]
+            })
+        );
+        //load stack frames
+        await adapter.getStackTrace(0);
+    }
+
     describe('getVariable', () => {
-        let response: VariablesResponse;
-        let variables: Partial<Variable>[];
-
-        beforeEach(() => {
-            response = VariablesResponse.fromJson({
-                requestId: 3,
-                variables: []
-            });
-            sinon.stub(adapter as any, 'getStackFrameById').returns({});
-            sinon.stub(socketDebugger, 'getVariables').callsFake(() => {
-                response.data.variables = variables as any;
-                return Promise.resolve(response);
-            });
-            socketDebugger['stopped'] = true;
-        });
-
         it('works for local vars', async () => {
-            variables.push(
-                { name: 'm' },
-                { name: 'person' },
-                { name: 'age' }
+            await initialize();
+
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: undefined,
+                    variables: [
+                        {
+                            isConst: false,
+                            isContainer: true,
+                            refCount: 1,
+                            type: VariableType.AA,
+                            value: undefined,
+                            childCount: 4,
+                            keyType: VariableType.String,
+                            name: 'm'
+                        },
+                        {
+                            isConst: false,
+                            isContainer: false,
+                            refCount: 1,
+                            type: VariableType.String,
+                            value: '1.0.0',
+                            name: 'apiVersion'
+                        }
+                    ]
+                })
             );
             const vars = await adapter.getVariable('', 1);
             expect(
                 vars?.children.map(x => x.evaluateName)
             ).to.eql([
                 'm',
-                'person',
-                'age'
+                'apiVersion'
             ]);
         });
 
-        it('works for object properties', async () => {
-            variables.push(
-                { isContainer: true, childCount: 2, variableType: VariableType.AA } as any,
-                { name: 'name', isChildKey: true } as any,
-                { name: 'age', isChildKey: true } as any
-            );
+        it.only('works for object properties', async () => {
+            await initialize();
 
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: undefined,
+                    variables: [
+                        {
+                            isConst: false,
+                            isContainer: true,
+                            refCount: 1,
+                            type: VariableType.AA,
+                            value: undefined,
+                            keyType: VariableType.String,
+                            children: [{
+                                isConst: false,
+                                isContainer: false,
+                                refCount: 1,
+                                type: VariableType.String,
+                                name: 'name',
+                                value: 'bob'
+                            }, {
+                                isConst: false,
+                                isContainer: false,
+                                refCount: 1,
+                                type: VariableType.Integer,
+                                name: 'age',
+                                value: 12
+                            }]
+                        }
+                    ]
+                })
+            );
             const vars = await adapter.getVariable('person', 1);
             expect(
                 vars?.children.map(x => x.evaluateName)
@@ -73,6 +178,5 @@ describe('DebugProtocolAdapter', () => {
                 'person["age"]'
             ]);
         });
-
     });
 });

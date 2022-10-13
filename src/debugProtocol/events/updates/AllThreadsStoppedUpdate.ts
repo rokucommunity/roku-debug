@@ -1,7 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { StopReasonCode } from '../../Constants';
-import { ErrorCode, UpdateType } from '../../Constants';
-import { util } from '../../../util';
+import type { StopReason } from '../../Constants';
+import { ErrorCode, StopReasonCode, UpdateType } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolUpdate } from '../ProtocolEvent';
 
@@ -14,7 +13,7 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
 
     public static fromJson(data: {
         threadIndex: number;
-        stopReason: number;
+        stopReason: StopReason;
         stopReasonDetail: string;
     }) {
         const update = new AllThreadsStoppedUpdate();
@@ -28,7 +27,7 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
             protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
 
             update.data.threadIndex = smartBuffer.readInt32LE();
-            update.data.stopReason = smartBuffer.readUInt8();
+            update.data.stopReason = StopReasonCode[smartBuffer.readUInt8()] as StopReason;
             update.data.stopReasonDetail = protocolUtils.readStringNT(smartBuffer);
         });
         return update;
@@ -38,7 +37,7 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
         let smartBuffer = new SmartBuffer();
 
         smartBuffer.writeInt32LE(this.data.threadIndex); // primary_thread_index
-        smartBuffer.writeUInt8(this.data.stopReason); // stop_reason
+        smartBuffer.writeUInt8(StopReasonCode[this.data.stopReason]); // stop_reason
         smartBuffer.writeStringNT(this.data.stopReasonDetail); //stop_reason_detail
 
         protocolUtils.insertCommonUpdateFields(this, smartBuffer);
@@ -54,7 +53,7 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
          * The index of the primary thread that triggered the stop
          */
         threadIndex: undefined as number,
-        stopReason: undefined as StopReasonCode,
+        stopReason: undefined as StopReason,
         stopReasonDetail: undefined as string,
 
         //common props

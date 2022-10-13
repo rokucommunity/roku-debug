@@ -29,7 +29,6 @@ export class ThreadsResponse {
                 const thread = {} as ThreadInfo;
                 const flags = smartBuffer.readUInt8();
                 thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
-
                 thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
                 thread.stopReasonDetail = protocolUtils.readStringNT(smartBuffer); // stop_reason_detail
                 thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
@@ -49,10 +48,9 @@ export class ThreadsResponse {
         for (const thread of this.data.threads ?? []) {
             let flags = 0;
             flags |= thread.isPrimary ? 1 : 0;
-            // NOTE: The docs say the flags should be both unit8 AND uint32. In testing it seems like they are sending uint32 but meant to send unit8.
-            smartBuffer.writeUInt32LE(flags);
-
-            smartBuffer.writeUInt8(StopReasonCode[thread.stopReason]); // stop_reason
+            smartBuffer.writeUInt8(flags); //flags
+            //stop_reason is an 8-bit value (same as the other locations in this protocol); however, it is sent in this response as a 32bit value for historical purposes
+            smartBuffer.writeUInt32LE(StopReasonCode[thread.stopReason]); // stop_reason
             smartBuffer.writeStringNT(thread.stopReasonDetail); // stop_reason_detail
             smartBuffer.writeUInt32LE(thread.lineNumber); // line_number
             smartBuffer.writeStringNT(thread.functionName); // function_name

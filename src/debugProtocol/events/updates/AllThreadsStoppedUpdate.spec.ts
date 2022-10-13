@@ -1,12 +1,12 @@
 import { expect } from 'chai';
-import { ErrorCode, StopReasonCode, UpdateType } from '../../Constants';
+import { ErrorCode, StopReason, UpdateType } from '../../Constants';
 import { AllThreadsStoppedUpdate } from './AllThreadsStoppedUpdate';
 
 describe('AllThreadsStoppedUpdate', () => {
     it('serializes and deserializes properly', () => {
         const command = AllThreadsStoppedUpdate.fromJson({
             threadIndex: 1,
-            stopReason: StopReasonCode.Break,
+            stopReason: StopReason.Break,
             stopReasonDetail: 'because'
         });
 
@@ -16,8 +16,8 @@ describe('AllThreadsStoppedUpdate', () => {
             errorCode: ErrorCode.OK,
             updateType: UpdateType.AllThreadsStopped,
 
-            primaryThreadIndex: 1,
-            stopReason: StopReasonCode.Break,
+            threadIndex: 1,
+            stopReason: StopReason.Break,
             stopReasonDetail: 'because'
         });
 
@@ -29,8 +29,8 @@ describe('AllThreadsStoppedUpdate', () => {
             errorCode: ErrorCode.OK, // 4 bytes
             updateType: UpdateType.AllThreadsStopped, // 4 bytes
 
-            primaryThreadIndex: 1, // 4 bytes
-            stopReason: StopReasonCode.Break, // 1 bytes
+            threadIndex: 1, // 4 bytes
+            stopReason: StopReason.Break, // 1 bytes
             stopReasonDetail: 'because' // 8 bytes
         });
     });

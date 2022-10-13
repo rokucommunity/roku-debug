@@ -20,10 +20,10 @@ describe('AddConditionalBreakpointsRequest', () => {
         expect(
             AddConditionalBreakpointsRequest.fromBuffer(command.toBuffer()).data
         ).to.eql({
-            packetLength: 16, // 4 bytes
+            packetLength: 20, // 4 bytes
             requestId: 3, // 4 bytes
             command: Command.AddConditionalBreakpoints, // 4 bytes
-
+            // flags // 4 bytes
             // num_breakpoints // 4 bytes
             breakpoints: []
         });
@@ -67,9 +67,11 @@ describe('AddConditionalBreakpointsRequest', () => {
         expect(
             AddConditionalBreakpointsRequest.fromBuffer(command.toBuffer()).data
         ).to.eql({
-            packetLength: 73, // 4 bytes
+            packetLength: 77, // 4 bytes
             requestId: 3, // 4 bytes
             command: Command.AddConditionalBreakpoints, // 4 bytes
+
+            //flags // 4 bytes
 
             // num_breakpoints // 4 bytes
             breakpoints: [{

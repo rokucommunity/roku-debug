@@ -15,13 +15,14 @@ import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 import { VariablesResponse } from '../events/responses/VariablesResponse';
 import { VariableRequestFlag, VariablesRequest } from '../events/requests/VariablesRequest';
+import { DebugProtocolServerTestPlugin } from '../DebugProtocolServerTestPlugin.spec';
 
 const sinon = createSandbox();
 
 describe('DebugProtocolClient', () => {
     let server: DebugProtocolServer;
     let client: DebugProtocolClient;
-    let plugin: TestPlugin;
+    let plugin: DebugProtocolServerTestPlugin;
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
@@ -35,7 +36,7 @@ describe('DebugProtocolClient', () => {
             options.controllerPort = await portfinder.getPortPromise();
         }
         server = new DebugProtocolServer(options);
-        plugin = server.plugins.add(new TestPlugin());
+        plugin = server.plugins.add(new DebugProtocolServerTestPlugin());
         await server.start();
 
         client = new DebugProtocolClient(options);
@@ -229,69 +230,3 @@ describe('DebugProtocolClient', () => {
         });
     });
 });
-
-/**
- * A class that intercepts all debug server events and provides test data for them
- */
-class TestPlugin implements ProtocolPlugin {
-    /**
-     * A list of responses to be sent by the server in this exact order.
-     * One of these will be sent for every `provideResponse` event received.
-     */
-    private responseQueue: ProtocolResponse[] = [];
-
-    /**
-     * Adds a response to the queue, which should be returned from the server in first-in-first-out order, one for each request received by the server
-     */
-    public pushResponse(response: ProtocolResponse) {
-        this.responseQueue.push(response);
-    }
-
-    /**
-     * A running list of requests received by the server during this test
-     */
-    public readonly requests: ReadonlyArray<ProtocolRequest> = [];
-
-    /**
-     * The most recent request received by the plugin
-     */
-    public get latestRequest() {
-        return this.requests[this.requests.length - 1];
-    }
-
-    /**
-     * A running list of responses sent by the server during this test
-     */
-    public readonly responses: ReadonlyArray<ProtocolResponse> = [];
-
-    /**
-     * The most recent response received by the plugin
-     */
-    public get latestResponse() {
-        return this.responses[this.responses.length - 1];
-    }
-
-    /**
-     * Whenever the server receives a request, this event allows us to send back a response
-     */
-    provideResponse(event: ProvideResponseEvent) {
-        //store the request for testing purposes
-        (this.requests as Array<ProtocolRequest>).push(event.request);
-
-        const response = this.responseQueue.shift();
-        //if there's no response, AND this isn't the handshake, fail. (we want the protocol to handle the handshake most of the time)
-        if (!response && !(event.request instanceof HandshakeRequest)) {
-            throw new Error('There was no response available to send back');
-        }
-        //force this response to have the current request's ID (for testing purposes
-        if (response) {
-            response.data.requestId = event.request.data.requestId;
-        }
-        event.response = response;
-    }
-
-    beforeSendResponse(event: BeforeSendResponseEvent) {
-        //store the response for testing purposes
-        (this.responses as Array<ProtocolResponse>).push(event.response);
-    }
-}

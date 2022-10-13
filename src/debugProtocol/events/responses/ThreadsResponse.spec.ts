@@ -151,7 +151,7 @@ describe('ThreadsResponse', () => {
                 codeSnippet: 'sub main()'
             }, {
                 isPrimary: true,
-                stopReason: StopReason.Break,
+                stopReason: StopReason.StopStatement,
                 stopReasonDetail: 'because',
                 lineNumber: 3,
                 functionName: 'main',
@@ -169,7 +169,7 @@ describe('ThreadsResponse', () => {
         expect(response.success).to.be.false;
         expect(response.data.threads).to.eql([{
             isPrimary: true,
-            stopReason: 'Break',
+            stopReason: StopReason.Break,
             stopReasonDetail: 'because',
             lineNumber: 2,
             functionName: 'main',

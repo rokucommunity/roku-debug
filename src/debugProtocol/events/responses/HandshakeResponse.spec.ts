@@ -1,6 +1,8 @@
 import { HandshakeResponse } from './HandshakeResponse';
 import { DebugProtocolClient } from '../../client/DebugProtocolClient';
 import { expect } from 'chai';
+import { HandshakeRequest } from '../requests/HandshakeRequest';
+import { ErrorCode } from '../../Constants';
 
 describe('HandshakeResponse', () => {
     it('Handles a handshake response', () => {
@@ -10,6 +12,10 @@ describe('HandshakeResponse', () => {
         });
 
         expect(response.data).to.eql({
+            packetLength: undefined,
+            requestId: HandshakeRequest.REQUEST_ID,
+            errorCode: ErrorCode.OK,
+
             magic: 'not bsdebug',
             protocolVersion: '1.0.0'
         });
@@ -17,6 +23,10 @@ describe('HandshakeResponse', () => {
         expect(
             HandshakeResponse.fromBuffer(response.toBuffer()).data
         ).to.eql({
+            packetLength: undefined,
+            requestId: HandshakeRequest.REQUEST_ID,
+            errorCode: ErrorCode.OK,
+
             magic: 'not bsdebug', // 12 bytes
             protocolVersion: '1.0.0' // 12 bytes (each number is sent as uint32)
         });

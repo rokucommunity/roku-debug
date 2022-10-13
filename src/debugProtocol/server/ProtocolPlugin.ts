@@ -3,6 +3,7 @@ import type { Socket } from 'net';
 import type { ProtocolRequest, ProtocolResponse } from '../events/ProtocolEvent';
 
 export interface ProtocolPlugin {
+    onServerStart: Handler<OnServerStartEvent>;
     onClientConnected?: Handler<OnClientConnectedEvent>;
 
     provideRequest?: Handler<ProvideRequestEvent>;
@@ -10,6 +11,10 @@ export interface ProtocolPlugin {
 
     beforeSendResponse?: Handler<BeforeSendResponseEvent>;
     afterSendResponse?: Handler<AfterSendResponseEvent>;
+}
+
+export interface OnServerStartEvent {
+    server: DebugProtocolServer;
 }
 
 export interface OnClientConnectedEvent {
