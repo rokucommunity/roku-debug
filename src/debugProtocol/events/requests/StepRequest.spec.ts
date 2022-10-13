@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS, STEP_TYPE } from '../../Constants';
+import { Command, StepType } from '../../Constants';
 import { StepRequest } from './StepRequest';
 
 describe('StepRequest', () => {
@@ -7,16 +7,16 @@ describe('StepRequest', () => {
         const command = StepRequest.fromJson({
             requestId: 3,
             threadIndex: 2,
-            stepType: STEP_TYPE.STEP_TYPE_LINE
+            stepType: StepType.Line
         });
 
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.STEP,
+            command: Command.Step,
 
             threadIndex: 2,
-            stepType: STEP_TYPE.STEP_TYPE_LINE
+            stepType: StepType.Line
         });
 
         expect(
@@ -24,9 +24,9 @@ describe('StepRequest', () => {
         ).to.eql({
             packetLength: 17, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.STEP, // 4 bytes
+            command: Command.Step, // 4 bytes
 
-            stepType: STEP_TYPE.STEP_TYPE_LINE, // 1 byte
+            stepType: StepType.Line, // 1 byte
             threadIndex: 2 // 4 bytes
         });
     });

@@ -1,6 +1,6 @@
 /* eslint-disable no-bitwise */
 import { SmartBuffer } from 'smart-buffer';
-import { COMMANDS, VARIABLE_REQUEST_FLAGS } from '../../Constants';
+import { Command, VARIABLE_REQUEST_FLAGS } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 import { util } from '../../../util';
@@ -129,6 +129,6 @@ export class VariablesRequest implements ProtocolRequest {
         //common props
         packetLength: undefined as number,
         requestId: undefined as number,
-        commandCode: COMMANDS.VARIABLES
+        command: Command.Variables
     };
 }

@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ErrorCode, StopReasonCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, StopReasonCode, UpdateType } from '../../Constants';
 import { ThreadAttachedUpdate } from './ThreadAttachedUpdate';
 
 describe('AllThreadsStoppedUpdate', () => {
@@ -14,7 +14,7 @@ describe('AllThreadsStoppedUpdate', () => {
             packetLength: undefined,
             requestId: 0,
             errorCode: ErrorCode.OK,
-            updateType: UPDATE_TYPES.THREAD_ATTACHED,
+            updateType: UpdateType.ThreadAttached,
 
             threadIndex: 1,
             stopReason: StopReasonCode.Break,
@@ -27,7 +27,7 @@ describe('AllThreadsStoppedUpdate', () => {
             packetLength: 29, // 4 bytes
             requestId: 0, // 4 bytes
             errorCode: ErrorCode.OK, // 4 bytes
-            updateType: UPDATE_TYPES.THREAD_ATTACHED, // 4 bytes
+            updateType: UpdateType.ThreadAttached, // 4 bytes
 
             threadIndex: 1, // 4 bytes
             stopReason: StopReasonCode.Break, // 1 bytes

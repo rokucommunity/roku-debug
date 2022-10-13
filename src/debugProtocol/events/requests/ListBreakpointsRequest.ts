@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
@@ -33,6 +33,6 @@ export class ListBreakpointsRequest implements ProtocolRequest {
         //common props
         packetLength: undefined as number,
         requestId: undefined as number,
-        commandCode: COMMANDS.LIST_BREAKPOINTS
+        command: Command.ListBreakpoints
     };
 }

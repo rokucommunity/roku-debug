@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { ExecuteRequest } from './ExecuteRequest';
 
 describe('ExecuteRequest', () => {
@@ -14,7 +14,7 @@ describe('ExecuteRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.EXECUTE,
+            command: Command.Execute,
 
             sourceCode: 'print "text"',
             stackFrameIndex: 2,
@@ -26,7 +26,7 @@ describe('ExecuteRequest', () => {
         ).to.eql({
             packetLength: 33, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.EXECUTE, // 4 bytes
+            command: Command.Execute, // 4 bytes
 
             sourceCode: 'print "text"', // 13 bytes
             stackFrameIndex: 2, // 4 bytes

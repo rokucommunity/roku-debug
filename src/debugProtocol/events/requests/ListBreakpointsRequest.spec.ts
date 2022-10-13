@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { ListBreakpointsRequest } from './ListBreakpointsRequest';
 
 describe('ListBreakpointsRequest', () => {
@@ -11,7 +11,7 @@ describe('ListBreakpointsRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.LIST_BREAKPOINTS
+            command: Command.ListBreakpoints
         });
 
         expect(
@@ -19,7 +19,7 @@ describe('ListBreakpointsRequest', () => {
         ).to.eql({
             packetLength: 12, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.LIST_BREAKPOINTS // 4 bytes
+            command: Command.ListBreakpoints // 4 bytes
         });
     });
 });

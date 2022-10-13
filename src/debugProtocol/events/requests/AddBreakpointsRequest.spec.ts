@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { AddBreakpointsRequest } from './AddBreakpointsRequest';
 
 describe('AddBreakpointsRequest', () => {
@@ -12,7 +12,7 @@ describe('AddBreakpointsRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.ADD_BREAKPOINTS,
+            command: Command.AddBreakpoints,
 
             breakpoints: []
         });
@@ -22,7 +22,7 @@ describe('AddBreakpointsRequest', () => {
         ).to.eql({
             packetLength: 16, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.ADD_BREAKPOINTS, // 4 bytes
+            command: Command.AddBreakpoints, // 4 bytes
 
             // num_breakpoints // 4 bytes
             breakpoints: []
@@ -47,7 +47,7 @@ describe('AddBreakpointsRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.CONTINUE,
+            command: Command.AddBreakpoints,
 
             breakpoints: [{
                 filePath: 'source/main.brs',
@@ -66,7 +66,7 @@ describe('AddBreakpointsRequest', () => {
         ).to.eql({
             packetLength: 64, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.CONTINUE, // 4 bytes
+            command: Command.AddBreakpoints, // 4 bytes
 
             // num_breakpoints // 4 bytes
             breakpoints: [{

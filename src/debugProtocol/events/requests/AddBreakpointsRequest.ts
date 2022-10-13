@@ -1,7 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import { util } from '../../../util';
-import type { RequestData } from '../../Constants';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
@@ -71,6 +69,6 @@ export class AddBreakpointsRequest implements ProtocolRequest {
         //common props
         packetLength: undefined as number,
         requestId: undefined as number,
-        commandCode: COMMANDS.ADD_BREAKPOINTS
+        command: Command.AddBreakpoints
     };
 }

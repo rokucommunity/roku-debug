@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { ThreadsResponse } from './ThreadsResponse';
-import { ErrorCode } from '../../Constants';
+import { ErrorCode, StopReason } from '../../Constants';
 import { getRandomBuffer } from '../../../testHelpers.spec';
 
 describe('ThreadsResponse', () => {
@@ -9,7 +9,7 @@ describe('ThreadsResponse', () => {
             requestId: 3,
             threads: [{
                 isPrimary: true,
-                stopReason: 'Break',
+                stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,
                 functionName: 'main',
@@ -109,7 +109,7 @@ describe('ThreadsResponse', () => {
             requestId: 3,
             threads: [{
                 isPrimary: true,
-                stopReason: 'Break',
+                stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,
                 functionName: 'main',
@@ -143,7 +143,7 @@ describe('ThreadsResponse', () => {
             requestId: 3,
             threads: [{
                 isPrimary: true,
-                stopReason: 'Break',
+                stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,
                 functionName: 'main',
@@ -151,7 +151,7 @@ describe('ThreadsResponse', () => {
                 codeSnippet: 'sub main()'
             }, {
                 isPrimary: true,
-                stopReason: 'Break',
+                stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 3,
                 functionName: 'main',

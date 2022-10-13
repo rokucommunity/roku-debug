@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { StopReasonCode } from '../../Constants';
-import { ErrorCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, UpdateType } from '../../Constants';
 import { util } from '../../../util';
 import { protocolUtils } from '../../ProtocolUtil';
 
@@ -54,6 +54,6 @@ export class ThreadAttachedUpdate {
         packetLength: undefined as number,
         requestId: 0, //all updates have requestId === 0
         errorCode: ErrorCode.OK,
-        updateType: UPDATE_TYPES.THREAD_ATTACHED
+        updateType: UpdateType.ThreadAttached
     };
 }

@@ -1,5 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import { ErrorCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, UpdateType } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 
 export class IOPortOpenedUpdate {
@@ -45,6 +45,6 @@ export class IOPortOpenedUpdate {
         packetLength: undefined as number,
         requestId: 0, //all updates have requestId === 0
         errorCode: ErrorCode.OK,
-        updateType: UPDATE_TYPES.IO_PORT_OPENED
+        updateType: UpdateType.IOPortOpened
     };
 }

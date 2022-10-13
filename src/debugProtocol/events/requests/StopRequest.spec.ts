@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS, STEP_TYPE } from '../../Constants';
+import { Command, StepType } from '../../Constants';
 import { StopRequest } from './StopRequest';
 
 describe('StopRequest', () => {
@@ -11,7 +11,7 @@ describe('StopRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.STOP
+            command: Command.Stop
         });
 
         expect(
@@ -19,7 +19,7 @@ describe('StopRequest', () => {
         ).to.eql({
             packetLength: 12, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.STOP // 4 bytes
+            command: Command.Stop // 4 bytes
         });
     });
 });

@@ -1,6 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { RequestData } from '../../Constants';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
@@ -33,6 +32,6 @@ export class StopRequest implements ProtocolRequest {
     public data = {
         packetLength: undefined as number,
         requestId: undefined as number,
-        commandCode: COMMANDS.STOP
+        command: Command.Stop
     };
 }

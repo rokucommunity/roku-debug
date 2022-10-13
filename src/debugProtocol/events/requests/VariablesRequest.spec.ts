@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { VariablesRequest } from './VariablesRequest';
 
 describe('VariablesRequest', () => {
@@ -20,7 +20,7 @@ describe('VariablesRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.VARIABLES,
+            command: Command.Variables,
 
             getChildKeys: true,
             enableCaseInsensitivityFlag: false,
@@ -38,7 +38,7 @@ describe('VariablesRequest', () => {
         ).to.eql({
             packetLength: 31, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.VARIABLES, // 4 bytes,
+            command: Command.Variables, // 4 bytes,
 
             //variable_request_flags // 1 byte
             getChildKeys: true, // 0 bytes
@@ -71,7 +71,7 @@ describe('VariablesRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.VARIABLES,
+            command: Command.Variables,
 
             getChildKeys: false,
             enableCaseInsensitivityFlag: true,
@@ -89,7 +89,7 @@ describe('VariablesRequest', () => {
         ).to.eql({
             packetLength: 34, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.VARIABLES, // 4 bytes,
+            command: Command.Variables, // 4 bytes,
 
             //variable_request_flags // 1 byte
             getChildKeys: false, // 0 bytes
@@ -127,7 +127,7 @@ describe('VariablesRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.VARIABLES,
+            command: Command.Variables,
 
             getChildKeys: false,
             enableCaseInsensitivityFlag: true,
@@ -141,7 +141,7 @@ describe('VariablesRequest', () => {
         ).to.eql({
             packetLength: 25, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.VARIABLES, // 4 bytes,
+            command: Command.Variables, // 4 bytes,
 
             //variable_request_flags // 1 byte
             getChildKeys: false, // 0 bytes

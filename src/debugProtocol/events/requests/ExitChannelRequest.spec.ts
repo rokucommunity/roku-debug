@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { ExitChannelRequest } from './ExitChannelRequest';
 
 describe('ExitChannelRequest', () => {
@@ -11,7 +11,7 @@ describe('ExitChannelRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.EXIT_CHANNEL
+            command: Command.ExitChannel
         });
 
         expect(
@@ -19,7 +19,7 @@ describe('ExitChannelRequest', () => {
         ).to.eql({
             packetLength: 12, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.EXIT_CHANNEL // 4 bytes
+            command: Command.ExitChannel // 4 bytes
         });
     });
 });

@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { ContinueRequest } from './ContinueRequest';
 
 describe('ContinueRequest', () => {
@@ -11,7 +11,7 @@ describe('ContinueRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.CONTINUE
+            command: Command.Continue
         });
 
         expect(
@@ -19,7 +19,7 @@ describe('ContinueRequest', () => {
         ).to.eql({
             packetLength: 12, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.CONTINUE // 4 bytes
+            command: Command.Continue // 4 bytes
         });
     });
 });

@@ -1,5 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { UPDATE_TYPES } from './Constants';
+import type { Command, UpdateType } from './Constants';
+import { CommandCode, UpdateTypeCode } from './Constants';
 import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events/ProtocolEvent';
 
 export class ProtocolUtils {
@@ -49,7 +50,7 @@ export class ProtocolUtils {
     public loadCommonRequestFields(request: ProtocolRequest, smartBuffer: SmartBuffer) {
         request.data.packetLength = smartBuffer.readUInt32LE(); // packet_length
         request.data.requestId = smartBuffer.readUInt32LE(); // request_id
-        request.data.commandCode = smartBuffer.readUInt32LE(); // command_code
+        request.data.command = CommandCode[smartBuffer.readUInt32LE()] as Command; // command_code
     }
 
     /**
@@ -61,13 +62,13 @@ export class ProtocolUtils {
         request.data.errorCode = smartBuffer.readUInt32LE(); // error_code
     }
 
-    public loadCommonUpdateFields(update: ProtocolUpdate, smartBuffer: SmartBuffer, updateType: UPDATE_TYPES) {
+    public loadCommonUpdateFields(update: ProtocolUpdate, smartBuffer: SmartBuffer, updateType: UpdateType) {
         update.data.packetLength = smartBuffer.readUInt32LE(); // packet_length
         update.data.requestId = smartBuffer.readUInt32LE(); // request_id
         update.data.errorCode = smartBuffer.readUInt32LE(); // error_code
         // requestId 0 means this is an update.
         if (update.data.requestId === 0) {
-            update.data.updateType = smartBuffer.readUInt32LE();
+            update.data.updateType = UpdateTypeCode[smartBuffer.readUInt32LE()] as UpdateType;
 
             //if this is not the update type we want, return false
             if (update.data.updateType !== updateType) {
@@ -85,7 +86,7 @@ export class ProtocolUtils {
      * the correct `packet_length` value.
      */
     public insertCommonRequestFields(request: ProtocolRequest, smartBuffer: SmartBuffer) {
-        smartBuffer.insertUInt32LE(request.data.commandCode, 0); // command_code - An enum representing the debugging command being sent. See the COMMANDS enum
+        smartBuffer.insertUInt32LE(CommandCode[request.data.command], 0); // command_code - An enum representing the debugging command being sent. See the COMMANDS enum
         smartBuffer.insertUInt32LE(request.data.requestId, 0); // request_id - The ID of the debugger request (must be >=1). This ID is included in the debugger response.
         smartBuffer.insertUInt32LE(smartBuffer.writeOffset + 4, 0); // packet_length - The size of the packet to be sent.
         request.data.packetLength = smartBuffer.writeOffset;
@@ -106,7 +107,7 @@ export class ProtocolUtils {
      * the correct `packet_length` value.
      */
     public insertCommonUpdateFields(update: ProtocolUpdate, smartBuffer: SmartBuffer) {
-        smartBuffer.insertUInt32LE(update.data.updateType, 0); // update_type
+        smartBuffer.insertUInt32LE(UpdateTypeCode[update.data.updateType], 0); // update_type
         smartBuffer.insertUInt32LE(update.data.errorCode, 0); // error_code
         smartBuffer.insertUInt32LE(update.data.requestId, 0); // request_id
         smartBuffer.insertUInt32LE(smartBuffer.writeOffset + 4, 0); // packet_length

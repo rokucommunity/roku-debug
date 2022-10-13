@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { StopReasonCode } from '../../Constants';
-import { ErrorCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, UpdateType } from '../../Constants';
 import { util } from '../../../util';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolUpdate } from '../ProtocolEvent';
@@ -13,7 +13,7 @@ import type { ProtocolUpdate } from '../ProtocolEvent';
 export class AllThreadsStoppedUpdate implements ProtocolUpdate {
 
     public static fromJson(data: {
-        primaryThreadIndex: number;
+        threadIndex: number;
         stopReason: number;
         stopReasonDetail: string;
     }) {
@@ -61,6 +61,6 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
         packetLength: undefined as number,
         requestId: 0, //all updates have requestId === 0
         errorCode: ErrorCode.OK,
-        updateType: UPDATE_TYPES.ALL_THREADS_STOPPED
+        updateType: UpdateType.AllThreadsStopped
     };
 }

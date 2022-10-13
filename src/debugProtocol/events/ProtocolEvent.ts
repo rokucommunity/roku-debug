@@ -1,4 +1,4 @@
-import type { COMMANDS, UPDATE_TYPES } from '../Constants';
+import type { Command, UpdateType } from '../Constants';
 
 export interface ProtocolEvent<TData> {
     /**
@@ -30,7 +30,7 @@ export interface ProtocolRequestData {
     //common props
     packetLength: number;
     requestId: number;
-    commandCode: COMMANDS;
+    command: Command;
 }
 export type ProtocolRequest = ProtocolEvent<ProtocolRequestData>;
 
@@ -41,7 +41,7 @@ export interface ProtocolUpdateData {
     packetLength: number;
     requestId: number;
     errorCode: number;
-    updateType: UPDATE_TYPES;
+    updateType: UpdateType;
 }
 export type ProtocolUpdate = ProtocolEvent<ProtocolUpdateData>;
 

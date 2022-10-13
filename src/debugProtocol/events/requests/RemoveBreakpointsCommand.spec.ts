@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { RemoveBreakpointsRequest } from './RemoveBreakpointsRequest';
 
 describe('RemoveBreakpointsRequest', () => {
@@ -12,7 +12,7 @@ describe('RemoveBreakpointsRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.REMOVE_BREAKPOINTS,
+            command: Command.RemoveBreakpoints,
 
             breakpointIds: [1, 2, 100],
             numBreakpoints: 3
@@ -23,7 +23,7 @@ describe('RemoveBreakpointsRequest', () => {
         ).to.eql({
             packetLength: 28, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.REMOVE_BREAKPOINTS, // 4 bytes
+            command: Command.RemoveBreakpoints, // 4 bytes
 
             breakpointIds: [1, 2, 100], // 12 bytes
             numBreakpoints: 3 // 4 bytes

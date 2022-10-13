@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { ThreadsRequest } from './ThreadsRequest';
 
 describe('ThreadsRequest', () => {
@@ -11,7 +11,7 @@ describe('ThreadsRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.THREADS
+            command: Command.Threads
         });
 
         expect(
@@ -19,7 +19,7 @@ describe('ThreadsRequest', () => {
         ).to.eql({
             packetLength: 12, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.THREADS // 4 bytes
+            command: Command.Threads // 4 bytes
         });
     });
 });

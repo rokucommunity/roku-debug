@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ErrorCode, StopReasonCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, StopReasonCode, UpdateType } from '../../Constants';
 import { ExecuteV3Response } from './ExecuteV3Response';
 
 describe('ExecuteV3Response', () => {

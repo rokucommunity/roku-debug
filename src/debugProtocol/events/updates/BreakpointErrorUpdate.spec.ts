@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ErrorCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, UpdateType } from '../../Constants';
 import { BreakpointErrorUpdate } from './BreakpointErrorUpdate';
 
 describe('BreakpointErrorUpdate', () => {
@@ -21,7 +21,7 @@ describe('BreakpointErrorUpdate', () => {
             packetLength: undefined,
             requestId: 0,
             errorCode: ErrorCode.OK,
-            updateType: UPDATE_TYPES.BREAKPOINT_ERROR,
+            updateType: UpdateType.BreakpointError,
 
             breakpointId: 3,
             compileErrors: [
@@ -41,7 +41,7 @@ describe('BreakpointErrorUpdate', () => {
             packetLength: 64, // 4 bytes
             requestId: 0, // 4 bytes
             errorCode: ErrorCode.OK, // 4 bytes
-            updateType: UPDATE_TYPES.BREAKPOINT_ERROR, // 4 bytes
+            updateType: UpdateType.BreakpointError, // 4 bytes
 
             //flags // 4 bytes
 
@@ -73,7 +73,7 @@ describe('BreakpointErrorUpdate', () => {
             packetLength: undefined,
             requestId: 0,
             errorCode: ErrorCode.OK,
-            updateType: UPDATE_TYPES.BREAKPOINT_ERROR,
+            updateType: UpdateType.BreakpointError,
 
             breakpointId: 3,
             compileErrors: [],
@@ -87,7 +87,7 @@ describe('BreakpointErrorUpdate', () => {
             packetLength: 36, // 4 bytes
             requestId: 0, // 4 bytes
             errorCode: ErrorCode.OK, // 4 bytes
-            updateType: UPDATE_TYPES.BREAKPOINT_ERROR, // 4 bytes
+            updateType: UpdateType.BreakpointError, // 4 bytes
 
             //flags // 4 bytes
 

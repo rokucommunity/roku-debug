@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { COMMANDS, STEP_TYPE } from '../../Constants';
+import { Command, StepType } from '../../Constants';
 import { StackTraceRequest } from './StackTraceRequest';
 
 describe('StackTraceRequest', () => {
@@ -12,7 +12,7 @@ describe('StackTraceRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            commandCode: COMMANDS.STACKTRACE,
+            command: Command.StackTrace,
 
             threadIndex: 2
         });
@@ -22,7 +22,7 @@ describe('StackTraceRequest', () => {
         ).to.eql({
             packetLength: 16, // 4 bytes
             requestId: 3, // 4 bytes
-            commandCode: COMMANDS.STACKTRACE, // 4 bytes
+            command: Command.StackTrace, // 4 bytes
 
             threadIndex: 2 //4 bytes
         });

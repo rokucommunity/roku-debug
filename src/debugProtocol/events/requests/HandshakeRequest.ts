@@ -2,7 +2,7 @@ import { SmartBuffer } from 'smart-buffer';
 import { util } from '../../../util';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
-import type { COMMANDS } from '../../Constants';
+import type { Command } from '../../Constants';
 
 /**
  * The initial handshake sent by the client. This is just the `magic` to initiate the debug protocol session
@@ -46,6 +46,6 @@ export class HandshakeRequest implements ProtocolRequest {
         packetLength: undefined as number,
         //hardcode the max integer value. This must be the same value as the HandshakeResponse class
         requestId: HandshakeRequest.REQUEST_ID,
-        commandCode: undefined as COMMANDS
+        command: undefined as Command
     };
 }

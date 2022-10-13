@@ -1,9 +1,8 @@
 import { DebugProtocolClient } from './DebugProtocolClient';
 import { expect } from 'chai';
 import type { SmartBuffer } from 'smart-buffer';
-import { MockDebugProtocolServer } from '../MockDebugProtocolServer.spec';
 import { createSandbox } from 'sinon';
-import { StopReasonCode, VARIABLE_REQUEST_FLAGS } from '../Constants';
+import { ErrorCode, StopReasonCode, VARIABLE_REQUEST_FLAGS } from '../Constants';
 import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../../util';
@@ -17,48 +16,113 @@ import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpda
 const sinon = createSandbox();
 
 describe('DebugProtocolClient', () => {
-    let bsDebugger: DebugProtocolClient;
-    let roku: MockDebugProtocolServer;
+    let server: DebugProtocolServer;
+    let client: DebugProtocolClient;
+    let plugin: TestPlugin;
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
-        roku = new MockDebugProtocolServer();
-        await roku.initialize();
 
-        bsDebugger = new DebugProtocolClient({
-            host: 'localhost',
-            controllerPort: roku.controllerPort
-        });
+        const options = {
+            controllerPort: undefined as number,
+            host: '127.0.0.1'
+        };
+
+        if (!options.controllerPort) {
+            options.controllerPort = await portfinder.getPortPromise();
+        }
+        server = new DebugProtocolServer(options);
+        plugin = server.plugins.add(new TestPlugin());
+        await server.start();
+
+        client = new DebugProtocolClient(options);
+        //disable logging for tests because they clutter the test output
+        client['logger'].logLevel = 'off';
     });
 
-    afterEach(() => {
-        bsDebugger?.destroy();
-        bsDebugger = undefined;
+    afterEach(async () => {
+        client?.destroy();
+        //shut down and destroy the server after each test
+        await server?.stop();
+        await util.sleep(10);
         sinon.restore();
-        roku.destroy();
     });
 
-    describe('connect', () => {
-        it('sends magic to server on connect', async () => {
-            let action = roku.waitForMagic();
-            void bsDebugger.connect();
-            void roku.processActions();
-            let magic = await action.promise;
-            expect(magic).to.equal(DebugProtocolClient.DEBUGGER_MAGIC);
-        });
+    it('handles v3 handshake', async () => {
+        //these are false by default
+        expect(client.watchPacketLength).to.be.equal(false);
+        expect(client.isHandshakeComplete).to.be.equal(false);
 
-        it('validates magic from server on connect', async () => {
-            const magicAction = roku.waitForMagic();
-            roku.sendHandshakeResponse(magicAction.promise);
+        await client.connect();
+        expect(plugin.responses[0].data).to.eql({
+            packetLength: undefined,
+            requestId: HandshakeRequest.REQUEST_ID,
+            errorCode: ErrorCode.OK,
 
-            void bsDebugger.connect();
+            magic: 'bsdebug',
+            protocolVersion: '3.1.0',
+            revisionTimestamp: new Date(2022, 1, 1)
+        } as HandshakeV3Response['data']);
 
-            void roku.processActions();
+        //version 3.0 includes packet length, so these should be true now
+        expect(client.watchPacketLength).to.be.equal(true);
+        expect(client.isHandshakeComplete).to.be.equal(true);
+    });
 
-            //wait for the debugger to finish verifying the handshake
-            expect(
-                await bsDebugger.once('handshake-verified')
-            ).to.be.true;
+    it('throws on magic mismatch', async () => {
+        plugin.pushResponse(
+            HandshakeV3Response.fromJson({
+                magic: 'not correct magic',
+                protocolVersion: '3.1.0',
+                revisionTimestamp: new Date(2022, 1, 1)
+            })
+        );
+
+        const verifyHandshakePromise = client.once('handshake-verified');
+
+        await client.connect();
+
+        //wait for the debugger to finish verifying the handshake
+        expect(await verifyHandshakePromise).to.be.false;
+    });
+
+    it('handles legacy handshake', async () => {
+
+        expect(client.watchPacketLength).to.be.equal(false);
+        expect(client.isHandshakeComplete).to.be.equal(false);
+
+        plugin.pushResponse(
+            HandshakeResponse.fromJson({
+                magic: DebugProtocolClient.DEBUGGER_MAGIC,
+                protocolVersion: '1.0.0'
+            })
+        );
+
+        await client.connect();
+
+        expect(client.watchPacketLength).to.be.equal(false);
+        expect(client.isHandshakeComplete).to.be.equal(true);
+    });
+
+    it.only('handles AllThreadsStoppedUpdate after handshake', async () => {
+        await client.connect();
+
+        const [, event] = await Promise.all([
+            //wait for the client to suspend
+            client.once('suspend'),
+            //send an update which should cause the client to suspend
+            server.sendUpdate(
+                AllThreadsStoppedUpdate.fromJson({
+                    threadIndex: 1,
+                    stopReason: StopReasonCode.Break,
+                    stopReasonDetail: 'test'
+                })
+            )
+        ]);
+        expect(event.data).include({
+            threadIndex: 1,
+            stopReason: StopReasonCode.Break,
+            stopReasonDetail: 'test'
         });
     });
 
@@ -94,10 +158,21 @@ describe('DebugProtocolClient', () => {
         }
 
         it('skips case sensitivity info on lower protocol versions', async () => {
-            bsDebugger.protocolVersion = '2.0.0';
-            bsDebugger['stopped'] = true;
-            const stub = sinon.stub(bsDebugger as any, 'makeRequest').callsFake(() => { });
-            await bsDebugger.getVariables(['m', 'top'], false, 1, 2);
+            await client.connect();
+            //send the AllThreadsStopped event, and also wait for the client to suspend
+            await Promise.all([
+                server.sendUpdate(AllThreadsStoppedUpdate.fromJson({
+                    threadIndex: 2,
+                    stopReason: StopReasonCode.Break,
+                    stopReasonDetail: 'because'
+                })),
+                await client.once('suspend')
+            ]);
+
+            client.protocolVersion = '2.0.0';
+            client['stopped'] = true;
+            const stub = sinon.stub(client as any, 'makeRequest').callsFake(() => { });
+            await client.getVariables(['m', 'top'], false, 1, 2);
             expect(
                 getVariablesRequestBufferToJson(stub.getCalls()[0].args[0])
             ).to.eql({
@@ -111,10 +186,10 @@ describe('DebugProtocolClient', () => {
         });
 
         it('marks strings as case-sensitive', async () => {
-            bsDebugger.protocolVersion = '3.1.0';
-            bsDebugger['stopped'] = true;
-            const stub = sinon.stub(bsDebugger as any, 'makeRequest').callsFake(() => { });
-            await bsDebugger.getVariables(['m', 'top', '"someKey"', '""someKeyWithInternalQuotes""'], true, 1, 2);
+            client.protocolVersion = '3.1.0';
+            client['stopped'] = true;
+            const stub = sinon.stub(client as any, 'makeRequest').callsFake(() => { });
+            await client.getVariables(['m', 'top', '"someKey"', '""someKeyWithInternalQuotes""'], true, 1, 2);
             expect(
                 getVariablesRequestBufferToJson(stub.getCalls()[0].args[0])
             ).to.eql({
@@ -177,130 +252,3 @@ class TestPlugin implements ProtocolPlugin {
         (this.responses as Array<ProtocolResponse>).push(event.response);
     }
 }
-
-describe.skip('Debugger new tests', () => {
-    let server: DebugProtocolServer;
-    let client: DebugProtocolClient;
-    let plugin: TestPlugin;
-    const options = {
-        controllerPort: undefined as number,
-        host: '127.0.0.1'
-    };
-
-    beforeEach(async () => {
-        if (!options.controllerPort) {
-            options.controllerPort = await portfinder.getPortPromise();
-        }
-        server = new DebugProtocolServer(options);
-        plugin = server.plugins.add(new TestPlugin());
-        await server.start();
-
-        client = new DebugProtocolClient(options);
-        //disable logging for tests because they clutter the test output
-        client['logger'].logLevel = 'off';
-    });
-
-    afterEach(async () => {
-        client?.destroy();
-        //shut down and destroy the server after each test
-        await server?.stop();
-        await util.sleep(10);
-    });
-
-    it('handles v3 handshake', async () => {
-        //these are false by default
-        expect(client.watchPacketLength).to.be.equal(false);
-        expect(client.isHandshakeComplete).to.be.equal(false);
-
-        await client.connect();
-        expect(plugin.responses[0].data).to.eql({
-            magic: 'bsdebug',
-            protocolVersion: '3.1.0',
-            revisionTimestamp: new Date(2022, 1, 1)
-        } as HandshakeV3Response['data']);
-
-        //version 3.0 includes packet length, so these should be true now
-        expect(client.watchPacketLength).to.be.equal(true);
-        expect(client.isHandshakeComplete).to.be.equal(true);
-    });
-
-    it('throws on magic mismatch', async () => {
-        plugin.pushResponse(
-            HandshakeV3Response.fromJson({
-                magic: 'not correct magic',
-                protocolVersion: '3.1.0',
-                revisionTimestamp: new Date(2022, 1, 1)
-            })
-        );
-
-        const verifyHandshakePromise = client.once('handshake-verified');
-
-        await client.connect();
-
-        //wait for the debugger to finish verifying the handshake
-        expect(await verifyHandshakePromise).to.be.false;
-    });
-
-    it('handles legacy handshake', async () => {
-
-        expect(client.watchPacketLength).to.be.equal(false);
-        expect(client.isHandshakeComplete).to.be.equal(false);
-
-        plugin.pushResponse(
-            HandshakeResponse.fromJson({
-                magic: DebugProtocolClient.DEBUGGER_MAGIC,
-                protocolVersion: '1.0.0'
-            })
-        );
-
-        await client.connect();
-
-        expect(client.watchPacketLength).to.be.equal(false);
-        expect(client.isHandshakeComplete).to.be.equal(true);
-    });
-
-    it('handles events after handshake', async () => {
-        await client.connect();
-
-        await server.sendUpdate(
-            AllThreadsStoppedUpdate.fromJson({
-                primaryThreadIndex: 1,
-                stopReason: StopReasonCode.Break,
-                stopReasonDetail: 'test'
-            })
-        );
-        const event = await client.once('suspend');
-        expect(event.data).include({
-            primaryThreadIndex: 1,
-            stopReason: StopReasonCode.Break,
-            stopReasonDetail: 'test'
-        });
-        // let protocolEvent = createProtocolEventV3({
-        //     requestId: 0,
-        //     errorCode: ERROR_CODES.CANT_CONTINUE,
-        //     updateType: UPDATE_TYPES.ALL_THREADS_STOPPED
-        // });
-
-        // let mockResponse = new SmartBuffer();
-        // mockResponse.writeBuffer(handshake.toBuffer());
-        // mockResponse.writeBuffer(protocolEvent.toBuffer());
-
-        // bsDebugger['unhandledData'] = mockResponse.toBuffer();
-
-        // const stub = sinon.stub(bsDebugger as any, 'removedProcessedBytes').callThrough();
-
-        // expect(bsDebugger.watchPacketLength).to.be.equal(false);
-        // expect(bsDebugger.handshakeComplete).to.be.equal(false);
-
-        // expect(bsDebugger['parseUnhandledData'](bsDebugger['unhandledData'])).to.be.equal(true);
-
-        // expect(bsDebugger.watchPacketLength).to.be.equal(true);
-        // expect(bsDebugger.handshakeComplete).to.be.equal(true);
-        // expect(bsDebugger['unhandledData'].byteLength).to.be.equal(0);
-
-        // let calls = stub.getCalls();
-        // expect(calls[0].args[0]).instanceOf(HandshakeResponseV3);
-        // expect(calls[1].args[0]).instanceOf(ProtocolEventV3);
-    });
-
-});

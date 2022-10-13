@@ -1,6 +1,5 @@
 import { SmartBuffer } from 'smart-buffer';
-import type { RequestData } from '../../Constants';
-import { COMMANDS } from '../../Constants';
+import { Command } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
@@ -34,6 +33,6 @@ export class ContinueRequest implements ProtocolRequest {
         //common props
         packetLength: undefined as number,
         requestId: undefined as number,
-        commandCode: COMMANDS.CONTINUE
+        command: Command.Continue
     };
 }

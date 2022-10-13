@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ErrorCode, StopReasonCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, StopReasonCode, UpdateType } from '../../Constants';
 import { IOPortOpenedUpdate } from './IOPortOpenedUpdate';
 
 describe('IOPortOpenedUpdate', () => {
@@ -12,7 +12,7 @@ describe('IOPortOpenedUpdate', () => {
             packetLength: undefined,
             requestId: 0,
             errorCode: ErrorCode.OK,
-            updateType: UPDATE_TYPES.IO_PORT_OPENED,
+            updateType: UpdateType.IOPortOpened,
 
             port: 1234
         });
@@ -23,7 +23,7 @@ describe('IOPortOpenedUpdate', () => {
             packetLength: 20, // 4 bytes
             requestId: 0, // 4 bytes
             errorCode: ErrorCode.OK, // 4 bytes
-            updateType: UPDATE_TYPES.IO_PORT_OPENED, // 4 bytes
+            updateType: UpdateType.IOPortOpened, // 4 bytes
 
             port: 1234 // 4 bytes
         });

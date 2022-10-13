@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ErrorCode, StopReasonCode, UPDATE_TYPES } from '../../Constants';
+import { ErrorCode, UpdateType } from '../../Constants';
 import { CompileErrorUpdate } from './CompileErrorUpdate';
 
 describe('CompileErrorUpdate', () => {
@@ -15,7 +15,7 @@ describe('CompileErrorUpdate', () => {
             packetLength: undefined,
             requestId: 0,
             errorCode: ErrorCode.OK,
-            updateType: UPDATE_TYPES.COMPILE_ERROR,
+            updateType: UpdateType.CompileError,
 
             errorMessage: 'crashed',
             filePath: 'pkg:/source/main.brs',
@@ -29,7 +29,7 @@ describe('CompileErrorUpdate', () => {
             packetLength: 58, // 4 bytes
             requestId: 0, // 4 bytes
             errorCode: ErrorCode.OK, // 4 bytes
-            updateType: UPDATE_TYPES.COMPILE_ERROR, // 4 bytes
+            updateType: UpdateType.CompileError, // 4 bytes
 
             errorMessage: 'crashed', // 8 bytes
             filePath: 'pkg:/source/main.brs', // 21 bytes

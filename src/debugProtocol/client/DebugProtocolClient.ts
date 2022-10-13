@@ -1,7 +1,7 @@
 import * as Net from 'net';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
-import { PROTOCOL_ERROR_CODES, COMMANDS, STEP_TYPE, StopReasonCode, ErrorCode, UPDATE_TYPES } from '../Constants';
+import { PROTOCOL_ERROR_CODES, Command, StepType, StopReasonCode, ErrorCode, UpdateType, UpdateTypeCode, StepTypeCode } from '../Constants';
 import { SmartBuffer } from 'smart-buffer';
 import { logger } from '../../logging';
 import { ExecuteV3Response } from '../events/responses/ExecuteV3Response';
@@ -77,8 +77,8 @@ export class DebugProtocolClient {
     private ioClient: Net.Socket;
     private buffer = Buffer.alloc(0);
     private stopped = false;
-    private totalRequests = 0;
-    private activeRequests1 = new Map<number, ProtocolRequest>();
+    private requestIdSequence = 0;
+    private activeRequests = new Map<number, ProtocolRequest>();
     private options: ConstructorOptions;
 
     /**
@@ -234,7 +234,7 @@ export class DebugProtocolClient {
             this.stopped = false;
             return this.sendRequest<GenericResponse>(
                 ContinueRequest.fromJson({
-                    requestId: this.totalRequests++
+                    requestId: this.requestIdSequence++
                 })
             );
         }
@@ -244,7 +244,7 @@ export class DebugProtocolClient {
         if (!this.stopped || force) {
             return this.sendRequest<GenericResponse>(
                 StopRequest.fromJson({
-                    requestId: this.totalRequests++
+                    requestId: this.requestIdSequence++
                 })
             );
         }
@@ -253,34 +253,31 @@ export class DebugProtocolClient {
     public async exitChannel() {
         return this.sendRequest<GenericResponse>(
             ExitChannelRequest.fromJson({
-                requestId: this.totalRequests++
+                requestId: this.requestIdSequence++
             })
         );
     }
 
     public async stepIn(threadIndex: number = this.primaryThread) {
-        return this.step(STEP_TYPE.STEP_TYPE_LINE, threadIndex);
+        return this.step(StepType.Line, threadIndex);
     }
 
     public async stepOver(threadIndex: number = this.primaryThread) {
-        return this.step(STEP_TYPE.STEP_TYPE_OVER, threadIndex);
+        return this.step(StepType.Over, threadIndex);
     }
 
     public async stepOut(threadIndex: number = this.primaryThread) {
-        return this.step(STEP_TYPE.STEP_TYPE_OUT, threadIndex);
+        return this.step(StepType.Out, threadIndex);
     }
 
-    private async step(stepType: STEP_TYPE, threadIndex: number): Promise<GenericResponse> {
-        this.logger.log('[step]', { stepType: STEP_TYPE[stepType], threadId: threadIndex, stopped: this.stopped });
+    private async step(stepType: StepType, threadIndex: number): Promise<GenericResponse> {
+        this.logger.log('[step]', { stepType: stepType, threadId: threadIndex, stopped: this.stopped });
 
-        let buffer = new SmartBuffer({ size: 17 });
-        buffer.writeUInt32LE(threadIndex); // thread_index
-        buffer.writeUInt8(stepType); // step_type
         if (this.stopped) {
             this.stopped = false;
             let stepResult = await this.sendRequest<GenericResponse>(
                 StepRequest.fromJson({
-                    requestId: this.totalRequests++,
+                    requestId: this.requestIdSequence++,
                     stepType: stepType,
                     threadIndex: threadIndex
                 })
@@ -300,7 +297,7 @@ export class DebugProtocolClient {
         if (this.stopped) {
             let result = await this.sendRequest<ThreadsResponse>(
                 ThreadsRequest.fromJson({
-                    requestId: this.totalRequests++
+                    requestId: this.requestIdSequence++
                 })
             );
 
@@ -330,7 +327,7 @@ export class DebugProtocolClient {
         if (this.stopped && threadIndex > -1) {
             return this.sendRequest<StackTraceResponse>(
                 StackTraceRequest.fromJson({
-                    requestId: this.totalRequests++,
+                    requestId: this.requestIdSequence++,
                     threadIndex: threadIndex
                 })
             );
@@ -351,7 +348,7 @@ export class DebugProtocolClient {
     public async getVariables(variablePathEntries: Array<string> = [], getChildKeys = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
         if (this.stopped && threadIndex > -1) {
             const request = VariablesRequest.fromJson({
-                requestId: this.totalRequests++,
+                requestId: this.requestIdSequence++,
                 threadIndex: threadIndex,
                 stackFrameIndex: stackFrameIndex,
                 getChildKeys: getChildKeys,
@@ -371,7 +368,7 @@ export class DebugProtocolClient {
         if (this.stopped && threadIndex > -1) {
             return this.sendRequest<ExecuteV3Response>(
                 ExecuteRequest.fromJson({
-                    requestId: this.totalRequests++,
+                    requestId: this.requestIdSequence++,
                     threadIndex: threadIndex,
                     stackFrameIndex: stackFrameIndex,
                     sourceCode: sourceCode
@@ -384,11 +381,17 @@ export class DebugProtocolClient {
         const { enableComponentLibrarySpecificBreakpoints } = this;
         if (breakpoints?.length > 0) {
             const json = {
-                requestId: this.totalRequests++,
-                breakpoints: breakpoints.map(x => ({
-                    ...x,
-                    ignoreCount: x.hitCount
-                }))
+                requestId: this.requestIdSequence++,
+                breakpoints: breakpoints.map(x => {
+                    let breakpoint = {
+                        ...x,
+                        ignoreCount: x.hitCount
+                    };
+                    if (enableComponentLibrarySpecificBreakpoints && breakpoint.componentLibraryName) {
+                        breakpoint.filePath = breakpoint.filePath.replace(/^pkg:\//i, `lib:/${breakpoint.componentLibraryName}/`);
+                    }
+                    return breakpoint;
+                })
             };
 
             if (this.supportsConditionalBreakpoints) {
@@ -407,7 +410,7 @@ export class DebugProtocolClient {
     public async listBreakpoints(): Promise<ListBreakpointsResponse> {
         return this.sendRequest<ListBreakpointsResponse>(
             ListBreakpointsRequest.fromJson({
-                requestId: this.totalRequests++
+                requestId: this.requestIdSequence++
             })
         );
     }
@@ -415,7 +418,7 @@ export class DebugProtocolClient {
     public async removeBreakpoints(breakpointIds: number[]): Promise<RemoveBreakpointsResponse> {
         if (breakpointIds?.length > 0) {
             const command = RemoveBreakpointsRequest.fromJson({
-                requestId: this.totalRequests++,
+                requestId: this.requestIdSequence++,
                 breakpointIds: breakpointIds
             });
             return this.sendRequest<RemoveBreakpointsResponse>(command);
@@ -427,25 +430,22 @@ export class DebugProtocolClient {
      * Send a request to the roku device, and get a promise that resolves once we have received the response
      */
     private async sendRequest<T>(request: ProtocolRequest) {
-        this.totalRequests++;
-        let requestId = this.totalRequests;
+        this.activeRequests.set(request.data.requestId, request);
 
-        this.activeRequests1.set(requestId, request);
-
-        return new Promise<T>((resolve, reject) => {
+        return new Promise<T>((resolve) => {
             let unsubscribe = this.on('response', (event) => {
-                if (event.data.requestId === requestId) {
+                if (event.data.requestId === request.data.requestId) {
                     unsubscribe();
-                    this.activeRequests1.delete(requestId);
+                    this.activeRequests.delete(request.data.requestId);
                     resolve(event as unknown as T);
                 }
             });
 
-            this.logger.debug('makeRequest', `requestId=${requestId}`, request);
+            this.logger.debug('makeRequest', `requestId=${request.data.requestId}`, request);
             if (this.controllerClient) {
                 this.controllerClient.write(request.toBuffer());
             } else {
-                throw new Error(`Controller connection was closed - Command: ${COMMANDS[request.data.commandCode]}`);
+                throw new Error(`Controller connection was closed - Command: ${Command[request.data.command]}`);
             }
         });
     }
@@ -516,58 +516,62 @@ export class DebugProtocolClient {
             //requestId 0 means this is an update
             return this.getResponse(genericResponse);
         } else {
-            return this.getUpdate(genericResponse);
+            return this.getUpdate();
         }
     }
 
     private getResponse(genericResponse: GenericV3Response): ProtocolResponse {
-        const request = this.activeRequests1.get(genericResponse.data.requestId);
+        const request = this.activeRequests.get(genericResponse.data.requestId);
         if (!request) {
             return;
         }
-        switch (request.data.commandCode) {
-            case COMMANDS.STOP:
-            case COMMANDS.CONTINUE:
-            case COMMANDS.STEP:
-            case COMMANDS.EXIT_CHANNEL:
+        switch (request.data.command) {
+            case Command.Stop:
+            case Command.Continue:
+            case Command.Step:
+            case Command.ExitChannel:
                 return genericResponse;
-            case COMMANDS.EXECUTE:
+            case Command.Execute:
                 return ExecuteV3Response.fromBuffer(this.buffer);
-            case COMMANDS.ADD_BREAKPOINTS:
-            case COMMANDS.ADD_CONDITIONAL_BREAKPOINTS:
+            case Command.AddBreakpoints:
+            case Command.AddConditionalBreakpoints:
                 return AddBreakpointsResponse.fromBuffer(this.buffer);
-            case COMMANDS.LIST_BREAKPOINTS:
+            case Command.ListBreakpoints:
                 return ListBreakpointsResponse.fromBuffer(this.buffer);
-            case COMMANDS.REMOVE_BREAKPOINTS:
+            case Command.RemoveBreakpoints:
                 return RemoveBreakpointsResponse.fromBuffer(this.buffer);
-            case COMMANDS.VARIABLES:
+            case Command.Variables:
                 return VariablesResponse.fromBuffer(this.buffer);
-            case COMMANDS.STACKTRACE:
+            case Command.StackTrace:
                 return this.watchPacketLength ? StackTraceV3Response.fromBuffer(this.buffer) : StackTraceResponse.fromBuffer(this.buffer);
-            case COMMANDS.THREADS:
+            case Command.Threads:
                 return ThreadsResponse.fromBuffer(this.buffer);
             default:
                 return undefined;
         }
     }
 
-    private getUpdate(genericResponse: GenericV3Response): ProtocolUpdate {
+    private getUpdate(): ProtocolUpdate {
         //read the update_type from the buffer (save some buffer parsing time by narrowing to the exact update type)
-        const updateType = this.buffer.readUInt32LE(genericResponse.readOffset) as UPDATE_TYPES;
+        const updateTypeCode = this.buffer.readUInt32LE(
+            // if the protocol supports packet length, then update_type is bytes 12-16. Otherwise, it's bytes 8-12
+            this.watchPacketLength ? 12 : 8
+        );
+        const updateType = UpdateTypeCode[updateTypeCode] as UpdateType;
 
-        this.logger.log('Update Type:', updateType, UPDATE_TYPES[updateType]);
+        this.logger.log('Update Type:', updateType, updateType);
         switch (updateType) {
-            case UPDATE_TYPES.IO_PORT_OPENED:
+            case UpdateType.IOPortOpened:
                 //TODO handle this
                 return IOPortOpenedUpdate.fromBuffer(this.buffer);
-            case UPDATE_TYPES.ALL_THREADS_STOPPED:
+            case UpdateType.AllThreadsStopped:
                 return AllThreadsStoppedUpdate.fromBuffer(this.buffer);
-            case UPDATE_TYPES.THREAD_ATTACHED:
+            case UpdateType.ThreadAttached:
                 return ThreadAttachedUpdate.fromBuffer(this.buffer);
-            case UPDATE_TYPES.BREAKPOINT_ERROR:
+            case UpdateType.BreakpointError:
                 //we do nothing with breakpoint errors at this time.
                 return BreakpointErrorUpdate.fromBuffer(this.buffer);
-            case UPDATE_TYPES.COMPILE_ERROR:
+            case UpdateType.CompileError:
                 return CompileErrorUpdate.fromBuffer(this.buffer);
             default:
                 return undefined;
