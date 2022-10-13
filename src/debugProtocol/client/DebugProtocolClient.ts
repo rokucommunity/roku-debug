@@ -41,10 +41,6 @@ export class DebugProtocolClient {
 
     private logger = logger.createLogger(`[${DebugProtocolClient.name}]`);
 
-    public get isStopped(): boolean {
-        return this.stopped;
-    }
-
     // The highest tested version of the protocol we support.
     public supportedVersionRange = '<=3.0.0';
 
@@ -76,8 +72,11 @@ export class DebugProtocolClient {
     private controllerClient: Net.Socket;
     private ioClient: Net.Socket;
     private buffer = Buffer.alloc(0);
-    private stopped = false;
-    private requestIdSequence = 0;
+    /**
+     * Is the debugger currently stopped at a line of code in the program
+     */
+    public isStopped = false;
+    private requestIdSequence = 1;
     private activeRequests = new Map<number, ProtocolRequest>();
     private options: ConstructorOptions;
 
@@ -230,8 +229,8 @@ export class DebugProtocolClient {
     }
 
     public async continue() {
-        if (this.stopped) {
-            this.stopped = false;
+        if (this.isStopped) {
+            this.isStopped = false;
             return this.sendRequest<GenericResponse>(
                 ContinueRequest.fromJson({
                     requestId: this.requestIdSequence++
@@ -241,7 +240,7 @@ export class DebugProtocolClient {
     }
 
     public async pause(force = false) {
-        if (!this.stopped || force) {
+        if (!this.isStopped || force) {
             return this.sendRequest<GenericResponse>(
                 StopRequest.fromJson({
                     requestId: this.requestIdSequence++
@@ -271,10 +270,10 @@ export class DebugProtocolClient {
     }
 
     private async step(stepType: StepType, threadIndex: number): Promise<GenericResponse> {
-        this.logger.log('[step]', { stepType: stepType, threadId: threadIndex, stopped: this.stopped });
+        this.logger.log('[step]', { stepType: stepType, threadId: threadIndex, stopped: this.isStopped });
 
-        if (this.stopped) {
-            this.stopped = false;
+        if (this.isStopped) {
+            this.isStopped = false;
             let stepResult = await this.sendRequest<GenericResponse>(
                 StepRequest.fromJson({
                     requestId: this.requestIdSequence++,
@@ -294,7 +293,7 @@ export class DebugProtocolClient {
     }
 
     public async threads() {
-        if (this.stopped) {
+        if (this.isStopped) {
             let result = await this.sendRequest<ThreadsResponse>(
                 ThreadsRequest.fromJson({
                     requestId: this.requestIdSequence++
@@ -324,7 +323,7 @@ export class DebugProtocolClient {
     public async stackTrace(threadIndex: number = this.primaryThread) {
         let buffer = new SmartBuffer({ size: 16 });
         buffer.writeUInt32LE(threadIndex); // thread_index
-        if (this.stopped && threadIndex > -1) {
+        if (this.isStopped && threadIndex > -1) {
             return this.sendRequest<StackTraceResponse>(
                 StackTraceRequest.fromJson({
                     requestId: this.requestIdSequence++,
@@ -345,27 +344,27 @@ export class DebugProtocolClient {
      * @param stackFrameIndex 0 = first function called, nframes-1 = last function. This indexing does not match the order of the frames returned from the STACKTRACE command
      * @param threadIndex the index (or perhaps ID?) of the thread to get variables for
      */
-    public async getVariables(variablePathEntries: Array<string> = [], getChildKeys = true, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
-        if (this.stopped && threadIndex > -1) {
+    public async getVariables(variablePathEntries: Array<string> = [], stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
+        if (this.isStopped && threadIndex > -1) {
             const request = VariablesRequest.fromJson({
                 requestId: this.requestIdSequence++,
                 threadIndex: threadIndex,
                 stackFrameIndex: stackFrameIndex,
-                getChildKeys: getChildKeys,
+                getChildKeys: true,
                 variablePathEntries: variablePathEntries.map(x => ({
                     //remove leading and trailing quotes
                     name: x.replace(/^"/, '').replace(/"$/, ''),
-                    isCaseSensitive: x.startsWith('"') && x.endsWith('"')
+                    forceCaseInsensitive: !x.startsWith('"') && !x.endsWith('"')
                 })),
                 //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
-                enableCaseInsensitivityFlag: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
+                enableForceCaseInsensitivity: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
             });
             return this.sendRequest<VariablesResponse>(request);
         }
     }
 
     public async executeCommand(sourceCode: string, stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
-        if (this.stopped && threadIndex > -1) {
+        if (this.isStopped && threadIndex > -1) {
             return this.sendRequest<ExecuteV3Response>(
                 ExecuteRequest.fromJson({
                     requestId: this.requestIdSequence++,
@@ -583,7 +582,7 @@ export class DebugProtocolClient {
      */
     private handleUpdate(update: ProtocolUpdate) {
         if (update instanceof AllThreadsStoppedUpdate || update instanceof ThreadAttachedUpdate) {
-            this.stopped = true;
+            this.isStopped = true;
             let eventName: 'runtime-error' | 'suspend' = (update.data.stopReason === StopReasonCode.RuntimeError ? 'runtime-error' : 'suspend');
 
             const isValidStopReason = [StopReasonCode.RuntimeError, StopReasonCode.Break, StopReasonCode.StopStatement].includes(update.data.stopReason);

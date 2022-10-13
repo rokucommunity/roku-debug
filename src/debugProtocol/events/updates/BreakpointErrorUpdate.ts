@@ -96,7 +96,7 @@ export class BreakpointErrorUpdate {
 
     public success = false;
 
-    public readOffset = -1;
+    public readOffset: number = undefined;
 
     public data = {
         breakpointId: undefined as number,

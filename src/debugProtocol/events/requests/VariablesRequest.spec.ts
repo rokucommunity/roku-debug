@@ -3,17 +3,17 @@ import { Command } from '../../Constants';
 import { VariablesRequest } from './VariablesRequest';
 
 describe('VariablesRequest', () => {
-    it('serializes and deserializes properly for case sensitive lookups', () => {
+    it('serializes and deserializes properly for unsupported forceCaseSensitivity lookups', () => {
         const command = VariablesRequest.fromJson({
             requestId: 3,
             getChildKeys: true,
-            enableCaseInsensitivityFlag: false,
+            enableForceCaseInsensitivity: false,
             stackFrameIndex: 1,
             threadIndex: 2,
             variablePathEntries: [
-                { name: 'a', isCaseSensitive: false },
-                { name: 'b', isCaseSensitive: false },
-                { name: 'c', isCaseSensitive: false }
+                { name: 'a', forceCaseInsensitive: true },
+                { name: 'b', forceCaseInsensitive: true },
+                { name: 'c', forceCaseInsensitive: true }
             ]
         });
 
@@ -23,13 +23,13 @@ describe('VariablesRequest', () => {
             command: Command.Variables,
 
             getChildKeys: true,
-            enableCaseInsensitivityFlag: false,
+            enableForceCaseInsensitivity: false,
             stackFrameIndex: 1,
             threadIndex: 2,
             variablePathEntries: [
-                { name: 'a', isCaseSensitive: true },
-                { name: 'b', isCaseSensitive: true },
-                { name: 'c', isCaseSensitive: true }
+                { name: 'a', forceCaseInsensitive: false },
+                { name: 'b', forceCaseInsensitive: false },
+                { name: 'c', forceCaseInsensitive: false }
             ]
         });
 
@@ -42,14 +42,14 @@ describe('VariablesRequest', () => {
 
             //variable_request_flags // 1 byte
             getChildKeys: true, // 0 bytes
-            enableCaseInsensitivityFlag: false, // 0 bytes
+            enableForceCaseInsensitivity: false, // 0 bytes
             stackFrameIndex: 1, // 4 bytes
             threadIndex: 2, // 4 bytes
             // variable_path_len // 4 bytes
             variablePathEntries: [
-                { name: 'a', isCaseSensitive: true }, // 2 bytes
-                { name: 'b', isCaseSensitive: true }, // 2 bytes
-                { name: 'c', isCaseSensitive: true } // 2 bytes
+                { name: 'a', forceCaseInsensitive: false }, // 2 bytes
+                { name: 'b', forceCaseInsensitive: false }, // 2 bytes
+                { name: 'c', forceCaseInsensitive: false } // 2 bytes
             ]
         });
     });
@@ -58,13 +58,13 @@ describe('VariablesRequest', () => {
         const command = VariablesRequest.fromJson({
             requestId: 3,
             getChildKeys: false,
-            enableCaseInsensitivityFlag: true,
+            enableForceCaseInsensitivity: true,
             stackFrameIndex: 1,
             threadIndex: 2,
             variablePathEntries: [
-                { name: 'a', isCaseSensitive: false },
-                { name: 'b', isCaseSensitive: true },
-                { name: 'c', isCaseSensitive: false }
+                { name: 'a', forceCaseInsensitive: true },
+                { name: 'b', forceCaseInsensitive: false },
+                { name: 'c', forceCaseInsensitive: true }
             ]
         });
 
@@ -74,13 +74,13 @@ describe('VariablesRequest', () => {
             command: Command.Variables,
 
             getChildKeys: false,
-            enableCaseInsensitivityFlag: true,
+            enableForceCaseInsensitivity: true,
             stackFrameIndex: 1,
             threadIndex: 2,
             variablePathEntries: [
-                { name: 'a', isCaseSensitive: false },
-                { name: 'b', isCaseSensitive: true },
-                { name: 'c', isCaseSensitive: false }
+                { name: 'a', forceCaseInsensitive: true },
+                { name: 'b', forceCaseInsensitive: false },
+                { name: 'c', forceCaseInsensitive: true }
             ]
         });
 
@@ -93,22 +93,22 @@ describe('VariablesRequest', () => {
 
             //variable_request_flags // 1 byte
             getChildKeys: false, // 0 bytes
-            enableCaseInsensitivityFlag: true, // 0 bytes
+            enableForceCaseInsensitivity: true, // 0 bytes
             stackFrameIndex: 1, // 4 bytes
             threadIndex: 2, // 4 bytes
             // variable_path_len // 4 bytes
             variablePathEntries: [
                 {
                     name: 'a', // 2 bytes
-                    isCaseSensitive: false // 1 byte
+                    forceCaseInsensitive: true // 1 byte
                 }, // ?
                 {
                     name: 'b', // 2 bytes
-                    isCaseSensitive: true // 1 byte
+                    forceCaseInsensitive: false // 1 byte
                 }, // ?
                 {
                     name: 'c', // 2 bytes
-                    isCaseSensitive: false // 1 byte
+                    forceCaseInsensitive: true // 1 byte
                 } // ?
             ]
         });
@@ -118,7 +118,7 @@ describe('VariablesRequest', () => {
         const command = VariablesRequest.fromJson({
             requestId: 3,
             getChildKeys: false,
-            enableCaseInsensitivityFlag: true,
+            enableForceCaseInsensitivity: true,
             stackFrameIndex: 1,
             threadIndex: 2,
             variablePathEntries: []
@@ -130,7 +130,7 @@ describe('VariablesRequest', () => {
             command: Command.Variables,
 
             getChildKeys: false,
-            enableCaseInsensitivityFlag: true,
+            enableForceCaseInsensitivity: true,
             stackFrameIndex: 1,
             threadIndex: 2,
             variablePathEntries: []
@@ -145,7 +145,7 @@ describe('VariablesRequest', () => {
 
             //variable_request_flags // 1 byte
             getChildKeys: false, // 0 bytes
-            enableCaseInsensitivityFlag: true, // 0 bytes
+            enableForceCaseInsensitivity: true, // 0 bytes
             stackFrameIndex: 1, // 4 bytes
             threadIndex: 2, // 4 bytes
             // variable_path_len // 4 bytes

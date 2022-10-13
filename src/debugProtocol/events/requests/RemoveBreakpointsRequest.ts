@@ -39,7 +39,7 @@ export class RemoveBreakpointsRequest implements ProtocolRequest {
 
     public success = false;
 
-    public readOffset = -1;
+    public readOffset: number = undefined;
 
     public data = {
         /**

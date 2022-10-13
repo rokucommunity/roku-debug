@@ -1,31 +1,32 @@
 /* eslint-disable no-bitwise */
 import { SmartBuffer } from 'smart-buffer';
-import { Command, VARIABLE_REQUEST_FLAGS } from '../../Constants';
+import { Command } from '../../Constants';
 import { protocolUtils } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
-import { util } from '../../../util';
 
 export class VariablesRequest implements ProtocolRequest {
 
     public static fromJson(data: {
         requestId: number;
         getChildKeys: boolean;
-        enableCaseInsensitivityFlag: boolean;
+        enableForceCaseInsensitivity: boolean;
         threadIndex: number;
         stackFrameIndex: number;
         variablePathEntries: Array<{
             name: string;
-            isCaseSensitive: boolean;
+            forceCaseInsensitive: boolean;
         }>;
     }) {
         const request = new VariablesRequest();
         protocolUtils.loadJson(request, data);
         request.data.variablePathEntries ??= [];
-        // force all variables to case SENSITIVE if using the flag is disabled (just for consistency purposes),
-        // as it won't actually be sent
-        if (!request.data.enableCaseInsensitivityFlag) {
-            for (const entry of request.data.variablePathEntries) {
-                entry.isCaseSensitive = true;
+        // all variables will be case sensitive if the flag is disabled
+        for (const entry of request.data.variablePathEntries) {
+            if (request.data.enableForceCaseInsensitivity !== true) {
+                entry.forceCaseInsensitive = false;
+            } else {
+                //default any missing values to false
+                entry.forceCaseInsensitive ??= false;
             }
         }
         return request;
@@ -38,8 +39,8 @@ export class VariablesRequest implements ProtocolRequest {
 
             const variableRequestFlags = smartBuffer.readUInt8(); // variable_request_flags
 
-            request.data.getChildKeys = !!(variableRequestFlags & VARIABLE_REQUEST_FLAGS.GET_CHILD_KEYS);
-            request.data.enableCaseInsensitivityFlag = !!(variableRequestFlags & VARIABLE_REQUEST_FLAGS.CASE_SENSITIVITY_OPTIONS);
+            request.data.getChildKeys = !!(variableRequestFlags & VariableRequestFlag.GetChildKeys);
+            request.data.enableForceCaseInsensitivity = !!(variableRequestFlags & VariableRequestFlag.CaseSensitivityOptions);
             request.data.threadIndex = smartBuffer.readUInt32LE(); // thread_index
             request.data.stackFrameIndex = smartBuffer.readUInt32LE(); // stack_frame_index
             const variablePathLength = smartBuffer.readUInt32LE(); // variable_path_len
@@ -48,15 +49,16 @@ export class VariablesRequest implements ProtocolRequest {
                 for (let i = 0; i < variablePathLength; i++) {
                     request.data.variablePathEntries.push({
                         name: protocolUtils.readStringNT(smartBuffer), // variable_path_entries - optional
-                        isCaseSensitive: true
+                        //by default, all variable lookups are case SENSITIVE
+                        forceCaseInsensitive: false
                     });
                 }
 
                 //get the case sensitive settings for each part of the path
-                if (request.data.enableCaseInsensitivityFlag) {
+                if (request.data.enableForceCaseInsensitivity) {
                     for (let i = 0; i < variablePathLength; i++) {
-                        //0 means case SENSITIVE lookup, 1 means case INsensitive lookup
-                        request.data.variablePathEntries[i].isCaseSensitive = smartBuffer.readUInt8() === 0 ? true : false;
+                        //0 means case SENSITIVE lookup, 1 means forced case INsensitive lookup
+                        request.data.variablePathEntries[i].forceCaseInsensitive = smartBuffer.readUInt8() === 0 ? false : true;
                     }
                 }
             }
@@ -69,8 +71,8 @@ export class VariablesRequest implements ProtocolRequest {
 
         //build the flags var
         let variableRequestFlags = 0;
-        variableRequestFlags |= this.data.getChildKeys ? VARIABLE_REQUEST_FLAGS.GET_CHILD_KEYS : 0;
-        variableRequestFlags |= this.data.enableCaseInsensitivityFlag ? VARIABLE_REQUEST_FLAGS.CASE_SENSITIVITY_OPTIONS : 0;
+        variableRequestFlags |= this.data.getChildKeys ? VariableRequestFlag.GetChildKeys : 0;
+        variableRequestFlags |= this.data.enableForceCaseInsensitivity ? VariableRequestFlag.CaseSensitivityOptions : 0;
 
         smartBuffer.writeUInt8(variableRequestFlags); // variable_request_flags
         smartBuffer.writeUInt32LE(this.data.threadIndex); // thread_index
@@ -79,10 +81,10 @@ export class VariablesRequest implements ProtocolRequest {
         for (const entry of this.data.variablePathEntries) {
             smartBuffer.writeStringNT(entry.name); // variable_path_entries - optional
         }
-        if (this.data.enableCaseInsensitivityFlag) {
+        if (this.data.enableForceCaseInsensitivity) {
             for (const entry of this.data.variablePathEntries) {
-                //0 means case SENSITIVE lookup, 1 means case INsensitive lookup
-                smartBuffer.writeUInt8(entry.isCaseSensitive ? 0 : 1);
+                //0 means case SENSITIVE lookup, 1 means force case INsensitive lookup
+                smartBuffer.writeUInt8(entry.forceCaseInsensitive !== true ? 0 : 1);
             }
         }
 
@@ -92,7 +94,7 @@ export class VariablesRequest implements ProtocolRequest {
 
     public success = false;
 
-    public readOffset = -1;
+    public readOffset: number = undefined;
 
     public data = {
         /**
@@ -103,7 +105,7 @@ export class VariablesRequest implements ProtocolRequest {
         /**
          * Enables the client application to send path_force_case_insensitive data for each variable
          */
-        enableCaseInsensitivityFlag: undefined as boolean,
+        enableForceCaseInsensitivity: undefined as boolean,
 
         /**
          * The index of the thread containing the variable.
@@ -123,7 +125,7 @@ export class VariablesRequest implements ProtocolRequest {
          */
         variablePathEntries: undefined as Array<{
             name: string;
-            isCaseSensitive: boolean;
+            forceCaseInsensitive: boolean;
         }>,
 
         //common props
@@ -131,4 +133,9 @@ export class VariablesRequest implements ProtocolRequest {
         requestId: undefined as number,
         command: Command.Variables
     };
+}
+
+export enum VariableRequestFlag {
+    GetChildKeys = 1,
+    CaseSensitivityOptions = 2
 }

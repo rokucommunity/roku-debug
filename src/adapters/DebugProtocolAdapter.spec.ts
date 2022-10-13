@@ -48,7 +48,7 @@ describe('DebugProtocolAdapter', () => {
                 { name: 'person' },
                 { name: 'age' }
             );
-            const vars = await adapter.getVariable('', 1, true);
+            const vars = await adapter.getVariable('', 1);
             expect(
                 vars?.children.map(x => x.evaluateName)
             ).to.eql([
@@ -65,7 +65,7 @@ describe('DebugProtocolAdapter', () => {
                 { name: 'age', isChildKey: true } as any
             );
 
-            const vars = await adapter.getVariable('person', 1, true);
+            const vars = await adapter.getVariable('person', 1);
             expect(
                 vars?.children.map(x => x.evaluateName)
             ).to.eql([

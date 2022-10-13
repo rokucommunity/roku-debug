@@ -1,8 +1,21 @@
 import { EventEmitter } from 'eventemitter3';
 import * as Net from 'net';
 import { ActionQueue } from '../../managers/ActionQueue';
+import { Command, CommandCode } from '../Constants';
 import type { ProtocolRequest, ProtocolResponse } from '../events/ProtocolEvent';
+import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
+import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
+import { ContinueRequest } from '../events/requests/ContinueRequest';
+import { ExecuteRequest } from '../events/requests/ExecuteRequest';
+import { ExitChannelRequest } from '../events/requests/ExitChannelRequest';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
+import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsRequest';
+import { RemoveBreakpointsRequest } from '../events/requests/RemoveBreakpointsRequest';
+import { StackTraceRequest } from '../events/requests/StackTraceRequest';
+import { StepRequest } from '../events/requests/StepRequest';
+import { StopRequest } from '../events/requests/StopRequest';
+import { ThreadsRequest } from '../events/requests/ThreadsRequest';
+import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import PluginInterface from './PluginInterface';
@@ -106,17 +119,39 @@ export class DebugProtocolServer {
     /**
      * Given a buffer, find the request that matches it
      */
-    private getRequest(buffer: Buffer) {
-        let request: ProtocolRequest;
+    private getRequest(buffer: Buffer): ProtocolRequest {
         //if we haven't seen the handshake yet, look for the handshake first
         if (!this.isHandshakeComplete) {
-            request = HandshakeRequest.fromBuffer(buffer);
-            if (request.success) {
-                return request;
-            }
+            return HandshakeRequest.fromBuffer(buffer);
         }
-
-        //TODO handle all the other request types (variables, step, etc...)
+        //we can only receive commands from the client, so pre-parse the command type
+        const command = CommandCode[buffer.readUInt32LE(8)] as Command; // command_code
+        switch (command) {
+            case Command.AddBreakpoints:
+                return AddBreakpointsRequest.fromBuffer(this.buffer);
+            case Command.Stop:
+                return StopRequest.fromBuffer(this.buffer);
+            case Command.Continue:
+                return ContinueRequest.fromBuffer(this.buffer);
+            case Command.Threads:
+                return ThreadsRequest.fromBuffer(this.buffer);
+            case Command.StackTrace:
+                return StackTraceRequest.fromBuffer(this.buffer);
+            case Command.Variables:
+                return VariablesRequest.fromBuffer(this.buffer);
+            case Command.Step:
+                return StepRequest.fromBuffer(this.buffer);
+            case Command.ListBreakpoints:
+                return ListBreakpointsRequest.fromBuffer(this.buffer);
+            case Command.RemoveBreakpoints:
+                return RemoveBreakpointsRequest.fromBuffer(this.buffer);
+            case Command.Execute:
+                return ExecuteRequest.fromBuffer(this.buffer);
+            case Command.AddConditionalBreakpoints:
+                return AddConditionalBreakpointsRequest.fromBuffer(this.buffer);
+            case Command.ExitChannel:
+                return ExitChannelRequest.fromBuffer(this.buffer);
+        }
     }
 
     private getResponse(request: ProtocolRequest) {
@@ -143,6 +178,11 @@ export class DebugProtocolServer {
             request = this.getRequest(buffer);
         }
 
+        //if we couldn't construct a request this request, hard-fail
+        if (!request || !request.success) {
+            throw new Error(`Unable to parse request: ${JSON.stringify(this.buffer.toJSON().data)}`);
+        }
+
         //trim the buffer now that the request has been processed
         this.buffer = buffer.slice(request.readOffset);
 
@@ -155,13 +195,16 @@ export class DebugProtocolServer {
 
 
         //if the plugin didn't provide a response, we need to try our best to make one (we only support a few...plugins should provide most of them)
-        if (request instanceof HandshakeRequest && !response) {
+        if (!response) {
             response = this.getResponse(request);
         }
 
         //the client should send a magic string to kick off the debugger
         if ((response instanceof HandshakeResponse || response instanceof HandshakeV3Response) && response.data.magic === this.magic) {
             this.isHandshakeComplete = true;
+        }
+        if (!response) {
+            throw new Error(`Server was unable to provide a response for ${JSON.stringify(request.data)}`);
         }
 
         //send the response to the client. (TODO handle when the response is missing)

@@ -202,7 +202,3 @@ export enum UpdateTypeCode {
     CompileError = 5
 }
 
-export enum VARIABLE_REQUEST_FLAGS {
-    GET_CHILD_KEYS = 0x01,
-    CASE_SENSITIVITY_OPTIONS = 0x02
-}

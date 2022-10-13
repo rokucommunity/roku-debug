@@ -12,7 +12,7 @@ export interface ProtocolEvent<TData> {
     readOffset: number;
 
     /**
-     * Serialize this event into Convert the current object into the debug protocol binary format,
+     * Serialize the current object into the debug protocol's binary format,
      * stored in a `Buffer`
      */
     toBuffer(): Buffer;

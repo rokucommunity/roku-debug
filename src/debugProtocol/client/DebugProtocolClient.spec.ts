@@ -1,8 +1,9 @@
+/* eslint-disable no-bitwise */
 import { DebugProtocolClient } from './DebugProtocolClient';
 import { expect } from 'chai';
 import type { SmartBuffer } from 'smart-buffer';
 import { createSandbox } from 'sinon';
-import { ErrorCode, StopReasonCode, VARIABLE_REQUEST_FLAGS } from '../Constants';
+import { Command, ErrorCode, StopReasonCode } from '../Constants';
 import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../../util';
@@ -12,6 +13,8 @@ import type { ProtocolResponse, ProtocolRequest } from '../events/ProtocolEvent'
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
+import { VariablesResponse } from '../events/responses/VariablesResponse';
+import { VariableRequestFlag, VariablesRequest } from '../events/requests/VariablesRequest';
 
 const sinon = createSandbox();
 
@@ -104,7 +107,7 @@ describe('DebugProtocolClient', () => {
         expect(client.isHandshakeComplete).to.be.equal(true);
     });
 
-    it.only('handles AllThreadsStoppedUpdate after handshake', async () => {
+    it('handles AllThreadsStoppedUpdate after handshake', async () => {
         await client.connect();
 
         const [, event] = await Promise.all([
@@ -145,8 +148,7 @@ describe('DebugProtocolClient', () => {
                     );
                 }
             }
-            // eslint-disable-next-line no-bitwise
-            if (result.flags & VARIABLE_REQUEST_FLAGS.CASE_SENSITIVITY_OPTIONS) {
+            if (result.flags & VariableRequestFlag.CaseSensitivityOptions) {
                 result.pathForceCaseInsensitive = [];
                 for (let i = 0; i < pathLength; i++) {
                     result.pathForceCaseInsensitive.push(
@@ -157,7 +159,7 @@ describe('DebugProtocolClient', () => {
             return result;
         }
 
-        it('skips case sensitivity info on lower protocol versions', async () => {
+        it('honors protocol version when deciding to send forceCaseInsensitive variable information', async () => {
             await client.connect();
             //send the AllThreadsStopped event, and also wait for the client to suspend
             await Promise.all([
@@ -169,38 +171,61 @@ describe('DebugProtocolClient', () => {
                 await client.once('suspend')
             ]);
 
+            // force the protocolVersion to 2.0.0 for this test
             client.protocolVersion = '2.0.0';
-            client['stopped'] = true;
-            const stub = sinon.stub(client as any, 'makeRequest').callsFake(() => { });
-            await client.getVariables(['m', 'top'], false, 1, 2);
-            expect(
-                getVariablesRequestBufferToJson(stub.getCalls()[0].args[0])
-            ).to.eql({
-                flags: 0,
-                stackFrameIndex: 1,
-                threadIndex: 2,
-                variablePathEntries: ['m', 'top'],
-                //should be empty
-                pathForceCaseInsensitive: []
-            });
-        });
 
-        it('marks strings as case-sensitive', async () => {
-            client.protocolVersion = '3.1.0';
-            client['stopped'] = true;
-            const stub = sinon.stub(client as any, 'makeRequest').callsFake(() => { });
-            await client.getVariables(['m', 'top', '"someKey"', '""someKeyWithInternalQuotes""'], true, 1, 2);
+            plugin.pushResponse(VariablesResponse.fromJson({
+                requestId: -1, // overridden in the plugin
+                variables: []
+            }));
+
+            await client.getVariables(['m', '"top"'], 1, 2);
             expect(
-                getVariablesRequestBufferToJson(stub.getCalls()[0].args[0])
+                VariablesRequest.fromBuffer(plugin.latestRequest.toBuffer()).data
             ).to.eql({
-                // eslint-disable-next-line no-bitwise
-                flags: VARIABLE_REQUEST_FLAGS.GET_CHILD_KEYS | VARIABLE_REQUEST_FLAGS.CASE_SENSITIVITY_OPTIONS,
+                packetLength: 31,
+                requestId: 1,
+                command: Command.Variables,
+                enableForceCaseInsensitivity: false,
+                getChildKeys: true,
                 stackFrameIndex: 1,
                 threadIndex: 2,
-                variablePathEntries: ['m', 'top', 'someKey', '"someKeyWithInternalQuotes"'],
-                //should be empty
-                pathForceCaseInsensitive: [true, true, false, false]
-            });
+                variablePathEntries: [{
+                    name: 'm',
+                    forceCaseInsensitive: false
+                }, {
+                    name: 'top',
+                    forceCaseInsensitive: false
+                }]
+            } as VariablesRequest['data']);
+
+            // force the protocolVersion to 3.1.0 for this test
+            client.protocolVersion = '3.1.0';
+
+            plugin.pushResponse(VariablesResponse.fromJson({
+                requestId: -1, // overridden in the plugin
+                variables: []
+            }));
+
+            await client.getVariables(['m', '"top"'], 1, 2);
+            expect(
+                VariablesRequest.fromBuffer(plugin.latestRequest.toBuffer()).data
+            ).to.eql({
+                packetLength: 33,
+                requestId: 2,
+                command: Command.Variables,
+                enableForceCaseInsensitivity: true,
+                getChildKeys: true,
+                stackFrameIndex: 1,
+                threadIndex: 2,
+                variablePathEntries: [{
+                    name: 'm',
+                    forceCaseInsensitive: true
+                }, {
+                    name: 'top',
+                    forceCaseInsensitive: false
+                }]
+            } as VariablesRequest['data']);
         });
     });
 });
@@ -228,9 +253,23 @@ class TestPlugin implements ProtocolPlugin {
     public readonly requests: ReadonlyArray<ProtocolRequest> = [];
 
     /**
+     * The most recent request received by the plugin
+     */
+    public get latestRequest() {
+        return this.requests[this.requests.length - 1];
+    }
+
+    /**
      * A running list of responses sent by the server during this test
      */
     public readonly responses: ReadonlyArray<ProtocolResponse> = [];
+
+    /**
+     * The most recent response received by the plugin
+     */
+    public get latestResponse() {
+        return this.responses[this.responses.length - 1];
+    }
 
     /**
      * Whenever the server receives a request, this event allows us to send back a response
@@ -243,6 +282,10 @@ class TestPlugin implements ProtocolPlugin {
         //if there's no response, AND this isn't the handshake, fail. (we want the protocol to handle the handshake most of the time)
         if (!response && !(event.request instanceof HandshakeRequest)) {
             throw new Error('There was no response available to send back');
+        }
+        //force this response to have the current request's ID (for testing purposes
+        if (response) {
+            response.data.requestId = event.request.data.requestId;
         }
         event.response = response;
     }

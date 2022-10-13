@@ -460,7 +460,7 @@ export class DebugProtocolAdapter {
      * Given an expression, evaluate that statement ON the roku
      * @param expression
      */
-    public async getVariable(expression: string, frameId: number, withChildren = true) {
+    public async getVariable(expression: string, frameId: number) {
         const logger = this.logger.createLogger(' getVariable');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
@@ -480,13 +480,13 @@ export class DebugProtocolAdapter {
             variablePath[0] = variablePath[0].toLowerCase();
         }
 
-        let response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+        let response = await this.socketDebugger.getVariables(variablePath, frame.frameIndex, frame.threadIndex);
 
         if (this.enableVariablesLowerCaseRetry && response.data.errorCode !== ErrorCode.OK) {
             // Temporary workaround related to casing issues over the protocol
             logger.log(`Retrying expression as lower case:`, expression);
             variablePath = expression === '' ? [] : util.getVariablePath(expression?.toLowerCase());
-            response = await this.socketDebugger.getVariables(variablePath, withChildren, frame.frameIndex, frame.threadIndex);
+            response = await this.socketDebugger.getVariables(variablePath, frame.frameIndex, frame.threadIndex);
         }
 
 

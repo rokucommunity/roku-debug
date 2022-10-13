@@ -737,7 +737,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 if (this.variables[refId]) {
                     v = this.variables[refId];
                 } else {
-                    let result = await this.rokuAdapter.getVariable('', args.frameId, true);
+                    let result = await this.rokuAdapter.getVariable('', args.frameId);
                     if (!result) {
                         throw new Error(`Could not get scopes`);
                     }
@@ -921,7 +921,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     if (this.variables[refId]) {
                         v = this.variables[refId];
                     } else {
-                        let result = await this.rokuAdapter.getVariable(args.expression, args.frameId, true);
+                        let result = await this.rokuAdapter.getVariable(args.expression, args.frameId);
                         if (!result) {
                             throw new Error(`bad variable request "${args.expression}"`);
                         }
