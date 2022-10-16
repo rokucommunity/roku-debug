@@ -286,6 +286,18 @@ describe('BrightScriptFileUtils ', () => {
                 await rendezvousTracker.processLog(text)
             ).to.eql(text);
         });
+
+        it('does not crash for files not found by the source locator', async () => {
+            //return undefined for all sources requested
+            rendezvousTracker.registerSourceLocator(() => {
+                return undefined;
+            });
+            expect(
+                (await rendezvousTracker.processLog(`10-16 01:42:27.126 [sg.node.BLOCK] Rendezvous[2442] at roku_ads_lib:/libsource/Roku_Ads_SG_Wrappers.brs(1262)\r\n`
+                )).trim()
+            ).to.eql('');
+            //the test passes if it doesn't explode on the file path
+        });
     });
 
     describe('clearHistory', () => {
