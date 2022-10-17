@@ -90,7 +90,7 @@ export class RendezvousTracker {
                     // detected the completion of a rendezvous event
                     dataChanged = true;
                     let blockInfo = this.rendezvousBlocks[id];
-                    let clientLineNumber: string = this.clientPathsMap[blockInfo.fileName].clientLines[blockInfo.lineNumber].toString();
+                    let clientLineNumber: string = this.clientPathsMap[blockInfo.fileName]?.clientLines[blockInfo.lineNumber].toString() ?? blockInfo.lineNumber;
 
                     if (this.rendezvousHistory.occurrences[blockInfo.fileName]) {
                         // file is in history
@@ -189,13 +189,15 @@ export class RendezvousTracker {
                 }
             }
             let sourceLocation = await this.getSourceLocation(fileName, lineNumber);
-            this.clientPathsMap[fileName] = {
-                clientPath: sourceLocation.filePath,
-                clientLines: {
-                    //TODO - should the line be 1 or 0 based?
-                    [lineNumber]: sourceLocation.lineNumber
-                }
-            };
+            if (sourceLocation) {
+                this.clientPathsMap[fileName] = {
+                    clientPath: sourceLocation.filePath,
+                    clientLines: {
+                        //TODO - should the line be 1 or 0 based?
+                        [lineNumber]: sourceLocation.lineNumber
+                    }
+                };
+            }
         } else if (!this.clientPathsMap[fileName].clientLines[lineNumber]) {
             // Add new client line to clint path map
             this.clientPathsMap[fileName].clientLines[lineNumber] = (await this.getSourceLocation(fileName, lineNumber)).lineNumber;
@@ -226,7 +228,7 @@ export class RendezvousTracker {
     private createLineObject(fileName: string, lineNumber: number, duration?: string): RendezvousLineInfo {
         return {
             clientLineNumber: lineNumber,
-            clientPath: this.clientPathsMap[fileName].clientPath,
+            clientPath: this.clientPathsMap[fileName]?.clientPath ?? fileName,
             hitCount: 1,
             totalTime: this.getTime(duration),
             type: 'lineInfo'
