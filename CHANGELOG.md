@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.16.0](https://github.com/rokucommunity/roku-debug/compare/v0.15.0...0.16.0) - 2022-10-17
+### Changed
+ - Emit device diagnostics instead of compile errors ([#104](https://github.com/rokucommunity/roku-debug/pull/104))
+ - Standardize custom events, add is* helpers ([#103](https://github.com/rokucommunity/roku-debug/pull/103))
+ - upgrade to [brighterscript@0.60.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0600---2022-10-10). Notable changes since 0.56.0:
+ - upgrade to [roku-deploy@3.9.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#392---2022-10-03). Notable changes since 3.7.1:
+     - Replace minimatch with picomatch ([roku-deploy#101](https://github.com/rokucommunity/roku-deploy/pull/101))
+     - Sync retainStagingFolder, stagingFolderPath with options. ([roku-deploy#100](https://github.com/rokucommunity/roku-deploy/pull/100))
+     - Add stagingDir and retainStagingDir. ([roku-deploy#99](https://github.com/rokucommunity/roku-deploy/pull/99))
+     - Remotedebug connect early ([roku-deploy#97](https://github.com/rokucommunity/roku-deploy/pull/97))
+     - Better compile error handling ([roku-deploy#96](https://github.com/rokucommunity/roku-deploy/pull/96))
+### Fixed
+ - crash in rendezvous parser for missing files ([#108](https://github.com/rokucommunity/roku-debug/pull/108))
+ - better debug protocol launch handling ([#102](https://github.com/rokucommunity/roku-debug/pull/102))
+
+
+
 ## [0.15.0](https://github.com/rokucommunity/roku-debug/compare/v0.14.2...0.15.0) - 2022-08-23
 ### Added
  - support for conditional breakpoints over the debug protocol([#97](https://github.com/rokucommunity/roku-debug/pull/97))
