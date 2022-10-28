@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.16.1](https://github.com/rokucommunity/roku-debug/compare/v0.16.0...0.16.1) - 2022-10-28
+### Changed
+ - upgrade to [brighterscript@0.60.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0604---2022-10-28). Notable changes since 0.60.0:
+     - Allow `continue` as local var ([brighterscript#730](https://github.com/rokucommunity/brighterscript/pull/730))
+     - better parse recover for unknown func params ([brighterscript#722](https://github.com/rokucommunity/brighterscript/pull/722))
+     - Fix if statement block var bug ([brighterscript#698](https://github.com/rokucommunity/brighterscript/pull/698))
+
+
+
 ## [0.16.0](https://github.com/rokucommunity/roku-debug/compare/v0.15.0...0.16.0) - 2022-10-17
 ### Changed
  - Emit device diagnostics instead of compile errors ([#104](https://github.com/rokucommunity/roku-debug/pull/104))
