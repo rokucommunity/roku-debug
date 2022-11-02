@@ -230,7 +230,7 @@ export class SceneGraphDebugCommandController {
      * @param warningLimit maximum number of warnings to show
      */
     public async brightscriptWarnings(warningLimit: number): Promise<SceneGraphCommandResponse> {
-        return this.exec(`brightscript_warnings ${warningLimit ?? 100 }`);
+        return this.exec(`brightscript_warnings ${warningLimit ?? 100}`);
     }
 
 
