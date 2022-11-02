@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.17.0](https://github.com/rokucommunity/roku-debug/compare/v0.16.1...0.17.0) - 2022-11-02
+### Changed
+ - Added the `brightscript_warnings` command ([#110](https://github.com/rokucommunity/roku-debug/pull/110))
+
+
+
 ## [0.16.1](https://github.com/rokucommunity/roku-debug/compare/v0.16.0...0.16.1) - 2022-10-28
 ### Changed
  - upgrade to [brighterscript@0.60.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0604---2022-10-28). Notable changes since 0.60.0:
