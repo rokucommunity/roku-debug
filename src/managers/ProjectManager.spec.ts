@@ -667,6 +667,31 @@ describe('ComponentLibraryProject', () => {
         });
     });
 
+    describe('postfixFiles', () => {
+        it('skips "common:/" paths', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            fsExtra.outputFileSync(`${params.stagingFolderPath}/source/main.brs`, '');
+            fsExtra.outputFileSync(`${params.stagingFolderPath}/components/Component1.xml`, `
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="common:/LibCore/v30/bslCore.brs"/>
+                    <script type="text/brightscript" uri="CustomComponent.brs"/>
+                    <script type="text/brightscript" uri="pkg:/source/utils.brs"/>
+                </component>
+            `);
+            await project.postfixFiles();
+            expect(
+                fsExtra.readFileSync(`${params.stagingFolderPath}/components/Component1.xml`).toString()
+            ).to.eql(`
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="common:/LibCore/v30/bslCore.brs"/>
+                    <script type="text/brightscript" uri="CustomComponent__lib0.brs"/>
+                    <script type="text/brightscript" uri="pkg:/source/utils__lib0.brs"/>
+                </component>
+            `);
+        });
+    });
+
     describe('stage', () => {
         it('computes stagingFolderPath before calling getFileMappings', async () => {
             delete params.stagingFolderPath;
