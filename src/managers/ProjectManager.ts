@@ -601,7 +601,19 @@ export class ComponentLibraryProject extends Project {
             ],
             from: /uri\s*=\s*"(.+)\.brs"/gi,
             to: (match) => {
-                return match.replace('.brs', this.postfix + '.brs');
+
+                // do not alter file ending if it's an external library eg with a common:/ file path
+                let fileMatch = true;
+                if (match.includes('common:/')) {
+                    fileMatch = false;
+                }
+
+                if (fileMatch) {
+                    return match.replace('.brs', this.postfix + '.brs');
+                } else {
+
+                    return match
+                }
             }
         });
     }
