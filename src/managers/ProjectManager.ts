@@ -603,7 +603,7 @@ export class ComponentLibraryProject extends Project {
             to: (match) => {
 
                 // do not alter file ending if it's an external library eg with a common:/ file path
-                if (match.startsWith('uri="common:/')) {
+                if (match.toLowerCase().startsWith('uri="common:/')) {
                     return match;
                 } else {
                     return match.replace('.brs', this.postfix + '.brs');
