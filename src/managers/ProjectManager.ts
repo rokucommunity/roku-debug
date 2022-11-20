@@ -601,12 +601,19 @@ export class ComponentLibraryProject extends Project {
             ],
             from: /uri\s*=\s*"(.+)\.brs"/gi,
             to: (match) => {
-
-                // do not alter file ending if it's an external library eg with a common:/ file path
-                if (match.toLowerCase().startsWith('uri="common:/')) {
-                    return match;
-                } else {
+                // only alter file ending if it is a) pkg:/ url or b) relative url 
+                let isPkgUrl = false
+                let isRelativeUrl = false                
+                if (/^uri\s*=\s*"pkg:\//i.exec(match)) {
+                    isPkgUrl = true
+                }
+                if (!(/:\//i.exec(match))) {
+                    isRelativeUrl = true 
+                }
+                if (isPkgUrl || isRelativeUrl){
                     return match.replace('.brs', this.postfix + '.brs');
+                } else {
+                    return match;
                 }
             }
         });
