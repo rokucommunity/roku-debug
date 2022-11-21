@@ -690,7 +690,7 @@ describe('ComponentLibraryProject', () => {
                 </component>
             `);
         });
-    
+
         it('adds postfix if path is 1) pkg:/ or 2) relative - plus spaces in url', async () => {
             let project = new ComponentLibraryProject(params);
             project.fileMappings = [];

@@ -600,17 +600,11 @@ export class ComponentLibraryProject extends Project {
                 path.join(this.stagingFolderPath, '**/*.brs')
             ],
             from: /uri\s*=\s*"(.+)\.brs"/gi,
-            to: (match) => {
-                // only alter file ending if it is a) pkg:/ url or b) relative url 
-                let isPkgUrl = false
-                let isRelativeUrl = false                
-                if (/^uri\s*=\s*"pkg:\//i.exec(match)) {
-                    isPkgUrl = true
-                }
-                if (!(/:\//i.exec(match))) {
-                    isRelativeUrl = true 
-                }
-                if (isPkgUrl || isRelativeUrl){
+            to: (match: string) => {
+                // only alter file ending if it is a) pkg:/ url or b) relative url
+                let isPkgUrl = !!/^uri\s*=\s*"pkg:\//i.exec(match);
+                let isRelativeUrl = !/:\//i.exec(match);
+                if (isPkgUrl || isRelativeUrl) {
                     return match.replace('.brs', this.postfix + '.brs');
                 } else {
                     return match;
