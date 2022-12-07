@@ -99,11 +99,12 @@ export class FileUtils {
     }
 
     /**
-     * The Roku telnet debugger truncates file paths, so this removes that truncation piece.
+     * The Roku telnet debugger truncates file paths, so this removes that leading truncation piece.
+     * This removes 0 or more leading dots, followed by 0 or more leading slashes
      * @param filePath
      */
     public removeFileTruncation(filePath: string) {
-        return filePath.startsWith('...') ? filePath.substring(3) : filePath;
+        return filePath.replace(/^\.*[\/\\]*/, '');
     }
 
     /**
