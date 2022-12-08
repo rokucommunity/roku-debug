@@ -1,4 +1,4 @@
-import type { ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/Debugger';
+import type { BreakpointSpec, ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/Debugger';
 import { Debugger } from '../debugProtocol/Debugger';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
@@ -666,10 +666,12 @@ export class DebugProtocolAdapter {
     // #endregion
 
     public async syncBreakpoints() {
-        //we can't send breakpoints unless we're stopped. So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
-        if (!this.isAtDebuggerPrompt) {
+        //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
+        //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
+        if (!this.socketDebugger.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
             return;
         }
+
         //compute breakpoint changes since last sync
         const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
 
@@ -699,24 +701,39 @@ export class DebugProtocolAdapter {
 
             //send these new breakpoints to the device
             await this.actionQueue.run(async () => {
-                const response = await this.socketDebugger.addBreakpoints(breakpointsToSendToDevice);
-                if (response.errorCode === ERROR_CODES.OK) {
-                    //mark the breakpoints as verified
-                    for (let i = 0; i < response.breakpoints.length; i++) {
-                        const deviceBreakpoint = response.breakpoints[i];
-                        if (deviceBreakpoint.isVerified) {
-                            this.breakpointManager.verifyBreakpoint(
-                                breakpointsToSendToDevice[i].key,
-                                deviceBreakpoint.breakpointId
-                            );
-                        }
+                //split the list into conditional and non-conditional breakpoints.
+                //(TODO we can eliminate this splitting logic once the conditional breakpoints "continue" bug in protocol is fixed)
+                const standardBreakpoints: typeof breakpointsToSendToDevice = [];
+                const conditionalBreakpoints: typeof breakpointsToSendToDevice = [];
+                for (const breakpoint of breakpointsToSendToDevice) {
+                    if (breakpoint?.conditionalExpression?.trim()) {
+                        conditionalBreakpoints.push(breakpoint);
+                    } else {
+                        standardBreakpoints.push(breakpoint);
                     }
-                    //return true to mark this action as complete
-                    return true;
-                } else {
-                    //this action is not yet complete. it should be retried
-                    return false;
                 }
+                let success = true;
+                for (const breakpoints of [standardBreakpoints, conditionalBreakpoints]) {
+                    const response = await this.socketDebugger.addBreakpoints(breakpoints);
+                    if (response.errorCode === ERROR_CODES.OK) {
+                        //mark the breakpoints as verified
+                        for (let i = 0; i < response.breakpoints.length; i++) {
+                            const deviceBreakpoint = response.breakpoints[i];
+                            if (deviceBreakpoint.isVerified) {
+                                this.breakpointManager.verifyBreakpoint(
+                                    breakpoints[i].key,
+                                    deviceBreakpoint.breakpointId
+                                );
+                            }
+                        }
+                        //return true to mark this action as complete
+                        success &&= true;
+                    } else {
+                        //this action is not yet complete. it should be retried
+                        success &&= false;
+                    }
+                }
+                return success;
             });
         }
     }
