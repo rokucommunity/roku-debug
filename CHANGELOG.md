@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.17.1](https://github.com/rokucommunity/roku-debug/compare/v0.17.0...0.17.1) - 2022-12-08
+### Fixed
+ - Fix "continue" repeat bug in protocol adapter ([#114](https://github.com/rokucommunity/roku-debug/pull/114))
+ - Fix issue with truncated debugger paths ([#113](https://github.com/rokucommunity/roku-debug/pull/113))
+ - Bugfix/do not alter `outFilePath` for libraries ([#112](https://github.com/rokucommunity/roku-debug/pull/112))
+ - upgrade to [brighterscript@0.61.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0611---2022-12-07)
+
+
+
 ## [0.17.0](https://github.com/rokucommunity/roku-debug/compare/v0.16.1...0.17.0) - 2022-11-02
 ### Changed
  - Added the `brightscript_warnings` command ([#110](https://github.com/rokucommunity/roku-debug/pull/110))
