@@ -92,6 +92,10 @@ export class Debugger {
         return semver.satisfies(this.protocolVersion, '>=3.1.0');
     }
 
+    public get supportsBreakpointRegistrationWhileRunning() {
+        return semver.satisfies(this.protocolVersion, '>=3.2.0');
+    }
+
     /**
      * Get a promise that resolves after an event occurs exactly once
      */
@@ -362,13 +366,21 @@ export class Debugger {
     public async addBreakpoints(breakpoints: Array<BreakpointSpec & { componentLibraryName: string }>): Promise<AddBreakpointsResponse> {
         const { enableComponentLibrarySpecificBreakpoints } = this;
         if (breakpoints?.length > 0) {
+
+            const useConditionalBreakpoints = (
+                //does this protocol version support conditional breakpoints?
+                this.supportsConditionalBreakpoints &&
+                //is there at least one conditional breakpoint present?
+                !!breakpoints.find(x => !!x?.conditionalExpression?.trim())
+            );
+
             let buffer = new SmartBuffer();
             //set the `FLAGS` value if supported
-            if (this.supportsConditionalBreakpoints) {
+            if (useConditionalBreakpoints) {
                 buffer.writeUInt32LE(0); // flags - Should always be passed as 0. Unused, reserved for future use.
             }
             buffer.writeUInt32LE(breakpoints.length); // num_breakpoints - The number of breakpoints in the breakpoints array.
-            breakpoints.forEach((breakpoint) => {
+            for (const breakpoint of breakpoints) {
                 let { filePath } = breakpoint;
                 //protocol >= v3.1.0 requires complib breakpoints have a special prefix
                 if (enableComponentLibrarySpecificBreakpoints) {
@@ -381,17 +393,19 @@ export class Debugger {
                 buffer.writeUInt32LE(breakpoint.lineNumber); // line_number - The line number in the channel application code where the breakpoint is to be executed.
                 buffer.writeUInt32LE(breakpoint.hitCount ?? 0); // ignore_count - The number of times to ignore the breakpoint condition before executing the breakpoint. This number is decremented each time the channel application reaches the breakpoint.
                 //if the protocol supports conditional breakpoints, add any present condition
-                if (this.supportsConditionalBreakpoints) {
+                if (useConditionalBreakpoints) {
                     //There's a bug in 3.1 where empty conditional expressions would crash the breakpoints, so just default to `true` which always succeeds
                     buffer.writeStringNT(breakpoint.conditionalExpression ?? 'true'); // cond_expr - the condition that must evaluate to `true` in order to hit the breakpoint
                 }
-            });
+            }
             return this.makeRequest<AddBreakpointsResponse>(buffer,
-                this.supportsConditionalBreakpoints ? COMMANDS.ADD_CONDITIONAL_BREAKPOINTS : COMMANDS.ADD_BREAKPOINTS
-                //COMMANDS.ADD_BREAKPOINTS
+                useConditionalBreakpoints ? COMMANDS.ADD_CONDITIONAL_BREAKPOINTS : COMMANDS.ADD_BREAKPOINTS
             );
         }
-        return new AddBreakpointsResponse(null);
+        const response = new AddBreakpointsResponse(null);
+        response.success = true;
+        response.errorCode = ERROR_CODES.OK;
+        return response;
     }
 
     public async listBreakpoints(): Promise<ListBreakpointsResponse> {
