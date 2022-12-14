@@ -27,6 +27,7 @@ import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 import { util } from '../util';
 import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
+import { BreakpointVerifiedUpdateResponse } from './responses/BreakpointVerifiedUpdateResponse';
 
 export class Debugger {
 
@@ -95,6 +96,10 @@ export class Debugger {
         return semver.satisfies(this.protocolVersion, '>=3.2.0');
     }
 
+    public get supportsBreakpointVerification() {
+        return semver.satisfies(this.protocolVersion, '>=3.2.0');
+    }
+
     /**
      * Get a promise that resolves after an event occurs exactly once
      */
@@ -118,6 +123,7 @@ export class Debugger {
      * Subscribe to various events
      */
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
+    public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: Array<{ breakpointId: number }> }) => void);
     public on(eventName: 'data', handler: (data: any) => void);
     public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
@@ -134,6 +140,7 @@ export class Debugger {
     }
 
     private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
+    private emit(eventName: 'breakpoints-verified', data: { breakpoints: Array<{ breakpointId: number }> });
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'connected' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
@@ -497,6 +504,17 @@ export class Debugger {
                             return this.checkResponse(response, buffer, packetLength);
                         case UPDATE_TYPES.COMPILE_ERROR:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
+                        case UPDATE_TYPES.BREAKPOINT_VERIFIED:
+                            const bpVerifiedResponse = new BreakpointVerifiedUpdateResponse(slicedBuffer);
+                            console.log('breakpoints verified', bpVerifiedResponse.breakpoints.map(x => x.breakpointId));
+                            if (this.checkResponse(bpVerifiedResponse, buffer, packetLength)) {
+                                this.emit('breakpoints-verified', {
+                                    breakpoints: bpVerifiedResponse.breakpoints
+                                });
+                                return true;
+                            } else {
+                                return false;
+                            }
                         default:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }

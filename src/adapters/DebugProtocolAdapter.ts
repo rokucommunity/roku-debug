@@ -83,6 +83,7 @@ export class DebugProtocolAdapter {
      * @param eventName
      * @param handler
      */
+    public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: Array<{ breakpointId: number }> }) => void);
     public on(eventName: 'cannot-continue', handler: () => void);
     public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
@@ -106,6 +107,7 @@ export class DebugProtocolAdapter {
     }
 
     private emit(eventName: 'suspend');
+    private emit(eventName: 'breakpoints-verified', data: { breakpoints: Array<{ breakpointId: number }> });
     private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
     private emit(eventName: string, data?) {
@@ -248,6 +250,10 @@ export class DebugProtocolAdapter {
 
             this.socketDebugger.on('cannot-continue', () => {
                 this.emit('cannot-continue');
+            });
+
+            this.socketDebugger.on('breakpoints-verified', (event) => {
+                this.emit('breakpoints-verified', event);
             });
 
             this.connected = await this.socketDebugger.connect();
