@@ -402,9 +402,14 @@ export class Debugger {
                     buffer.writeStringNT(breakpoint.conditionalExpression ?? 'true'); // cond_expr - the condition that must evaluate to `true` in order to hit the breakpoint
                 }
             }
-            return this.makeRequest<AddBreakpointsResponse>(buffer,
+            const response = await this.makeRequest<AddBreakpointsResponse>(buffer,
                 useConditionalBreakpoints ? COMMANDS.ADD_CONDITIONAL_BREAKPOINTS : COMMANDS.ADD_BREAKPOINTS
             );
+            //if the device does not support breakpoint verification, then auto-mark all of these as verified
+            if (!this.supportsBreakpointVerification) {
+                this.emit('breakpoints-verified', response);
+            }
+            return response;
         }
         const response = new AddBreakpointsResponse(null);
         response.success = true;

@@ -252,8 +252,17 @@ export class DebugProtocolAdapter {
                 this.emit('cannot-continue');
             });
 
+            //handle when the device verifies breakpoints
             this.socketDebugger.on('breakpoints-verified', (event) => {
-                this.emit('breakpoints-verified', event);
+                //mark the breakpoints as verified
+                for (let breakpoint of event?.breakpoints ?? []) {
+                    this.breakpointManager.verifyBreakpoint(breakpoint.breakpointId, true);
+                }
+                //TODO remove the delay after testing
+                //delay for a second to make it obvious in the editor that these are being verified asynchronously
+                void util.sleep(1000).then(() => {
+                    this.emit('breakpoints-verified', event);
+                });
             });
 
             this.connected = await this.socketDebugger.connect();
@@ -725,12 +734,11 @@ export class DebugProtocolAdapter {
                         //mark the breakpoints as verified
                         for (let i = 0; i < response.breakpoints.length; i++) {
                             const deviceBreakpoint = response.breakpoints[i];
-                            if (deviceBreakpoint.isVerified) {
-                                this.breakpointManager.verifyBreakpoint(
-                                    breakpoints[i].key,
-                                    deviceBreakpoint.breakpointId
-                                );
-                            }
+                            //sync this breakpoint's deviceId with the roku-assigned breakpoint ID
+                            this.breakpointManager.setBreakpointDeviceId(
+                                breakpoints[i].key,
+                                deviceBreakpoint.breakpointId
+                            );
                         }
                         //return true to mark this action as complete
                         success &&= true;
