@@ -49,7 +49,6 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
-import { waitForDebugger } from 'inspector';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -372,7 +371,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Anytime a roku adapter emits diagnostics, this methid is called to handle it.
      */
     private async handleDiagnostics(diagnostics: BSDebugDiagnostic[]) {
-        // Roku device and sourcemap work with 1-based line numbers, VSCode expects 0-based lines.
+        const result = new Map<string, BSDebugDiagnostic>();
+
         for (let diagnostic of diagnostics) {
             let sourceLocation = await this.projectManager.getSourceLocation(diagnostic.path, diagnostic.range.start.line + 1);
             if (sourceLocation) {
@@ -383,9 +383,27 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
                 diagnostic.path = fileUtils.removeLeadingSlash(util.removeFileScheme(diagnostic.path));
             }
+            //override all diagnostic sources to be from `bsdebug`
+            diagnostic.source = `brs-debug`;
+            const key = [
+                s`${diagnostic.path}`,
+                diagnostic.range.start.line,
+                diagnostic.range.start.character,
+                diagnostic.range.end.line,
+                diagnostic.range.end.character,
+                diagnostic.code,
+                diagnostic.message.trim(),
+                diagnostic.libraryName
+            ].join('-');
+            //only keep one diagnosic per unique key
+            result.set(key, diagnostic);
         }
 
-        this.sendEvent(new DiagnosticsEvent(diagnostics));
+        this.sendEvent(new DiagnosticsEvent([...result.values()]));
+
+        //small timeout before killing the adapter so that the diagnostics can be properly sent to the client
+        await util.sleep(500);
+
         //stop the roku adapter and exit the channel
         void this.rokuAdapter.destroy();
         void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
@@ -1092,7 +1110,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         // If the roku says it can't continue, we are no longer able to debug, so kill the debug session
         this.rokuAdapter.on('cannot-continue', () => {
-            this.sendEvent(new TerminatedEvent());
+            //this.sendEvent(new TerminatedEvent());
         });
 
         //make the connection

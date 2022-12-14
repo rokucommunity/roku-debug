@@ -17,6 +17,7 @@ import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from 
 import type { BreakpointManager } from '../managers/BreakpointManager';
 import type { ProjectManager } from '../managers/ProjectManager';
 import { ActionQueue } from '../managers/ActionQueue';
+import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -246,6 +247,24 @@ export class DebugProtocolAdapter {
                 });
             });
 
+            this.socketDebugger.on('compile-error', (response) => {
+                this.compileErrorProcessor.addDiagnostic({
+                    message: response.message,
+                    range: bscUtil.createRange(
+                        //convert 1-based debug-protocol line to 0-based Range
+                        response.lineNumber - 1,
+                        0,
+                        //convert 1-based debug-protocol line to 0-based Range
+                        response.lineNumber - 1,
+                        999
+                    ),
+                    //all 'compile-error' events are actual errors
+                    severity: DiagnosticSeverity.Error,
+                    path: response.filePath,
+                    libraryName: response.libraryName
+                });
+            });
+
             this.socketDebugger.on('cannot-continue', () => {
                 this.emit('cannot-continue');
             });
@@ -282,7 +301,7 @@ export class DebugProtocolAdapter {
         try {
             this.compileClient = new Socket();
             this.compileErrorProcessor.on('diagnostics', (errors) => {
-                this.compileClient.end();
+                this.compileClient?.end();
                 this.emit('diagnostics', errors);
             });
 

@@ -27,6 +27,7 @@ import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 import { util } from '../util';
 import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
+import { CompileErrorUpdateResponse } from './responses/CompileErrorUpdateResponse';
 
 export class Debugger {
 
@@ -116,6 +117,7 @@ export class Debugger {
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
     public on(eventName: 'data', handler: (data: any) => void);
     public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
+    public on(eventName: 'compile-error', handler: (data: CompileErrorUpdateResponse) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
@@ -130,6 +132,7 @@ export class Debugger {
     }
 
     private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
+    private emit(eventName: 'compile-error', data: CompileErrorUpdateResponse);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'connected' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
@@ -482,7 +485,10 @@ export class Debugger {
                             //we do nothing with breakpoint errors at this time.
                             return this.checkResponse(response, buffer, packetLength);
                         case UPDATE_TYPES.COMPILE_ERROR:
-                            return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
+                            const compileError = new CompileErrorUpdateResponse(slicedBuffer);
+                            //emit as an event for the adapter to handle
+                            this.emit('compile-error', compileError);
+                            return this.checkResponse(compileError, buffer, packetLength);
                         default:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }
