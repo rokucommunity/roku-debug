@@ -187,8 +187,9 @@ export class BreakpointManager {
         const breakpoint = this.getBreakpointByDeviceId(deviceId);
         if (breakpoint) {
             breakpoint.verified = isVerified;
+            this.queueVerifyEvent(breakpoint.hash);
         }
-        this.queueVerifyEvent(breakpoint.hash);
+        //TODO handle the else case, (might be caused by timing issues?)
     }
 
     /**

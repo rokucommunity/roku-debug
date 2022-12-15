@@ -258,11 +258,7 @@ export class DebugProtocolAdapter {
                 for (let breakpoint of event?.breakpoints ?? []) {
                     this.breakpointManager.verifyBreakpoint(breakpoint.breakpointId, true);
                 }
-                //TODO remove the delay after testing
-                //delay for a second to make it obvious in the editor that these are being verified asynchronously
-                void util.sleep(1000).then(() => {
-                    this.emit('breakpoints-verified', event);
-                });
+                this.emit('breakpoints-verified', event);
             });
 
             this.connected = await this.socketDebugger.connect();
