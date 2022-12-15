@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.17.3](https://github.com/rokucommunity/roku-debug/compare/v0.17.2...0.17.3) - 2022-12-15
+### Added
+ - Debug protocol breakpoint verification ([#117](https://github.com/rokucommunity/roku-debug/pull/117))
+
+
+
 ## [0.17.2](https://github.com/rokucommunity/roku-debug/compare/v0.17.1...0.17.2) - 2022-12-15
 ### Changed
  - upgrade to [brighterscript@0.61.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0612---2022-12-15). Notable changes since 0.61.1:
