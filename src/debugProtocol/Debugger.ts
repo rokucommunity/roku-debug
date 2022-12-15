@@ -27,6 +27,7 @@ import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 import { util } from '../util';
 import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
+import type { VerifiedBreakpointsData } from './responses/BreakpointVerifiedUpdateResponse';
 import { BreakpointVerifiedUpdateResponse } from './responses/BreakpointVerifiedUpdateResponse';
 
 export class Debugger {
@@ -104,6 +105,7 @@ export class Debugger {
      * Get a promise that resolves after an event occurs exactly once
      */
     public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
+    public once(eventName: 'breakpoints-verified'): Promise<VerifiedBreakpointsData>;
     public once(eventName: 'data'): Promise<any>;
     public once(eventName: 'runtime-error' | 'suspend'): Promise<UpdateThreadsResponse>;
     public once(eventName: 'connected'): Promise<boolean>;
@@ -123,7 +125,7 @@ export class Debugger {
      * Subscribe to various events
      */
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
-    public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: Array<{ breakpointId: number }> }) => void);
+    public on(eventName: 'breakpoints-verified', handler: (data: VerifiedBreakpointsData) => void);
     public on(eventName: 'data', handler: (data: any) => void);
     public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
@@ -140,7 +142,7 @@ export class Debugger {
     }
 
     private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
-    private emit(eventName: 'breakpoints-verified', data: { breakpoints: Array<{ breakpointId: number }> });
+    private emit(eventName: 'breakpoints-verified', data: VerifiedBreakpointsData);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'connected' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues

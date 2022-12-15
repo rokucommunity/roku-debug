@@ -55,7 +55,13 @@ export class BreakpointVerifiedUpdateResponse {
     public flags: number;
     public numBreakpoints: number;
 
-    public breakpoints: Array<{
-        breakpointId: number;
-    }> = [];
+    public breakpoints: VerifiedBreakpoint[] = [];
+}
+
+export interface VerifiedBreakpoint {
+    breakpointId: number;
+}
+
+export interface VerifiedBreakpointsData {
+    breakpoints: VerifiedBreakpoint[];
 }
