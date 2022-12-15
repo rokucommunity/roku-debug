@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.17.2](https://github.com/rokucommunity/roku-debug/compare/v0.17.1...0.17.2) - 2022-12-15
+### Changed
+ - upgrade to [brighterscript@0.61.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0612---2022-12-15). Notable changes since 0.61.1:
+     - Bump qs from 6.5.2 to 6.5.3 ([brighterscript#758](https://github.com/rokucommunity/brighterscript/pull/758))
+
+
+
 ## [0.17.1](https://github.com/rokucommunity/roku-debug/compare/v0.17.0...0.17.1) - 2022-12-08
 ### Fixed
  - Fix "continue" repeat bug in protocol adapter ([#114](https://github.com/rokucommunity/roku-debug/pull/114))
