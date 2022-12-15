@@ -59,7 +59,12 @@ export enum UPDATE_TYPES {
      * A compilation error occurred
      * @since protocol 3.1
      */
-    COMPILE_ERROR = 5
+    COMPILE_ERROR = 5,
+    /**
+     * Breakpoints were successfully verified
+     * @since protocol 3.2
+     */
+    BREAKPOINT_VERIFIED = 6
 }
 
 export enum VARIABLE_REQUEST_FLAGS {

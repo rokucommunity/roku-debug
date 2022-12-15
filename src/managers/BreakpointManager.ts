@@ -116,7 +116,8 @@ export class BreakpointManager {
 
         //if this is one of the permanent breakpoints, mark it as verified immediately (only applicable to telnet sessions)
         if (this.getPermanentBreakpoint(bp.hash)) {
-            this.verifyBreakpoint(bp.hash, bp.id);
+            this.setBreakpointDeviceId(bp.hash, bp.id);
+            this.verifyBreakpoint(bp.id, true);
         }
         return bp;
     }
@@ -146,15 +147,49 @@ export class BreakpointManager {
     }
 
     /**
-     * Mark this breakpoint as verified
+      * Find a breakpoint by its deviceId
+      * @returns the breakpoint, or undefined if not found
+      */
+    private getBreakpointByDeviceId(deviceId: number) {
+        return this.getBreakpointsByDeviceIds([deviceId])[0];
+    }
+
+    /**
+     * Find a list of breakpoints by their deviceIds
+     * @returns the breakpoints, or undefined if not found
      */
-    public verifyBreakpoint(hash: string, deviceId: number) {
+    private getBreakpointsByDeviceIds(deviceIds: number[]) {
+        const result = [] as AugmentedSourceBreakpoint[];
+        for (const [, breakpoints] of this.breakpointsByFilePath) {
+            for (const breakpoint of breakpoints) {
+                if (deviceIds.includes(breakpoint.deviceId)) {
+                    result.push(breakpoint);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Set the deviceId of a breakpoint
+     */
+    public setBreakpointDeviceId(hash: string, deviceId: number) {
         const breakpoint = this.getBreakpointByHash(hash);
         if (breakpoint) {
-            breakpoint.verified = true;
             breakpoint.deviceId = deviceId;
         }
-        this.queueVerifyEvent(hash);
+    }
+
+    /**
+     * Mark this breakpoint as verified
+     */
+    public verifyBreakpoint(deviceId: number, isVerified = true) {
+        const breakpoint = this.getBreakpointByDeviceId(deviceId);
+        if (breakpoint) {
+            breakpoint.verified = isVerified;
+            this.queueVerifyEvent(breakpoint.hash);
+        }
+        //TODO handle the else case, (might be caused by timing issues?)
     }
 
     /**
@@ -327,7 +362,8 @@ export class BreakpointManager {
             promises.push(this.writeBreakpointsToFile(stagingFilePath, breakpoints));
             for (const breakpoint of breakpoints) {
                 //mark this breakpoint as verified
-                this.verifyBreakpoint(breakpoint.hash, breakpoint.id);
+                this.setBreakpointDeviceId(breakpoint.hash, breakpoint.id);
+                this.verifyBreakpoint(breakpoint.id, true);
                 //add this breakpoint to the list of "permanent" breakpoints
                 this.registerPermanentBreakpoint(breakpoint);
             }

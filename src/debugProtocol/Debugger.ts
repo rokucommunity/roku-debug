@@ -27,6 +27,8 @@ import { AddBreakpointsResponse } from './responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from './responses/RemoveBreakpointsResponse';
 import { util } from '../util';
 import { BreakpointErrorUpdateResponse } from './responses/BreakpointErrorUpdateResponse';
+import type { VerifiedBreakpointsData } from './responses/BreakpointVerifiedUpdateResponse';
+import { BreakpointVerifiedUpdateResponse } from './responses/BreakpointVerifiedUpdateResponse';
 
 export class Debugger {
 
@@ -95,10 +97,15 @@ export class Debugger {
         return semver.satisfies(this.protocolVersion, '>=3.2.0');
     }
 
+    public get supportsBreakpointVerification() {
+        return semver.satisfies(this.protocolVersion, '>=3.2.0');
+    }
+
     /**
      * Get a promise that resolves after an event occurs exactly once
      */
     public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
+    public once(eventName: 'breakpoints-verified'): Promise<VerifiedBreakpointsData>;
     public once(eventName: 'data'): Promise<any>;
     public once(eventName: 'runtime-error' | 'suspend'): Promise<UpdateThreadsResponse>;
     public once(eventName: 'connected'): Promise<boolean>;
@@ -118,6 +125,7 @@ export class Debugger {
      * Subscribe to various events
      */
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
+    public on(eventName: 'breakpoints-verified', handler: (data: VerifiedBreakpointsData) => void);
     public on(eventName: 'data', handler: (data: any) => void);
     public on(eventName: 'runtime-error' | 'suspend', handler: (data: UpdateThreadsResponse) => void);
     public on(eventName: 'connected', handler: (connected: boolean) => void);
@@ -134,6 +142,7 @@ export class Debugger {
     }
 
     private emit(eventName: 'suspend' | 'runtime-error', data: UpdateThreadsResponse);
+    private emit(eventName: 'breakpoints-verified', data: VerifiedBreakpointsData);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'connected' | 'data' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
@@ -395,9 +404,14 @@ export class Debugger {
                     buffer.writeStringNT(breakpoint.conditionalExpression ?? 'true'); // cond_expr - the condition that must evaluate to `true` in order to hit the breakpoint
                 }
             }
-            return this.makeRequest<AddBreakpointsResponse>(buffer,
+            const response = await this.makeRequest<AddBreakpointsResponse>(buffer,
                 useConditionalBreakpoints ? COMMANDS.ADD_CONDITIONAL_BREAKPOINTS : COMMANDS.ADD_BREAKPOINTS
             );
+            //if the device does not support breakpoint verification, then auto-mark all of these as verified
+            if (!this.supportsBreakpointVerification) {
+                this.emit('breakpoints-verified', response);
+            }
+            return response;
         }
         const response = new AddBreakpointsResponse(null);
         response.success = true;
@@ -497,6 +511,17 @@ export class Debugger {
                             return this.checkResponse(response, buffer, packetLength);
                         case UPDATE_TYPES.COMPILE_ERROR:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
+                        case UPDATE_TYPES.BREAKPOINT_VERIFIED:
+                            const bpVerifiedResponse = new BreakpointVerifiedUpdateResponse(slicedBuffer);
+                            console.log('breakpoints verified', bpVerifiedResponse.breakpoints.map(x => x.breakpointId));
+                            if (this.checkResponse(bpVerifiedResponse, buffer, packetLength)) {
+                                this.emit('breakpoints-verified', {
+                                    breakpoints: bpVerifiedResponse.breakpoints
+                                });
+                                return true;
+                            } else {
+                                return false;
+                            }
                         default:
                             return this.checkResponse(new UndefinedResponse(slicedBuffer), buffer, packetLength);
                     }
