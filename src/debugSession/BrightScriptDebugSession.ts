@@ -927,12 +927,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 if (!variablePath && util.isAssignableExpression(args.expression)) {
                     let varIndex = this.evaluateVarSequence++;
                     let arrayVarName = '__rokuDebug_eval';
-                    if (this.evaluateVarSequence < 0) {
-                        this.evaluateVarSequence = 0;
+                    if (varIndex === 0) {
+                        await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
                     }
-                    await this.rokuAdapter.evaluate(`if type(${arrayVarName}) <> "roAssociativeArray"  ${arrayVarName} = {}`, args.frameId);
-                    let statement = `${arrayVarName}["${varIndex}"] = ${args.expression}`;
-                    args.expression = `${arrayVarName}["${varIndex}"]`;
+                    let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
+                    args.expression = `${arrayVarName}[${varIndex}]`;
                     let commandResults = await this.rokuAdapter.evaluate(statement, args.frameId);
                     variablePath = [arrayVarName, varIndex.toString()];
                 }
@@ -1056,6 +1055,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
+            //clear the index for storing evalutated expressions
+            this.evaluateVarSequence = 0;
+
             //sync breakpoints
             await this.rokuAdapter?.syncBreakpoints();
             this.logger.info('received "suspend" event from adapter');
