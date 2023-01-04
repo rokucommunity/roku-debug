@@ -886,6 +886,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private evaluateRequestPromise = Promise.resolve();
+    private evaluateVarSequence = 0;
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
         let deferred = defer<void>();
@@ -922,7 +923,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 //is at debugger prompt
             } else {
-                const variablePath = util.getVariablePath(args.expression);
+                let variablePath = util.getVariablePath(args.expression);
+                if (!variablePath && util.isAssignableExpression(args.expression)) {
+                    let varIndex = this.evaluateVarSequence++;
+                    let arrayVarName = '__rokuDebug_eval';
+                    if (this.evaluateVarSequence < 0) {
+                        this.evaluateVarSequence = 0;
+                    }
+                    await this.rokuAdapter.evaluate(`if type(${arrayVarName}) <> "roAssociativeArray"  ${arrayVarName} = {}`, args.frameId);
+                    let statement = `${arrayVarName}["${varIndex}"] = ${args.expression}`;
+                    args.expression = `${arrayVarName}["${varIndex}"]`;
+                    let commandResults = await this.rokuAdapter.evaluate(statement, args.frameId);
+                    variablePath = [arrayVarName, varIndex.toString()];
+                }
+
                 //if we found a variable path (e.g. ['a', 'b', 'c']) then do a variable lookup because it's faster and more widely supported than `evaluate`
                 if (variablePath) {
                     let refId = this.getEvaluateRefId(args.expression, args.frameId);
@@ -951,34 +965,27 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     //run an `evaluate` call
                 } else {
-                    if (args.context === 'repl' || !this.enableDebugProtocol) {
-                        let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
+                    let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
 
-                        commandResults.message = util.trimDebugPrompt(commandResults.message);
-                        if (args.context !== 'watch') {
-                            //clear variable cache since this action could have side-effects
-                            this.clearState();
-                            this.sendInvalidatedEvent(null, args.frameId);
-                        }
-                        //if the adapter captured output (probably only telnet), print it to the vscode debug console
-                        if (typeof commandResults.message === 'string') {
-                            this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
-                        }
+                    commandResults.message = util.trimDebugPrompt(commandResults.message);
+                    if (args.context !== 'watch') {
+                        //clear variable cache since this action could have side-effects
+                        this.clearState();
+                        this.sendInvalidatedEvent(null, args.frameId);
+                    }
+                    //if the adapter captured output (probably only telnet), print it to the vscode debug console
+                    if (typeof commandResults.message === 'string') {
+                        this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
+                    }
 
-                        if (this.enableDebugProtocol || (typeof commandResults.message !== 'string')) {
-                            response.body = {
-                                result: 'invalid',
-                                variablesReference: 0
-                            };
-                        } else {
-                            response.body = {
-                                result: commandResults.message === '\r\n' ? 'invalid' : commandResults.message,
-                                variablesReference: 0
-                            };
-                        }
-                    } else {
+                    if (this.enableDebugProtocol || (typeof commandResults.message !== 'string')) {
                         response.body = {
                             result: 'invalid',
+                            variablesReference: 0
+                        };
+                    } else {
+                        response.body = {
+                            result: commandResults.message === '\r\n' ? 'invalid' : commandResults.message,
                             variablesReference: 0
                         };
                     }
