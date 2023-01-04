@@ -98,7 +98,7 @@
         "semver": "^7.3.5",
         "serialize-error": "^8.1.0",
         "smart-buffer": "^4.2.0",
-        "source-map": "^0.7.3",
+        "source-map": "^0.7.4",
         "telnet-client": "^1.4.9",
         "vscode-debugadapter": "^1.49.0",
         "vscode-debugprotocol": "^1.49.0",
