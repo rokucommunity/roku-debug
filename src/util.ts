@@ -266,7 +266,7 @@ class Util {
 
     /**
      * Check if the parameter is an expression
-     * The HACK protion is copied from the getVariablePath function
+     * The HACK portion is copied from the getVariablePath function
      * @param expression
      */
     public isAssignableExpression(expression: string): boolean {
@@ -278,7 +278,7 @@ class Util {
             //quit if there are zero statements or more than one statement
             parser.ast.statements.length !== 1
         ) {
-            return undefined;
+            return false;
         }
         let value = (parser.ast.statements[0] as AssignmentStatement).value;
         return value instanceof Expression;

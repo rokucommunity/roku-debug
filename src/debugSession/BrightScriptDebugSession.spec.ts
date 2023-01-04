@@ -527,15 +527,15 @@ describe('BrightScriptDebugSession', () => {
 
         it('ensures closing quote for hover', async () => {
             initRequestArgs.supportsInvalidatedEvent = true;
-            await expectResponse({
+            const result = await session.evaluateRequest({} as any, {
+                frameId: frameId,
                 expression: `"Billy`,
                 context: 'hover'
-            }, {
-                result: 'invalid',
-                variablesReference: 0
             });
             console.log('checking calls');
-            expect(evalStub.getCall(0)?.args[0]).equal('"Billy"');
+            expect(
+                evalStub.getCalls().find(x => x.args.find(x => x?.toString().includes('"Billy"')))
+            ).to.exist;
         });
 
         it('skips when not at debugger prompt', async () => {

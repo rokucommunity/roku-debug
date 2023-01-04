@@ -17,6 +17,17 @@ beforeEach(() => {
 
 describe('Util', () => {
 
+    describe('isAssignableExpression', () => {
+        it('works', () => {
+            expect(util.isAssignableExpression('function test(): endFunction')).to.be.false;
+            expect(util.isAssignableExpression('if true then print true')).to.be.false;
+            expect(util.isAssignableExpression('while true: print true')).to.be.false;
+            expect(util.isAssignableExpression('2+2')).to.be.true;
+            expect(util.isAssignableExpression('createThing()')).to.be.true;
+            expect(util.isAssignableExpression('a.b.c')).to.be.true;
+        });
+    });
+
     describe('removeTrailingNewline', () => {
         it('works', () => {
             expect(util.removeTrailingNewline('\r\n')).to.equal('');
