@@ -827,52 +827,62 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let childVariables: AugmentedVariable[] = [];
             //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
             await this.evaluateRequestPromise;
-            if (this.rokuAdapter.isAtDebuggerPrompt) {
-                const reference = this.variableHandles.get(args.variablesReference);
-                if (reference) {
-                    logger.log('reference', reference);
-                    // NOTE: Legacy telnet support for local vars
-                    if (this.launchConfiguration.enableVariablesPanel) {
-                        const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
+            if (!this.rokuAdapter.isAtDebuggerPrompt) {
+                logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
+                response.success = false;
+                response.message = 'Debug session is not paused';
+                return this.sendResponse(response);
+            }
+            const reference = this.variableHandles.get(args.variablesReference);
+            if (reference) {
+                logger.log('reference', reference);
+                // NOTE: Legacy telnet support for local vars
+                if (this.launchConfiguration.enableVariablesPanel) {
+                    const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
 
-                        for (const varName of vars) {
-                            let result = await this.rokuAdapter.getVariable(varName, -1);
-                            let tempVar = this.getVariableFromResult(result, -1);
-                            childVariables.push(tempVar);
-                        }
-                    } else {
-                        childVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
+                    for (const varName of vars) {
+                        let result = await this.rokuAdapter.getVariable(varName, -1);
+                        let tempVar = this.getVariableFromResult(result, -1);
+                        childVariables.push(tempVar);
                     }
                 } else {
-                    //find the variable with this reference
-                    let v = this.variables[args.variablesReference];
-                    logger.log('variable', v);
-                    //query for child vars if we haven't done it yet.
-                    if (v.childVariables.length === 0) {
-                        let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
-                        let tempVar = this.getVariableFromResult(result, v.frameId);
-                        tempVar.frameId = v.frameId;
-                        v.childVariables = tempVar.childVariables;
-                    }
-                    childVariables = v.childVariables;
+                    childVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
                 }
-
-                //if the variable is an array, send only the requested range
-                if (Array.isArray(childVariables) && args.filter === 'indexed') {
-                    //only send the variable range requested by the debugger
-                    childVariables = childVariables.slice(args.start, args.start + args.count);
-                }
-                response.body = {
-                    variables: childVariables
-                };
             } else {
-                logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
+                //find the variable with this reference
+                let v = this.variables[args.variablesReference];
+                if (!v) {
+                    response.success = false;
+                    response.message = `Variable reference has expired`;
+                    return this.sendResponse(response);
+                }
+                logger.log('variable', v);
+                //query for child vars if we haven't done it yet.
+                if (v.childVariables.length === 0) {
+                    let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
+                    let tempVar = this.getVariableFromResult(result, v.frameId);
+                    tempVar.frameId = v.frameId;
+                    v.childVariables = tempVar.childVariables;
+                }
+                childVariables = v.childVariables;
             }
-            logger.info('end', { response });
-            this.sendResponse(response);
+
+            //if the variable is an array, send only the requested range
+            if (Array.isArray(childVariables) && args.filter === 'indexed') {
+                //only send the variable range requested by the debugger
+                childVariables = childVariables.slice(args.start, args.start + args.count);
+            }
+            response.body = {
+                variables: childVariables
+            };
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });
+            response.success = false;
+            response.message = error?.message ?? 'Error during variablesRequest';
+        } finally {
+            logger.info('end', { response });
         }
+        this.sendResponse(response);
     }
 
     private evaluateRequestPromise = Promise.resolve();
