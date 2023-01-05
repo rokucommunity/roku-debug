@@ -10,13 +10,14 @@ import { fileUtils } from '../FileUtils';
 import type { EvaluateContainer, StackFrame, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { PrimativeType } from '../adapters/TelnetAdapter';
 import { defer } from '../util';
-import { HighLevelType } from '../interfaces';
+import { HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { util as bscUtil, standardizePath as s } from 'brighterscript';
 import { DefaultFiles } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
+import { ConsoleTransport } from '@rokucommunity/logger';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -103,6 +104,9 @@ describe('BrightScriptDebugSession', () => {
             evaluate: () => { },
             syncBreakpoints: () => { },
             getVariable: () => { },
+            getThreads: () => {
+                return [];
+            },
             getStackTrace: () => { }
         } as any;
         session['rokuAdapter'] = rokuAdapter;
@@ -129,6 +133,85 @@ describe('BrightScriptDebugSession', () => {
                     filteredList.push(deferred);
                 }
             }
+        });
+    });
+
+    describe('evaluateRequest', () => {
+        it.only('resets local var counter on suspend', async () => {
+            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+            sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
+                return Promise.resolve({
+                    evaluateName: x,
+                    highLevelType: 'primative',
+                    value: '1'
+                } as EvaluateContainer);
+            });
+            rokuAdapter.isAtDebuggerPrompt = true;
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '1+2', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '2+3', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(0).firstArg).to.eql('__rokuDebug_eval = []');
+            expect(stub.getCall(1).firstArg).to.eql('__rokuDebug_eval[0] = 1+2');
+            expect(stub.getCall(2).firstArg).to.eql('__rokuDebug_eval[1] = 2+3');
+            await session['onSuspend']();
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '3+4', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(3).firstArg).to.eql('__rokuDebug_eval = []');
+            expect(stub.getCall(4).firstArg).to.eql('__rokuDebug_eval[0] = 3+4');
+        });
+
+        it.only('can assign to a variable', async () => {
+            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+            sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
+                return Promise.resolve({
+                    evaluateName: x,
+                    highLevelType: 'primative',
+                    value: '1'
+                } as EvaluateContainer);
+            });
+            rokuAdapter.isAtDebuggerPrompt = true;
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: 'testVar = "foo"', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(0).firstArg).to.eql('testVar = "foo"');
+        });
+
+        it.only('handels evaluating expressions on different threads', async () => {
+            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+            sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
+                return Promise.resolve({
+                    evaluateName: x,
+                    highLevelType: 'primative',
+                    value: '1'
+                } as EvaluateContainer);
+            });
+            rokuAdapter.isAtDebuggerPrompt = true;
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '1+2', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(0).firstArg).to.eql('__rokuDebug_eval = []');
+            expect(stub.getCall(1).firstArg).to.eql('__rokuDebug_eval[0] = 1+2');
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '2+3', frameId: 2 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(2).firstArg).to.eql('__rokuDebug_eval = []');
+            expect(stub.getCall(3).firstArg).to.eql('__rokuDebug_eval[0] = 2+3');
         });
     });
 

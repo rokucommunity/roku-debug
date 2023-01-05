@@ -886,7 +886,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private evaluateRequestPromise = Promise.resolve();
-    private evaluateVarSequence = 0;
+    private evaluateVarIndexByFrameId = new Map<number, number>();
+
+    private getNextVarIndex(frameId: number): number {
+        if (!this.evaluateVarIndexByFrameId.has(frameId)) {
+            this.evaluateVarIndexByFrameId.set(frameId, 0);
+        }
+        let value = this.evaluateVarIndexByFrameId.get(frameId);
+        this.evaluateVarIndexByFrameId.set(frameId, value + 1);
+        return value;
+    }
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
         let deferred = defer<void>();
@@ -925,7 +934,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } else {
                 let variablePath = util.getVariablePath(args.expression);
                 if (!variablePath && util.isAssignableExpression(args.expression)) {
-                    let varIndex = this.evaluateVarSequence++;
+                    let varIndex = this.getNextVarIndex(args.frameId);
                     let arrayVarName = '__rokuDebug_eval';
                     if (varIndex === 0) {
                         await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
@@ -1055,49 +1064,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
-            //clear the index for storing evalutated expressions
-            this.evaluateVarSequence = 0;
-
-            //sync breakpoints
-            await this.rokuAdapter?.syncBreakpoints();
-            this.logger.info('received "suspend" event from adapter');
-
-            const threads = await this.rokuAdapter.getThreads();
-            const activeThread = threads.find(x => x.isSelected);
-
-            //TODO remove this once Roku fixes their threads off-by-one line number issues
-            //look up the correct line numbers for each thread from the StackTrace
-            await Promise.all(
-                threads.map(async (thread) => {
-                    const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
-                    const stackTraceLineNumber = stackTrace[0]?.lineNumber;
-                    if (stackTraceLineNumber !== thread.lineNumber) {
-                        this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
-                        thread.lineNumber = stackTraceLineNumber;
-                    }
-                })
-            );
-
-            //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
-            if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
-                this.entryBreakpointWasHandled = true;
-                //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
-                if (!await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
-                    this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
-                    return this.rokuAdapter.continue();
-                }
-            }
-
-            this.clearState();
-            const event: StoppedEvent = new StoppedEvent(
-                StoppedEventReason.breakpoint,
-                //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
-                activeThread?.threadId ?? 0,
-                '' //exception text
-            );
-            // Socket debugger will always stop all threads and supports multi thread inspection.
-            (event.body as any).allThreadsStopped = this.enableDebugProtocol;
-            this.sendEvent(event);
+            await this.onSuspend();
         });
 
         //anytime the adapter encounters an exception on the roku,
@@ -1118,6 +1085,53 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         await this.rokuAdapter.connect();
         this.rokuAdapterDeferred.resolve(this.rokuAdapter);
         return this.rokuAdapter;
+    }
+
+    private async onSuspend() {
+        //clear the index for storing evalutated expressions
+        this.evaluateVarIndexByFrameId.clear();
+
+        //sync breakpoints
+        await this.rokuAdapter?.syncBreakpoints();
+        this.logger.info('received "suspend" event from adapter');
+
+        const threads = await this.rokuAdapter.getThreads();
+        const activeThread = threads.find(x => x.isSelected);
+
+        //TODO remove this once Roku fixes their threads off-by-one line number issues
+        //look up the correct line numbers for each thread from the StackTrace
+        await Promise.all(
+            threads.map(async (thread) => {
+                const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
+                const stackTraceLineNumber = stackTrace[0]?.lineNumber;
+                if (stackTraceLineNumber !== thread.lineNumber) {
+                    this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
+                    thread.lineNumber = stackTraceLineNumber;
+                }
+            })
+        );
+
+        //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
+        if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
+            this.entryBreakpointWasHandled = true;
+            //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
+            if (activeThread && !await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
+                this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
+                return this.rokuAdapter.continue();
+            }
+        }
+
+        this.clearState();
+        const event: StoppedEvent = new StoppedEvent(
+            StoppedEventReason.breakpoint,
+            //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
+            activeThread?.threadId ?? 0,
+            '' //exception text
+        );
+        // Socket debugger will always stop all threads and supports multi thread inspection.
+        (event.body as any).allThreadsStopped = this.enableDebugProtocol;
+        this.sendEvent(event);
+
     }
 
     private getVariableFromResult(result: EvaluateContainer, frameId: number) {
