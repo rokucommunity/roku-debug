@@ -137,7 +137,7 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('evaluateRequest', () => {
-        it.only('resets local var counter on suspend', async () => {
+        it('resets local var counter on suspend', async () => {
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
@@ -169,7 +169,7 @@ describe('BrightScriptDebugSession', () => {
             expect(stub.getCall(4).firstArg).to.eql('__rokuDebug_eval[0] = 3+4');
         });
 
-        it.only('can assign to a variable', async () => {
+        it('can assign to a variable', async () => {
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
@@ -188,7 +188,7 @@ describe('BrightScriptDebugSession', () => {
             expect(stub.getCall(0).firstArg).to.eql('testVar = "foo"');
         });
 
-        it.only('handels evaluating expressions on different threads', async () => {
+        it('handels evaluating expressions on different threads', async () => {
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
