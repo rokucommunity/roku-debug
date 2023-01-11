@@ -52,6 +52,75 @@ describe('DebugProtocolClient', () => {
         sinon.restore();
     });
 
+    it('knows when to enable the thread hopping workaround', () => {
+        //only supported below version 3.1.0
+        client.protocolVersion = '1.0.0';
+        expect(
+            client['enableThreadHoppingWorkaround']
+        ).to.be.true;
+
+        client.protocolVersion = '3.0.0';
+        expect(
+            client['enableThreadHoppingWorkaround']
+        ).to.be.true;
+
+        client.protocolVersion = '3.1.0';
+        expect(
+            client['enableThreadHoppingWorkaround']
+        ).to.be.false;
+
+        client.protocolVersion = '4.0.0';
+        expect(
+            client['enableThreadHoppingWorkaround']
+        ).to.be.false;
+    });
+
+    it('knows when to enable complib specific breakpoints', () => {
+        //only supported on version 3.1.0 and above
+        client.protocolVersion = '1.0.0';
+        expect(
+            client['enableComponentLibrarySpecificBreakpoints']
+        ).to.be.false;
+
+        client.protocolVersion = '3.0.0';
+        expect(
+            client['enableComponentLibrarySpecificBreakpoints']
+        ).to.be.false;
+
+        client.protocolVersion = '3.1.0';
+        expect(
+            client['enableComponentLibrarySpecificBreakpoints']
+        ).to.be.true;
+
+        client.protocolVersion = '4.0.0';
+        expect(
+            client['enableComponentLibrarySpecificBreakpoints']
+        ).to.be.true;
+    });
+
+    it('knows when to enable conditional breakpoints', () => {
+        //only supported on version 3.1.0 and above
+        client.protocolVersion = '1.0.0';
+        expect(
+            client['supportsConditionalBreakpoints']
+        ).to.be.false;
+
+        client.protocolVersion = '3.0.0';
+        expect(
+            client['supportsConditionalBreakpoints']
+        ).to.be.false;
+
+        client.protocolVersion = '3.1.0';
+        expect(
+            client['supportsConditionalBreakpoints']
+        ).to.be.true;
+
+        client.protocolVersion = '4.0.0';
+        expect(
+            client['supportsConditionalBreakpoints']
+        ).to.be.true;
+    });
+
     it('handles v3 handshake', async () => {
         //these are false by default
         expect(client.watchPacketLength).to.be.equal(false);

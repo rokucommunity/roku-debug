@@ -131,7 +131,7 @@ export class DebugProtocolClient {
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
         return () => {
-            this.emitter?.removeListener(eventName, handler);
+            this.emitter.removeListener(eventName, handler);
         };
     }
 
@@ -143,7 +143,7 @@ export class DebugProtocolClient {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            this.emitter?.emit(eventName, data);
+            this.emitter.emit(eventName, data);
         }, 0);
     }
 
