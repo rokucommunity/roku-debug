@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { protocolUtil } from './ProtocolUtil';
-import { ProtocolUpdate } from './events/ProtocolEvent';
+import type { ProtocolUpdate } from './events/ProtocolEvent';
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode, UpdateType, UpdateTypeCode } from './Constants';
 import { expectThrows } from '../testHelpers.spec';
