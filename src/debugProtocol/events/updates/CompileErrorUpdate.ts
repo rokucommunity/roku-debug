@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode, UpdateType } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 /**
  * A COMPILE_ERROR is sent if a compilation error occurs. In this case, the update_type field in a DebuggerUpdate message is set to
@@ -25,19 +25,19 @@ export class CompileErrorUpdate {
         libraryName: string;
     }) {
         const update = new CompileErrorUpdate();
-        protocolUtils.loadJson(update, data);
+        protocolUtil.loadJson(update, data);
         return update;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const update = new CompileErrorUpdate();
-        protocolUtils.bufferLoaderHelper(update, buffer, 20, (smartBuffer) => {
-            protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
+        protocolUtil.bufferLoaderHelper(update, buffer, 20, (smartBuffer) => {
+            protocolUtil.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
 
-            update.data.errorMessage = protocolUtils.readStringNT(smartBuffer); // error_string
-            update.data.filePath = protocolUtils.readStringNT(smartBuffer); // file_spec
+            update.data.errorMessage = protocolUtil.readStringNT(smartBuffer); // error_string
+            update.data.filePath = protocolUtil.readStringNT(smartBuffer); // file_spec
             update.data.lineNumber = smartBuffer.readUInt32LE(); // line_number
-            update.data.libraryName = protocolUtils.readStringNT(smartBuffer); // library_name
+            update.data.libraryName = protocolUtil.readStringNT(smartBuffer); // library_name
         });
         return update;
     }
@@ -50,7 +50,7 @@ export class CompileErrorUpdate {
         smartBuffer.writeUInt32LE(this.data.lineNumber); // line_number
         smartBuffer.writeStringNT(this.data.libraryName); // library_name
 
-        protocolUtils.insertCommonUpdateFields(this, smartBuffer);
+        protocolUtil.insertCommonUpdateFields(this, smartBuffer);
 
         return smartBuffer.toBuffer();
     }

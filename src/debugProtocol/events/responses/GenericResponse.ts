@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { ErrorCode } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 export class GenericResponse {
     public static fromJson(data: {
@@ -8,13 +8,13 @@ export class GenericResponse {
         errorCode: ErrorCode;
     }) {
         const response = new GenericResponse();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         return response;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const response = new GenericResponse();
-        protocolUtils.bufferLoaderHelper(response, buffer, 8, (smartBuffer: SmartBuffer) => {
+        protocolUtil.bufferLoaderHelper(response, buffer, 8, (smartBuffer: SmartBuffer) => {
             response.data.packetLength = 8;
             response.data.requestId = smartBuffer.readUInt32LE(); // request_id
             response.data.errorCode = smartBuffer.readUInt32LE(); // error_code

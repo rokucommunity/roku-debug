@@ -1,7 +1,7 @@
 import { SmartBuffer } from 'smart-buffer';
 import { util } from '../../../util';
 import { Command } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
 export class AddConditionalBreakpointsRequest implements ProtocolRequest {
@@ -16,7 +16,7 @@ export class AddConditionalBreakpointsRequest implements ProtocolRequest {
         }>;
     }) {
         const request = new AddConditionalBreakpointsRequest();
-        protocolUtils.loadJson(request, data);
+        protocolUtil.loadJson(request, data);
         request.data.breakpoints ??= [];
         //default ignoreCount to 0 for consistency purposes
         for (const breakpoint of request.data.breakpoints) {
@@ -29,8 +29,8 @@ export class AddConditionalBreakpointsRequest implements ProtocolRequest {
 
     public static fromBuffer(buffer: Buffer) {
         const request = new AddConditionalBreakpointsRequest();
-        protocolUtils.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
-            protocolUtils.loadCommonRequestFields(request, smartBuffer);
+        protocolUtil.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
+            protocolUtil.loadCommonRequestFields(request, smartBuffer);
 
             smartBuffer.readUInt32LE(); // flags - Should always be passed as 0. Unused, reserved for future use.
 
@@ -38,10 +38,10 @@ export class AddConditionalBreakpointsRequest implements ProtocolRequest {
             request.data.breakpoints = [];
             for (let i = 0; i < numBreakpoints; i++) {
                 request.data.breakpoints.push({
-                    filePath: protocolUtils.readStringNT(smartBuffer), // file_path
+                    filePath: protocolUtil.readStringNT(smartBuffer), // file_path
                     lineNumber: smartBuffer.readUInt32LE(), // line_number
                     ignoreCount: smartBuffer.readUInt32LE(), // ignore_count
-                    conditionalExpression: protocolUtils.readStringNT(smartBuffer) // cond_expr
+                    conditionalExpression: protocolUtil.readStringNT(smartBuffer) // cond_expr
                 });
             }
         });
@@ -61,7 +61,7 @@ export class AddConditionalBreakpointsRequest implements ProtocolRequest {
             smartBuffer.writeStringNT(breakpoint.conditionalExpression); // cond_expr
         }
 
-        protocolUtils.insertCommonRequestFields(this, smartBuffer);
+        protocolUtil.insertCommonRequestFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

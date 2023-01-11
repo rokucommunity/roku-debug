@@ -1,7 +1,7 @@
 /* eslint-disable no-bitwise */
 import { SmartBuffer } from 'smart-buffer';
 import { Command } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
 export class VariablesRequest implements ProtocolRequest {
@@ -18,7 +18,7 @@ export class VariablesRequest implements ProtocolRequest {
         }>;
     }) {
         const request = new VariablesRequest();
-        protocolUtils.loadJson(request, data);
+        protocolUtil.loadJson(request, data);
         request.data.variablePathEntries ??= [];
         // all variables will be case sensitive if the flag is disabled
         for (const entry of request.data.variablePathEntries) {
@@ -34,8 +34,8 @@ export class VariablesRequest implements ProtocolRequest {
 
     public static fromBuffer(buffer: Buffer) {
         const request = new VariablesRequest();
-        protocolUtils.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
-            protocolUtils.loadCommonRequestFields(request, smartBuffer);
+        protocolUtil.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
+            protocolUtil.loadCommonRequestFields(request, smartBuffer);
 
             const variableRequestFlags = smartBuffer.readUInt8(); // variable_request_flags
 
@@ -48,7 +48,7 @@ export class VariablesRequest implements ProtocolRequest {
             if (variablePathLength > 0) {
                 for (let i = 0; i < variablePathLength; i++) {
                     request.data.variablePathEntries.push({
-                        name: protocolUtils.readStringNT(smartBuffer), // variable_path_entries - optional
+                        name: protocolUtil.readStringNT(smartBuffer), // variable_path_entries - optional
                         //by default, all variable lookups are case SENSITIVE
                         forceCaseInsensitive: false
                     });
@@ -88,7 +88,7 @@ export class VariablesRequest implements ProtocolRequest {
             }
         }
 
-        protocolUtils.insertCommonRequestFields(this, smartBuffer);
+        protocolUtil.insertCommonRequestFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

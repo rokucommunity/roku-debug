@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { ErrorCode } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 export class GenericV3Response {
     public static fromJson(data: {
@@ -8,13 +8,13 @@ export class GenericV3Response {
         errorCode: ErrorCode;
     }) {
         const response = new GenericV3Response();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         return response;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const response = new GenericV3Response();
-        protocolUtils.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
+        protocolUtil.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
             response.data.packetLength = smartBuffer.readUInt32LE(); // packet_length
             response.data.requestId = smartBuffer.readUInt32LE(); // request_id
             response.data.errorCode = smartBuffer.readUInt32LE(); // error_code
@@ -28,7 +28,7 @@ export class GenericV3Response {
 
     public toBuffer() {
         const smartBuffer = new SmartBuffer();
-        protocolUtils.insertCommonResponseFields(this, smartBuffer);
+        protocolUtil.insertCommonResponseFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

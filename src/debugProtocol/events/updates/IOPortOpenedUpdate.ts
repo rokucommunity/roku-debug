@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode, UpdateType } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 export class IOPortOpenedUpdate {
 
@@ -8,14 +8,14 @@ export class IOPortOpenedUpdate {
         port: number;
     }) {
         const update = new IOPortOpenedUpdate();
-        protocolUtils.loadJson(update, data);
+        protocolUtil.loadJson(update, data);
         return update;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const update = new IOPortOpenedUpdate();
-        protocolUtils.bufferLoaderHelper(update, buffer, 16, (smartBuffer) => {
-            protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
+        protocolUtil.bufferLoaderHelper(update, buffer, 16, (smartBuffer) => {
+            protocolUtil.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
 
             update.data.port = smartBuffer.readInt32LE();
         });
@@ -27,7 +27,7 @@ export class IOPortOpenedUpdate {
 
         smartBuffer.writeInt32LE(this.data.port); // primary_thread_index
 
-        protocolUtils.insertCommonUpdateFields(this, smartBuffer);
+        protocolUtil.insertCommonUpdateFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

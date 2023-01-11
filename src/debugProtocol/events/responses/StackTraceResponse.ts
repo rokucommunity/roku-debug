@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 import type { StackEntry } from './StackTraceV3Response';
 
 export class StackTraceResponse {
@@ -10,14 +10,14 @@ export class StackTraceResponse {
         entries: StackEntry[];
     }) {
         const response = new StackTraceResponse();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         response.data.entries ??= [];
         return response;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const response = new StackTraceResponse();
-        protocolUtils.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
+        protocolUtil.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
             response.data.requestId = smartBuffer.readUInt32LE(); // request_id
             response.data.errorCode = smartBuffer.readUInt32LE(); // error_code
 
@@ -30,8 +30,8 @@ export class StackTraceResponse {
                 const entry = {} as StackEntry;
                 entry.lineNumber = smartBuffer.readUInt32LE();
                 // NOTE: this is documented as being function name then file name but it is being returned by the device backwards.
-                entry.filePath = protocolUtils.readStringNT(smartBuffer);
-                entry.functionName = protocolUtils.readStringNT(smartBuffer);
+                entry.filePath = protocolUtil.readStringNT(smartBuffer);
+                entry.functionName = protocolUtil.readStringNT(smartBuffer);
 
                 // TODO do we need this anymore?
                 // let fileExtension = path.extname(this.fileName).toLowerCase();

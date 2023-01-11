@@ -3,7 +3,7 @@ import type { Command, UpdateType } from './Constants';
 import { CommandCode, UpdateTypeCode } from './Constants';
 import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events/ProtocolEvent';
 
-export class ProtocolUtils {
+export class ProtocolUtil {
 
     /**
      * Load json data onto an event, and mark it as successful
@@ -137,5 +137,5 @@ export class ProtocolUtils {
     }
 }
 
-export const protocolUtils = new ProtocolUtils();
+export const protocolUtil = new ProtocolUtil();
 

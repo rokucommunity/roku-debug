@@ -1,21 +1,21 @@
 import { SmartBuffer } from 'smart-buffer';
 import { Command } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
 export class RemoveBreakpointsRequest implements ProtocolRequest {
 
     public static fromJson(data: { requestId: number; breakpointIds: number[] }) {
         const request = new RemoveBreakpointsRequest();
-        protocolUtils.loadJson(request, data);
+        protocolUtil.loadJson(request, data);
         request.data.numBreakpoints = request.data.breakpointIds.length;
         return request;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const command = new RemoveBreakpointsRequest();
-        protocolUtils.bufferLoaderHelper(command, buffer, 16, (smartBuffer) => {
-            protocolUtils.loadCommonRequestFields(command, smartBuffer);
+        protocolUtil.bufferLoaderHelper(command, buffer, 16, (smartBuffer) => {
+            protocolUtil.loadCommonRequestFields(command, smartBuffer);
             command.data.numBreakpoints = smartBuffer.readUInt32LE();
             command.data.breakpointIds = [];
             for (let i = 0; i < command.data.numBreakpoints; i++) {
@@ -33,7 +33,7 @@ export class RemoveBreakpointsRequest implements ProtocolRequest {
         for (const breakpointId of this.data.breakpointIds ?? []) {
             smartBuffer.writeUInt32LE(breakpointId as number); // breakpoint_ids
         }
-        protocolUtils.insertCommonRequestFields(this, smartBuffer);
+        protocolUtil.insertCommonRequestFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

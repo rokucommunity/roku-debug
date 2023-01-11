@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { Command } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
 export class AddBreakpointsRequest implements ProtocolRequest {
@@ -14,7 +14,7 @@ export class AddBreakpointsRequest implements ProtocolRequest {
         }>;
     }) {
         const request = new AddBreakpointsRequest();
-        protocolUtils.loadJson(request, data);
+        protocolUtil.loadJson(request, data);
         request.data.breakpoints ??= [];
         //default ignoreCount to 0 for consistency purposes
         for (const breakpoint of request.data.breakpoints) {
@@ -25,14 +25,14 @@ export class AddBreakpointsRequest implements ProtocolRequest {
 
     public static fromBuffer(buffer: Buffer) {
         const request = new AddBreakpointsRequest();
-        protocolUtils.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
-            protocolUtils.loadCommonRequestFields(request, smartBuffer);
+        protocolUtil.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
+            protocolUtil.loadCommonRequestFields(request, smartBuffer);
 
             const numBreakpoints = smartBuffer.readUInt32LE(); // num_breakpoints
             request.data.breakpoints = [];
             for (let i = 0; i < numBreakpoints; i++) {
                 request.data.breakpoints.push({
-                    filePath: protocolUtils.readStringNT(smartBuffer), // file_path
+                    filePath: protocolUtil.readStringNT(smartBuffer), // file_path
                     lineNumber: smartBuffer.readUInt32LE(), // line_number
                     ignoreCount: smartBuffer.readUInt32LE() // ignore_count
                 });
@@ -51,7 +51,7 @@ export class AddBreakpointsRequest implements ProtocolRequest {
             smartBuffer.writeUInt32LE(breakpoint.ignoreCount); // ignore_count
         }
 
-        protocolUtils.insertCommonRequestFields(this, smartBuffer);
+        protocolUtil.insertCommonRequestFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

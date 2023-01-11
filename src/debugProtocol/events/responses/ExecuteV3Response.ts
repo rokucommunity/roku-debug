@@ -1,7 +1,7 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { StopReasonCode } from '../../Constants';
 import { ErrorCode } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 export class ExecuteV3Response {
     public static fromJson(data: {
@@ -13,7 +13,7 @@ export class ExecuteV3Response {
         otherErrors: string[];
     }) {
         const response = new ExecuteV3Response();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         response.data.compileErrors ??= [];
         response.data.runtimeErrors ??= [];
         response.data.otherErrors ??= [];
@@ -22,8 +22,8 @@ export class ExecuteV3Response {
 
     public static fromBuffer(buffer: Buffer) {
         const response = new ExecuteV3Response();
-        protocolUtils.bufferLoaderHelper(response, buffer, 8, (smartBuffer: SmartBuffer) => {
-            protocolUtils.loadCommonResponseFields(response, smartBuffer);
+        protocolUtil.bufferLoaderHelper(response, buffer, 8, (smartBuffer: SmartBuffer) => {
+            protocolUtil.loadCommonResponseFields(response, smartBuffer);
 
             response.data.executeSuccess = smartBuffer.readUInt8() !== 0; //execute_success
             response.data.runtimeStopCode = smartBuffer.readUInt8(); //runtime_stop_code
@@ -32,7 +32,7 @@ export class ExecuteV3Response {
             response.data.compileErrors = [];
             for (let i = 0; i < compileErrorCount; i++) {
                 response.data.compileErrors.push(
-                    protocolUtils.readStringNT(smartBuffer)
+                    protocolUtil.readStringNT(smartBuffer)
                 );
             }
 
@@ -40,7 +40,7 @@ export class ExecuteV3Response {
             response.data.runtimeErrors = [];
             for (let i = 0; i < runtimeErrorCount; i++) {
                 response.data.runtimeErrors.push(
-                    protocolUtils.readStringNT(smartBuffer)
+                    protocolUtil.readStringNT(smartBuffer)
                 );
             }
 
@@ -48,7 +48,7 @@ export class ExecuteV3Response {
             response.data.otherErrors = [];
             for (let i = 0; i < otherErrorCount; i++) {
                 response.data.otherErrors.push(
-                    protocolUtils.readStringNT(smartBuffer)
+                    protocolUtil.readStringNT(smartBuffer)
                 );
             }
         });
@@ -76,7 +76,7 @@ export class ExecuteV3Response {
             smartBuffer.writeStringNT(error);
         }
 
-        protocolUtils.insertCommonResponseFields(this, smartBuffer);
+        protocolUtil.insertCommonResponseFields(this, smartBuffer);
 
         return smartBuffer.toBuffer();
     }

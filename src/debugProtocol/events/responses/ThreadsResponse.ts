@@ -2,7 +2,7 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { StopReason } from '../../Constants';
 import { ErrorCode, StopReasonCode } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 export class ThreadsResponse {
     public static fromJson(data: {
@@ -10,15 +10,15 @@ export class ThreadsResponse {
         threads: ThreadInfo[];
     }) {
         const response = new ThreadsResponse();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         response.data.threads ??= [];
         return response;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const response = new ThreadsResponse();
-        protocolUtils.bufferLoaderHelper(response, buffer, 16, (smartBuffer: SmartBuffer) => {
-            protocolUtils.loadCommonResponseFields(response, smartBuffer);
+        protocolUtil.bufferLoaderHelper(response, buffer, 16, (smartBuffer: SmartBuffer) => {
+            protocolUtil.loadCommonResponseFields(response, smartBuffer);
 
             const threadsCount = smartBuffer.readUInt32LE(); // threads_count
 
@@ -30,11 +30,11 @@ export class ThreadsResponse {
                 const flags = smartBuffer.readUInt8();
                 thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
                 thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
-                thread.stopReasonDetail = protocolUtils.readStringNT(smartBuffer); // stop_reason_detail
+                thread.stopReasonDetail = protocolUtil.readStringNT(smartBuffer); // stop_reason_detail
                 thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
-                thread.functionName = protocolUtils.readStringNT(smartBuffer); // function_name
-                thread.filePath = protocolUtils.readStringNT(smartBuffer); // file_path
-                thread.codeSnippet = protocolUtils.readStringNT(smartBuffer); // code_snippet
+                thread.functionName = protocolUtil.readStringNT(smartBuffer); // function_name
+                thread.filePath = protocolUtil.readStringNT(smartBuffer); // file_path
+                thread.codeSnippet = protocolUtil.readStringNT(smartBuffer); // code_snippet
 
                 response.data.threads.push(thread);
             }
@@ -57,7 +57,7 @@ export class ThreadsResponse {
             smartBuffer.writeStringNT(thread.filePath); // file_path
             smartBuffer.writeStringNT(thread.codeSnippet); // code_snippet
         }
-        protocolUtils.insertCommonResponseFields(this, smartBuffer);
+        protocolUtil.insertCommonResponseFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

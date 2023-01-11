@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode, UpdateType } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 /**
  * Data sent as the data segment of message type: BREAKPOINT_ERROR
@@ -26,7 +26,7 @@ export class BreakpointErrorUpdate {
         otherErrors: string[];
     }) {
         const update = new BreakpointErrorUpdate();
-        protocolUtils.loadJson(update, data);
+        protocolUtil.loadJson(update, data);
         update.data.compileErrors ??= [];
         update.data.runtimeErrors ??= [];
         update.data.otherErrors ??= [];
@@ -35,8 +35,8 @@ export class BreakpointErrorUpdate {
 
     public static fromBuffer(buffer: Buffer) {
         const update = new BreakpointErrorUpdate();
-        protocolUtils.bufferLoaderHelper(update, buffer, 20, (smartBuffer) => {
-            protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
+        protocolUtil.bufferLoaderHelper(update, buffer, 20, (smartBuffer) => {
+            protocolUtil.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
 
             smartBuffer.readUInt32LE(); // flags - always 0, reserved for future use
             update.data.breakpointId = smartBuffer.readUInt32LE(); // breakpoint_id
@@ -45,7 +45,7 @@ export class BreakpointErrorUpdate {
             update.data.compileErrors = [];
             for (let i = 0; i < compileErrorCount; i++) {
                 update.data.compileErrors.push(
-                    protocolUtils.readStringNT(smartBuffer)
+                    protocolUtil.readStringNT(smartBuffer)
                 );
             }
 
@@ -53,7 +53,7 @@ export class BreakpointErrorUpdate {
             update.data.runtimeErrors = [];
             for (let i = 0; i < runtimeErrorCount; i++) {
                 update.data.runtimeErrors.push(
-                    protocolUtils.readStringNT(smartBuffer)
+                    protocolUtil.readStringNT(smartBuffer)
                 );
             }
 
@@ -61,7 +61,7 @@ export class BreakpointErrorUpdate {
             update.data.otherErrors = [];
             for (let i = 0; i < otherErrorCount; i++) {
                 update.data.otherErrors.push(
-                    protocolUtils.readStringNT(smartBuffer)
+                    protocolUtil.readStringNT(smartBuffer)
                 );
             }
         });
@@ -89,7 +89,7 @@ export class BreakpointErrorUpdate {
             smartBuffer.writeStringNT(error);
         }
 
-        protocolUtils.insertCommonUpdateFields(this, smartBuffer);
+        protocolUtil.insertCommonUpdateFields(this, smartBuffer);
 
         return smartBuffer.toBuffer();
     }

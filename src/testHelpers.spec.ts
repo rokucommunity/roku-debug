@@ -75,3 +75,17 @@ export function getRandomBuffer(byteCount: number) {
     return result.toBuffer();
 }
 
+export function expectThrows(callback: () => any, expectedMessage = undefined, failedTestMessage = 'Expected to throw but did not') {
+    let wasExceptionThrown = false;
+    try {
+        callback();
+    } catch (e) {
+        wasExceptionThrown = true;
+        if (expectedMessage) {
+            expect(e.message).to.eql(expectedMessage);
+        }
+    }
+    if (wasExceptionThrown === false) {
+        throw new Error(failedTestMessage);
+    }
+}

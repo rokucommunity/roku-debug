@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 export class ListBreakpointsResponse {
 
@@ -9,15 +9,15 @@ export class ListBreakpointsResponse {
         breakpoints: BreakpointInfo[];
     }) {
         const response = new ListBreakpointsResponse();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         response.data.breakpoints ??= [];
         return response;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const response = new ListBreakpointsResponse();
-        protocolUtils.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
-            protocolUtils.loadCommonResponseFields(response, smartBuffer);
+        protocolUtil.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
+            protocolUtil.loadCommonResponseFields(response, smartBuffer);
             const numBreakpoints = smartBuffer.readUInt32LE(); // num_breakpoints
 
             response.data.breakpoints = [];
@@ -53,7 +53,7 @@ export class ListBreakpointsResponse {
                 smartBuffer.writeUInt32LE(breakpoint.ignoreCount); // ignore_count
             }
         }
-        protocolUtils.insertCommonResponseFields(this, smartBuffer);
+        protocolUtil.insertCommonResponseFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

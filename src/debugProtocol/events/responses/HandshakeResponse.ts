@@ -2,7 +2,7 @@ import { SmartBuffer } from 'smart-buffer';
 import * as semver from 'semver';
 import { util } from '../../../util';
 import type { ProtocolEvent, ProtocolResponse } from '../ProtocolEvent';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 import { ErrorCode } from '../../Constants';
 import { HandshakeRequest } from '../requests/HandshakeRequest';
 
@@ -12,7 +12,7 @@ export class HandshakeResponse implements ProtocolResponse {
         protocolVersion: string;
     }) {
         const response = new HandshakeResponse();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         // We only support version prior to v3 with this handshake
         if (!semver.satisfies(response.data.protocolVersion, '<3.0.0')) {
             response.success = false;
@@ -22,8 +22,8 @@ export class HandshakeResponse implements ProtocolResponse {
 
     public static fromBuffer(buffer: Buffer) {
         const response = new HandshakeResponse();
-        protocolUtils.bufferLoaderHelper(response, buffer, 20, (smartBuffer: SmartBuffer) => {
-            response.data.magic = protocolUtils.readStringNT(smartBuffer); // magic_number
+        protocolUtil.bufferLoaderHelper(response, buffer, 20, (smartBuffer: SmartBuffer) => {
+            response.data.magic = protocolUtil.readStringNT(smartBuffer); // magic_number
 
             response.data.protocolVersion = [
                 smartBuffer.readInt32LE(), // protocol_major_version

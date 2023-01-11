@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 export class StackTraceV3Response {
 
@@ -9,15 +9,15 @@ export class StackTraceV3Response {
         entries: StackEntry[];
     }) {
         const response = new StackTraceV3Response();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         response.data.entries ??= [];
         return response;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const response = new StackTraceV3Response();
-        protocolUtils.bufferLoaderHelper(response, buffer, 16, (smartBuffer: SmartBuffer) => {
-            protocolUtils.loadCommonResponseFields(response, smartBuffer);
+        protocolUtil.bufferLoaderHelper(response, buffer, 16, (smartBuffer: SmartBuffer) => {
+            protocolUtil.loadCommonResponseFields(response, smartBuffer);
 
             const stackSize = smartBuffer.readUInt32LE(); // stack_size
 
@@ -27,8 +27,8 @@ export class StackTraceV3Response {
             for (let i = 0; i < stackSize; i++) {
                 const entry = {} as StackEntry;
                 entry.lineNumber = smartBuffer.readUInt32LE();
-                entry.functionName = protocolUtils.readStringNT(smartBuffer);
-                entry.filePath = protocolUtils.readStringNT(smartBuffer);
+                entry.functionName = protocolUtil.readStringNT(smartBuffer);
+                entry.filePath = protocolUtil.readStringNT(smartBuffer);
 
                 // TODO do we need this anymore?
                 // let fileExtension = path.extname(this.fileName).toLowerCase();
@@ -48,7 +48,7 @@ export class StackTraceV3Response {
             smartBuffer.writeStringNT(entry.functionName); // function_name
             smartBuffer.writeStringNT(entry.filePath); // file_path
         }
-        protocolUtils.insertCommonResponseFields(this, smartBuffer);
+        protocolUtil.insertCommonResponseFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

@@ -1,7 +1,7 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { StopReason } from '../../Constants';
 import { ErrorCode, StopReasonCode, UpdateType } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 import type { ProtocolUpdate } from '../ProtocolEvent';
 
 /**
@@ -17,18 +17,18 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
         stopReasonDetail: string;
     }) {
         const update = new AllThreadsStoppedUpdate();
-        protocolUtils.loadJson(update, data);
+        protocolUtil.loadJson(update, data);
         return update;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const update = new AllThreadsStoppedUpdate();
-        protocolUtils.bufferLoaderHelper(update, buffer, 16, (smartBuffer) => {
-            protocolUtils.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
+        protocolUtil.bufferLoaderHelper(update, buffer, 16, (smartBuffer) => {
+            protocolUtil.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
 
             update.data.threadIndex = smartBuffer.readInt32LE();
             update.data.stopReason = StopReasonCode[smartBuffer.readUInt8()] as StopReason;
-            update.data.stopReasonDetail = protocolUtils.readStringNT(smartBuffer);
+            update.data.stopReasonDetail = protocolUtil.readStringNT(smartBuffer);
         });
         return update;
     }
@@ -40,7 +40,7 @@ export class AllThreadsStoppedUpdate implements ProtocolUpdate {
         smartBuffer.writeUInt8(StopReasonCode[this.data.stopReason]); // stop_reason
         smartBuffer.writeStringNT(this.data.stopReasonDetail); //stop_reason_detail
 
-        protocolUtils.insertCommonUpdateFields(this, smartBuffer);
+        protocolUtil.insertCommonUpdateFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 

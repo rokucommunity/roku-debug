@@ -1,6 +1,6 @@
 import { SmartBuffer } from 'smart-buffer';
 import { util } from '../../../util';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 import type { Command } from '../../Constants';
 
@@ -16,14 +16,14 @@ export class HandshakeRequest implements ProtocolRequest {
 
     public static fromJson(data: { magic: string }) {
         const request = new HandshakeRequest();
-        protocolUtils.loadJson(request, data);
+        protocolUtil.loadJson(request, data);
         return request;
     }
 
     public static fromBuffer(buffer: Buffer) {
         const request = new HandshakeRequest();
-        protocolUtils.bufferLoaderHelper(request, buffer, 0, (smartBuffer) => {
-            request.data.magic = protocolUtils.readStringNT(smartBuffer);
+        protocolUtil.bufferLoaderHelper(request, buffer, 0, (smartBuffer) => {
+            request.data.magic = protocolUtil.readStringNT(smartBuffer);
         });
         return request;
     }

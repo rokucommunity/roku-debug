@@ -2,7 +2,7 @@
 import { SmartBuffer } from 'smart-buffer';
 import { util } from '../../../util';
 import { ErrorCode } from '../../Constants';
-import { protocolUtils } from '../../ProtocolUtil';
+import { protocolUtil } from '../../ProtocolUtil';
 
 export class VariablesResponse {
 
@@ -11,7 +11,7 @@ export class VariablesResponse {
         variables: Variable[];
     }) {
         const response = new VariablesResponse();
-        protocolUtils.loadJson(response, data);
+        protocolUtil.loadJson(response, data);
         response.data.variables ??= [];
         //validate that any object marked as `isContainer` either has an array of children or has an element count
         for (const variable of response.flattenVariables(response.data.variables)) {
@@ -34,8 +34,8 @@ export class VariablesResponse {
 
     public static fromBuffer(buffer: Buffer) {
         const response = new VariablesResponse();
-        protocolUtils.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
-            protocolUtils.loadCommonResponseFields(response, smartBuffer);
+        protocolUtil.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
+            protocolUtil.loadCommonResponseFields(response, smartBuffer);
             const numVariables = smartBuffer.readUInt32LE(); // num_variables
 
 
@@ -84,7 +84,7 @@ export class VariablesResponse {
 
         if (isNameHere) {
             // we have a name. Pull it out of the buffer.
-            variable.name = protocolUtils.readStringNT(smartBuffer); //name
+            variable.name = protocolUtil.readStringNT(smartBuffer); //name
         }
 
         if (isRefCounted) {
@@ -114,11 +114,11 @@ export class VariablesResponse {
             case VariableType.String:
             case VariableType.Subroutine:
             case VariableType.Function:
-                return protocolUtils.readStringNT(smartBuffer);
+                return protocolUtil.readStringNT(smartBuffer);
             case VariableType.SubtypedObject:
                 let names = [];
                 for (let i = 0; i < 2; i++) {
-                    names.push(protocolUtils.readStringNT(smartBuffer));
+                    names.push(protocolUtil.readStringNT(smartBuffer));
                 }
 
                 if (names.length !== 2) {
@@ -173,7 +173,7 @@ export class VariablesResponse {
         for (const variable of variables) {
             this.writeVariable(variable, smartBuffer);
         }
-        protocolUtils.insertCommonResponseFields(this, smartBuffer);
+        protocolUtil.insertCommonResponseFields(this, smartBuffer);
         return smartBuffer.toBuffer();
     }
 
@@ -232,7 +232,7 @@ export class VariablesResponse {
             case VariableType.SubtypedObject:
                 let names = [];
                 for (let i = 0; i < 2; i++) {
-                    names.push(protocolUtils.readStringNT(smartBuffer));
+                    names.push(protocolUtil.readStringNT(smartBuffer));
                 }
 
                 if (names.length !== 2) {
