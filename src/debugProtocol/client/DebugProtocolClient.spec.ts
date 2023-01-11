@@ -3,7 +3,7 @@ import { DebugProtocolClient } from './DebugProtocolClient';
 import { expect } from 'chai';
 import type { SmartBuffer } from 'smart-buffer';
 import { createSandbox } from 'sinon';
-import { Command, ErrorCode, StopReasonCode } from '../Constants';
+import { Command, ErrorCode, StopReason, StopReasonCode } from '../Constants';
 import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../../util';
@@ -187,14 +187,14 @@ describe('DebugProtocolClient', () => {
             server.sendUpdate(
                 AllThreadsStoppedUpdate.fromJson({
                     threadIndex: 1,
-                    stopReason: StopReasonCode.Break,
+                    stopReason: StopReason.Break,
                     stopReasonDetail: 'test'
                 })
             )
         ]);
         expect(event.data).include({
             threadIndex: 1,
-            stopReason: StopReasonCode.Break,
+            stopReason: StopReason.Break,
             stopReasonDetail: 'test'
         });
     });
@@ -235,7 +235,7 @@ describe('DebugProtocolClient', () => {
             await Promise.all([
                 server.sendUpdate(AllThreadsStoppedUpdate.fromJson({
                     threadIndex: 2,
-                    stopReason: StopReasonCode.Break,
+                    stopReason: StopReason.Break,
                     stopReasonDetail: 'because'
                 })),
                 await client.once('suspend')
