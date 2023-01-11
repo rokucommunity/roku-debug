@@ -3,6 +3,7 @@ import { DebugProtocolClient } from '../../client/DebugProtocolClient';
 import { expect } from 'chai';
 import { HandshakeRequest } from '../requests/HandshakeRequest';
 import { ErrorCode } from '../../Constants';
+import { DEBUGGER_MAGIC } from '../../server/DebugProtocolServer';
 
 describe('HandshakeResponse', () => {
     it('Handles a handshake response', () => {
@@ -32,6 +33,19 @@ describe('HandshakeResponse', () => {
         });
 
         expect(response.toBuffer().length).to.eql(24);
+    });
+
+    it('uses default version when missing', () => {
+        const handshake = HandshakeResponse.fromJson({
+            magic: DEBUGGER_MAGIC,
+            protocolVersion: '1.2.3'
+        });
+        handshake.data.protocolVersion = undefined;
+        expect(
+            HandshakeResponse.fromBuffer(
+                handshake.toBuffer()
+            ).data.protocolVersion
+        ).to.eql('0.0.0');
     });
 
     it('Fails when buffer is incomplete', () => {

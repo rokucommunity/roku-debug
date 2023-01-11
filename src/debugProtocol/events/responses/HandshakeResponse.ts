@@ -40,11 +40,6 @@ export class HandshakeResponse implements ProtocolResponse {
         return response;
     }
 
-    protected loadJson(data: HandshakeResponse['data']) {
-        this.data = data;
-        this.success = true;
-    }
-
     public toBuffer() {
         let buffer = new SmartBuffer();
         buffer.writeStringNT(this.data.magic); // magic_number

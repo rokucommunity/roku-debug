@@ -4,6 +4,8 @@ import { expect } from 'chai';
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode } from '../../Constants';
 import { HandshakeRequest } from '../requests/HandshakeRequest';
+import { DEBUGGER_MAGIC } from '../../server/DebugProtocolServer';
+import { expectThrows } from '../../../testHelpers.spec';
 
 describe('HandshakeV3Response', () => {
     const date = new Date(2022, 0, 0);
@@ -67,6 +69,35 @@ describe('HandshakeV3Response', () => {
         });
 
         expect(newResponse.readOffset).to.eql(32);
+    });
+
+    it('uses default version when missing', () => {
+        const handshake = HandshakeV3Response.fromJson({
+            magic: DEBUGGER_MAGIC,
+            protocolVersion: '1.2.3',
+            revisionTimestamp: new Date()
+        });
+        handshake.data.protocolVersion = undefined;
+        expect(
+            HandshakeV3Response.fromBuffer(
+                handshake.toBuffer()
+            ).data.protocolVersion
+        ).to.eql('0.0.0');
+    });
+
+    it('rejects if there was not enough buffer data', () => {
+        const buffer = new SmartBuffer();
+        buffer.writeStringNT(DEBUGGER_MAGIC);
+        buffer.writeUInt32LE(1); // protocol_major_version
+        buffer.writeUInt32LE(2); // protocol_minor_version
+        buffer.writeUInt32LE(3); // protocol_patch_version
+        buffer.writeUInt32LE(100); //remaining_packet_length. The exception is triggered because this is larger than the remaining buffer size
+        buffer.writeBigUInt64LE(BigInt(123));
+        const response = HandshakeV3Response.fromBuffer(buffer.toBuffer());
+        expect(response).to.include({
+            readOffset: 0,
+            success: false
+        });
     });
 
     it('Fails when buffer is incomplete', () => {
