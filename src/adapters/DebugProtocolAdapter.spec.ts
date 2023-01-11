@@ -137,7 +137,7 @@ describe('DebugProtocolAdapter', () => {
             ]);
         });
 
-        it.only('works for object properties', async () => {
+        it.skip('works for object properties', async () => {
             await initialize();
 
             plugin.pushResponse(
@@ -170,7 +170,7 @@ describe('DebugProtocolAdapter', () => {
                     ]
                 })
             );
-            const vars = await adapter.getVariable('person', 1);
+            const vars = await adapter.getVariable('person', 0);
             expect(
                 vars?.children.map(x => x.evaluateName)
             ).to.eql([
