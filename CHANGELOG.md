@@ -6,20 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.17.3](https://github.com/rokucommunity/roku-debug/compare/v0.17.2...0.17.3) - 2022-12-15
+## [0.18.0](https://github.com/rokucommunity/roku-debug/compare/v0.17.3...v0.18.0) - 2023-01-12
+### Added
+ - Execute command for repl expressions ([#119](https://github.com/rokucommunity/roku-debug/pull/119))
+### Changed
+ - upgrade to [roku-deploy@3.9.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#393---2023-01-12)
+### Fixed
+ - inifinite spin for unloaded vars ([#120](https://github.com/rokucommunity/roku-debug/pull/120))
+
+
+
+## [0.17.3](https://github.com/rokucommunity/roku-debug/compare/v0.17.2...v0.17.3) - 2022-12-15
 ### Added
  - Debug protocol breakpoint verification ([#117](https://github.com/rokucommunity/roku-debug/pull/117))
 
 
 
-## [0.17.2](https://github.com/rokucommunity/roku-debug/compare/v0.17.1...0.17.2) - 2022-12-15
+## [0.17.2](https://github.com/rokucommunity/roku-debug/compare/v0.17.1...v0.17.2) - 2022-12-15
 ### Changed
  - upgrade to [brighterscript@0.61.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0612---2022-12-15). Notable changes since 0.61.1:
      - Bump qs from 6.5.2 to 6.5.3 ([brighterscript#758](https://github.com/rokucommunity/brighterscript/pull/758))
 
 
 
-## [0.17.1](https://github.com/rokucommunity/roku-debug/compare/v0.17.0...0.17.1) - 2022-12-08
+## [0.17.1](https://github.com/rokucommunity/roku-debug/compare/v0.17.0...v0.17.1) - 2022-12-08
 ### Fixed
  - Fix "continue" repeat bug in protocol adapter ([#114](https://github.com/rokucommunity/roku-debug/pull/114))
  - Fix issue with truncated debugger paths ([#113](https://github.com/rokucommunity/roku-debug/pull/113))
@@ -28,13 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.17.0](https://github.com/rokucommunity/roku-debug/compare/v0.16.1...0.17.0) - 2022-11-02
+## [0.17.0](https://github.com/rokucommunity/roku-debug/compare/v0.16.1...v0.17.0) - 2022-11-02
 ### Changed
  - Added the `brightscript_warnings` command ([#110](https://github.com/rokucommunity/roku-debug/pull/110))
 
 
 
-## [0.16.1](https://github.com/rokucommunity/roku-debug/compare/v0.16.0...0.16.1) - 2022-10-28
+## [0.16.1](https://github.com/rokucommunity/roku-debug/compare/v0.16.0...v0.16.1) - 2022-10-28
 ### Changed
  - upgrade to [brighterscript@0.60.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0604---2022-10-28). Notable changes since 0.60.0:
      - Allow `continue` as local var ([brighterscript#730](https://github.com/rokucommunity/brighterscript/pull/730))
@@ -43,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.16.0](https://github.com/rokucommunity/roku-debug/compare/v0.15.0...0.16.0) - 2022-10-17
+## [0.16.0](https://github.com/rokucommunity/roku-debug/compare/v0.15.0...v0.16.0) - 2022-10-17
 ### Changed
  - Emit device diagnostics instead of compile errors ([#104](https://github.com/rokucommunity/roku-debug/pull/104))
  - Standardize custom events, add is* helpers ([#103](https://github.com/rokucommunity/roku-debug/pull/103))
@@ -60,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.15.0](https://github.com/rokucommunity/roku-debug/compare/v0.14.2...0.15.0) - 2022-08-23
+## [0.15.0](https://github.com/rokucommunity/roku-debug/compare/v0.14.2...v0.15.0) - 2022-08-23
 ### Added
  - support for conditional breakpoints over the debug protocol([#97](https://github.com/rokucommunity/roku-debug/pull/97))
 ### Changed
@@ -73,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  
 
 
-## [0.14.2](https://github.com/rokucommunity/roku-debug/compare/v0.14.1...0.14.2) - 2022-08-12
+## [0.14.2](https://github.com/rokucommunity/roku-debug/compare/v0.14.1...v0.14.2) - 2022-08-12
 ### Changed
  - Support complib breakpoints on 11.5.0 ([#96](https://github.com/rokucommunity/roku-debug/pull/96))
  - Disable thread hopping workaround >= protocol v3.1.0 ([#95](https://github.com/rokucommunity/roku-debug/pull/95))
@@ -85,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.14.1](https://github.com/rokucommunity/roku-debug/compare/v0.14.0...0.14.1) - 2022-07-16
+## [0.14.1](https://github.com/rokucommunity/roku-debug/compare/v0.14.0...v0.14.1) - 2022-07-16
 ### Changed
  - Bump moment from 2.29.2 to 2.29.4 ([#92](https://github.com/rokucommunity/roku-debug/pull/92))
  - upgrade to [brighterscript@0.53.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0531---2022-07-15). Notable changes since 0.53.0:
@@ -93,7 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.14.0](https://github.com/rokucommunity/roku-debug/compare/v0.13.1...0.14.0) - 2022-07-14
+## [0.14.0](https://github.com/rokucommunity/roku-debug/compare/v0.13.1...v0.14.0) - 2022-07-14
 ### Added
  - debug protocol: support for case-sensitivity in getVariables protocol request ([#91](https://github.com/rokucommunity/roku-debug/pull/91))
  - Show error when cannot resolve hostname ([#90](https://github.com/rokucommunity/roku-debug/pull/90))
