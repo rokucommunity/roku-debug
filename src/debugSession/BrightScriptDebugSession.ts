@@ -124,7 +124,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
 
-    public tempVarPrefix = '__rokudebug_';
+    public tempVarPrefix = '__rokudebug__';
 
     private get enableDebugProtocol() {
         return this.launchConfiguration.enableDebugProtocol;
