@@ -876,7 +876,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 childVariables = childVariables.slice(args.start, args.start + args.count);
             }
 
-            let filteredChildVariables = this.launchConfiguration.hidePrefixVariables !== false ? childVariables.filter(
+            let filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true ? childVariables.filter(
                 (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : childVariables;
 
             response.body = {

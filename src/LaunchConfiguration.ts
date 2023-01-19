@@ -179,7 +179,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     /**
      * Hide variables that are prefrixed with a special prefix designated to be hidden
      */
-    hidePrefixVariables: boolean;
+    showHiddenVariables: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
