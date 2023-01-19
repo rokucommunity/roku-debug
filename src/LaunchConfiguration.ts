@@ -177,7 +177,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     logLevel: LogLevel;
 
     /**
-     * Hide variables that are prefrixed with a special prefix designated to be hidden
+     * Hide variables that are prefixed with a special prefix designated to be hidden
      */
     showHiddenVariables: boolean;
 }
