@@ -6,7 +6,7 @@ import type { SmartBuffer } from 'smart-buffer';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
-import { Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
+import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
 import type { AdapterOptions } from './interfaces';
@@ -271,7 +271,11 @@ class Util {
      */
     public isAssignableExpression(expression: string): boolean {
         let parser = Parser.parse(expression);
-        if (isAssignmentStatement(parser.ast.statements[0])) {
+        if (
+            isAssignmentStatement(parser.ast.statements[0]) ||
+            isDottedSetStatement(parser.ast.statements[0]) ||
+            isIndexedSetStatement(parser.ast.statements[0])
+        ) {
             return false;
         }
         //HACK: assign to a variable so it turns into a valid expression, then we'll look at the right-hand-side
