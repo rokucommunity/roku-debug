@@ -49,12 +49,9 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
-// import { waitForDebugger } from 'inspector';
 import type { DeviceInfo } from '../DeviceInfo';
 import axios from 'axios';
-// import { Console } from 'console';
 import * as xml2js from 'xml2js';
-// import { ThemeIcon } from 'vscode';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -248,13 +245,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         // fetches the device info and parses the xml data to JSON object
-        // try {
         this.deviceInfo = await this.fetchDeviceInfo(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-        // } catch (e) {
-        //     const errorMessage = `Could not fetch Roku device info`
-        //     this.showPopupMessage(errorMessage, 'error')
-        //     throw(e)
-        // }
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
