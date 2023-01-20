@@ -1,6 +1,6 @@
 {
     "name": "roku-debug",
-    "version": "0.17.3",
+    "version": "0.18.0",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
@@ -95,11 +95,11 @@
         "natural-orderby": "^2.0.3",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
-        "roku-deploy": "^3.9.2",
+        "roku-deploy": "^3.9.3",
         "semver": "^7.3.5",
         "serialize-error": "^8.1.0",
         "smart-buffer": "^4.2.0",
-        "source-map": "^0.7.3",
+        "source-map": "^0.7.4",
         "telnet-client": "^1.4.9",
         "vscode-debugadapter": "^1.49.0",
         "vscode-debugprotocol": "^1.49.0",
