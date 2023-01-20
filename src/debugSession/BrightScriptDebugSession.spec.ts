@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
+import { standardizePath as s } from 'brighterscript';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
@@ -14,18 +15,25 @@ import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 
-let sinon = sinonActual.createSandbox();
-let cwd = fileUtils.standardizePath(process.cwd());
-let outDir = fileUtils.standardizePath(`${cwd}/outDir`);
-let stagingFolderPath = fileUtils.standardizePath(`${outDir}/stagingDir`);
-const rootDir = path.normalize(path.dirname(__dirname));
+const sinon = sinonActual.createSandbox();
+const tempDir = s`${__dirname}/../.tmp`;
+const cwd = fileUtils.standardizePath(process.cwd());
+const outDir = fileUtils.standardizePath(`${cwd}/outDir`);
+const stagingFolderPath = fileUtils.standardizePath(`${outDir}/stagingDir`);
+const rootDir = s`${tempDir}/rootDir`;
 
 describe('BrightScriptDebugSession', () => {
     let responseDeferreds = [];
     let responses = [];
 
+    beforeEach(() => {
+        fsExtra.emptydirSync(rootDir);
+        fsExtra.emptydirSync(stagingFolderPath);
+        fsExtra.emptydirSync(outDir);
+    });
+
     afterEach(() => {
-        fsExtra.removeSync(outDir);
+        fsExtra.emptydirSync(tempDir);
         sinon.restore();
     });
 
@@ -264,18 +272,15 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('findMainFunction', () => {
-        let folder;
         afterEach(() => {
             fsExtra.emptyDirSync('./.tmp');
             fsExtra.rmdirSync('./.tmp');
         });
 
-        async function doTest(fileContents: string, lineContents: string, lineNumber: number) {
-            fsExtra.emptyDirSync('./.tmp');
-            folder = path.resolve('./.tmp/findMainFunctionTests/');
-            fsExtra.mkdirSync(folder);
+        async function doTest(fileContents: string, functionName: string, lineIndex: number) {
+            fsExtra.emptyDirSync(rootDir);
 
-            let filePath = path.resolve(`${folder}/main.brs`);
+            let filePath = path.resolve(`${rootDir}/source/main.brs`);
 
             //prevent actually talking to the file system...just hardcode the list to exactly our main file
             (session.rokuDeploy as any).getFilePaths = () => {
@@ -285,56 +290,62 @@ describe('BrightScriptDebugSession', () => {
                 }];
             };
 
-            fsExtra.writeFileSync(filePath, fileContents);
+            fsExtra.outputFileSync(filePath, fileContents);
             (session as any).launchConfiguration = {
-                files: [
-                    folder + '/**/*'
-                ]
+                rootDir: rootDir,
+                files: ['**/*']
             };
-            let entryPoint = await fileUtils.findEntryPoint(folder);
-            expect(entryPoint.pathAbsolute).to.equal(filePath);
-            expect(entryPoint.lineNumber).to.equal(lineNumber);
-            expect(entryPoint.contents).to.equal(lineContents);
+            //clear the cache so tests work
+            fileUtils['entryPointCache'].clear();
+            let entryPoint = await fileUtils.findEntryPoint(rootDir);
+            expect(s`${entryPoint.srcPath}`).to.equal(s`${filePath}`);
+            expect(entryPoint.position.line).to.equal(lineIndex);
+            expect(entryPoint.functionName).to.eql(functionName);
+            return entryPoint;
         }
 
         it('works for RunUserInterface', async () => {
-            await doTest('\nsub RunUserInterface()\nend sub', 'sub RunUserInterface()', 2);
+            await doTest('\nsub RunUserInterface()\nend sub', 'RunUserInterface', 1);
             //works with args
-            await doTest('\n\nsub RunUserInterface(args as Dynamic)\nend sub', 'sub RunUserInterface(args as Dynamic)', 3);
+            await doTest('\n\nsub RunUserInterface(args as Dynamic)\nend sub', 'RunUserInterface', 2);
             //works with extra spacing
-            await doTest('\n\nsub   RunUserInterface()\nend sub', 'sub   RunUserInterface()', 3);
-            await doTest('\n\nsub RunUserInterface   ()\nend sub', 'sub RunUserInterface   ()', 3);
+            await doTest('\n\nsub   RunUserInterface()\nend sub', 'RunUserInterface', 2);
+            await doTest('\n\nsub RunUserInterface   ()\nend sub', 'RunUserInterface', 2);
         });
 
         it('works for sub main', async () => {
-            await doTest('\nsub Main()\nend sub', 'sub Main()', 2);
+            await doTest('\nsub Main()\nend sub', 'Main', 1);
             //works with args
-            await doTest('sub Main(args as Dynamic)\nend sub', 'sub Main(args as Dynamic)', 1);
+            await doTest('sub Main(args as Dynamic)\nend sub', 'Main', 0);
             //works with extra spacing
-            await doTest('sub   Main()\nend sub', 'sub   Main()', 1);
-            await doTest('sub Main   ()\nend sub', 'sub Main   ()', 1);
+            await doTest('sub   Main()\nend sub', 'Main', 0);
+            await doTest('sub Main   ()\nend sub', 'Main', 0);
+        });
+
+        it('picks the top main function when there are multiples, and returns the name of the function', async () => {
+            await doTest(`sub main()\nend sub\nsub main()\nend sub`, `main`, 0);
         });
 
         it('works for function main', async () => {
-            await doTest('function Main()\nend function', 'function Main()', 1);
-            await doTest('function Main(args as Dynamic)\nend function', 'function Main(args as Dynamic)', 1);
+            await doTest('function Main()\nend function', 'Main', 0);
+            await doTest('function Main(args as Dynamic)\nend function', 'Main', 0);
             //works with extra spacing
-            await doTest('function   Main()\nend function', 'function   Main()', 1);
-            await doTest('function Main   ()\nend function', 'function Main   ()', 1);
+            await doTest('function   Main()\nend function', 'Main', 0);
+            await doTest('function Main   ()\nend function', 'Main', 0);
         });
 
         it('works for sub RunScreenSaver', async () => {
-            await doTest('sub RunScreenSaver()\nend sub', 'sub RunScreenSaver()', 1);
+            await doTest('sub RunScreenSaver()\nend sub', 'RunScreenSaver', 0);
             //works with extra spacing
-            await doTest('sub   RunScreenSaver()\nend sub', 'sub   RunScreenSaver()', 1);
-            await doTest('sub RunScreenSaver   ()\nend sub', 'sub RunScreenSaver   ()', 1);
+            await doTest('sub   RunScreenSaver()\nend sub', 'RunScreenSaver', 0);
+            await doTest('sub RunScreenSaver   ()\nend sub', 'RunScreenSaver', 0);
         });
 
         it('works for function RunScreenSaver', async () => {
-            await doTest('function RunScreenSaver()\nend function', 'function RunScreenSaver()', 1);
+            await doTest('function RunScreenSaver()\nend function', 'RunScreenSaver', 0);
             //works with extra spacing
-            await doTest('function   RunScreenSaver()\nend function', 'function   RunScreenSaver()', 1);
-            await doTest('function RunScreenSaver   ()\nend function', 'function RunScreenSaver   ()', 1);
+            await doTest('function   RunScreenSaver()\nend function', 'RunScreenSaver', 0);
+            await doTest('function RunScreenSaver   ()\nend function', 'RunScreenSaver', 0);
         });
     });
 

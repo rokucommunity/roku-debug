@@ -2,30 +2,38 @@ import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
-
 import { SourceNode } from 'source-map';
-import { fileUtils, standardizePath as s } from './FileUtils';
+import { fileUtils } from './FileUtils';
+import { standardizePath as s } from 'brighterscript';
 import { SourceMapManager } from './managers/SourceMapManager';
 
 let sinon = sinonActual.createSandbox();
-const rootDir = path.normalize(path.dirname(__dirname));
+const tempDir = s`${__dirname}/../.tmp`;
+const rootDir = s`${tempDir}/rootDir}`;
 
 describe('FileUtils', () => {
     let sourceMapManager: SourceMapManager;
     beforeEach(() => {
+        fsExtra.emptydirSync(tempDir);
         sourceMapManager = new SourceMapManager();
     });
     afterEach(() => {
+        fsExtra.removeSync(tempDir);
         sinon.restore();
     });
 
     describe('getAllRelativePaths', () => {
         //basic test to get code coverage...we don't need to test the glob code too much here...
         it('works', async () => {
-            let paths = await fileUtils.getAllRelativePaths(s`${__dirname}/../src/`);
+            fsExtra.outputFileSync(s`${tempDir}/file.txt`, '');
+            fsExtra.outputFileSync(s`${tempDir}/subdir/file.txt`, '');
+            let paths = await fileUtils.getAllRelativePaths(tempDir);
             expect(
-                paths
-            ).to.contain(`index.ts`);
+                paths.sort()
+            ).to.eql([
+                'file.txt',
+                s`subdir/file.txt`
+            ]);
         });
     });
 

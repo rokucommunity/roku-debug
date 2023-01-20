@@ -3,9 +3,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as rokuDeploy from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
-import * as glob from 'glob';
-import { promisify } from 'util';
-const globAsync = promisify(glob);
+import * as fastGlob from 'fast-glob';
 import type { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
@@ -143,7 +141,7 @@ export class ProjectManager {
         let entryPoint = await fileUtils.findEntryPoint(stagingFolderPath);
 
         //convert entry point staging location to source location
-        let sourceLocation = await this.getSourceLocation(entryPoint.relativePath, entryPoint.lineNumber);
+        let sourceLocation = await this.getSourceLocation(entryPoint.destPath, entryPoint.position.line + 1);
 
         //register the entry breakpoint
         this.breakpointManager.registerBreakpoint(sourceLocation.filePath, {
@@ -392,6 +390,45 @@ export class Project {
         }
     }
 
+    /**
+     * Find the line where the `scene.show()` function is called (if possible).
+     * This does the following:
+     *  - finds the entryPoint function
+     *  - scan the function to find the `createObject("roSGScreen")` call and note its variable
+     *  - find where the screen variable's `show()` method is called
+     */
+    // private async findSceneShow() {
+    // const entryPoint = await fileUtils.findEntryPoint(this.rootDir);
+    // const lowerFunctionName = entryPoint.functionName?.toLowerCase();
+    // const ast = Parser.parse(
+    //     entryPoint.fileContents
+    // );
+    // const entryFunc = ast.statements.find(x => (x as FunctionStatement)?.name?.text?.toLowerCase() === lowerFunctionName) as FunctionStatement;
+    // if (entryFunc) {
+    //     const finder = lineColumn(entryPoint.fileContents);
+    //     const range = entryFunc.func.body.range;
+    //     const startIndex = finder.toIndex(range.start.line, range.start.character);
+    //     const stopIndex = finder.toIndex(range.end.line, range.end.character);
+    //     const functionBody = entryPoint.fileContents.substring(startIndex, stopIndex);
+
+    //     const [, sceneVariable] = /([a-z0-9_\[\]"]+)\s*=\s*createObject\s*\(\s*"roSGScreen"\s*)/i.exec(functionBody);
+    //     if (sceneVariable) {
+    //         const regexp = new RegExp(`\\b${sceneVariable}\\s*\\.\\s*show\\(.*\\)`, 'i');
+    //         const match = regexp.exec(functionBody);
+    //         const startPosition = finder.fromIndex(startIndex + match.index);
+    //         const stopPosition = finder.fromIndex(startIndex + match.index + match[0].length);
+    //         return {
+    //             range: bscUtil.createRange(
+    //                 startPosition.line,
+    //                 startPosition.col,
+    //                 stopPosition.line,
+    //                 stopPosition.col
+    //             )
+    //         };
+    //     }
+    // }
+    // }
+
     public static RDB_ODC_NODE_CODE = `if true = CreateObject("roAppInfo").IsDev() then m.vscode_rdb_odc_node = createObject("roSGNode", "RTA_OnDeviceComponent") ' RDB OnDeviceComponent`;
     public static RDB_ODC_ENTRY = 'vscode_rdb_on_device_component_entry';
     /**
@@ -403,10 +440,10 @@ export class Project {
             return;
         }
         try {
-            let files = await globAsync(`${this.rdbFilesBasePath}/**/*`, {
+            let files = await fastGlob(`${this.rdbFilesBasePath}/**/*`, {
                 cwd: './',
                 absolute: false,
-                follow: true
+                followSymbolicLinks: true
             });
             for (let filePathAbsolute of files) {
                 const promises = [];

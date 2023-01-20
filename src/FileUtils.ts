@@ -1,10 +1,13 @@
-import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
-import * as glob from 'glob';
+import * as fastGlob from 'fast-glob';
+import * as cloneRegexp from 'clone-regexp';
 import * as path from 'path';
-import { promisify } from 'util';
 import * as rokuDeploy from 'roku-deploy';
-const globp = promisify(glob);
+import type { Position, Range } from 'brighterscript';
+import { standardizePath as s, util } from 'brighterscript';
+import { Cache } from 'brighterscript/dist/Cache';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import lineColumn = require('line-column');
 
 export class FileUtils {
 
@@ -50,17 +53,12 @@ export class FileUtils {
      * @param directoryPath
      */
     public async getAllRelativePaths(directoryPath: string) {
-        //normalize the path
-        directoryPath = this.removeTrailingSlash(
-            path.normalize(directoryPath)
-        );
-
-        let paths = await globp(path.join(directoryPath, '**/*'));
-        for (let i = 0; i < paths.length; i++) {
-            //make the path relative (+1 for removing the slash)
-            paths[i] = paths[i].substring(directoryPath.length + 1);
-        }
-        return paths;
+        let paths = await fastGlob('**/*', {
+            cwd: s`${directoryPath}`
+        });
+        return paths
+            //os-normalize each path separator
+            .map(x => s`${x}`);
     }
 
     /**
@@ -226,52 +224,89 @@ export class FileUtils {
     }
 
     /**
+     * Find all locations of the regex pattern in the specified files.
+     * @param pattern a regular expression pattern to find in all files. The global flag will be force-enabled before it's used.
+     */
+    private async findInFiles(pattern: RegExp, cwd: string, fileGlobs: string[]) {
+        const filePaths = await fastGlob(fileGlobs, {
+            cwd: cwd,
+            absolute: true
+        });
+        const results: Array<{
+            srcPath: string;
+            range: Range;
+            fileContents: string;
+            match: RegExpExecArray;
+        }> = [];
+        await Promise.all(filePaths.map(async (filePath) => {
+            const fileContents = (await fsExtra.readFile(filePath)).toString();
+            const finder = lineColumn(fileContents);
+            let match: RegExpExecArray;
+            const regexp = cloneRegexp(pattern, { global: true });
+            while ((match = regexp.exec(fileContents))) {
+                const beginPosition = finder.fromIndex(match.index);
+                const endPosition = finder.fromIndex(match.index + match[0].length);
+                results.push({
+                    srcPath: s`${filePath}`,
+                    //finder returns 1-based line and col values, so offset that in the Range
+                    range: util.createRange(
+                        beginPosition.line - 1,
+                        beginPosition.col - 1,
+                        endPosition.line - 1,
+                        endPosition.col - 1
+                    ),
+                    fileContents: fileContents,
+                    match: match
+                });
+            }
+        }));
+        results.sort((a, b) => a.srcPath.toLowerCase().localeCompare(b.srcPath.toLowerCase()));
+        return results;
+    }
+
+    /**
      * Given a path to a folder, search all files until an entry point is found.
      * (An entry point is a function that roku uses as the Main function to start the program).
-     * @param projectPath - a path to a Roku project
+     * @param rootDir - a path to the root of a Roku project.
      */
-    public async findEntryPoint(projectPath: string) {
-        let results = {
+    public findEntryPoint(rootDir: string) {
+        return this.entryPointCache.getOrAdd(this.standardizePath(rootDir), async (projectPath: string) => {
+            projectPath = s`${projectPath}`;
+            let searchResults = await this.findInFiles(
+                /(?:sub|function)\s+(RunUserInterface|main|RunScreenSaver)\s*\(/ig,
+                projectPath,
+                ['source/**/*.brs']
+            );
 
-            ...await findInFiles.find({ term: 'sub\\s+RunUserInterface\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'function\\s+RunUserInterface\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'sub\\s+main\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'function\\s+main\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'sub\\s+RunScreenSaver\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'function\\s+RunScreenSaver\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/)
-        };
-        let keys = Object.keys(results);
-        if (keys.length === 0) {
-            throw new Error('Unable to find an entry point. Please make sure that you have a RunUserInterface, RunScreenSaver, or Main sub/function declared in your BrightScript project');
-        }
-
-        let entryPath = keys[0];
-
-        let entryLineContents = results[entryPath].line[0];
-
-        let lineNumber: number;
-        //load the file contents
-        let contents = await fsExtra.readFile(entryPath);
-        let lines = contents.toString().split(/\r?\n/g);
-        //loop through the lines until we find the entry line
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            if (line.includes(entryLineContents)) {
-                lineNumber = i + 1;
-                break;
+            if (searchResults.length === 0) {
+                throw new Error('Unable to find an entry point. Please make sure that you have a RunUserInterface, RunScreenSaver, or Main sub/function declared in your BrightScript project');
             }
-        }
-        let relativePath = fileUtils.removeLeadingSlash(
-            rokuDeploy.util.stringReplaceInsensitive(entryPath, projectPath, '')
-        );
 
-        return {
-            relativePath: relativePath,
-            pathAbsolute: entryPath,
-            contents: entryLineContents,
-            lineNumber: lineNumber
-        };
+            const [firstResult] = searchResults;
+
+            let destPath = fileUtils.removeLeadingSlash(
+                rokuDeploy.util.stringReplaceInsensitive(firstResult.srcPath, projectPath, '')
+            );
+            return {
+                functionName: firstResult.match[1],
+                srcPath: firstResult.srcPath,
+                destPath: destPath,
+                fileContents: firstResult.fileContents,
+                position: firstResult.range.start
+            };
+        });
     }
+
+    private entryPointCache = new Cache<string, Promise<{
+        functionName: string;
+        srcPath: string;
+        destPath: string;
+        fileContents: string;
+        /**
+         * The position (zero-based) of the start of the `sub`|`function` keyword for the entry point
+         */
+        position: Position;
+    }>>();
 
     /**
      * If a string has a leading slash, remove it
