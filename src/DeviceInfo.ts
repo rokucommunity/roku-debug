@@ -68,4 +68,4 @@ export interface DeviceInfo {
     'av-sync-calibration-enabled'?: number;
     // Anything nre they might add that we do not know about
     [key: string]: any;
-};
+}
