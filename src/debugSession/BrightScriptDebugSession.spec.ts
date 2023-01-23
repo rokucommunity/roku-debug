@@ -104,6 +104,7 @@ describe('BrightScriptDebugSession', () => {
             evaluate: () => { },
             syncBreakpoints: () => { },
             getVariable: () => { },
+            getScopeVariables: (a) => { },
             getThreads: () => {
                 return [];
             },
@@ -212,6 +213,57 @@ describe('BrightScriptDebugSession', () => {
             );
             expect(stub.getCall(2).firstArg).to.eql(`${session.tempVarPrefix}eval = []`);
             expect(stub.getCall(3).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 2+3`);
+        });
+    });
+
+    describe('variablesRequest', () => {
+        it('hides debug variables', async () => {
+            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+            sinon.stub(rokuAdapter, 'getScopeVariables').callsFake(x => {
+                return Promise.resolve(['m', 'top', `${session.tempVarPrefix}eval`]);
+            });
+            sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
+                return Promise.resolve(
+                    {
+                        name: x,
+                        highLevelType: 'primative',
+                        value: '1'
+                    } as EvaluateContainer);
+            });
+
+            let response: DebugProtocol.VariablesResponse = {
+                body: {
+                    variables: []
+                },
+                request_seq: 0,
+                success: false,
+                command: '',
+                seq: 0,
+                type: ''
+            };
+
+            rokuAdapter.isAtDebuggerPrompt = true;
+            session['launchConfiguration'].enableVariablesPanel = true;
+            session.dispatchRequest({ command: 'scopes', arguments: { frameId: 0 }, type: 'request', seq: 8 });
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1000, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+
+            expect(
+                response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
+            ).to.not.exist;
+
+            session['launchConfiguration'].showHiddenVariables = true;
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1000, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+            expect(
+                response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
+            ).to.exist;
         });
     });
 
