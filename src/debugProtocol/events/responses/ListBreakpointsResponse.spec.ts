@@ -4,6 +4,40 @@ import { ErrorCode } from '../../Constants';
 import { getRandomBuffer } from '../../../testHelpers.spec';
 
 describe('ListBreakpointsResponse', () => {
+    it('defaults undefined breakpoint array to empty', () => {
+        let response = ListBreakpointsResponse.fromJson({} as any);
+        expect(response.data.breakpoints).to.eql([]);
+    });
+
+    it('skips ignoreCount for invalid breakpoints', () => {
+        const response = ListBreakpointsResponse.fromBuffer(
+            ListBreakpointsResponse.fromJson({
+                requestId: 2,
+                breakpoints: [{
+                    id: 12,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 10
+                }, {
+                    id: 0,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 20
+                }]
+            }).toBuffer()
+        );
+        expect(response.data.breakpoints[0].ignoreCount).to.eql(10);
+        expect(response.data.breakpoints[1].ignoreCount).to.eql(undefined);
+
+    });
+
+    it('defaults num_breakpoints to 0 if array is missing', () => {
+        let response = ListBreakpointsResponse.fromJson({} as any);
+        response.data = {} as any;
+        response = ListBreakpointsResponse.fromBuffer(
+            response.toBuffer()
+        );
+        expect(response.data.breakpoints).to.eql([]);
+    });
+
     it('serializes and deserializes multiple breakpoints properly', () => {
         let response = ListBreakpointsResponse.fromJson({
             requestId: 3,

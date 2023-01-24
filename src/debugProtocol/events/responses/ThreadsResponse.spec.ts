@@ -4,6 +4,46 @@ import { ErrorCode, StopReason } from '../../Constants';
 import { getRandomBuffer } from '../../../testHelpers.spec';
 
 describe('ThreadsResponse', () => {
+    it('defaults data.entries to empty array when missing', () => {
+        let response = ThreadsResponse.fromJson({} as any);
+        expect(response.data.threads).to.eql([]);
+    });
+
+    it('does not crash when data is invalid', () => {
+        let response = ThreadsResponse.fromJson({} as any);
+        response.data = {} as any;
+        response = ThreadsResponse.fromBuffer(response.toBuffer());
+        expect(response.data.threads).to.eql([]);
+    });
+
+    function t(extra?: Record<string, any>) {
+        return {
+            isPrimary: true,
+            stopReason: StopReason.Break,
+            stopReasonDetail: 'because',
+            lineNumber: 2,
+            functionName: 'main',
+            filePath: 'pkg:/source/main.brs',
+            codeSnippet: 'sub main()',
+            ...extra ?? {}
+        };
+    }
+
+    it('defaults unspecified threads as not primary', () => {
+        const response = ThreadsResponse.fromBuffer(
+            ThreadsResponse.fromJson({
+                threads: [t({
+                    isPrimary: undefined
+                }), t({
+                    isPrimary: true
+                }), t({
+                    isPrimary: false
+                })]
+            } as any).toBuffer()
+        );
+        expect(response.data.threads.map(x => x.isPrimary)).to.eql([false, true, false]);
+    });
+
     it('serializes and deserializes multiple breakpoints properly', () => {
         let response = ThreadsResponse.fromJson({
             requestId: 3,

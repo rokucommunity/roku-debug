@@ -4,6 +4,18 @@ import { ErrorCode } from '../../Constants';
 import { getRandomBuffer } from '../../../testHelpers.spec';
 
 describe('StackTraceResponse', () => {
+    it('defaults data.entries to empty array when missing', () => {
+        let response = StackTraceResponse.fromJson({} as any);
+        expect(response.data.entries).to.eql([]);
+    });
+
+    it('does not crash when data is invalid', () => {
+        let response = StackTraceResponse.fromJson({} as any);
+        response.data = {} as any;
+        response = StackTraceResponse.fromBuffer(response.toBuffer());
+        expect(response.data.entries).to.eql([]);
+    });
+
     it('serializes and deserializes multiple breakpoints properly', () => {
         let response = StackTraceResponse.fromJson({
             requestId: 3,
