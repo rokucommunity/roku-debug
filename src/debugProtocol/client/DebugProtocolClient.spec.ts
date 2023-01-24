@@ -1,21 +1,24 @@
 /* eslint-disable no-bitwise */
 import { DebugProtocolClient } from './DebugProtocolClient';
 import { expect } from 'chai';
-import type { SmartBuffer } from 'smart-buffer';
 import { createSandbox } from 'sinon';
-import { Command, ErrorCode, StopReason, StopReasonCode } from '../Constants';
+import { Command, ErrorCode, StepType, StopReason } from '../Constants';
 import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
 import { util } from '../../util';
-import type { BeforeSendResponseEvent, ProtocolPlugin, ProvideResponseEvent } from '../server/ProtocolPlugin';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
-import type { ProtocolResponse, ProtocolRequest } from '../events/ProtocolEvent';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 import { VariablesResponse } from '../events/responses/VariablesResponse';
-import { VariableRequestFlag, VariablesRequest } from '../events/requests/VariablesRequest';
+import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { DebugProtocolServerTestPlugin } from '../DebugProtocolServerTestPlugin.spec';
+import { ContinueRequest } from '../events/requests/ContinueRequest';
+import { GenericV3Response } from '../events/responses/GenericV3Response';
+import { StopRequest } from '../events/requests/StopRequest';
+import { ExitChannelRequest } from '../events/requests/ExitChannelRequest';
+import { StepRequest } from '../events/requests/StepRequest';
+import { ThreadsResponse } from '../events/responses/ThreadsResponse';
 
 const sinon = createSandbox();
 
@@ -23,6 +26,22 @@ describe('DebugProtocolClient', () => {
     let server: DebugProtocolServer;
     let client: DebugProtocolClient;
     let plugin: DebugProtocolServerTestPlugin;
+
+    /**
+     * Helper function to simplify the initial connect flow
+     */
+    async function connect() {
+        await client.connect();
+        //send the AllThreadsStopped event, and also wait for the client to suspend
+        await Promise.all([
+            server.sendUpdate(AllThreadsStoppedUpdate.fromJson({
+                threadIndex: 2,
+                stopReason: StopReason.Break,
+                stopReasonDetail: 'because'
+            })),
+            await client.once('suspend')
+        ]);
+    }
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
@@ -73,6 +92,151 @@ describe('DebugProtocolClient', () => {
         expect(
             client['enableThreadHoppingWorkaround']
         ).to.be.false;
+    });
+
+    it('does not crash on unspecified options', () => {
+        const client = new DebugProtocolClient(undefined);
+        //no exception means it passed
+    });
+
+    it('only sends the continue command when stopped', async () => {
+        await connect();
+
+        client.isStopped = false;
+        await client.continue();
+        expect(plugin.latestRequest).not.to.be.instanceof(ContinueRequest);
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        client.isStopped = true;
+        await client.continue();
+        expect(plugin.latestRequest).to.be.instanceOf(ContinueRequest);
+    });
+
+    it('sends the pause command when forced', async () => {
+        await connect();
+
+        client.isStopped = true;
+        await client.pause(); //should do nothing
+        expect(plugin.latestRequest).not.to.be.instanceof(StopRequest);
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        client.isStopped = false;
+        await client.pause();
+        expect(plugin.latestRequest).to.be.instanceOf(StopRequest);
+    });
+
+    it('sends the pause command when forced', async () => {
+        await connect();
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        client.isStopped = true;
+        await client.pause(true); //true means force
+        expect(plugin.latestRequest).to.be.instanceOf(StopRequest);
+    });
+
+    it('sends the exitChannel command', async () => {
+        await connect();
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+
+        await client.exitChannel();
+
+        expect(plugin.latestRequest).to.be.instanceOf(ExitChannelRequest);
+    });
+
+    it('stepIn defaults to client.primaryThread and can be overridden', async () => {
+        await connect();
+        client.primaryThread = 9;
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        await client.stepIn();
+        expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(9);
+        expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Line);
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        await client.stepIn(5);
+        expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(5);
+        expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Line);
+    });
+
+    it('stepOver defaults to client.primaryThread and can be overridden', async () => {
+        await connect();
+        client.primaryThread = 9;
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        await client.stepOver();
+        expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(9);
+        expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Over);
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        await client.stepOver(5);
+        expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(5);
+        expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Over);
+    });
+
+    it('stepOut defaults to client.primaryThread and can be overridden', async () => {
+        await connect();
+        client.primaryThread = 9;
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        await client.stepOut();
+        expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(9);
+        expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Out);
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+        await client.stepOut(5);
+        expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(5);
+        expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Out);
+    });
+
+    it('stepOut defaults to client.primaryThread and can be overridden', async () => {
+        await connect();
+
+        plugin.pushResponse(GenericV3Response.fromJson({} as any));
+
+        //does not send command because we're not stopped
+        client.isStopped = false;
+        await client.stepOut();
+        expect(plugin.latestRequest).not.to.be.instanceof(StepRequest);
+    });
+
+    it('handles step cannot-continue response', async () => {
+        await connect();
+
+        plugin.pushResponse(GenericV3Response.fromJson({
+            errorCode: ErrorCode.CANT_CONTINUE,
+            requestId: 12
+        }));
+
+        let cannotContinuePromise = client.once('cannot-continue');
+
+        client.isStopped = true;
+        await client.stepOut();
+
+        //if the cannot-continue event resolved, this test passed
+        await cannotContinuePromise;
+    });
+
+    describe('threads()', () => {
+        it('skips sending command when not stopped', async () => {
+            await connect();
+
+            client.isStopped = false;
+            await client.threads();
+            expect(plugin.latestRequest).not.to.be.instanceof(ThreadsResponse);
+        });
+
+        it('returns response even when error code is not ok', async () => {
+            await connect();
+
+            plugin.pushResponse(GenericV3Response.fromJson({
+                errorCode: ErrorCode.CANT_CONTINUE,
+                requestId: 12
+            }));
+
+            const response = await client.threads();
+            expect(response.data.errorCode).to.eql(ErrorCode.CANT_CONTINUE);
+        });
     });
 
     it('knows when to enable complib specific breakpoints', () => {
@@ -200,35 +364,6 @@ describe('DebugProtocolClient', () => {
     });
 
     describe('getVariables', () => {
-        function getVariablesRequestBufferToJson(buffer: SmartBuffer) {
-            const result = {
-                flags: buffer.readUInt8(),
-                threadIndex: buffer.readUInt32LE(),
-                stackFrameIndex: buffer.readUInt32LE(),
-                variablePathEntries: [],
-                pathForceCaseInsensitive: []
-            };
-
-            const pathLength = buffer.readUInt32LE();
-            if (pathLength > 0) {
-                result.variablePathEntries = [];
-                for (let i = 0; i < pathLength; i++) {
-                    result.variablePathEntries.push(
-                        buffer.readBufferNT().toString()
-                    );
-                }
-            }
-            if (result.flags & VariableRequestFlag.CaseSensitivityOptions) {
-                result.pathForceCaseInsensitive = [];
-                for (let i = 0; i < pathLength; i++) {
-                    result.pathForceCaseInsensitive.push(
-                        buffer.readUInt8() === 0 ? false : true
-                    );
-                }
-            }
-            return result;
-        }
-
         it('honors protocol version when deciding to send forceCaseInsensitive variable information', async () => {
             await client.connect();
             //send the AllThreadsStopped event, and also wait for the client to suspend

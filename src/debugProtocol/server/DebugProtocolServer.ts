@@ -220,7 +220,7 @@ export class DebugProtocolServer {
             }
 
 
-            //the client should send a magic string to kick off the debugger
+            //if this is part of the handshake flow, the client should have sent a magic string to kick off the debugger. If it matches, set `isHandshakeComplete = true`
             if ((response instanceof HandshakeResponse || response instanceof HandshakeV3Response) && response.data.magic === this.magic) {
                 this.isHandshakeComplete = true;
             }

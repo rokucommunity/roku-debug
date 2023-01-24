@@ -239,7 +239,7 @@ export class DebugProtocolClient {
     }
 
     public async pause(force = false) {
-        if (!this.isStopped || force) {
+        if (this.isStopped === false || force) {
             return this.sendRequest<GenericResponse>(
                 StopRequest.fromJson({
                     requestId: this.requestIdSequence++
@@ -486,7 +486,7 @@ export class DebugProtocolClient {
 
             if (event.data.errorCode !== ErrorCode.OK) {
                 this.logger.error(event.data.errorCode, event);
-                return;
+                // return;
             }
 
             //we got a response
@@ -525,6 +525,12 @@ export class DebugProtocolClient {
         }
 
         let genericResponse = this.watchPacketLength ? GenericV3Response.fromBuffer(buffer) : GenericResponse.fromBuffer(buffer);
+
+        //if the response has a non-OK error code, we won't receive the expected response type,
+        //so return the generic response
+        if (genericResponse.success && genericResponse.data.errorCode !== ErrorCode.OK) {
+            return genericResponse;
+        }
         // a nonzero requestId means this is a response to a request that we sent
         if (genericResponse.data.requestId !== 0) {
             //requestId 0 means this is an update

@@ -1,3 +1,5 @@
+import { ConsoleTransport, Logger } from '@rokucommunity/logger';
+import { createLogger } from '../logging';
 import type { ProtocolResponse, ProtocolRequest } from './events/ProtocolEvent';
 import { HandshakeRequest } from './events/requests/HandshakeRequest';
 import type { DebugProtocolServer } from './server/DebugProtocolServer';
@@ -7,6 +9,7 @@ import type { BeforeSendResponseEvent, OnServerStartEvent, ProtocolPlugin, Provi
  * A class that intercepts all debug server events and provides test data for them
  */
 export class DebugProtocolServerTestPlugin implements ProtocolPlugin {
+
     /**
      * A list of responses to be sent by the server in this exact order.
      * One of these will be sent for every `provideResponse` event received.
@@ -30,6 +33,10 @@ export class DebugProtocolServerTestPlugin implements ProtocolPlugin {
      */
     public get latestRequest() {
         return this.requests[this.requests.length - 1];
+    }
+
+    public getLatestRequest<T>() {
+        return this.latestRequest as T;
     }
 
     /**
@@ -63,9 +70,9 @@ export class DebugProtocolServerTestPlugin implements ProtocolPlugin {
         const response = this.responseQueue.shift();
         //if there's no response, AND this isn't the handshake, fail. (we want the protocol to handle the handshake most of the time)
         if (!response && !(event.request instanceof HandshakeRequest)) {
-            throw new Error('There was no response available to send back');
+            throw new Error(`There was no response available to send back for ${event.request.constructor.name}`);
         }
-        //force this response to have the current request's ID (for testing purposes
+        //force this response to have the current request's ID (for testing purposes)
         if (response) {
             response.data.requestId = event.request.data.requestId;
         }
