@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.18.1](https://github.com/rokucommunity/roku-debug/compare/v0.18.0...v0.18.1) - 2023-01-24
+### Changed
+ - Hide debugger-created temp variables from the variables panel, add `showHiddenVariables` flag to disable it if desired. ([#127](https://github.com/rokucommunity/roku-debug/pull/127))
+ - upgrade to [brighterscript@0.61.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0613---2023-01-12). Notable changes since 0.61.2:
+ - upgrade to [@rokucommunity/logger@0.3.1](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#031---2023-01-24). Notable changes since 0.3.0:
+### Fixed
+ - `isAssignableExpression` to correctly support `DottedSet` and `IndexedSet` statements ([#128](https://github.com/rokucommunity/roku-debug/pull/128))
+
+
+
 ## [0.18.0](https://github.com/rokucommunity/roku-debug/compare/v0.17.3...v0.18.0) - 2023-01-12
 ### Added
  - Execute command for repl expressions ([#119](https://github.com/rokucommunity/roku-debug/pull/119))
