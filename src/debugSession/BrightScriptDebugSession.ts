@@ -123,6 +123,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variableHandles = new Handles<string>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
+
+    public tempVarPrefix = '__rokudebug__';
+
     private get enableDebugProtocol() {
         return this.launchConfiguration.enableDebugProtocol;
     }
@@ -872,8 +875,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 //only send the variable range requested by the debugger
                 childVariables = childVariables.slice(args.start, args.start + args.count);
             }
+
+            let filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true ? childVariables.filter(
+                (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : childVariables;
+
             response.body = {
-                variables: childVariables
+                variables: filteredChildVariables
             };
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });
@@ -935,7 +942,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 let variablePath = util.getVariablePath(args.expression);
                 if (!variablePath && util.isAssignableExpression(args.expression)) {
                     let varIndex = this.getNextVarIndex(args.frameId);
-                    let arrayVarName = '__rokuDebug_eval';
+                    let arrayVarName = this.tempVarPrefix + 'eval';
                     if (varIndex === 0) {
                         await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
                     }
