@@ -26,7 +26,7 @@ export class VariablesResponse {
                 variable.isContainer = [VariableType.AA, VariableType.Array, VariableType.List, VariableType.Object, VariableType.SubtypedObject].includes(variable.type);
             }
             if (variable.isContainer && util.isNullish(variable.childCount) && !hasChildrenArray) {
-                throw new Error('Container variable must either have one of these properties set: childCount, children');
+                throw new Error('Container variable must have one of these properties defined: childCount, children');
             }
         }
         return response;
@@ -79,8 +79,8 @@ export class VariablesResponse {
         const isNameHere = (flags & VariableFlags.isNameHere) > 0;
         const isRefCounted = (flags & VariableFlags.isRefCounted) > 0;
         const isValueHere = (flags & VariableFlags.isValueHere) > 0;
-
-        variable.type = VariableTypeCode[smartBuffer.readUInt8()] as VariableType; // variable_type
+        const variableTypeCode = smartBuffer.readUInt8();
+        variable.type = VariableTypeCode[variableTypeCode] as VariableType; // variable_type
 
         if (isNameHere) {
             // we have a name. Pull it out of the buffer.
@@ -90,6 +90,8 @@ export class VariablesResponse {
         if (isRefCounted) {
             // This variables reference counts are tracked and we can pull it from the buffer.
             variable.refCount = smartBuffer.readUInt32LE();
+        } else {
+            variable.refCount = 0;
         }
 
         if (variable.isContainer) {
@@ -120,27 +122,20 @@ export class VariablesResponse {
                 for (let i = 0; i < 2; i++) {
                     names.push(protocolUtil.readStringNT(smartBuffer));
                 }
-
-                if (names.length !== 2) {
-                    throw new Error('Expected two names for subtyped object');
-                }
                 return names.join('; ');
             case VariableType.Boolean:
                 return smartBuffer.readUInt8() > 0;
-            case VariableType.Double:
-                return smartBuffer.readDoubleLE();
-            case VariableType.Float:
-                return smartBuffer.readFloatLE();
             case VariableType.Integer:
                 return smartBuffer.readInt32LE();
             case VariableType.LongInteger:
                 return smartBuffer.readBigInt64LE();
+            case VariableType.Float:
+                return smartBuffer.readFloatLE();
+            case VariableType.Double:
+                return smartBuffer.readDoubleLE();
             case VariableType.Uninitialized:
-                return '<uninitialized>';
             case VariableType.Unknown:
-                return 'Unknown';
             case VariableType.Invalid:
-                return 'Invalid';
             case VariableType.AA:
             case VariableType.Array:
             case VariableType.List:
@@ -157,10 +152,14 @@ export class VariablesResponse {
             result.push(rootVariable);
             //add all child variables to the array
             for (const child of rootVariable.children ?? []) {
-                if (result.includes(child) && Array.isArray(child.childCount)) {
-                    throw new Error('This variable already exists in the list. You have a circular reference in your variables that needs to be resolved');
-                }
                 result.push(child);
+            }
+        }
+        //catch duplicates and circular references
+        for (let i = 0; i < result.length; i++) {
+            const idx = result.indexOf(result[i], i + 1);
+            if (idx > -1) {
+                throw new Error(`The variable at index ${idx} already exists at index ${i}. You have a circular reference in your variables that needs to be resolved`);
             }
         }
         return result;
@@ -169,7 +168,7 @@ export class VariablesResponse {
     public toBuffer() {
         const smartBuffer = new SmartBuffer();
         const variables = this.flattenVariables(this.data.variables);
-        smartBuffer.writeUInt32LE(variables.length ?? 0); // num_variables
+        smartBuffer.writeUInt32LE(variables.length); // num_variables
         for (const variable of variables) {
             this.writeVariable(variable, smartBuffer);
         }
@@ -221,41 +220,48 @@ export class VariablesResponse {
     }
 
 
-    private writeVariableValue(variableType: VariableType, value: any, smartBuffer: SmartBuffer) {
+    private writeVariableValue(variableType: VariableType, value: any, smartBuffer: SmartBuffer): void {
         switch (variableType) {
             case VariableType.Interface:
             case VariableType.Object:
             case VariableType.String:
             case VariableType.Subroutine:
             case VariableType.Function:
-                return smartBuffer.writeStringNT(value as string);
+                smartBuffer.writeStringNT(value as string);
+                break;
             case VariableType.SubtypedObject:
-                let names = [];
-                for (let i = 0; i < 2; i++) {
-                    names.push(protocolUtil.readStringNT(smartBuffer));
-                }
-
+                const names = (value as string ?? '').split('; ');
                 if (names.length !== 2) {
                     throw new Error('Expected two names for subtyped object');
                 }
-                return names.join('; ');
+                for (const name of names) {
+                    smartBuffer.writeStringNT(name);
+                }
+                break;
             case VariableType.Boolean:
-                return smartBuffer.writeUInt8(value === true ? 1 : 0);
-            case VariableType.Double:
-                return smartBuffer.writeDoubleLE(value as number);
-            case VariableType.Float:
-                return smartBuffer.writeFloatLE(value as number);
+                smartBuffer.writeUInt8(value === true ? 1 : 0);
+                break;
             case VariableType.Integer:
-                return smartBuffer.writeInt32LE(value as number);
+                smartBuffer.writeInt32LE(value as number);
+                break;
             case VariableType.LongInteger:
-                return smartBuffer.writeBigInt64LE(value as bigint);
+                smartBuffer.writeBigInt64LE(
+                    typeof value === 'bigint' ? value : BigInt(value as number)
+                );
+                break;
+            case VariableType.Float:
+                smartBuffer.writeFloatLE(value as number);
+                break;
+            case VariableType.Double:
+                smartBuffer.writeDoubleLE(value as number);
+                break;
             case VariableType.Uninitialized:
             case VariableType.Unknown:
             case VariableType.Invalid:
             case VariableType.AA:
             case VariableType.Array:
             case VariableType.List:
-                return null;
+                break;
             default:
                 throw new Error('Unable to determine the variable value');
         }
@@ -349,14 +355,14 @@ enum VariableTypeCode {
     Object = 12,
     String = 13,
     Subroutine = 14,
-    Subtyped_Object = 15,
+    SubtypedObject = 15,
     Uninitialized = 16,
     Unknown = 17
 }
 
 export interface Variable {
     /**
-     * 0 means this var isn't refCountded, and will be omitted from reading and writing to buffer
+     * 0 means this var isn't refCounted, and thus `refCount` will be omitted from reading and writing to buffer
      */
     refCount: number;
     /**
