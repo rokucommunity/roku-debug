@@ -217,7 +217,7 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('variablesRequest', () => {
-        it('hides debug variables', async () => {
+        it('hides debug local variables', async () => {
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
@@ -246,7 +246,7 @@ describe('BrightScriptDebugSession', () => {
 
             rokuAdapter.isAtDebuggerPrompt = true;
             session['launchConfiguration'].enableVariablesPanel = true;
-            session.dispatchRequest({ command: 'scopes', arguments: { frameId: 0 }, type: 'request', seq: 8 });
+            session['dispatchRequest']({ command: 'scopes', arguments: { frameId: 0 }, type: 'request', seq: 8 });
             await session.variablesRequest(
                 response,
                 { variablesReference: 1000, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
@@ -260,6 +260,66 @@ describe('BrightScriptDebugSession', () => {
             await session.variablesRequest(
                 response,
                 { variablesReference: 1000, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+            expect(
+                response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
+            ).to.exist;
+        });
+
+        it('hides debug children variables', async () => {
+            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+
+            rokuAdapter.isAtDebuggerPrompt = true;
+
+            let response: DebugProtocol.VariablesResponse = {
+                body: {
+                    variables: []
+                },
+                request_seq: 0,
+                success: false,
+                command: '',
+                seq: 0,
+                type: ''
+            };
+            //Set the this.variables
+            session['variables'][1001] = {
+                name: 'm',
+                value: 'roAssociativeArray',
+                variablesReference: 1,
+                childVariables: [
+                    {
+                        name: '__rokudebug__eval',
+                        value: 'true',
+                        variablesReference: 0
+                    },
+                    {
+                        name: 'top',
+                        value: 'roSGNode:GetSubReddit',
+                        variablesReference: 3
+                    },
+                    {
+                        name: '[[count]]',
+                        value: '3',
+                        variablesReference: 0
+                    }
+                ]
+            };
+
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1001, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+
+            expect(
+                response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
+            ).to.not.exist;
+
+            session['launchConfiguration'].showHiddenVariables = true;
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1001, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
             );
             expect(
                 response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
