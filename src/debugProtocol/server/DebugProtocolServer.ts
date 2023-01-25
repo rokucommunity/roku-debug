@@ -86,9 +86,11 @@ export class DebugProtocolServer {
                 //anytime we receive incoming data from the client
                 this.client.on('data', (data) => {
                     //queue up processing the new data, chunk by chunk
-                    void this.bufferQueue.run(() => {
+                    void this.bufferQueue.run(async () => {
                         this.buffer = Buffer.concat([this.buffer, data]);
-                        void this.process();
+                        while (await this.process()) {
+                            //the loop condition is the actual work
+                        }
                         return true;
                     });
                 });
@@ -171,6 +173,10 @@ export class DebugProtocolServer {
         }
     }
 
+    /**
+     * Process a single request.
+     * @returns true if successfully processed a request, and false if not
+     */
     private async process() {
         try {
             this.logger.log('process() start', { buffer: this.buffer.toJSON() });
@@ -227,9 +233,11 @@ export class DebugProtocolServer {
 
             //send the response to the client. (TODO handle when the response is missing)
             await this.sendResponse(response);
+            return true;
         } catch (e) {
             this.logger.error('process() error', e);
         }
+        return false;
     }
 
     /**

@@ -10,7 +10,7 @@ import type { Command } from '../../Constants';
  */
 export class HandshakeRequest implements ProtocolRequest {
     /**
-     * A hardcoded id for the handshake classes to help them flow through the request/response flow even though they don't look the same
+     * A hardcoded id for the handshake classes to help them flow through the request/response flow even though Handshake events don't look the same as other protocol events
      */
     public static REQUEST_ID = 4294967295;
 

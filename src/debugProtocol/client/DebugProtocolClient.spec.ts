@@ -18,7 +18,21 @@ import { GenericV3Response } from '../events/responses/GenericV3Response';
 import { StopRequest } from '../events/requests/StopRequest';
 import { ExitChannelRequest } from '../events/requests/ExitChannelRequest';
 import { StepRequest } from '../events/requests/StepRequest';
+import type { ThreadInfo } from '../events/responses/ThreadsResponse';
 import { ThreadsResponse } from '../events/responses/ThreadsResponse';
+import { StackTraceResponse } from '../events/responses/StackTraceResponse';
+import { ExecuteRequest } from '../events/requests/ExecuteRequest';
+import { ExecuteV3Response } from '../events/responses/ExecuteV3Response';
+import { AddBreakpointsResponse } from '../events/responses/AddBreakpointsResponse';
+import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
+import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
+import { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
+import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsRequest';
+import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResponse';
+import { RemoveBreakpointsResponse } from '../events/responses/RemoveBreakpointsResponse';
+import { RemoveBreakpointsRequest } from '../events/requests/RemoveBreakpointsRequest';
+import { expectThrows, expectThrowsAsync } from '../../testHelpers.spec';
+import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
 
 const sinon = createSandbox();
 
@@ -44,7 +58,7 @@ describe('DebugProtocolClient', () => {
     }
 
     beforeEach(async () => {
-        sinon.stub(console, 'log').callsFake((...args) => { });
+        // sinon.stub(console, 'log').callsFake((...args) => { });
 
         const options = {
             controllerPort: undefined as number,
@@ -218,6 +232,19 @@ describe('DebugProtocolClient', () => {
     });
 
     describe('threads()', () => {
+        function thread(extra?: Partial<ThreadInfo>) {
+            return {
+                isPrimary: true,
+                stopReason: StopReason.Break,
+                stopReasonDetail: 'because',
+                lineNumber: 2,
+                functionName: 'main',
+                filePath: 'pkg:/source/main.brs',
+                codeSnippet: 'sub main()',
+                ...extra ?? {}
+            };
+        }
+
         it('skips sending command when not stopped', async () => {
             await connect();
 
@@ -236,6 +263,192 @@ describe('DebugProtocolClient', () => {
 
             const response = await client.threads();
             expect(response.data.errorCode).to.eql(ErrorCode.CANT_CONTINUE);
+        });
+
+        it('ignores the `isPrimary` flag when threadHoppingWorkaround is enabled', async () => {
+            await connect();
+            client.protocolVersion = '2.0.0';
+            client.primaryThread = 0;
+            plugin.pushResponse(ThreadsResponse.fromJson({
+                requestId: 1,
+                threads: [
+                    thread({
+                        isPrimary: false
+                    }),
+                    thread({
+                        isPrimary: true
+                    })
+                ]
+            }));
+
+            await client.threads();
+            expect(client.primaryThread).to.eql(0);
+        });
+
+        it('honors the `isPrimary` flag when threadHoppingWorkaround is disabled', async () => {
+            await connect();
+            client.protocolVersion = '3.1.0';
+            client.primaryThread = 0;
+            plugin.pushResponse(ThreadsResponse.fromJson({
+                requestId: 1,
+                threads: [
+                    thread({
+                        isPrimary: false
+                    }),
+                    thread({
+                        isPrimary: true
+                    })
+                ]
+            }));
+
+            await client.threads();
+            expect(client.primaryThread).to.eql(1);
+        });
+    });
+
+    describe('getStackTrace', () => {
+        it('skips request if not stopped', async () => {
+            await connect();
+            client.isStopped = false;
+
+            await client.getStackTrace();
+            expect(plugin.latestRequest).not.to.be.instanceof(StackTraceResponse);
+        });
+    });
+
+    describe('executeCommand', () => {
+        it('skips sending command if not stopped', async () => {
+            await connect();
+            client.isStopped = false;
+            await client.executeCommand('code');
+            expect(plugin.latestRequest).not.instanceof(ExecuteRequest);
+        });
+
+        it('sends command when client is stopped', async () => {
+            await connect();
+
+            //the response structure doesn't matter, this test is to verify the request was properly built
+            plugin.pushResponse(ExecuteV3Response.fromJson({} as any));
+
+            const response = await client.executeCommand('print 123', 1, 2);
+            expect(plugin.getLatestRequest<ExecuteRequest>().data).to.include({
+                requestId: plugin.latestRequest.data.requestId,
+                stackFrameIndex: 1,
+                threadIndex: 2,
+                sourceCode: 'print 123'
+            });
+        });
+    });
+
+    describe('addBreakpoints', () => {
+        it('skips sending command on empty breakpoints array', async () => {
+            await connect();
+            await client.addBreakpoints(undefined);
+            expect(plugin.latestRequest).not.instanceof(AddBreakpointsResponse);
+
+            await client.addBreakpoints([]);
+            expect(plugin.latestRequest).not.instanceof(AddBreakpointsRequest);
+        });
+
+        it('sends AddBreakpointsRequest when conditional breakpoints are NOT supported', async () => {
+            await connect();
+            client.protocolVersion = '2.0.0';
+
+            //response structure doesn't matter, we're verifying that the request was properly built
+            plugin.pushResponse(AddBreakpointsResponse.fromJson({} as any));
+            await client.addBreakpoints([{
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 12,
+                conditionalExpression: 'true or true'
+            }]);
+
+            expect(plugin.getLatestRequest<AddBreakpointsRequest>()).instanceof(AddBreakpointsRequest);
+            expect(plugin.getLatestRequest<AddBreakpointsRequest>().data.breakpoints[0]).not.haveOwnProperty('conditionalExpression');
+        });
+
+        it('sends AddConditionalBreakpointsRequest when conditional breakpoints ARE supported', async () => {
+            await connect();
+            client.protocolVersion = '3.1.0';
+
+            //response structure doesn't matter, we're verifying that the request was properly built
+            plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
+            await client.addBreakpoints([{
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 12,
+                conditionalExpression: 'true or true'
+            }]);
+
+            expect(plugin.getLatestRequest<AddConditionalBreakpointsRequest>()).instanceof(AddConditionalBreakpointsRequest);
+            expect(plugin.getLatestRequest<AddConditionalBreakpointsRequest>().data.breakpoints[0].conditionalExpression).to.eql('true or true');
+        });
+
+        it('includes complib prefix when supported', async () => {
+            await connect();
+            client.protocolVersion = '3.1.0';
+
+            //response structure doesn't matter, we're verifying that the request was properly built
+            plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
+            await client.addBreakpoints([{
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 12,
+                componentLibraryName: 'myapp'
+            }]);
+
+            expect(plugin.getLatestRequest<AddConditionalBreakpointsRequest>().data.breakpoints[0].filePath).to.eql('lib:/myapp/source/main.brs');
+        });
+
+        it('excludes complib prefix when not supported', async () => {
+            await connect();
+            client.protocolVersion = '2.0.0';
+
+            //response structure doesn't matter, we're verifying that the request was properly built
+            plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
+            await client.addBreakpoints([{
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 12,
+                componentLibraryName: 'myapp'
+            }]);
+
+            expect(plugin.getLatestRequest<AddConditionalBreakpointsRequest>().data.breakpoints[0].filePath).to.eql('pkg:/source/main.brs');
+        });
+    });
+
+    describe('listBreakpoints', () => {
+        it('sends request when stopped', async () => {
+            await connect();
+            client.isStopped = true;
+
+            plugin.pushResponse(ListBreakpointsResponse.fromBuffer(null));
+            await client.listBreakpoints();
+            expect(plugin.latestRequest).instanceof(ListBreakpointsRequest);
+        });
+
+        it('sends request when running', async () => {
+            await connect();
+            client.isStopped = false;
+
+            plugin.pushResponse(ListBreakpointsResponse.fromBuffer(null));
+            await client.listBreakpoints();
+            expect(plugin.latestRequest).instanceof(ListBreakpointsRequest);
+        });
+    });
+
+    describe('removeBreakpoints', () => {
+        it('sends breakpoint ids', async () => {
+            await connect();
+
+            //response structure doesn't matter, we're verifying that the request was properly built
+            plugin.pushResponse(RemoveBreakpointsResponse.fromJson({} as any));
+            await client.removeBreakpoints([1, 2, 3]);
+
+            expect(plugin.getLatestRequest<RemoveBreakpointsRequest>().data.breakpointIds).to.eql([1, 2, 3]);
+        });
+
+        it('skips sending command if no breakpoints were provided', async () => {
+            await connect();
+
+            await client.removeBreakpoints(undefined);
+            expect(plugin.latestRequest).not.instanceof(RemoveBreakpointsRequest);
         });
     });
 
@@ -364,6 +577,16 @@ describe('DebugProtocolClient', () => {
     });
 
     describe('getVariables', () => {
+
+        it('skips sending the request if not stopped', async () => {
+            await connect();
+
+            client.isStopped = false;
+
+            await client.getVariables();
+            expect(plugin.latestRequest).not.instanceof(VariablesRequest);
+        });
+
         it('honors protocol version when deciding to send forceCaseInsensitive variable information', async () => {
             await client.connect();
             //send the AllThreadsStopped event, and also wait for the client to suspend
@@ -431,6 +654,46 @@ describe('DebugProtocolClient', () => {
                     forceCaseInsensitive: false
                 }]
             } as VariablesRequest['data']);
+        });
+    });
+
+    describe('sendRequest', () => {
+        it('throws when controller is missing', async () => {
+            await connect();
+
+            delete client['controllerClient'];
+            await expectThrowsAsync(async () => {
+                await client.listBreakpoints();
+            }, 'Controller connection was closed - Command: ListBreakpoints');
+        });
+
+        it('resolves only for matching requestId', async () => {
+            await connect();
+
+            plugin.pushResponse(ListBreakpointsResponse.fromJson({
+                requestId: 10,
+                breakpoints: [{
+                    id: 123,
+                    errorCode: 0,
+                    ignoreCount: 2
+                }]
+            }));
+            plugin.pushResponse(StackTraceV3Response.fromJson({
+                requestId: 12,
+                entries: []
+            }));
+
+            //run both requests in quick succession so they both are listening to both responses
+            const [listBreakpointsResponse, getStackTraceResponse] = await Promise.all([
+                client.listBreakpoints(),
+                client.getStackTrace()
+            ]);
+            expect(listBreakpointsResponse.data.breakpoints[0]).to.include({
+                id: 123,
+                errorCode: 0,
+                ignoreCount: 2
+            });
+            expect(getStackTraceResponse.data.entries).to.eql([]);
         });
     });
 });

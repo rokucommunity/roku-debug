@@ -380,7 +380,7 @@ export class DebugProtocolClient {
         }
     }
 
-    public async addBreakpoints(breakpoints: Array<BreakpointSpec & { componentLibraryName: string }>): Promise<AddBreakpointsResponse> {
+    public async addBreakpoints(breakpoints: Array<BreakpointSpec & { componentLibraryName?: string }>): Promise<AddBreakpointsResponse> {
         const { enableComponentLibrarySpecificBreakpoints } = this;
         if (breakpoints?.length > 0) {
             const json = {
@@ -399,11 +399,11 @@ export class DebugProtocolClient {
 
             if (this.supportsConditionalBreakpoints) {
                 return this.sendRequest<AddBreakpointsResponse>(
-                    AddBreakpointsRequest.fromJson(json)
+                    AddConditionalBreakpointsRequest.fromJson(json)
                 );
             } else {
                 return this.sendRequest<AddBreakpointsResponse>(
-                    AddConditionalBreakpointsRequest.fromJson(json)
+                    AddBreakpointsRequest.fromJson(json)
                 );
             }
         }
@@ -446,7 +446,8 @@ export class DebugProtocolClient {
 
             this.logger.debug('makeRequest', `requestId=${request.data.requestId}`, request);
             if (this.controllerClient) {
-                this.controllerClient.write(request.toBuffer());
+                const buffer = request.toBuffer();
+                this.controllerClient.write(buffer);
             } else {
                 throw new Error(`Controller connection was closed - Command: ${Command[request.data.command]}`);
             }
@@ -796,11 +797,11 @@ export interface ConstructorOptions {
  * Is the event a ProtocolUpdate update
  */
 export function isProtocolUpdate(event: ProtocolUpdate | ProtocolResponse): event is ProtocolUpdate {
-    return event.data.requestId === 0;
+    return event?.constructor?.name.endsWith('Update') && event?.data?.requestId === 0;
 }
 /**
  * Is the event a ProtocolResponse
  */
 export function isProtocolResponse(event: ProtocolUpdate | ProtocolResponse): event is ProtocolResponse {
-    return event.data.requestId !== 0;
+    return event?.constructor?.name.endsWith('Response') && event?.data?.requestId !== 0;
 }

@@ -1,6 +1,7 @@
 import { ConsoleTransport, Logger } from '@rokucommunity/logger';
 import { createLogger } from '../logging';
-import type { ProtocolResponse, ProtocolRequest } from './events/ProtocolEvent';
+import { isProtocolUpdate } from './client/DebugProtocolClient';
+import type { ProtocolResponse, ProtocolRequest, ProtocolUpdate } from './events/ProtocolEvent';
 import { HandshakeRequest } from './events/requests/HandshakeRequest';
 import type { DebugProtocolServer } from './server/DebugProtocolServer';
 import type { BeforeSendResponseEvent, OnServerStartEvent, ProtocolPlugin, ProvideResponseEvent } from './server/ProtocolPlugin';
@@ -11,16 +12,25 @@ import type { BeforeSendResponseEvent, OnServerStartEvent, ProtocolPlugin, Provi
 export class DebugProtocolServerTestPlugin implements ProtocolPlugin {
 
     /**
-     * A list of responses to be sent by the server in this exact order.
-     * One of these will be sent for every `provideResponse` event received.
+     * A list of responses or updates to be sent by the server in this exact order.
+     * One of these will be sent for every `provideResponse` event received. Any leading ProtocolUpdate entries will be sent as soon as seen.
+     * For example, if the array is `[Update1, Update2, Response1, Update3]`, when the `provideResponse` event is triggered, we will first send
+     * `Update1` and `Update2`, then provide `Response1`. `Update3` will be triggered when the next `provideResponse` is requested, or if `.flush()` is called
      */
-    private responseQueue: ProtocolResponse[] = [];
+    private responseUpdateQueue: Array<ProtocolResponse | ProtocolUpdate> = [];
 
     /**
      * Adds a response to the queue, which should be returned from the server in first-in-first-out order, one for each request received by the server
      */
-    public pushResponse(response: ProtocolResponse) {
-        this.responseQueue.push(response);
+    public pushResponse(event: ProtocolResponse) {
+        this.responseUpdateQueue.push(event);
+    }
+
+    /**
+     * Adds a ProtocolUpdate to the queue. Any leading updates are send to the client anytime `provideResponse` is triggered, or when `.flush()` is called
+     */
+    public pushUpdate(event: ProtocolUpdate) {
+        this.responseUpdateQueue.push(event);
     }
 
     /**
@@ -61,13 +71,25 @@ export class DebugProtocolServerTestPlugin implements ProtocolPlugin {
     }
 
     /**
+     * Flush all leading updates in the queue
+     */
+    public async flush() {
+        while (isProtocolUpdate(this.responseUpdateQueue[0])) {
+            await this.server.sendUpdate(this.responseUpdateQueue.shift());
+        }
+    }
+
+    /**
      * Whenever the server receives a request, this event allows us to send back a response
      */
-    provideResponse(event: ProvideResponseEvent) {
+    async provideResponse(event: ProvideResponseEvent) {
         //store the request for testing purposes
         (this.requests as Array<ProtocolRequest>).push(event.request);
 
-        const response = this.responseQueue.shift();
+        //flush leading updates
+        await this.flush();
+
+        const response = this.responseUpdateQueue.shift();
         //if there's no response, AND this isn't the handshake, fail. (we want the protocol to handle the handshake most of the time)
         if (!response && !(event.request instanceof HandshakeRequest)) {
             throw new Error(`There was no response available to send back for ${event.request.constructor.name}`);
