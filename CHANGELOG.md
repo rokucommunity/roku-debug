@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.18.2](https://github.com/rokucommunity/roku-debug/compare/v0.18.1...v0.18.2) - 2023-01-27
+### Fixed
+ - off-by-1 bug with threads over protocol ([#132](https://github.com/rokucommunity/roku-debug/pull/132))
+
+
+
 ## [0.18.1](https://github.com/rokucommunity/roku-debug/compare/v0.18.0...v0.18.1) - 2023-01-24
 ### Changed
  - Hide debugger-created temp variables from the variables panel, add `showHiddenVariables` flag to disable it if desired. ([#127](https://github.com/rokucommunity/roku-debug/pull/127))
