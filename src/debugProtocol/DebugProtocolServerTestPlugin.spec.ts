@@ -4,12 +4,12 @@ import { isProtocolUpdate } from './client/DebugProtocolClient';
 import type { ProtocolResponse, ProtocolRequest, ProtocolUpdate } from './events/ProtocolEvent';
 import { HandshakeRequest } from './events/requests/HandshakeRequest';
 import type { DebugProtocolServer } from './server/DebugProtocolServer';
-import type { BeforeSendResponseEvent, OnServerStartEvent, ProtocolPlugin, ProvideResponseEvent } from './server/ProtocolPlugin';
+import type { BeforeSendResponseEvent, OnServerStartEvent, ProtocolServerPlugin, ProvideResponseEvent } from './server/DebugProtocolServerPlugin';
 
 /**
  * A class that intercepts all debug server events and provides test data for them
  */
-export class DebugProtocolServerTestPlugin implements ProtocolPlugin {
+export class DebugProtocolServerTestPlugin implements ProtocolServerPlugin {
 
     /**
      * A list of responses or updates to be sent by the server in this exact order.

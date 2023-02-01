@@ -276,7 +276,7 @@ describe('DebugProtocolClient', () => {
             }));
 
             await client.threads();
-            expect(client.primaryThread).to.eql(0);
+            expect(client?.primaryThread).to.eql(0);
         });
 
         it('honors the `isPrimary` flag when threadHoppingWorkaround is disabled', async () => {
@@ -296,7 +296,7 @@ describe('DebugProtocolClient', () => {
             }));
 
             await client.threads();
-            expect(client.primaryThread).to.eql(1);
+            expect(client?.primaryThread).to.eql(1);
         });
     });
 
@@ -682,7 +682,7 @@ describe('DebugProtocolClient', () => {
                 client.listBreakpoints(),
                 client.getStackTrace()
             ]);
-            expect(listBreakpointsResponse.data.breakpoints[0]).to.include({
+            expect(listBreakpointsResponse?.data.breakpoints[0]).to.include({
                 id: 123,
                 errorCode: 0,
                 ignoreCount: 2

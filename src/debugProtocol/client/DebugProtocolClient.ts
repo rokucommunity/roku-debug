@@ -1,7 +1,7 @@
 import * as Net from 'net';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
-import { PROTOCOL_ERROR_CODES, Command, StepType, StopReasonCode, ErrorCode, UpdateType, UpdateTypeCode, StopReason } from '../Constants';
+import { PROTOCOL_ERROR_CODES, Command, StepType, ErrorCode, UpdateType, UpdateTypeCode, StopReason } from '../Constants';
 import { logger } from '../../logging';
 import { ExecuteV3Response } from '../events/responses/ExecuteV3Response';
 import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResponse';
@@ -36,10 +36,12 @@ import { IOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
 import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
 import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
 import { ActionQueue } from '../../managers/ActionQueue';
+import type { DebugProtocolClientPlugin } from './DebugProtocolClientPlugin';
+import PluginInterface from '../PluginInterface';
 
 export class DebugProtocolClient {
 
-    private logger = logger.createLogger(`[${DebugProtocolClient.name}]`);
+    public logger = logger.createLogger(`[${DebugProtocolClient.name}]`);
 
     // The highest tested version of the protocol we support.
     public supportedVersionRange = '<=3.0.0';
@@ -53,7 +55,19 @@ export class DebugProtocolClient {
             //override the defaults with the options from parameters
             ...options ?? {}
         };
+
+        //add the internal plugin last, so it's the final plugin to handle the events
+        this.addCorePlugin();
     }
+
+    private addCorePlugin() {
+        this.plugins.add({
+            onUpdate: (event) => {
+                return this.handleUpdate(event.update);
+            }
+        }, 999);
+    }
+
     public static DEBUGGER_MAGIC = 'bsdebug'; // 64-bit = [b'bsdebug\0' little-endian]
 
     public scriptTitle: string;
@@ -67,6 +81,11 @@ export class DebugProtocolClient {
     public protocolVersion: string;
     public primaryThread: number;
     public stackFrameIndex: number;
+
+    /**
+     * A collection of plugins that can interact with the client at lifecycle points
+     */
+    public plugins = new PluginInterface<DebugProtocolClientPlugin>();
 
     private emitter = new EventEmitter();
     /**
@@ -119,6 +138,8 @@ export class DebugProtocolClient {
     public once<T = AllThreadsStoppedUpdate | ThreadAttachedUpdate>(eventName: 'runtime-error' | 'suspend'): Promise<T>;
     public once(eventName: 'io-output'): Promise<string>;
     public once(eventName: 'data'): Promise<Buffer>;
+    public once(eventName: 'response'): Promise<ProtocolResponse>;
+    public once(eventName: 'update'): Promise<ProtocolUpdate>;
     public once(eventName: 'protocol-version'): Promise<ProtocolVersionDetails>;
     public once(eventName: 'handshake-verified'): Promise<HandshakeResponse>;
     public once(eventName: string) {
@@ -190,8 +211,17 @@ export class DebugProtocolClient {
                 });
             }, this.options.controlConnectInterval ?? 250);
         });
+        await this.plugins.emit('onServerConnected', {
+            client: this,
+            server: connection
+        });
         return connection;
     }
+
+    /**
+     * A queue for processing the incoming buffer, every transmission at a time
+     */
+    private bufferQueue = new ActionQueue();
 
     /**
      * Connect to the debug server.
@@ -205,15 +235,24 @@ export class DebugProtocolClient {
 
         this.controlSocket.on('data', (data) => {
             this.emit('data', data);
-            this.buffer = Buffer.concat([this.buffer, data]);
+            //queue up processing the new data, chunk by chunk
+            void this.bufferQueue.run(async () => {
+                this.buffer = Buffer.concat([this.buffer, data]);
+                while (this.buffer.length > 0 && await this.process()) {
+                    //the loop condition is the actual work
+                }
+                return true;
+            });
 
-            this.logger.debug(`on('data'): incoming bytes`, data.length);
-            const startBufferSize = this.buffer.length;
+            // this.buffer = Buffer.concat([this.buffer, data]);
 
-            this.process();
+            // this.logger.debug(`on('data'): incoming bytes`, data.length);
+            // const startBufferSize = this.buffer.length;
 
-            const endBufferSize = this.buffer?.length ?? 0;
-            this.logger.debug(`buffer size before:`, startBufferSize, ', buffer size after:', endBufferSize, ', bytes consumed:', startBufferSize - endBufferSize);
+            // this.process();
+
+            // const endBufferSize = this.buffer?.length ?? 0;
+            // this.logger.debug(`buffer size before:`, startBufferSize, ', buffer size after:', endBufferSize, ', bytes consumed:', startBufferSize - endBufferSize);
         });
 
         this.controlSocket.on('end', () => {
@@ -228,10 +267,6 @@ export class DebugProtocolClient {
             this.shutdown('close');
         });
 
-        //subscribe to all unsolicited updates
-        this.on('update', (update) => {
-            this.handleUpdate(update);
-        });
         if (sendHandshake) {
             await this.sendHandshake();
         }
@@ -553,15 +588,20 @@ export class DebugProtocolClient {
     /**
      * Send a request to the roku device, and get a promise that resolves once we have received the response
      */
-    private async sendRequest<T>(request: ProtocolRequest) {
+    private async sendRequest<T extends ProtocolResponse | ProtocolUpdate>(request: ProtocolRequest) {
+        request = (await this.plugins.emit('beforeSendRequest', {
+            client: this,
+            request: request
+        })).request;
+
         this.activeRequests.set(request.data.requestId, request);
 
         return new Promise<T>((resolve) => {
-            let unsubscribe = this.on('response', (event) => {
-                if (event.data.requestId === request.data.requestId) {
+            let unsubscribe = this.on('response', (response) => {
+                if (response.data.requestId === request.data.requestId) {
                     unsubscribe();
                     this.activeRequests.delete(request.data.requestId);
-                    resolve(event as unknown as T);
+                    resolve(response as T);
                 }
             });
 
@@ -569,40 +609,43 @@ export class DebugProtocolClient {
             if (this.controlSocket) {
                 const buffer = request.toBuffer();
                 this.controlSocket.write(buffer);
+                void this.plugins.emit('afterSendRequest', {
+                    client: this,
+                    request: request
+                });
             } else {
                 throw new Error(`Control socket was closed - Command: ${Command[request.data.command]}`);
             }
         });
     }
 
-    private process() {
-        if (this.buffer.length < 1) {
-            // short circuit if the buffer is empty
-            return;
-        }
+    private async process(): Promise<boolean> {
         try {
-            if (this.buffer.length < 1) {
-                // short circuit if the buffer is empty
-                return;
+            this.logger.log('[process()]: buffer=', JSON.stringify(this.buffer.toJSON().data));
+
+            let { responseOrUpdate } = await this.plugins.emit('provideResponseOrUpdate', {
+                client: this,
+                activeRequests: this.activeRequests,
+                buffer: this.buffer
+            });
+
+            if (!responseOrUpdate) {
+                responseOrUpdate = this.getResponseOrUpdate(this.buffer);
             }
-
-            this.logger.info('[process()]: buffer=', JSON.stringify(this.buffer.toJSON().data));
-
-            const event = this.getResponseOrUpdate(this.buffer);
 
             //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
-            if (!event) {
+            if (!responseOrUpdate) {
                 this.logger.log('Unable to convert buffer into anything meaningful');
                 //TODO what should we do about this?
-                return;
+                return false;
             }
-            if (!event.success || event.data.packetLength > this.buffer.length) {
-                this.logger.log(`event parse failed. ${event?.data?.packetLength} bytes required, ${this.buffer.length} bytes available`);
-                return;
+            if (!responseOrUpdate.success || responseOrUpdate.data.packetLength > this.buffer.length) {
+                this.logger.log(`event parse failed. ${responseOrUpdate?.data?.packetLength} bytes required, ${this.buffer.length} bytes available`);
+                return false;
             }
 
             //we have a valid event. Clear the buffer of this data
-            this.buffer = this.buffer.slice(event.readOffset);
+            this.buffer = this.buffer.slice(responseOrUpdate.readOffset);
 
             //TODO why did we ever do this? Just to handle when we misread incoming data? I think this should be scrapped
             // if (event.data.requestId > this.totalRequests) {
@@ -610,23 +653,28 @@ export class DebugProtocolClient {
             //     return true;
             // }
 
-            if (event.data.errorCode !== ErrorCode.OK) {
-                this.logger.error(event.data.errorCode, event);
-                // return;
+            if (responseOrUpdate.data.errorCode !== ErrorCode.OK) {
+                this.logger.error(responseOrUpdate.data.errorCode, responseOrUpdate);
             }
 
-            //we got a response
-            if (event) {
+            //we got a result
+            if (responseOrUpdate) {
                 //emit the corresponding event
-                if (isProtocolUpdate(event)) {
-                    this.emit('update', event);
+                if (isProtocolUpdate(responseOrUpdate)) {
+                    this.emit('update', responseOrUpdate);
+                    await this.plugins.emit('onUpdate', {
+                        client: this,
+                        update: responseOrUpdate
+                    });
                 } else {
-                    this.emit('response', event);
+                    this.emit('response', responseOrUpdate);
+                    await this.plugins.emit('onResponse', {
+                        client: this,
+                        response: responseOrUpdate as any
+                    });
                 }
+                return true;
             }
-
-            // process again (will run recursively until the buffer is empty)
-            this.process();
         } catch (e) {
             this.logger.error(`process() failed:`, e);
         }

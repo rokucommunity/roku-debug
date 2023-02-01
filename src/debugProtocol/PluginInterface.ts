@@ -5,14 +5,20 @@ export type Arguments<T> = [T] extends [(...args: infer U) => any]
 
 export default class PluginInterface<TPlugin> {
     constructor(
-        private plugins = [] as TPlugin[]
-    ) { }
+        plugins = [] as TPlugin[]
+    ) {
+        for (const plugin of plugins ?? []) {
+            this.add(plugin);
+        }
+    }
+
+    private plugins: Array<PluginContainer<TPlugin>> = [];
 
     /**
      * Call `event` on plugins
      */
     public async emit<K extends keyof TPlugin & string>(eventName: K, event: Arguments<TPlugin[K]>[0]) {
-        for (let plugin of this.plugins) {
+        for (let { plugin } of this.plugins) {
             if ((plugin as any)[eventName]) {
                 await Promise.resolve((plugin as any)[eventName](event));
             }
@@ -23,28 +29,30 @@ export default class PluginInterface<TPlugin> {
     /**
      * Add a plugin to the end of the list of plugins
      */
-    public add<T extends TPlugin = TPlugin>(plugin: T) {
-        if (!this.has(plugin)) {
-            this.plugins.push(plugin);
-        }
-        return plugin;
-    }
+    public add<T extends TPlugin = TPlugin>(plugin: T, priority = 1) {
+        const container = {
+            plugin: plugin,
+            priority: priority
+        };
+        this.plugins.push(container);
 
-    /**
-     * Is the specified plugin present in the list
-     */
-    public has(plugin: TPlugin) {
-        return this.plugins.includes(plugin);
+        //sort the plugins by priority
+        this.plugins.sort((a, b) => {
+            return a.priority - b.priority;
+        });
+
+        return plugin;
     }
 
     /**
      * Remove the specified plugin
      */
     public remove<T extends TPlugin = TPlugin>(plugin: T) {
-        if (this.has(plugin)) {
-            this.plugins.splice(this.plugins.indexOf(plugin));
+        for (let i = this.plugins.length - 1; i >= 0; i--) {
+            if (this.plugins[i] === plugin) {
+                this.plugins.splice(i, 1);
+            }
         }
-        return plugin;
     }
 
     /**
@@ -53,4 +61,9 @@ export default class PluginInterface<TPlugin> {
     public clear() {
         this.plugins = [];
     }
+}
+
+interface PluginContainer<TPlugin> {
+    plugin: TPlugin;
+    priority: number;
 }

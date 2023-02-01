@@ -2,7 +2,7 @@ import type { DebugProtocolServer } from './DebugProtocolServer';
 import type { Socket } from 'net';
 import type { ProtocolRequest, ProtocolResponse } from '../events/ProtocolEvent';
 
-export interface ProtocolPlugin {
+export interface ProtocolServerPlugin {
     onServerStart?: Handler<OnServerStartEvent>;
     onClientConnected?: Handler<OnClientConnectedEvent>;
 

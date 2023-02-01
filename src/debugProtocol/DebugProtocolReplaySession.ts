@@ -49,7 +49,8 @@ export class DebugProtocolReplaySession {
         await this.createServer(this.controlPort);
         this.createClient(this.controlPort);
 
-        await this.client.connect();
+        //connect, but don't send the handshake. That'll be send through our first server-to-client entry (hopefully)
+        await this.client.connect(false);
 
         void this.clientProcess();
         await this.finished.promise;

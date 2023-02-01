@@ -18,8 +18,8 @@ import { ThreadsRequest } from '../events/requests/ThreadsRequest';
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
-import PluginInterface from './PluginInterface';
-import type { ProtocolPlugin } from './ProtocolPlugin';
+import PluginInterface from '../PluginInterface';
+import type { ProtocolServerPlugin } from './DebugProtocolServerPlugin';
 import { logger } from '../../logging';
 import * as portfinder from 'portfinder';
 import { defer } from '../../util';
@@ -60,7 +60,7 @@ export class DebugProtocolServer {
     /**
      * A collection of plugins that can interact with the server at lifecycle points
      */
-    public plugins = new PluginInterface<ProtocolPlugin>();
+    public plugins = new PluginInterface<ProtocolServerPlugin>();
 
     /**
      * A queue for processing the incoming buffer, every transmission at a time
