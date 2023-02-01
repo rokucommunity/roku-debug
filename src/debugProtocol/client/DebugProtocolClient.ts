@@ -369,7 +369,7 @@ export class DebugProtocolClient {
             }
             return stepResult;
         } else {
-            this.logger.log('[processStepRequest] skipped because not stopped', request);
+            this.logger.log('[processStepRequest] skipped because debugger is not paused');
         }
     }
 
@@ -406,7 +406,7 @@ export class DebugProtocolClient {
             }
             return result;
         } else {
-            this.logger.log('[processThreadsRequest] skipped because not stopped', request);
+            this.logger.log('[processThreadsRequest] skipped because not stopped');
         }
     }
 
@@ -423,10 +423,12 @@ export class DebugProtocolClient {
     }
 
     private async processStackTraceRequest(request: StackTraceRequest) {
-        if (this.isStopped && request.data.threadIndex > -1) {
+        if (!this.isStopped) {
+            this.logger.log('[getStackTrace] skipped because debugger is not paused');
+        } else if (request?.data?.threadIndex > -1) {
             return this.sendRequest<StackTraceResponse>(request);
         } else {
-            this.logger.log('[getStackTrace] skipped. ', request);
+            this.logger.log(`[getStackTrace] skipped because ${request?.data?.threadIndex} is not valid threadIndex`);
         }
     }
 
@@ -621,7 +623,7 @@ export class DebugProtocolClient {
 
     private async process(): Promise<boolean> {
         try {
-            this.logger.log('[process()]: buffer=', JSON.stringify(this.buffer.toJSON().data));
+            this.logger.info('[process()]: buffer=', this.buffer.toJSON());
 
             let { responseOrUpdate } = await this.plugins.emit('provideResponseOrUpdate', {
                 client: this,
@@ -635,7 +637,7 @@ export class DebugProtocolClient {
 
             //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
             if (!responseOrUpdate) {
-                this.logger.log('Unable to convert buffer into anything meaningful');
+                this.logger.info('Unable to convert buffer into anything meaningful', this.buffer);
                 //TODO what should we do about this?
                 return false;
             }
@@ -661,12 +663,14 @@ export class DebugProtocolClient {
             if (responseOrUpdate) {
                 //emit the corresponding event
                 if (isProtocolUpdate(responseOrUpdate)) {
+                    this.logger.log('Update from server:', responseOrUpdate);
                     this.emit('update', responseOrUpdate);
                     await this.plugins.emit('onUpdate', {
                         client: this,
                         update: responseOrUpdate
                     });
                 } else {
+                    this.logger.log('Response from server:', responseOrUpdate);
                     this.emit('response', responseOrUpdate);
                     await this.plugins.emit('onResponse', {
                         client: this,
