@@ -188,7 +188,12 @@ export enum UpdateType {
      * A compilation error occurred
      * @since protocol 3.1
      */
-    CompileError = 'CompileError'
+    CompileError = 'CompileError',
+    /**
+     * Breakpoints were successfully verified
+     * @since protocol 3.2
+     */
+    // BreakpointVerified = 'BreakpointVerified'
 }
 /**
  * The integer values for `UPDATE_TYPE`. Only used for serializing/deserializing over the debug protocol. Use `UpdateType` in your code.
@@ -199,6 +204,11 @@ export enum UpdateTypeCode {
     AllThreadsStopped = 2,
     ThreadAttached = 3,
     BreakpointError = 4,
-    CompileError = 5
+    CompileError = 5,
+    // /**
+    //  * Breakpoints were successfully verified
+    //  * @since protocol 3.2
+    //  */
+    // BreakpointVerified = 6
 }
 

@@ -5,7 +5,7 @@ import { createSandbox } from 'sinon';
 import { Command, ErrorCode, StepType, StopReason } from '../Constants';
 import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import * as portfinder from 'portfinder';
-import { util } from '../../util';
+import { defer, util } from '../../util';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
@@ -31,8 +31,11 @@ import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsReques
 import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResponse';
 import { RemoveBreakpointsResponse } from '../events/responses/RemoveBreakpointsResponse';
 import { RemoveBreakpointsRequest } from '../events/requests/RemoveBreakpointsRequest';
-import { expectThrows, expectThrowsAsync } from '../../testHelpers.spec';
+import { expectThrowsAsync } from '../../testHelpers.spec';
 import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
+import { IOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
+import * as Net from 'net';
+import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
 
 const sinon = createSandbox();
 
@@ -58,15 +61,15 @@ describe('DebugProtocolClient', () => {
     }
 
     beforeEach(async () => {
-        // sinon.stub(console, 'log').callsFake((...args) => { });
+        sinon.stub(console, 'log').callsFake((...args) => { });
 
         const options = {
-            controllerPort: undefined as number,
+            controlPort: undefined as number,
             host: '127.0.0.1'
         };
 
-        if (!options.controllerPort) {
-            options.controllerPort = await portfinder.getPortPromise();
+        if (!options.controlPort) {
+            options.controlPort = await portfinder.getPortPromise();
         }
         server = new DebugProtocolServer(options);
         plugin = server.plugins.add(new DebugProtocolServerTestPlugin());
@@ -126,7 +129,7 @@ describe('DebugProtocolClient', () => {
         expect(plugin.latestRequest).to.be.instanceOf(ContinueRequest);
     });
 
-    it('sends the pause command when forced', async () => {
+    it('sends the pause command', async () => {
         await connect();
 
         client.isStopped = true;
@@ -136,15 +139,6 @@ describe('DebugProtocolClient', () => {
         plugin.pushResponse(GenericV3Response.fromJson({} as any));
         client.isStopped = false;
         await client.pause();
-        expect(plugin.latestRequest).to.be.instanceOf(StopRequest);
-    });
-
-    it('sends the pause command when forced', async () => {
-        await connect();
-
-        plugin.pushResponse(GenericV3Response.fromJson({} as any));
-        client.isStopped = true;
-        await client.pause(true); //true means force
         expect(plugin.latestRequest).to.be.instanceOf(StopRequest);
     });
 
@@ -504,7 +498,7 @@ describe('DebugProtocolClient', () => {
         expect(client.isHandshakeComplete).to.be.equal(false);
 
         await client.connect();
-        expect(plugin.responses[0].data).to.eql({
+        expect(plugin.responses[0]?.data).to.eql({
             packetLength: undefined,
             requestId: HandshakeRequest.REQUEST_ID,
             errorCode: ErrorCode.OK,
@@ -661,10 +655,10 @@ describe('DebugProtocolClient', () => {
         it('throws when controller is missing', async () => {
             await connect();
 
-            delete client['controllerClient'];
+            delete client['controlSocket'];
             await expectThrowsAsync(async () => {
                 await client.listBreakpoints();
-            }, 'Controller connection was closed - Command: ListBreakpoints');
+            }, 'Control socket was closed - Command: ListBreakpoints');
         });
 
         it('resolves only for matching requestId', async () => {
@@ -695,5 +689,131 @@ describe('DebugProtocolClient', () => {
             });
             expect(getStackTraceResponse.data.entries).to.eql([]);
         });
+
+        it('recovers on incomplete buffer', async () => {
+            await connect();
+
+            const buffer = AllThreadsStoppedUpdate.fromJson({
+                stopReason: StopReason.Break,
+                stopReasonDetail: 'because',
+                threadIndex: 0
+            }).toBuffer();
+
+            const dataReceivedPromise = client.once('data');
+            const promise = client.once<AllThreadsStoppedUpdate>('suspend');
+
+            //write half the buffer
+            plugin.server['client'].write(buffer.slice(0, 5));
+            //wait until we receive that data
+            await dataReceivedPromise;
+            //write the rest of the buffer
+            plugin.server['client'].write(buffer.slice(5));
+
+            //wait until the update shows up
+            const update = await promise;
+            expect(update.data.stopReasonDetail).to.eql('because');
+        });
+    });
+    describe('connectToIoPort', () => {
+        let ioServer: Net.Server;
+        let port: number;
+        let socketPromise: Promise<Net.Socket>;
+
+        beforeEach(async () => {
+            port = await portfinder.getPortPromise();
+            ioServer = new Net.Server();
+            const deferred = defer<Net.Socket>();
+            socketPromise = deferred.promise;
+            ioServer.listen({
+                port: port,
+                hostName: '0.0.0.0'
+            }, () => { });
+            ioServer.on('connection', (socket) => {
+                deferred.resolve(socket);
+            });
+        });
+
+        afterEach(() => {
+            ioServer?.close();
+        });
+
+        it('supports the IOPortOpened update', async () => {
+            await connect();
+
+            const ioOutputPromise = client.once('io-output');
+
+            await plugin.server.sendUpdate(IOPortOpenedUpdate.fromJson({
+                port: port
+            }));
+
+            const socket = await socketPromise;
+            socket.write('hello\nworld\n');
+
+            const output = await ioOutputPromise;
+            expect(output).to.eql('hello\nworld');
+        });
+
+        it('handles partial lines', async () => {
+            await connect();
+
+            await plugin.server.sendUpdate(IOPortOpenedUpdate.fromJson({
+                port: port
+            }));
+
+            const socket = await socketPromise;
+            const outputMonitors = [
+                defer(),
+                defer(),
+                defer()
+            ];
+            const output = [];
+
+            const outputPromise = client.once('io-output');
+
+            client['ioSocket'].on('data', (data) => {
+                outputMonitors[output.length].resolve();
+                output.push(data.toString());
+            });
+
+            socket.write('hello ');
+            await outputMonitors[0].promise;
+            socket.write('world\n');
+            await outputMonitors[1].promise;
+            expect(await outputPromise).to.eql('hello world');
+        });
+
+        it('handles failed update', async () => {
+            await connect();
+            const update = IOPortOpenedUpdate.fromJson({
+                port: port
+            });
+            update.success = false;
+            expect(
+                client['connectToIoPort'](update)
+            ).to.be.false;
+        });
+
+        it('terminates the ioClient on "end"', async () => {
+            await connect();
+            await plugin.server.sendUpdate(IOPortOpenedUpdate.fromJson({
+                port: port
+            }));
+            await socketPromise;
+            ioServer.close();
+        });
+    });
+
+    it('handles ThreadAttachedUpdate type', async () => {
+        await connect();
+
+        const promise = client.once('suspend');
+        client.primaryThread = 1;
+        await plugin.server.sendUpdate(ThreadAttachedUpdate.fromJson({
+            stopReason: StopReason.Break,
+            stopReasonDetail: 'because',
+            threadIndex: 2
+        }));
+        await promise;
+        expect(client.primaryThread).to.eql(2);
     });
 });

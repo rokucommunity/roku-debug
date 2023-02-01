@@ -1,8 +1,9 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode } from '../../Constants';
 import { protocolUtil } from '../../ProtocolUtil';
+import type { ProtocolResponse } from '../ProtocolEvent';
 
-export class ListBreakpointsResponse {
+export class ListBreakpointsResponse implements ProtocolResponse {
 
     public static fromJson(data: {
         requestId: number;

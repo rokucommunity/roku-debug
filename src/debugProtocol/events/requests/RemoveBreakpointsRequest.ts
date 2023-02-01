@@ -8,7 +8,7 @@ export class RemoveBreakpointsRequest implements ProtocolRequest {
     public static fromJson(data: { requestId: number; breakpointIds: number[] }) {
         const request = new RemoveBreakpointsRequest();
         protocolUtil.loadJson(request, data);
-        request.data.numBreakpoints = request.data.breakpointIds.length;
+        request.data.numBreakpoints = request.data.breakpointIds?.length ?? 0;
         return request;
     }
 
@@ -38,7 +38,9 @@ export class RemoveBreakpointsRequest implements ProtocolRequest {
     }
 
     public success = false;
-
+    /**
+     * How many bytes were read by the `fromBuffer` method. Only populated when constructed by `fromBuffer`
+     */
     public readOffset: number = undefined;
 
     public data = {

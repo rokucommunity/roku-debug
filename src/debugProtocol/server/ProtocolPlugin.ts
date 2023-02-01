@@ -3,7 +3,7 @@ import type { Socket } from 'net';
 import type { ProtocolRequest, ProtocolResponse } from '../events/ProtocolEvent';
 
 export interface ProtocolPlugin {
-    onServerStart: Handler<OnServerStartEvent>;
+    onServerStart?: Handler<OnServerStartEvent>;
     onClientConnected?: Handler<OnClientConnectedEvent>;
 
     provideRequest?: Handler<ProvideRequestEvent>;

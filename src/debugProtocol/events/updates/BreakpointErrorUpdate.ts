@@ -95,7 +95,9 @@ export class BreakpointErrorUpdate {
     }
 
     public success = false;
-
+    /**
+     * How many bytes were read by the `fromBuffer` method. Only populated when constructed by `fromBuffer`
+     */
     public readOffset: number = undefined;
 
     public data = {

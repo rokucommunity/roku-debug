@@ -27,14 +27,14 @@ describe('DebugProtocolAdapter', () => {
     beforeEach(async () => {
         // sinon.stub(console, 'log').callsFake((...args) => { });
         const options = {
-            controllerPort: undefined as number,
+            controlPort: undefined as number,
             host: '127.0.0.1'
         };
 
         adapter = new DebugProtocolAdapter(options, undefined, undefined);
 
-        if (!options.controllerPort) {
-            options.controllerPort = await portfinder.getPortPromise();
+        if (!options.controlPort) {
+            options.controlPort = await portfinder.getPortPromise();
         }
         server = new DebugProtocolServer(options);
         plugin = server.plugins.add(new DebugProtocolServerTestPlugin());

@@ -21,6 +21,10 @@ import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import PluginInterface from './PluginInterface';
 import type { ProtocolPlugin } from './ProtocolPlugin';
 import { logger } from '../../logging';
+import * as portfinder from 'portfinder';
+import { defer } from '../../util';
+import { protocolUtil } from '../ProtocolUtil';
+import { SmartBuffer } from 'smart-buffer';
 
 export const DEBUGGER_MAGIC = 'bsdebug';
 
@@ -30,7 +34,7 @@ export const DEBUGGER_MAGIC = 'bsdebug';
  */
 export class DebugProtocolServer {
     constructor(
-        public options: DebugProtocolServerOptions
+        public options?: DebugProtocolServerOptions
     ) {
 
     }
@@ -63,13 +67,18 @@ export class DebugProtocolServer {
      */
     private bufferQueue = new ActionQueue();
 
+    public get controlPort() {
+        return this.options.controlPort ?? this._port;
+    }
+    private _port: number;
 
     /**
      * Run the server. This opens a socket and listens for a connection.
      * The promise resolves when the server has started listening. It does NOT wait for a client to connect
      */
     public async start() {
-        return new Promise<void>((resolve) => {
+        const deferred = defer();
+        try {
             this.server = new Net.Server({});
             //Roku only allows 1 connection, so we should too.
             this.server.maxConnections = 1;
@@ -88,22 +97,25 @@ export class DebugProtocolServer {
                     //queue up processing the new data, chunk by chunk
                     void this.bufferQueue.run(async () => {
                         this.buffer = Buffer.concat([this.buffer, data]);
-                        while (await this.process()) {
+                        while (this.buffer.length > 0 && await this.process()) {
                             //the loop condition is the actual work
                         }
                         return true;
                     });
                 });
             });
-
+            this._port = this.controlPort ?? await portfinder.getPortPromise();
             this.server.listen({
-                port: this.options.controllerPort ?? 8081,
+                port: this.options.controlPort ?? 8081,
                 hostName: this.options.host ?? '0.0.0.0'
             }, () => {
                 void this.plugins.emit('onServerStart', { server: this });
-                resolve();
+                deferred.resolve();
             });
-        });
+        } catch (e) {
+            deferred.reject(e);
+        }
+        return deferred.promise;
     }
 
     public async stop() {
@@ -127,38 +139,43 @@ export class DebugProtocolServer {
     /**
      * Given a buffer, find the request that matches it
      */
-    private getRequest(buffer: Buffer): ProtocolRequest {
-        //if we haven't seen the handshake yet, look for the handshake first
-        if (!this.isHandshakeComplete) {
+    public static getRequest(buffer: Buffer, allowHandshake: boolean): ProtocolRequest {
+        //when enabled, look at the start of the buffer for the exact DEBUGGER_MAGIC text. This is a boolean because
+        //there could be cases where binary data looks similar to this structure, so the caller must opt-in to this logic
+        if (allowHandshake && buffer.length >= 8 && protocolUtil.readStringNT(SmartBuffer.fromBuffer(buffer)) === DEBUGGER_MAGIC) {
             return HandshakeRequest.fromBuffer(buffer);
         }
-        //we can only receive commands from the client, so pre-parse the command type
+        // if we don't have enough buffer data, skip this
+        if (buffer.length < 12) {
+            return;
+        }
+        //the client may only send commands to the server, so extract the command type from the known byte position
         const command = CommandCode[buffer.readUInt32LE(8)] as Command; // command_code
         switch (command) {
             case Command.AddBreakpoints:
-                return AddBreakpointsRequest.fromBuffer(this.buffer);
+                return AddBreakpointsRequest.fromBuffer(buffer);
             case Command.Stop:
-                return StopRequest.fromBuffer(this.buffer);
+                return StopRequest.fromBuffer(buffer);
             case Command.Continue:
-                return ContinueRequest.fromBuffer(this.buffer);
+                return ContinueRequest.fromBuffer(buffer);
             case Command.Threads:
-                return ThreadsRequest.fromBuffer(this.buffer);
+                return ThreadsRequest.fromBuffer(buffer);
             case Command.StackTrace:
-                return StackTraceRequest.fromBuffer(this.buffer);
+                return StackTraceRequest.fromBuffer(buffer);
             case Command.Variables:
-                return VariablesRequest.fromBuffer(this.buffer);
+                return VariablesRequest.fromBuffer(buffer);
             case Command.Step:
-                return StepRequest.fromBuffer(this.buffer);
+                return StepRequest.fromBuffer(buffer);
             case Command.ListBreakpoints:
-                return ListBreakpointsRequest.fromBuffer(this.buffer);
+                return ListBreakpointsRequest.fromBuffer(buffer);
             case Command.RemoveBreakpoints:
-                return RemoveBreakpointsRequest.fromBuffer(this.buffer);
+                return RemoveBreakpointsRequest.fromBuffer(buffer);
             case Command.Execute:
-                return ExecuteRequest.fromBuffer(this.buffer);
+                return ExecuteRequest.fromBuffer(buffer);
             case Command.AddConditionalBreakpoints:
-                return AddConditionalBreakpointsRequest.fromBuffer(this.buffer);
+                return AddConditionalBreakpointsRequest.fromBuffer(buffer);
             case Command.ExitChannel:
-                return ExitChannelRequest.fromBuffer(this.buffer);
+                return ExitChannelRequest.fromBuffer(buffer);
         }
     }
 
@@ -190,9 +207,13 @@ export class DebugProtocolServer {
 
             //we must build the request if the plugin didn't supply one (most plugins won't provide a request...)
             if (!request) {
-                request = this.getRequest(buffer);
+                //if we haven't seen the handshake yet, look for the handshake first
+                if (!this.isHandshakeComplete) {
+                    request = HandshakeRequest.fromBuffer(buffer);
+                } else {
+                    request = DebugProtocolServer.getRequest(buffer, false);
+                }
             }
-
 
             //if we couldn't construct a request this request, hard-fail
             if (!request || !request.success) {
@@ -320,7 +341,7 @@ export interface DebugProtocolServerOptions {
     /**
      * The port to use for the primary communication between this server and a client
      */
-    controllerPort?: number;
+    controlPort?: number;
     /**
      * A specific host to listen on. If not specified, all hosts are used
      */

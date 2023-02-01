@@ -12,6 +12,10 @@ export class ActionQueue {
         deferred: Deferred<any>;
     }> = [];
 
+    /**
+     * Run an action in the queue.
+     * @param action return true or Promise<true> to mark the action as finished
+     */
     public async run(action: () => boolean | Promise<boolean>) {
         this.queueItems.push({
             action: action,

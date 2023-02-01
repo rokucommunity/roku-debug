@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { ThreadsResponse } from './ThreadsResponse';
 import { ErrorCode, StopReason } from '../../Constants';
 import { getRandomBuffer } from '../../../testHelpers.spec';
+import { StackTraceV3Response } from './StackTraceV3Response';
 
 describe('ThreadsResponse', () => {
     it('defaults data.entries to empty array when missing', () => {
