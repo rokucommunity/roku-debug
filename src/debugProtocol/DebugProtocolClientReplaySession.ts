@@ -5,9 +5,9 @@ import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events
 import { DebugProtocolServer } from './server/DebugProtocolServer';
 import * as Net from 'net';
 import { ActionQueue } from '../managers/ActionQueue';
-import { IOPortOpenedUpdate } from './events/updates/IOPortOpenedUpdate';
+import { IOPortOpenedUpdate, isIOPortOpenedUpdate } from './events/updates/IOPortOpenedUpdate';
 
-export class DebugProtocolReplaySession {
+export class DebugProtocolClientReplaySession {
     constructor(options: {
         bufferLog: string;
     }) {
@@ -43,10 +43,11 @@ export class DebugProtocolReplaySession {
     private ioPort: number;
 
     public async run() {
-        this.controlPort = await portfinder.getPortPromise();
-        this.ioPort = await portfinder.getPortPromise();
+        this.controlPort = await portfinder.getPortPromise({ port: 8000, stopPort: 8999 });
+        this.ioPort = await portfinder.getPortPromise({ port: 9000, stopPort: 9999 });
 
         await this.createServer(this.controlPort);
+
         this.createClient(this.controlPort);
 
         //connect, but don't send the handshake. That'll be send through our first server-to-client entry (hopefully)
@@ -68,9 +69,6 @@ export class DebugProtocolReplaySession {
         });
         this.client.on('update', (update) => {
             this.result.push(update);
-            if (update instanceof IOPortOpenedUpdate) {
-                void this.openIOPort(update);
-            }
         });
 
         //anytime the client receives buffer data, we should try and process it
@@ -78,9 +76,24 @@ export class DebugProtocolReplaySession {
             this.clientSync.pushActual(data);
             void this.clientProcess();
         });
+
+        this.client.plugins.add({
+            beforeHandleUpdate: async (event) => {
+                if (isIOPortOpenedUpdate(event.update)) {
+                    //spin up an IO port before finishing this update
+                    await this.openIOPort();
+
+                    const update = IOPortOpenedUpdate.fromJson(event.update.data);
+                    update.data.port = this.ioPort;
+                    //if we get an IO update, change the port and host to the local stuff (for testing purposes)
+                    event.update = update;
+                }
+            }
+        });
     }
 
-    private openIOPort(update: IOPortOpenedUpdate) {
+    private openIOPort() {
+        console.log(`Spinning up mock IO socket on port ${this.ioPort}`);
         return new Promise<void>((resolve) => {
             const server = new Net.Server({});
 

@@ -1,6 +1,7 @@
 import { SmartBuffer } from 'smart-buffer';
 import { ErrorCode, UpdateType } from '../../Constants';
 import { protocolUtil } from '../../ProtocolUtil';
+import type { ProtocolUpdate, ProtocolResponse, ProtocolRequest } from '../ProtocolEvent';
 
 export class IOPortOpenedUpdate {
 
@@ -47,4 +48,8 @@ export class IOPortOpenedUpdate {
         errorCode: ErrorCode.OK,
         updateType: UpdateType.IOPortOpened
     };
+}
+
+export function isIOPortOpenedUpdate(event: ProtocolRequest | ProtocolResponse | ProtocolUpdate): event is IOPortOpenedUpdate {
+    return event?.constructor?.name === IOPortOpenedUpdate.name;
 }

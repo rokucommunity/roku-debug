@@ -12,6 +12,8 @@ export interface DebugProtocolClientPlugin {
 
     onUpdate?(event: OnUpdateEvent): void | Promise<any>;
     onResponse?(event: OnResponseEvent): void | Promise<any>;
+
+    beforeHandleUpdate?(event: BeforeHandleUpdateEvent): void | Promise<any>;
 }
 
 export interface OnServerConnectedEvent {
@@ -39,6 +41,12 @@ export interface OnUpdateEvent {
     client: DebugProtocolClient;
     update: ProtocolUpdate;
 }
+
+export interface BeforeHandleUpdateEvent {
+    client: DebugProtocolClient;
+    update: ProtocolUpdate;
+}
+
 export interface OnResponseEvent {
     client: DebugProtocolClient;
     response: ProtocolResponse;

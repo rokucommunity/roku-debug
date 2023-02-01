@@ -32,7 +32,7 @@ import { GenericResponse } from '../events/responses/GenericResponse';
 import type { StackTraceResponse } from '../events/responses/StackTraceResponse';
 import { ThreadsResponse } from '../events/responses/ThreadsResponse';
 import { VariablesResponse } from '../events/responses/VariablesResponse';
-import { IOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
+import { IOPortOpenedUpdate, isIOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
 import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
 import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
 import { ActionQueue } from '../../managers/ActionQueue';
@@ -777,34 +777,44 @@ export class DebugProtocolClient {
         }
     }
 
+    private handleUpdateQueue = new ActionQueue();
+
     /**
      * Handle/process any received updates from the debug protocol
      */
-    private handleUpdate(update: ProtocolUpdate) {
-        if (update instanceof AllThreadsStoppedUpdate || update instanceof ThreadAttachedUpdate) {
-            this.isStopped = true;
+    private async handleUpdate(update: ProtocolUpdate) {
+        return this.handleUpdateQueue.run(async () => {
+            update = (await this.plugins.emit('beforeHandleUpdate', {
+                client: this,
+                update: update
+            })).update;
 
-            let eventName: 'runtime-error' | 'suspend';
-            if (update.data.stopReason === StopReason.RuntimeError) {
-                eventName = 'runtime-error';
-            } else {
-                eventName = 'suspend';
+            if (update instanceof AllThreadsStoppedUpdate || update instanceof ThreadAttachedUpdate) {
+                this.isStopped = true;
+
+                let eventName: 'runtime-error' | 'suspend';
+                if (update.data.stopReason === StopReason.RuntimeError) {
+                    eventName = 'runtime-error';
+                } else {
+                    eventName = 'suspend';
+                }
+
+                const isValidStopReason = [StopReason.RuntimeError, StopReason.Break, StopReason.StopStatement].includes(update.data.stopReason);
+
+                if (update instanceof AllThreadsStoppedUpdate && isValidStopReason) {
+                    this.primaryThread = update.data.threadIndex;
+                    this.stackFrameIndex = 0;
+                    this.emit(eventName, update);
+                } else if (update instanceof ThreadAttachedUpdate && isValidStopReason) {
+                    this.primaryThread = update.data.threadIndex;
+                    this.emit(eventName, update);
+                }
+
+            } else if (isIOPortOpenedUpdate(update)) {
+                this.connectToIoPort(update);
             }
-
-            const isValidStopReason = [StopReason.RuntimeError, StopReason.Break, StopReason.StopStatement].includes(update.data.stopReason);
-
-            if (update instanceof AllThreadsStoppedUpdate && isValidStopReason) {
-                this.primaryThread = update.data.threadIndex;
-                this.stackFrameIndex = 0;
-                this.emit(eventName, update);
-            } else if (update instanceof ThreadAttachedUpdate && isValidStopReason) {
-                this.primaryThread = update.data.threadIndex;
-                this.emit(eventName, update);
-            }
-
-        } else if (update instanceof IOPortOpenedUpdate) {
-            this.connectToIoPort(update);
-        }
+            return true;
+        });
     }
 
     /**
