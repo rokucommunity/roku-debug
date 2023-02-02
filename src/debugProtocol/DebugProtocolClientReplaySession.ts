@@ -19,6 +19,8 @@ export class DebugProtocolClientReplaySession {
      */
     private server: Net.Socket;
 
+    private ioSocket: Net.Socket;
+
     private client: DebugProtocolClient;
 
     private entries: Array<BufferLogEntry>;
@@ -100,7 +102,7 @@ export class DebugProtocolClientReplaySession {
             //whenever a client makes a connection
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             server.on('connection', (client: Net.Socket) => {
-                this.server = client;
+                this.ioSocket = client;
                 //anytime we receive incoming data from the client
                 client.on('data', (data) => {
                     //TODO send IO data
