@@ -24,11 +24,19 @@ export class ActionQueue {
         await this._runActions();
     }
 
+    private isRunning = false;
+
     private async _runActions() {
+        if (this.isRunning) {
+            return;
+        }
+        this.isRunning = true;
         while (this.queueItems.length > 0) {
             const queueItem = this.queueItems[0];
             try {
-                const isFinished = await Promise.resolve(queueItem.action());
+                const isFinished = await Promise.resolve(
+                    queueItem.action()
+                );
                 if (isFinished) {
                     this.queueItems.shift();
                     queueItem.deferred.resolve();
@@ -38,5 +46,6 @@ export class ActionQueue {
                 queueItem.deferred.reject(error);
             }
         }
+        this.isRunning = false;
     }
 }

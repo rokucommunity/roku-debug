@@ -303,11 +303,7 @@ export class DebugProtocolClient {
     private async processContinueRequest(request: ContinueRequest) {
         if (this.isStopped) {
             this.isStopped = false;
-            return this.sendRequest<GenericResponse>(
-                ContinueRequest.fromJson({
-                    requestId: this.requestIdSequence++
-                })
-            );
+            return this.sendRequest<GenericResponse>(request);
         }
     }
 
@@ -382,11 +378,7 @@ export class DebugProtocolClient {
     }
     public async processThreadsRequest(request: ThreadsRequest) {
         if (this.isStopped) {
-            let result = await this.sendRequest<ThreadsResponse>(
-                ThreadsRequest.fromJson({
-                    requestId: this.requestIdSequence++
-                })
-            );
+            let result = await this.sendRequest<ThreadsResponse>(request);
 
             if (result.data.errorCode === ErrorCode.OK) {
                 //older versions of the debug protocol had issues with maintaining the active thread, so our workaround is to keep track of it elsewhere
@@ -607,9 +599,10 @@ export class DebugProtocolClient {
                 }
             });
 
-            this.logger.debug('sendRequest', `requestId=${request.data.requestId}`, request);
+            this.logger.log(`Request ${request?.data?.requestId}`, request);
             if (this.controlSocket) {
                 const buffer = request.toBuffer();
+                console.log('client sent', JSON.stringify(buffer.toJSON().data));
                 this.controlSocket.write(buffer);
                 void this.plugins.emit('afterSendRequest', {
                     client: this,
@@ -663,14 +656,14 @@ export class DebugProtocolClient {
             if (responseOrUpdate) {
                 //emit the corresponding event
                 if (isProtocolUpdate(responseOrUpdate)) {
-                    this.logger.log('Update from server:', responseOrUpdate);
+                    this.logger.log(`Update:`, responseOrUpdate);
                     this.emit('update', responseOrUpdate);
                     await this.plugins.emit('onUpdate', {
                         client: this,
                         update: responseOrUpdate
                     });
                 } else {
-                    this.logger.log('Response from server:', responseOrUpdate);
+                    this.logger.log(`Response ${responseOrUpdate?.data?.requestId}:`, responseOrUpdate);
                     this.emit('response', responseOrUpdate);
                     await this.plugins.emit('onResponse', {
                         client: this,
@@ -868,12 +861,11 @@ export class DebugProtocolClient {
      * When the debugger emits the IOPortOpenedUpdate, we need to immediately connect to the IO port to start receiving that data
      */
     private connectToIoPort(update: IOPortOpenedUpdate) {
-        this.logger.log('Connecting to IO port. response status success =', update.success);
         if (update.success) {
             // Create a new TCP client.
             this.ioSocket = new Net.Socket();
             // Send a connection request to the server.
-            this.logger.log('Connect to IO Port: port', update.data, 'host', this.options.host);
+            this.logger.log(`Connect to IO Port ${this.options.host}:${update.data.port}`);
             this.ioSocket.connect({
                 port: update.data.port,
                 host: this.options.host

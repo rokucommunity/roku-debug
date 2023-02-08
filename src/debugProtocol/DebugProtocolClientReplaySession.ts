@@ -23,7 +23,15 @@ export class DebugProtocolClientReplaySession {
 
     private client: DebugProtocolClient;
 
+    private entryIndex = 0;
     private entries: Array<BufferLogEntry>;
+
+    private peekEntry() {
+        return this.entries[this.entryIndex];
+    }
+    private advanceEntry() {
+        return this.entries[this.entryIndex++];
+    }
 
     private parseBufferLog(bufferLog: string) {
         this.entries = bufferLog
@@ -71,6 +79,10 @@ export class DebugProtocolClientReplaySession {
         });
         this.client.on('update', (update) => {
             this.result.push(update);
+        });
+
+        this.client.on('io-output', (data) => {
+            console.log(data);
         });
 
         //anytime the client receives buffer data, we should try and process it
@@ -123,17 +135,12 @@ export class DebugProtocolClientReplaySession {
 
     private async clientProcess() {
         await this.clientActionQueue.run(async () => {
-            let clientBuffer = Buffer.alloc(0);
             //build a single buffer of client data
-            while (this.entries[0]?.type === 'client-to-server') {
-                const entry = this.entries.shift();
-                clientBuffer = Buffer.concat([clientBuffer, entry.buffer]);
-            }
-            //build and send requests
-            while (clientBuffer.length > 0) {
-                const request = DebugProtocolServer.getRequest(clientBuffer, true);
-                //remove the processed bytes
-                clientBuffer = clientBuffer.slice(request.readOffset);
+            while (this.peekEntry()?.type === 'client-to-server') {
+                //make sure it's been enough time since the last entry
+                await this.sleepForEntryGap();
+                const entry = this.advanceEntry();
+                const request = DebugProtocolServer.getRequest(entry.buffer, true);
 
                 //store this client data for our mock server to recognize and track
                 this.serverSync.pushExpected(request.toBuffer());
@@ -144,8 +151,6 @@ export class DebugProtocolClientReplaySession {
                 //send the request
                 void this.client.processRequest(request);
 
-                //wait small timeout before sending the next request
-                await util.sleep(10);
             }
             this.finalizeIfDone();
             return true;
@@ -153,7 +158,7 @@ export class DebugProtocolClientReplaySession {
     }
 
     private finalizeIfDone() {
-        if (this.clientSync.areInSync && this.serverSync.areInSync && this.entries.length === 0) {
+        if (this.clientSync.areInSync && this.serverSync.areInSync && this.entryIndex >= this.entries.length) {
             this.finished.resolve();
         }
     }
@@ -171,6 +176,7 @@ export class DebugProtocolClientReplaySession {
                 this.server = client;
                 //anytime we receive incoming data from the client
                 client.on('data', (data) => {
+                    console.log('server got:', JSON.stringify(data.toJSON().data));
                     void this.serverProcess(data);
                 });
             });
@@ -186,22 +192,46 @@ export class DebugProtocolClientReplaySession {
     private serverActionQueue = new ActionQueue();
 
     private serverSync = new BufferSync();
+    private serverProcessIdx = 0;
     private async serverProcess(data: Buffer) {
+        let serverProcesIdx = this.serverProcessIdx++;
         await this.serverActionQueue.run(async () => {
-            this.serverSync.pushActual(data);
-            if (this.serverSync.areInSync) {
-                this.serverSync.clear();
-                //send all the server messages, each delayed slightly to simulate the chunked buffer flushing that roku causes
-                while (this.entries[0]?.type === 'server-to-client') {
-                    const entry = this.entries.shift();
-                    this.server.write(entry.buffer);
-                    this.clientSync.pushExpected(entry.buffer);
-                    await util.sleep(10);
+            try {
+                console.log(serverProcesIdx);
+                this.serverSync.pushActual(data);
+                if (this.serverSync.areInSync) {
+                    this.serverSync.clear();
+                    //send all the server messages, each delayed slightly to simulate the chunked buffer flushing that roku causes
+                    while (this.peekEntry()?.type === 'server-to-client') {
+                        //make sure enough time has passed since the last entry
+                        await this.sleepForEntryGap();
+                        const entry = this.advanceEntry();
+                        this.server.write(entry.buffer);
+                        this.clientSync.pushExpected(entry.buffer);
+                    }
                 }
+                this.finalizeIfDone();
+            } catch (e) {
+                console.error('serverProcess failed to handle buffer', e);
             }
-            this.finalizeIfDone();
             return true;
         });
+    }
+
+    /**
+     * Sleep for the amount of time between the two specified entries
+     */
+    private async sleepForEntryGap() {
+        const currentEntry = this.entries[this.entryIndex];
+        const previousEntry = this.entries[this.entryIndex - 1];
+        let gap = 0;
+        if (currentEntry && previousEntry) {
+            gap = currentEntry.timestamp.getTime() - previousEntry?.timestamp.getTime();
+            //if the gap is negative, then the time has already passed. Just timeout at zero
+            gap = gap > 0 ? gap : 0;
+        }
+        console.log(`sleeping for ${gap}ms`);
+        await util.sleep(gap);
     }
 }
 
@@ -246,5 +276,3 @@ export interface BufferLogEntry {
     timestamp: Date;
     buffer: Buffer;
 }
-
-
