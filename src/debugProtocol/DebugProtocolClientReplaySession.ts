@@ -76,13 +76,16 @@ export class DebugProtocolClientReplaySession {
         //store the responses in the result
         this.client.on('response', (response) => {
             this.result.push(response);
+            void this.clientProcess();
         });
         this.client.on('update', (update) => {
             this.result.push(update);
+            void this.clientProcess();
         });
 
         this.client.on('io-output', (data) => {
             console.log(data);
+            void this.clientProcess();
         });
 
         //anytime the client receives buffer data, we should try and process it
@@ -230,7 +233,9 @@ export class DebugProtocolClientReplaySession {
             //if the gap is negative, then the time has already passed. Just timeout at zero
             gap = gap > 0 ? gap : 0;
         }
-        console.log(`sleeping for ${gap}ms`);
+        //TODO should we even re-implement this?
+        //console.log(`sleeping for ${gap}ms`);
+        gap = 10;
         await util.sleep(gap);
     }
 }
