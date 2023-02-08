@@ -14,6 +14,8 @@ export class DebugProtocolClientReplaySession {
         this.parseBufferLog(options?.bufferLog);
     }
 
+    private disposables = Array<() => void>();
+
     /**
      * A dumb tcp server that will simply spit back the server buffer data when needed
      */
@@ -107,6 +109,11 @@ export class DebugProtocolClientReplaySession {
                 }
             }
         });
+
+        //stuff to run when the session is disposed
+        this.disposables.push(() => {
+            this.client.destroy();
+        });
     }
 
     private openIOPort() {
@@ -128,6 +135,14 @@ export class DebugProtocolClientReplaySession {
                 hostName: 'localhost'
             }, () => {
                 resolve();
+            });
+
+            //stuff to run when the session is disposed
+            this.disposables.push(() => {
+                server.close();
+            });
+            this.disposables.push(() => {
+                this.ioSocket?.destroy();
             });
         });
     }
@@ -189,6 +204,14 @@ export class DebugProtocolClientReplaySession {
             }, () => {
                 resolve();
             });
+
+            //stuff to run when the session is disposed
+            this.disposables.push(() => {
+                server.close();
+            });
+            this.disposables.push(() => {
+                this.client?.destroy();
+            });
         });
     }
 
@@ -233,10 +256,20 @@ export class DebugProtocolClientReplaySession {
             //if the gap is negative, then the time has already passed. Just timeout at zero
             gap = gap > 0 ? gap : 0;
         }
-        //TODO should we even re-implement this?
-        //console.log(`sleeping for ${gap}ms`);
-        gap = 10;
+        //longer delays make the test run slower, but don't really make the test any more accurate,
+        //so cap the delay at 100ms
+        if (gap > 100) {
+            gap = 100;
+        }
         await util.sleep(gap);
+    }
+
+    public destroy() {
+        for (const dispose of this.disposables) {
+            try {
+                dispose();
+            } catch { }
+        }
     }
 }
 
