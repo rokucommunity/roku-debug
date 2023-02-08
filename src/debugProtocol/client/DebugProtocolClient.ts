@@ -614,6 +614,21 @@ export class DebugProtocolClient {
         });
     }
 
+    /**
+     * Sometimes a request arrives that we don't understand. If that's the case, this function can be used
+     * to discard that entire response by discarding `packet_length` number of bytes
+     */
+    private discardNextResponseOrUpdate() {
+        const response = GenericV3Response.fromBuffer(this.buffer);
+        if (response.success && response.data.packetLength > 0) {
+            this.logger.warn(`Unsupported response or updated encountered. Discarding ${response.data.packetLength} bytes:`, JSON.stringify(
+                this.buffer.slice(0, response.data.packetLength + 1).toJSON().data
+            ));
+            //we have a valid event. Clear the buffer of this data
+            this.buffer = this.buffer.slice(response.data.packetLength);
+        }
+    }
+
     private async process(): Promise<boolean> {
         try {
             this.logger.info('[process()]: buffer=', this.buffer.toJSON());
@@ -631,7 +646,8 @@ export class DebugProtocolClient {
             //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
             if (!responseOrUpdate) {
                 this.logger.info('Unable to convert buffer into anything meaningful', this.buffer);
-                //TODO what should we do about this?
+                //if we have packet length, and we have at least that many bytes, throw out this message so we can hopefully recover
+                this.discardNextResponseOrUpdate();
                 return false;
             }
             if (!responseOrUpdate.success || responseOrUpdate.data.packetLength > this.buffer.length) {
