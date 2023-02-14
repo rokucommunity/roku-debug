@@ -387,16 +387,21 @@ class Util {
     }
 
     private minPort = 1;
-    private portWidth = 1000;
 
     public async getPort() {
-        if (this.minPort + this.portWidth >= 65535) {
+        let port: number;
+        try {
+            port = await portfinder.getPortPromise({
+                //startPort
+                port: this.minPort
+            });
+        } catch {
             this.minPort = 1;
+            port = await portfinder.getPortPromise({
+                //startPort
+                port: this.minPort
+            });
         }
-        const port = await portfinder.getPortPromise({
-            port: this.minPort,
-            stopPort: this.minPort + this.portWidth
-        });
         this.minPort = port + 1;
         return port;
     }
