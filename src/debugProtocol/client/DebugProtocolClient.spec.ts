@@ -4,7 +4,6 @@ import { expect } from 'chai';
 import { createSandbox } from 'sinon';
 import { Command, ErrorCode, StepType, StopReason } from '../Constants';
 import { DebugProtocolServer } from '../server/DebugProtocolServer';
-import * as portfinder from 'portfinder';
 import { defer, util } from '../../util';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
@@ -36,7 +35,7 @@ import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
 import { IOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
 import * as Net from 'net';
 import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
-
+process.on('uncaughtException', (err) => console.log('node js process error\n', err));
 const sinon = createSandbox();
 
 describe('DebugProtocolClient', () => {
@@ -69,7 +68,7 @@ describe('DebugProtocolClient', () => {
         };
 
         if (!options.controlPort) {
-            options.controlPort = await portfinder.getPortPromise();
+            options.controlPort = await util.getPort();
         }
         server = new DebugProtocolServer(options);
         plugin = server.plugins.add(new DebugProtocolServerTestPlugin());
@@ -81,9 +80,13 @@ describe('DebugProtocolClient', () => {
     });
 
     afterEach(async () => {
-        client?.destroy();
+        try {
+            client?.destroy();
+        } catch (e) { }
         //shut down and destroy the server after each test
-        await server?.stop();
+        try {
+            await server?.stop();
+        } catch (e) { }
         await util.sleep(10);
         sinon.restore();
     });
@@ -548,6 +551,34 @@ describe('DebugProtocolClient', () => {
         expect(client.isHandshakeComplete).to.be.equal(true);
     });
 
+    it('discards unrecognized updates', async () => {
+        await connect();
+
+        //known update type
+        plugin.server['client'].write(
+            ThreadAttachedUpdate.fromJson({
+                stopReason: StopReason.Break,
+                stopReasonDetail: 'before',
+                threadIndex: 0
+            }).toBuffer()
+        );
+        //unknown update type
+
+        //known update type
+        plugin.server['client'].write(
+            ThreadAttachedUpdate.fromJson({
+                stopReason: StopReason.Break,
+                stopReasonDetail: 'after',
+                threadIndex: 1
+            }).toBuffer()
+        );
+        //unk
+
+        // //we should have the two known update types
+        // expect(plugin.getRequest(-2)).to.eql();
+        // expect(plugin.getRequest(-1)).to.eql();
+    });
+
     it('handles AllThreadsStoppedUpdate after handshake', async () => {
         await client.connect();
 
@@ -714,13 +745,15 @@ describe('DebugProtocolClient', () => {
             expect(update.data.stopReasonDetail).to.eql('because');
         });
     });
+
     describe('connectToIoPort', () => {
         let ioServer: Net.Server;
         let port: number;
+        let ioClient: Net.Socket;
         let socketPromise: Promise<Net.Socket>;
 
         beforeEach(async () => {
-            port = await portfinder.getPortPromise();
+            port = await util.getPort();
             ioServer = new Net.Server();
             const deferred = defer<Net.Socket>();
             socketPromise = deferred.promise;
@@ -729,12 +762,20 @@ describe('DebugProtocolClient', () => {
                 hostName: '0.0.0.0'
             }, () => { });
             ioServer.on('connection', (socket) => {
+                socket.on('error', e => console.error(e));
                 deferred.resolve(socket);
+                ioClient = socket;
             });
+            ioServer.on('error', e => console.error(e));
         });
 
         afterEach(() => {
-            ioServer?.close();
+            try {
+                ioServer?.close();
+            } catch { }
+            try {
+                ioClient?.destroy();
+            } catch { }
         });
 
         it('supports the IOPortOpened update', async () => {

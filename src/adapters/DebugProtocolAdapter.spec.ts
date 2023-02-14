@@ -1,7 +1,6 @@
 
 import { expect } from 'chai';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
-import * as portfinder from 'portfinder';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
@@ -34,7 +33,7 @@ describe('DebugProtocolAdapter', () => {
         adapter = new DebugProtocolAdapter(options, undefined, undefined);
 
         if (!options.controlPort) {
-            options.controlPort = await portfinder.getPortPromise();
+            options.controlPort = await util.getPort();
         }
         server = new DebugProtocolServer(options);
         plugin = server.plugins.add(new DebugProtocolServerTestPlugin());

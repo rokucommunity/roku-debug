@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as net from 'net';
 import * as url from 'url';
-import type { SmartBuffer } from 'smart-buffer';
+import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
@@ -384,6 +384,21 @@ class Util {
      */
     public isNullish(value: any) {
         return value === undefined || value === null;
+    }
+
+    private minPort = 1;
+    private portWidth = 1000;
+
+    public async getPort() {
+        if (this.minPort + this.portWidth >= 65535) {
+            this.minPort = 1;
+        }
+        const port = await portfinder.getPortPromise({
+            port: this.minPort,
+            stopPort: this.minPort + this.portWidth
+        });
+        this.minPort = port + 1;
+        return port;
     }
 }
 

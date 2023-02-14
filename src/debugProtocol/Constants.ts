@@ -188,7 +188,7 @@ export enum UpdateType {
      * A compilation error occurred
      * @since protocol 3.1
      */
-    CompileError = 'CompileError',
+    CompileError = 'CompileError'
     /**
      * Breakpoints were successfully verified
      * @since protocol 3.2
@@ -204,7 +204,7 @@ export enum UpdateTypeCode {
     AllThreadsStopped = 2,
     ThreadAttached = 3,
     BreakpointError = 4,
-    CompileError = 5,
+    CompileError = 5
     // /**
     //  * Breakpoints were successfully verified
     //  * @since protocol 3.2

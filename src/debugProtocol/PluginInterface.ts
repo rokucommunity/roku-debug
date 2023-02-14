@@ -49,7 +49,7 @@ export default class PluginInterface<TPlugin> {
      */
     public remove<T extends TPlugin = TPlugin>(plugin: T) {
         for (let i = this.plugins.length - 1; i >= 0; i--) {
-            if (this.plugins[i] === plugin) {
+            if (this.plugins[i].plugin === plugin) {
                 this.plugins.splice(i, 1);
             }
         }

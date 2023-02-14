@@ -46,7 +46,17 @@ export class DebugProtocolServerTestPlugin implements ProtocolServerPlugin {
     }
 
     public getLatestRequest<T>() {
-        return this.latestRequest as T;
+        return this.latestRequest as unknown as T;
+    }
+
+    /**
+     * Get the request at the specified index. Negative indexes count back from the last item in the array
+     */
+    public getRequest(index: number) {
+        if (index < 0) {
+            index = this.requests.length - index;
+        }
+        return this.requests[index];
     }
 
     /**

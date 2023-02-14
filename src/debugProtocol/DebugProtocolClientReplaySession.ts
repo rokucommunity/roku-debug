@@ -1,6 +1,5 @@
 import { DebugProtocolClient } from './client/DebugProtocolClient';
 import { defer, util } from '../util';
-import * as portfinder from 'portfinder';
 import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events/ProtocolEvent';
 import { DebugProtocolServer } from './server/DebugProtocolServer';
 import * as Net from 'net';
@@ -29,10 +28,19 @@ export class DebugProtocolClientReplaySession {
     private entries: Array<BufferLogEntry>;
 
     private peekEntry() {
+        this.flushIO();
         return this.entries[this.entryIndex];
     }
     private advanceEntry() {
+        this.flushIO();
         return this.entries[this.entryIndex++];
+    }
+
+    private flushIO() {
+        while (this.entries[this.entryIndex]?.type === 'io') {
+            const entry = this.entries[this.entryIndex++];
+            this.ioSocket.write(entry.buffer);
+        }
     }
 
     private parseBufferLog(bufferLog: string) {
@@ -55,8 +63,8 @@ export class DebugProtocolClientReplaySession {
     private ioPort: number;
 
     public async run() {
-        this.controlPort = await portfinder.getPortPromise({ port: 8000, stopPort: 8999 });
-        this.ioPort = await portfinder.getPortPromise({ port: 9000, stopPort: 9999 });
+        this.controlPort = await util.getPort();
+        this.ioPort = await util.getPort();
 
         await this.createServer(this.controlPort);
 
@@ -310,7 +318,7 @@ function bufferStartsWith(subject: Buffer, search: Buffer) {
 }
 
 export interface BufferLogEntry {
-    type: 'client-to-server' | 'server-to-client';
+    type: 'client-to-server' | 'server-to-client' | 'io';
     timestamp: Date;
     buffer: Buffer;
 }

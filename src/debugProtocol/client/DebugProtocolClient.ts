@@ -929,18 +929,18 @@ export class DebugProtocolClient {
 
     private shutdown(eventName: 'app-exit' | 'close') {
         if (this.controlSocket) {
-            this.controlSocket.removeAllListeners();
+            // this.controlSocket.removeAllListeners();
             this.controlSocket.destroy();
-            this.controlSocket = undefined;
+            // this.controlSocket = undefined;
         }
 
-        if (this.ioSocket) {
-            this.ioSocket.removeAllListeners();
-            this.ioSocket.destroy();
-            this.ioSocket = undefined;
-        }
+        // if (this.ioSocket) {
+        //     this.ioSocket.removeAllListeners();
+        //     this.ioSocket.destroy();
+        //     this.ioSocket = undefined;
+        // }
 
-        this.emit(eventName);
+        // this.emit(eventName);
     }
 }
 

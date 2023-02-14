@@ -21,8 +21,7 @@ import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import PluginInterface from '../PluginInterface';
 import type { ProtocolServerPlugin } from './DebugProtocolServerPlugin';
 import { logger } from '../../logging';
-import * as portfinder from 'portfinder';
-import { defer } from '../../util';
+import { defer, util } from '../../util';
 import { protocolUtil } from '../ProtocolUtil';
 import { SmartBuffer } from 'smart-buffer';
 
@@ -103,8 +102,18 @@ export class DebugProtocolServer {
                         return true;
                     });
                 });
+                //handle connection errors
+                this.client.on('error', (e) => {
+                    this.logger.error(e);
+                });
             });
-            this._port = this.controlPort ?? await portfinder.getPortPromise();
+            this._port = this.controlPort ?? await util.getPort();
+
+            //handle connection errors
+            this.server.on('error', (e) => {
+                this.logger.error(e);
+            });
+
             this.server.listen({
                 port: this.options.controlPort ?? 8081,
                 hostName: this.options.host ?? '0.0.0.0'
@@ -121,7 +130,9 @@ export class DebugProtocolServer {
     public async stop() {
         //close the client socket
         await new Promise<void>((resolve) => {
-            this.client.end(resolve);
+            this.client.end(() => {
+                resolve();
+            });
         }).catch(() => { });
 
         //now close the server
