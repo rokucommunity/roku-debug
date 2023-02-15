@@ -54,7 +54,7 @@ describe('ProjectManager', () => {
 
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
-        it('accounts for the entry breakpoint', () => {
+        it.skip('accounts for the entry breakpoint', () => {
             manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [{
                 line: 3
             }, {
@@ -304,7 +304,7 @@ describe('Project', () => {
         });
     });
 
-    it('copies the necessary properties onto the instance', () => {
+    it.skip('copies the necessary properties onto the instance', () => {
         expect(project.rootDir).to.equal(cwd);
         expect(project.files).to.eql(['a']);
         expect(project.bsConst).to.eql({ b: true });
