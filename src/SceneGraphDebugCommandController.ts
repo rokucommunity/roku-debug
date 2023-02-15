@@ -226,6 +226,15 @@ export class SceneGraphDebugCommandController {
 
 
     /**
+     * Changes the number of brightscript warnings displayed on application install.
+     * @param warningLimit maximum number of warnings to show
+     */
+    public async brightscriptWarnings(warningLimit: number): Promise<SceneGraphCommandResponse> {
+        return this.exec(`brightscript_warnings ${warningLimit ?? 100}`);
+    }
+
+
+    /**
      * Send any custom command to the SceneGraph debug server.
      *
      * If this command is called and there is no active connection with the device we will attempt to connect.

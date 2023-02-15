@@ -1,5 +1,3 @@
-import type { ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/client/DebugProtocolClient';
-import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
@@ -17,7 +15,10 @@ import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from 
 import type { BreakpointManager } from '../managers/BreakpointManager';
 import type { ProjectManager } from '../managers/ProjectManager';
 import { ActionQueue } from '../managers/ActionQueue';
+import type { BreakpointsVerifiedEvent, ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/client/DebugProtocolClient';
+import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
+import type { VerifiedBreakpoint } from '../debugProtocol/events/updates/BreakpointVerifiedUpdate';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -110,6 +111,7 @@ export class DebugProtocolAdapter {
      * @param eventName
      * @param handler
      */
+    public on(eventName: 'breakpoints-verified', handler: (event: BreakpointsVerifiedEvent) => void);
     public on(eventName: 'cannot-continue', handler: () => void);
     public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
@@ -133,6 +135,7 @@ export class DebugProtocolAdapter {
     }
 
     private emit(eventName: 'suspend');
+    private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
     private emit(eventName: string, data?) {
@@ -275,6 +278,15 @@ export class DebugProtocolAdapter {
 
             this.socketDebugger.on('cannot-continue', () => {
                 this.emit('cannot-continue');
+            });
+
+            //handle when the device verifies breakpoints
+            this.socketDebugger.on('breakpoints-verified', (event) => {
+                //mark the breakpoints as verified
+                for (let breakpoint of event?.breakpoints ?? []) {
+                    this.breakpointManager.verifyBreakpoint(breakpoint.id, true);
+                }
+                this.emit('breakpoints-verified', event);
             });
 
             this.connected = await this.socketDebugger.connect();
@@ -623,7 +635,7 @@ export class DebugProtocolAdapter {
                     // isSelected: threadInfo.isPrimary,
                     filePath: threadInfo.filePath,
                     functionName: threadInfo.functionName,
-                    lineNumber: threadInfo.lineNumber + 1, //protocol is 0-based but 1-based is expected
+                    lineNumber: threadInfo.lineNumber + 1, //protocol is 1-based
                     lineContents: threadInfo.codeSnippet,
                     threadId: i
                 };
@@ -700,10 +712,12 @@ export class DebugProtocolAdapter {
     // #endregion
 
     public async syncBreakpoints() {
-        //we can't send breakpoints unless we're stopped. So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
-        if (!this.isAtDebuggerPrompt) {
+        //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
+        //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
+        if (!this.socketDebugger.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
             return;
         }
+
         //compute breakpoint changes since last sync
         const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
 
@@ -733,24 +747,37 @@ export class DebugProtocolAdapter {
 
             //send these new breakpoints to the device
             await this.actionQueue.run(async () => {
-                const response = await this.socketDebugger.addBreakpoints(breakpointsToSendToDevice);
-                if (response.data.errorCode === ErrorCode.OK) {
-                    //mark the breakpoints as verified
-                    for (let i = 0; i < response.data.breakpoints.length; i++) {
-                        const deviceBreakpoint = response.data.breakpoints[i];
-                        if (deviceBreakpoint.errorCode === ErrorCode.OK) {
-                            this.breakpointManager.verifyBreakpoint(
-                                breakpointsToSendToDevice[i].key,
+                //split the list into conditional and non-conditional breakpoints.
+                //(TODO we can eliminate this splitting logic once the conditional breakpoints "continue" bug in protocol is fixed)
+                const standardBreakpoints: typeof breakpointsToSendToDevice = [];
+                const conditionalBreakpoints: typeof breakpointsToSendToDevice = [];
+                for (const breakpoint of breakpointsToSendToDevice) {
+                    if (breakpoint?.conditionalExpression?.trim()) {
+                        conditionalBreakpoints.push(breakpoint);
+                    } else {
+                        standardBreakpoints.push(breakpoint);
+                    }
+                }
+                let success = true;
+                for (const breakpoints of [standardBreakpoints, conditionalBreakpoints]) {
+                    const response = await this.socketDebugger.addBreakpoints(breakpoints);
+                    if (response.data.errorCode === ErrorCode.OK) {
+                        for (let i = 0; i < response.data.breakpoints.length; i++) {
+                            const deviceBreakpoint = response.data.breakpoints[i];
+                            //sync this breakpoint's deviceId with the roku-assigned breakpoint ID
+                            this.breakpointManager.setBreakpointDeviceId(
+                                breakpoints[i].key,
                                 deviceBreakpoint.id
                             );
                         }
+                        //return true to mark this action as complete
+                        success &&= true;
+                    } else {
+                        //this action is not yet complete. it should be retried
+                        success &&= false;
                     }
-                    //return true to mark this action as complete
-                    return true;
-                } else {
-                    //this action is not yet complete. it should be retried
-                    return false;
                 }
+                return success;
             });
         }
     }

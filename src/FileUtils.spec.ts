@@ -37,6 +37,14 @@ describe('FileUtils', () => {
         it('removes leading ... when present', () => {
             expect(fileUtils.removeFileTruncation('...project1/main.brs')).to.equal('project1/main.brs');
         });
+
+        it('removes leading .../', () => {
+            expect(fileUtils.removeFileTruncation('.../project1/main.brs')).to.equal('project1/main.brs');
+        });
+
+        it('removes leading /', () => {
+            expect(fileUtils.removeFileTruncation('/project1/main.brs')).to.equal('project1/main.brs');
+        });
     });
 
     describe('pathEndsWith', () => {

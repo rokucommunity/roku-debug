@@ -123,6 +123,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variableHandles = new Handles<string>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
+
+    public tempVarPrefix = '__rokudebug__';
+
     private get enableDebugProtocol() {
         return this.launchConfiguration.enableDebugProtocol;
     }
@@ -413,7 +416,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
             connectPromise,
-            util.sleep(5000)
+            util.sleep(10000)
         ]);
         this.logger.log('Finished racing promises');
         //if the adapter is still not connected, then it will probably never connect. Abort.
@@ -827,55 +830,79 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let childVariables: AugmentedVariable[] = [];
             //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
             await this.evaluateRequestPromise;
-            if (this.rokuAdapter.isAtDebuggerPrompt) {
-                const reference = this.variableHandles.get(args.variablesReference);
-                if (reference) {
-                    logger.log('reference', reference);
-                    // NOTE: Legacy telnet support for local vars
-                    if (this.launchConfiguration.enableVariablesPanel) {
-                        const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
+            if (!this.rokuAdapter.isAtDebuggerPrompt) {
+                logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
+                response.success = false;
+                response.message = 'Debug session is not paused';
+                return this.sendResponse(response);
+            }
+            const reference = this.variableHandles.get(args.variablesReference);
+            if (reference) {
+                logger.log('reference', reference);
+                // NOTE: Legacy telnet support for local vars
+                if (this.launchConfiguration.enableVariablesPanel) {
+                    const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
 
-                        for (const varName of vars) {
-                            let result = await this.rokuAdapter.getVariable(varName, -1);
-                            let tempVar = this.getVariableFromResult(result, -1);
-                            childVariables.push(tempVar);
-                        }
-                    } else {
-                        childVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
+                    for (const varName of vars) {
+                        let result = await this.rokuAdapter.getVariable(varName, -1);
+                        let tempVar = this.getVariableFromResult(result, -1);
+                        childVariables.push(tempVar);
                     }
                 } else {
-                    //find the variable with this reference
-                    let v = this.variables[args.variablesReference];
-                    logger.log('variable', v);
-                    //query for child vars if we haven't done it yet.
-                    if (v.childVariables.length === 0) {
-                        let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
-                        let tempVar = this.getVariableFromResult(result, v.frameId);
-                        tempVar.frameId = v.frameId;
-                        v.childVariables = tempVar.childVariables;
-                    }
-                    childVariables = v.childVariables;
+                    childVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
                 }
-
-                //if the variable is an array, send only the requested range
-                if (Array.isArray(childVariables) && args.filter === 'indexed') {
-                    //only send the variable range requested by the debugger
-                    childVariables = childVariables.slice(args.start, args.start + args.count);
-                }
-                response.body = {
-                    variables: childVariables
-                };
             } else {
-                logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
+                //find the variable with this reference
+                let v = this.variables[args.variablesReference];
+                if (!v) {
+                    response.success = false;
+                    response.message = `Variable reference has expired`;
+                    return this.sendResponse(response);
+                }
+                logger.log('variable', v);
+                //query for child vars if we haven't done it yet.
+                if (v.childVariables.length === 0) {
+                    let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
+                    let tempVar = this.getVariableFromResult(result, v.frameId);
+                    tempVar.frameId = v.frameId;
+                    v.childVariables = tempVar.childVariables;
+                }
+                childVariables = v.childVariables;
             }
-            logger.info('end', { response });
-            this.sendResponse(response);
+
+            //if the variable is an array, send only the requested range
+            if (Array.isArray(childVariables) && args.filter === 'indexed') {
+                //only send the variable range requested by the debugger
+                childVariables = childVariables.slice(args.start, args.start + args.count);
+            }
+
+            let filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true ? childVariables.filter(
+                (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : childVariables;
+
+            response.body = {
+                variables: filteredChildVariables
+            };
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });
+            response.success = false;
+            response.message = error?.message ?? 'Error during variablesRequest';
+        } finally {
+            logger.info('end', { response });
         }
+        this.sendResponse(response);
     }
 
     private evaluateRequestPromise = Promise.resolve();
+    private evaluateVarIndexByFrameId = new Map<number, number>();
+
+    private getNextVarIndex(frameId: number): number {
+        if (!this.evaluateVarIndexByFrameId.has(frameId)) {
+            this.evaluateVarIndexByFrameId.set(frameId, 0);
+        }
+        let value = this.evaluateVarIndexByFrameId.get(frameId);
+        this.evaluateVarIndexByFrameId.set(frameId, value + 1);
+        return value;
+    }
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
         let deferred = defer<void>();
@@ -912,7 +939,19 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 //is at debugger prompt
             } else {
-                const variablePath = util.getVariablePath(args.expression);
+                let variablePath = util.getVariablePath(args.expression);
+                if (!variablePath && util.isAssignableExpression(args.expression)) {
+                    let varIndex = this.getNextVarIndex(args.frameId);
+                    let arrayVarName = this.tempVarPrefix + 'eval';
+                    if (varIndex === 0) {
+                        await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
+                    }
+                    let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
+                    args.expression = `${arrayVarName}[${varIndex}]`;
+                    let commandResults = await this.rokuAdapter.evaluate(statement, args.frameId);
+                    variablePath = [arrayVarName, varIndex.toString()];
+                }
+
                 //if we found a variable path (e.g. ['a', 'b', 'c']) then do a variable lookup because it's faster and more widely supported than `evaluate`
                 if (variablePath) {
                     let refId = this.getEvaluateRefId(args.expression, args.frameId);
@@ -941,34 +980,27 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     //run an `evaluate` call
                 } else {
-                    if (args.context === 'repl' || !this.enableDebugProtocol) {
-                        let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
+                    let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
 
-                        commandResults.message = util.trimDebugPrompt(commandResults.message);
-                        if (args.context !== 'watch') {
-                            //clear variable cache since this action could have side-effects
-                            this.clearState();
-                            this.sendInvalidatedEvent(null, args.frameId);
-                        }
-                        //if the adapter captured output (probably only telnet), print it to the vscode debug console
-                        if (typeof commandResults.message === 'string') {
-                            this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
-                        }
+                    commandResults.message = util.trimDebugPrompt(commandResults.message);
+                    if (args.context !== 'watch') {
+                        //clear variable cache since this action could have side-effects
+                        this.clearState();
+                        this.sendInvalidatedEvent(null, args.frameId);
+                    }
+                    //if the adapter captured output (probably only telnet), print it to the vscode debug console
+                    if (typeof commandResults.message === 'string') {
+                        this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
+                    }
 
-                        if (this.enableDebugProtocol || (typeof commandResults.message !== 'string')) {
-                            response.body = {
-                                result: 'invalid',
-                                variablesReference: 0
-                            };
-                        } else {
-                            response.body = {
-                                result: commandResults.message === '\r\n' ? 'invalid' : commandResults.message,
-                                variablesReference: 0
-                            };
-                        }
-                    } else {
+                    if (this.enableDebugProtocol || (typeof commandResults.message !== 'string')) {
                         response.body = {
                             result: 'invalid',
+                            variablesReference: 0
+                        };
+                    } else {
+                        response.body = {
+                            result: commandResults.message === '\r\n' ? 'invalid' : commandResults.message,
                             variablesReference: 0
                         };
                     }
@@ -1039,46 +1071,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
-            //sync breakpoints
-            await this.rokuAdapter?.syncBreakpoints();
-            this.logger.info('received "suspend" event from adapter');
-
-            const threads = await this.rokuAdapter.getThreads();
-            const activeThread = threads.find(x => x.isSelected);
-
-            //TODO remove this once Roku fixes their threads off-by-one line number issues
-            //look up the correct line numbers for each thread from the StackTrace
-            await Promise.all(
-                threads.map(async (thread) => {
-                    const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
-                    const stackTraceLineNumber = stackTrace[0]?.lineNumber;
-                    if (stackTraceLineNumber !== thread.lineNumber) {
-                        this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
-                        thread.lineNumber = stackTraceLineNumber;
-                    }
-                })
-            );
-
-            //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
-            if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
-                this.entryBreakpointWasHandled = true;
-                //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
-                if (!await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
-                    this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
-                    return this.rokuAdapter.continue();
-                }
-            }
-
-            this.clearState();
-            const event: StoppedEvent = new StoppedEvent(
-                StoppedEventReason.breakpoint,
-                //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
-                activeThread?.threadId ?? 0,
-                '' //exception text
-            );
-            // Socket debugger will always stop all threads and supports multi thread inspection.
-            (event.body as any).allThreadsStopped = this.enableDebugProtocol;
-            this.sendEvent(event);
+            await this.onSuspend();
         });
 
         //anytime the adapter encounters an exception on the roku,
@@ -1099,6 +1092,53 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         await this.rokuAdapter.connect();
         this.rokuAdapterDeferred.resolve(this.rokuAdapter);
         return this.rokuAdapter;
+    }
+
+    private async onSuspend() {
+        //clear the index for storing evalutated expressions
+        this.evaluateVarIndexByFrameId.clear();
+
+        //sync breakpoints
+        await this.rokuAdapter?.syncBreakpoints();
+        this.logger.info('received "suspend" event from adapter');
+
+        const threads = await this.rokuAdapter.getThreads();
+        const activeThread = threads.find(x => x.isSelected);
+
+        //TODO remove this once Roku fixes their threads off-by-one line number issues
+        //look up the correct line numbers for each thread from the StackTrace
+        await Promise.all(
+            threads.map(async (thread) => {
+                const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
+                const stackTraceLineNumber = stackTrace[0]?.lineNumber;
+                if (stackTraceLineNumber !== thread.lineNumber) {
+                    this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
+                    thread.lineNumber = stackTraceLineNumber;
+                }
+            })
+        );
+
+        //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
+        if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
+            this.entryBreakpointWasHandled = true;
+            //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
+            if (activeThread && !await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
+                this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
+                return this.rokuAdapter.continue();
+            }
+        }
+
+        this.clearState();
+        const event: StoppedEvent = new StoppedEvent(
+            StoppedEventReason.breakpoint,
+            //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
+            activeThread?.threadId ?? 0,
+            '' //exception text
+        );
+        // Socket debugger will always stop all threads and supports multi thread inspection.
+        (event.body as any).allThreadsStopped = this.enableDebugProtocol;
+        this.sendEvent(event);
+
     }
 
     private getVariableFromResult(result: EvaluateContainer, frameId: number) {

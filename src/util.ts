@@ -6,7 +6,7 @@ import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
-import { DiagnosticSeverity, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
+import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
 import type { AdapterOptions } from './interfaces';
@@ -243,6 +243,33 @@ class Util {
         }
     }
 
+    /**
+     * Check if the parameter is an expression
+     * The HACK portion is copied from the getVariablePath function
+     * @param expression
+     */
+    public isAssignableExpression(expression: string): boolean {
+        let parser = Parser.parse(expression);
+        if (
+            isAssignmentStatement(parser.ast.statements[0]) ||
+            isDottedSetStatement(parser.ast.statements[0]) ||
+            isIndexedSetStatement(parser.ast.statements[0])
+        ) {
+            return false;
+        }
+        //HACK: assign to a variable so it turns into a valid expression, then we'll look at the right-hand-side
+        parser = Parser.parse(`__rokuDebugVar = ${expression}`);
+        if (
+            //quit if there are parse errors
+            parser.diagnostics.find(x => x.severity === DiagnosticSeverity.Error) ||
+            //quit if there are zero statements or more than one statement
+            parser.ast.statements.length !== 1
+        ) {
+            return false;
+        }
+        let value = (parser.ast.statements[0] as AssignmentStatement).value;
+        return value instanceof Expression;
+    }
     /**
      * Get the keys for a given variable expression, or undefined if the expression doesn't make sense.
      */

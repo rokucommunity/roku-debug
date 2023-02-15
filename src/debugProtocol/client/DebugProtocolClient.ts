@@ -38,6 +38,9 @@ import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
 import { ActionQueue } from '../../managers/ActionQueue';
 import type { DebugProtocolClientPlugin } from './DebugProtocolClientPlugin';
 import PluginInterface from '../PluginInterface';
+import type { VerifiedBreakpoint } from '../events/updates/BreakpointVerifiedUpdate';
+import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUpdate';
+import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
 
 export class DebugProtocolClient {
 
@@ -131,10 +134,19 @@ export class DebugProtocolClient {
         return semver.satisfies(this.protocolVersion, '>=3.1.0');
     }
 
+    public get supportsBreakpointRegistrationWhileRunning() {
+        return semver.satisfies(this.protocolVersion, '>=3.2.0');
+    }
+
+    public get supportsBreakpointVerification() {
+        return semver.satisfies(this.protocolVersion, '>=3.2.0');
+    }
+
     /**
      * Get a promise that resolves after an event occurs exactly once
      */
     public once(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start'): Promise<void>;
+    public once(eventName: 'breakpoints-verified'): Promise<BreakpointsVerifiedEvent>;
     public once<T = AllThreadsStoppedUpdate | ThreadAttachedUpdate>(eventName: 'runtime-error' | 'suspend'): Promise<T>;
     public once(eventName: 'io-output'): Promise<string>;
     public once(eventName: 'data'): Promise<Buffer>;
@@ -152,6 +164,7 @@ export class DebugProtocolClient {
     }
 
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
+    public on(eventName: 'breakpoints-verified', handler: (event: BreakpointsVerifiedEvent) => void);
     public on(eventName: 'response', handler: (response: ProtocolResponse) => void);
     public on(eventName: 'update', handler: (update: ProtocolUpdate) => void);
     /**
@@ -174,6 +187,7 @@ export class DebugProtocolClient {
     private emit(eventName: 'response', response: ProtocolResponse);
     private emit(eventName: 'update', update: ProtocolUpdate);
     private emit(eventName: 'data', update: Buffer);
+    private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'suspend' | 'runtime-error', data: AllThreadsStoppedUpdate | ThreadAttachedUpdate);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private emit(eventName: string, data?) {
@@ -493,14 +507,29 @@ export class DebugProtocolClient {
                 })
             };
 
-            if (this.supportsConditionalBreakpoints) {
-                return this.sendRequest<AddBreakpointsResponse>(
+            const useConditionalBreakpoints = (
+                //does this protocol version support conditional breakpoints?
+                this.supportsConditionalBreakpoints &&
+                //is there at least one conditional breakpoint present?
+                !!breakpoints.find(x => !!x?.conditionalExpression?.trim())
+            );
+
+            let response: AddBreakpointsResponse | AddConditionalBreakpointsResponse;
+            if (useConditionalBreakpoints) {
+                response = await this.sendRequest<AddBreakpointsResponse>(
                     AddConditionalBreakpointsRequest.fromJson(json)
                 );
             } else {
-                return this.sendRequest<AddBreakpointsResponse>(
+                response = await this.sendRequest<AddBreakpointsResponse>(
                     AddBreakpointsRequest.fromJson(json)
                 );
+            }
+
+            //if the device does not support breakpoint verification, then auto-mark all of these as verified
+            if (!this.supportsBreakpointVerification) {
+                this.emit('breakpoints-verified', {
+                    breakpoints: response.data.breakpoints
+                });
             }
         }
         return AddBreakpointsResponse.fromBuffer(null);
@@ -781,6 +810,12 @@ export class DebugProtocolClient {
                 return BreakpointErrorUpdate.fromBuffer(buffer);
             case UpdateType.CompileError:
                 return CompileErrorUpdate.fromBuffer(buffer);
+            case UpdateType.BreakpointVerified:
+                let response = BreakpointVerifiedUpdate.fromBuffer(buffer);
+                if (response?.data?.breakpoints?.length > 0) {
+                    this.emit('breakpoints-verified', response.data);
+                }
+                return response;
             default:
                 return undefined;
         }
@@ -1007,4 +1042,8 @@ export function isProtocolUpdate(event: ProtocolUpdate | ProtocolResponse): even
  */
 export function isProtocolResponse(event: ProtocolUpdate | ProtocolResponse): event is ProtocolResponse {
     return event?.constructor?.name.endsWith('Response') && event?.data?.requestId !== 0;
+}
+
+export interface BreakpointsVerifiedEvent {
+    breakpoints: VerifiedBreakpoint[];
 }
