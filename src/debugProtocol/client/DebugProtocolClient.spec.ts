@@ -517,7 +517,7 @@ describe('DebugProtocolClient', () => {
         expect(client.isHandshakeComplete).to.be.equal(true);
     });
 
-    it.skip('throws on magic mismatch', async () => {
+    it('throws on magic mismatch', async () => {
         plugin.pushResponse(
             HandshakeV3Response.fromJson({
                 magic: 'not correct magic',
@@ -684,7 +684,7 @@ describe('DebugProtocolClient', () => {
     });
 
     describe('sendRequest', () => {
-        it.skip('throws when controller is missing', async () => {
+        it('throws when controller is missing', async () => {
             await connect();
 
             delete client['controlSocket'];
