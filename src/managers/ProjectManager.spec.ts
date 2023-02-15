@@ -52,9 +52,13 @@ describe('ProjectManager', () => {
         });
     });
 
+    afterEach(() => {
+        sinon.restore();
+    });
+
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
-        it.skip('accounts for the entry breakpoint', () => {
+        it('accounts for the entry breakpoint', () => {
             manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [{
                 line: 3
             }, {
@@ -304,7 +308,11 @@ describe('Project', () => {
         });
     });
 
-    it.skip('copies the necessary properties onto the instance', () => {
+    afterEach(() => {
+        sinon.restore();
+    });
+
+    it('copies the necessary properties onto the instance', () => {
         expect(project.rootDir).to.equal(cwd);
         expect(project.files).to.eql(['a']);
         expect(project.bsConst).to.eql({ b: true });

@@ -80,6 +80,8 @@ describe('DebugProtocolClient', () => {
     });
 
     afterEach(async () => {
+        sinon.restore();
+
         try {
             client?.destroy();
         } catch (e) { }
@@ -88,7 +90,6 @@ describe('DebugProtocolClient', () => {
             await server?.stop();
         } catch (e) { }
         await util.sleep(10);
-        sinon.restore();
     });
 
     it('knows when to enable the thread hopping workaround', () => {
@@ -516,7 +517,7 @@ describe('DebugProtocolClient', () => {
         expect(client.isHandshakeComplete).to.be.equal(true);
     });
 
-    it.skip('throws on magic mismatch', async () => {
+    it('throws on magic mismatch', async () => {
         plugin.pushResponse(
             HandshakeV3Response.fromJson({
                 magic: 'not correct magic',

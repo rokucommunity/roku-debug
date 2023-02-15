@@ -24,7 +24,7 @@ describe('DebugProtocolAdapter', () => {
     let plugin: DebugProtocolServerTestPlugin;
 
     beforeEach(async () => {
-        // sinon.stub(console, 'log').callsFake((...args) => { });
+        sinon.stub(console, 'log').callsFake((...args) => { });
         const options = {
             controlPort: undefined as number,
             host: '127.0.0.1'
@@ -45,11 +45,11 @@ describe('DebugProtocolAdapter', () => {
     });
 
     afterEach(async () => {
+        sinon.restore();
         client?.destroy();
         //shut down and destroy the server after each test
         await server?.stop();
         await util.sleep(10);
-        sinon.restore();
     });
 
     /**
