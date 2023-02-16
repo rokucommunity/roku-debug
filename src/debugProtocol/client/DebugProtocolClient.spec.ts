@@ -339,6 +339,36 @@ describe('DebugProtocolClient', () => {
     });
 
     describe('addBreakpoints', () => {
+        it('returns the proper response', async () => {
+            await connect();
+
+            const responseBreakpoins = [{
+                errorCode: 0,
+                id: 1,
+                ignoreCount: 0
+            },
+            {
+                errorCode: 0,
+                id: 1,
+                ignoreCount: 0
+            }];
+            plugin.pushResponse(
+                AddBreakpointsResponse.fromJson({
+                    requestId: 10,
+                    breakpoints: responseBreakpoins
+                })
+            );
+
+            const response = await client.addBreakpoints([{
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 10
+            }, {
+                filePath: 'pkg:/source/lib.brs',
+                lineNumber: 15
+            }]);
+            expect(response.data.breakpoints).to.eql(responseBreakpoins);
+        });
+
         it('skips sending command on empty breakpoints array', async () => {
             await connect();
             await client.addBreakpoints(undefined);

@@ -531,6 +531,7 @@ export class DebugProtocolClient {
                     breakpoints: response.data.breakpoints
                 });
             }
+            return response;
         }
         return AddBreakpointsResponse.fromBuffer(null);
     }
