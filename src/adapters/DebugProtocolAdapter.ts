@@ -762,7 +762,7 @@ export class DebugProtocolAdapter {
                 for (const breakpoints of [standardBreakpoints, conditionalBreakpoints]) {
                     const response = await this.socketDebugger.addBreakpoints(breakpoints);
                     if (response.data.errorCode === ErrorCode.OK) {
-                        for (let i = 0; i < response.data.breakpoints.length; i++) {
+                        for (let i = 0; i < response?.data?.breakpoints?.length ?? 0; i++) {
                             const deviceBreakpoint = response.data.breakpoints[i];
                             //sync this breakpoint's deviceId with the roku-assigned breakpoint ID
                             this.breakpointManager.setBreakpointDeviceId(

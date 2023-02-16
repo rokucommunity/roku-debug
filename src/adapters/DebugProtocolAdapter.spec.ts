@@ -3,19 +3,31 @@ import { expect } from 'chai';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolAdapter } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
-import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 // eslint-disable-next-line @typescript-eslint/no-duplicate-imports
 import { VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
 import { DebugProtocolServer } from '../debugProtocol/server/DebugProtocolServer';
 import { util } from '../util';
+import { standardizePath as s } from 'brighterscript';
 import { DebugProtocolServerTestPlugin } from '../debugProtocol/DebugProtocolServerTestPlugin.spec';
 import { AllThreadsStoppedUpdate } from '../debugProtocol/events/updates/AllThreadsStoppedUpdate';
 import { StopReason } from '../debugProtocol/Constants';
 import { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
 import { StackTraceV3Response } from '../debugProtocol/events/responses/StackTraceV3Response';
-
+import { AddBreakpointsResponse } from '../debugProtocol/events/responses/AddBreakpointsResponse';
+import { BreakpointManager } from '../managers/BreakpointManager';
+import { SourceMapManager } from '../managers/SourceMapManager';
+import { LocationManager } from '../managers/LocationManager';
+import { Project, ProjectManager } from '../managers/ProjectManager';
+import { AddBreakpointsRequest } from '../debugProtocol/events/requests/AddBreakpointsRequest';
+import { AddConditionalBreakpointsRequest } from '../debugProtocol/events/requests/AddConditionalBreakpointsRequest';
+import { AddConditionalBreakpointsResponse } from '../debugProtocol/events/responses/AddConditionalBreakpointsResponse';
 const sinon = createSandbox();
+
+let cwd = s`${process.cwd()}`;
+let tmpDir = s`${cwd}/.tmp`;
+let rootDir = s`${tmpDir}/rootDir`;
+const outDir = s`${tmpDir}/out`;
 
 describe('DebugProtocolAdapter', () => {
     let adapter: DebugProtocolAdapter;
@@ -29,8 +41,16 @@ describe('DebugProtocolAdapter', () => {
             controlPort: undefined as number,
             host: '127.0.0.1'
         };
-
-        adapter = new DebugProtocolAdapter(options, undefined, undefined);
+        const sourcemapManager = new SourceMapManager();
+        const locationManager = new LocationManager(sourcemapManager);
+        const breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
+        const projectManager = new ProjectManager(breakpointManager, locationManager);
+        projectManager.mainProject = new Project({
+            rootDir: rootDir,
+            files: [],
+            outDir: outDir
+        });
+        adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager);
 
         if (!options.controlPort) {
             options.controlPort = await util.getPort();
@@ -97,6 +117,65 @@ describe('DebugProtocolAdapter', () => {
         //load stack frames
         await adapter.getStackTrace(0);
     }
+
+    it('skips sending AddBreakpoints and AddConditionalBreakpoints command when there are no breakpoints', async () => {
+        await initialize();
+
+        await adapter.syncBreakpoints();
+        const reqs = [
+            plugin.getRequest(-2)?.constructor.name,
+            plugin.getRequest(-1)?.constructor.name
+        ];
+        expect(reqs).not.to.include(AddBreakpointsRequest.name);
+        expect(reqs).not.to.include(AddConditionalBreakpointsRequest.name);
+    });
+
+    it('skips sending AddConditionalBreakpoints command when there were only standard breakpoints', async () => {
+        await initialize();
+
+        adapter['breakpointManager'].setBreakpoint(`${rootDir}/source/main.brs`, {
+            line: 12
+        });
+
+        //let the "add" request go through
+        plugin.pushResponse(
+            AddConditionalBreakpointsResponse.fromJson({
+                breakpoints: [],
+                requestId: 1
+            })
+        );
+        await adapter.syncBreakpoints();
+        const reqs = [
+            plugin.getRequest(-2)?.constructor.name,
+            plugin.getRequest(-1)?.constructor.name
+        ];
+        expect(reqs).to.include(AddBreakpointsRequest.name);
+        expect(reqs).not.to.include(AddConditionalBreakpointsRequest.name);
+    });
+
+    it('skips sending AddBreakpoints command when there only conditional breakpoints', async () => {
+        await initialize();
+
+        adapter['breakpointManager'].setBreakpoint(`${rootDir}/source/main.brs`, {
+            line: 12,
+            condition: 'true'
+        });
+
+        //let the "add" request go through
+        plugin.pushResponse(
+            AddBreakpointsResponse.fromJson({
+                breakpoints: [],
+                requestId: 1
+            })
+        );
+        await adapter.syncBreakpoints();
+        const reqs = [
+            plugin.getRequest(-2)?.constructor.name,
+            plugin.getRequest(-1)?.constructor.name
+        ];
+        expect(reqs).not.to.include(AddBreakpointsRequest.name);
+        expect(reqs).to.include(AddConditionalBreakpointsRequest.name);
+    });
 
     describe('getVariable', () => {
         it('works for local vars', async () => {

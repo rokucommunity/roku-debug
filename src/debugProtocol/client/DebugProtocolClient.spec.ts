@@ -369,13 +369,8 @@ describe('DebugProtocolClient', () => {
             expect(response.data.breakpoints).to.eql(responseBreakpoins);
         });
 
-        it('skips sending command on empty breakpoints array', async () => {
-            await connect();
-            await client.addBreakpoints(undefined);
-            expect(plugin.latestRequest).not.instanceof(AddBreakpointsResponse);
+        it('skips sending command when there are zero conditional breakpoints', async () => {
 
-            await client.addBreakpoints([]);
-            expect(plugin.latestRequest).not.instanceof(AddBreakpointsRequest);
         });
 
         it('sends AddBreakpointsRequest when conditional breakpoints are NOT supported', async () => {

@@ -249,6 +249,7 @@ export class DebugProtocolClient {
 
         this.controlSocket.on('data', (data) => {
             this.emit('data', data);
+            this.logger.info('received server-to-client data\n', { type: 'server-to-client', data: data.toJSON() });
             //queue up processing the new data, chunk by chunk
             void this.bufferQueue.run(async () => {
                 this.buffer = Buffer.concat([this.buffer, data]);
@@ -257,16 +258,6 @@ export class DebugProtocolClient {
                 }
                 return true;
             });
-
-            // this.buffer = Buffer.concat([this.buffer, data]);
-
-            // this.logger.debug(`on('data'): incoming bytes`, data.length);
-            // const startBufferSize = this.buffer.length;
-
-            // this.process();
-
-            // const endBufferSize = this.buffer?.length ?? 0;
-            // this.logger.debug(`buffer size before:`, startBufferSize, ', buffer size after:', endBufferSize, ', bytes consumed:', startBufferSize - endBufferSize);
         });
 
         this.controlSocket.on('end', () => {
@@ -632,7 +623,7 @@ export class DebugProtocolClient {
             this.logger.log(`Request ${request?.data?.requestId}`, request);
             if (this.controlSocket) {
                 const buffer = request.toBuffer();
-                console.log('client sent', JSON.stringify(buffer.toJSON().data));
+                this.logger.info('received client-to-server data\n', { type: 'client-to-server', data: buffer.toJSON() });
                 this.controlSocket.write(buffer);
                 void this.plugins.emit('afterSendRequest', {
                     client: this,
@@ -928,6 +919,7 @@ export class DebugProtocolClient {
 
                 let lastPartialLine = '';
                 this.ioSocket.on('data', (buffer) => {
+                    this.logger.info('received IO data\n', { type: 'io', data: buffer.toJSON() });
                     let responseText = buffer.toString();
                     if (!responseText.endsWith('\n')) {
                         // buffer was split, save the partial line

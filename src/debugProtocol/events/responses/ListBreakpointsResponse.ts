@@ -63,7 +63,7 @@ export class ListBreakpointsResponse implements ProtocolResponse {
     public readOffset = 0;
 
     public data = {
-        breakpoints: undefined as BreakpointInfo[],
+        breakpoints: [] as BreakpointInfo[],
 
         // response fields
         packetLength: undefined as number,

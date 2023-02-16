@@ -54,7 +54,8 @@ export class DebugProtocolServerTestPlugin implements ProtocolServerPlugin {
      */
     public getRequest(index: number) {
         if (index < 0) {
-            index = this.requests.length - index;
+            //add the negative index to the length to "subtract" from the end
+            index = this.requests.length + index;
         }
         return this.requests[index];
     }
