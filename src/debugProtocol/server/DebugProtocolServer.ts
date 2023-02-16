@@ -129,11 +129,7 @@ export class DebugProtocolServer {
 
     public async stop() {
         //close the client socket
-        await new Promise<void>((resolve) => {
-            this.client.end(() => {
-                resolve();
-            });
-        }).catch(() => { });
+        this.client.destroy();
 
         //now close the server
         return new Promise<void>((resolve, reject) => {

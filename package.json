@@ -29,7 +29,7 @@
         "watchFiles": [
             "src/**/*"
         ],
-        "timeout": "10000",
+        "timeout": "2000",
         "fullTrace": true,
         "watchExtensions": [
             "ts"
