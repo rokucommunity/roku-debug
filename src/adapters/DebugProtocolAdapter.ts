@@ -461,7 +461,7 @@ export class DebugProtocolAdapter {
             let thread = await this.getThreadByThreadId(threadIndex);
             let frames: StackFrame[] = [];
             let stackTraceData = await this.socketDebugger.getStackTrace(threadIndex);
-            for (let i = 0; i < stackTraceData.data.entries.length; i++) {
+            for (let i = 0; i < stackTraceData?.data?.entries?.length ?? 0; i++) {
                 let frameData = stackTraceData.data.entries[i];
                 let stackFrame: StackFrame = {
                     frameId: this.nextFrameId++,

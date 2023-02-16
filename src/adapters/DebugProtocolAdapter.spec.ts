@@ -118,63 +118,76 @@ describe('DebugProtocolAdapter', () => {
         await adapter.getStackTrace(0);
     }
 
-    it('skips sending AddBreakpoints and AddConditionalBreakpoints command when there are no breakpoints', async () => {
-        await initialize();
-
-        await adapter.syncBreakpoints();
-        const reqs = [
-            plugin.getRequest(-2)?.constructor.name,
-            plugin.getRequest(-1)?.constructor.name
-        ];
-        expect(reqs).not.to.include(AddBreakpointsRequest.name);
-        expect(reqs).not.to.include(AddConditionalBreakpointsRequest.name);
+    describe('getStackTrace', () => {
+        it('recovers when there are no stack frames', async () => {
+            await initialize();
+            //should not throw exception
+            expect(
+                await adapter.getStackTrace(-1)
+            ).to.eql([]);
+        });
     });
 
-    it('skips sending AddConditionalBreakpoints command when there were only standard breakpoints', async () => {
-        await initialize();
+    describe('syncBreakpoints', () => {
 
-        adapter['breakpointManager'].setBreakpoint(`${rootDir}/source/main.brs`, {
-            line: 12
+        it('skips sending AddBreakpoints and AddConditionalBreakpoints command when there are no breakpoints', async () => {
+            await initialize();
+
+            await adapter.syncBreakpoints();
+            const reqs = [
+                plugin.getRequest(-2)?.constructor.name,
+                plugin.getRequest(-1)?.constructor.name
+            ];
+            expect(reqs).not.to.include(AddBreakpointsRequest.name);
+            expect(reqs).not.to.include(AddConditionalBreakpointsRequest.name);
         });
 
-        //let the "add" request go through
-        plugin.pushResponse(
-            AddConditionalBreakpointsResponse.fromJson({
-                breakpoints: [],
-                requestId: 1
-            })
-        );
-        await adapter.syncBreakpoints();
-        const reqs = [
-            plugin.getRequest(-2)?.constructor.name,
-            plugin.getRequest(-1)?.constructor.name
-        ];
-        expect(reqs).to.include(AddBreakpointsRequest.name);
-        expect(reqs).not.to.include(AddConditionalBreakpointsRequest.name);
-    });
+        it('skips sending AddConditionalBreakpoints command when there were only standard breakpoints', async () => {
+            await initialize();
 
-    it('skips sending AddBreakpoints command when there only conditional breakpoints', async () => {
-        await initialize();
+            adapter['breakpointManager'].setBreakpoint(`${rootDir}/source/main.brs`, {
+                line: 12
+            });
 
-        adapter['breakpointManager'].setBreakpoint(`${rootDir}/source/main.brs`, {
-            line: 12,
-            condition: 'true'
+            //let the "add" request go through
+            plugin.pushResponse(
+                AddConditionalBreakpointsResponse.fromJson({
+                    breakpoints: [],
+                    requestId: 1
+                })
+            );
+            await adapter.syncBreakpoints();
+            const reqs = [
+                plugin.getRequest(-2)?.constructor.name,
+                plugin.getRequest(-1)?.constructor.name
+            ];
+            expect(reqs).to.include(AddBreakpointsRequest.name);
+            expect(reqs).not.to.include(AddConditionalBreakpointsRequest.name);
         });
 
-        //let the "add" request go through
-        plugin.pushResponse(
-            AddBreakpointsResponse.fromJson({
-                breakpoints: [],
-                requestId: 1
-            })
-        );
-        await adapter.syncBreakpoints();
-        const reqs = [
-            plugin.getRequest(-2)?.constructor.name,
-            plugin.getRequest(-1)?.constructor.name
-        ];
-        expect(reqs).not.to.include(AddBreakpointsRequest.name);
-        expect(reqs).to.include(AddConditionalBreakpointsRequest.name);
+        it('skips sending AddBreakpoints command when there only conditional breakpoints', async () => {
+            await initialize();
+
+            adapter['breakpointManager'].setBreakpoint(`${rootDir}/source/main.brs`, {
+                line: 12,
+                condition: 'true'
+            });
+
+            //let the "add" request go through
+            plugin.pushResponse(
+                AddBreakpointsResponse.fromJson({
+                    breakpoints: [],
+                    requestId: 1
+                })
+            );
+            await adapter.syncBreakpoints();
+            const reqs = [
+                plugin.getRequest(-2)?.constructor.name,
+                plugin.getRequest(-1)?.constructor.name
+            ];
+            expect(reqs).not.to.include(AddBreakpointsRequest.name);
+            expect(reqs).to.include(AddConditionalBreakpointsRequest.name);
+        });
     });
 
     describe('getVariable', () => {
