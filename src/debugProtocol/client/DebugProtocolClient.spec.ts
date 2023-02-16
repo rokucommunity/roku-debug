@@ -87,7 +87,7 @@ describe('DebugProtocolClient', () => {
         } catch (e) { }
         //shut down and destroy the server after each test
         try {
-            await server?.stop();
+            await server?.destroy();
         } catch (e) { }
         await util.sleep(10);
     });
@@ -763,9 +763,9 @@ describe('DebugProtocolClient', () => {
                 hostName: '0.0.0.0'
             }, () => { });
             ioServer.on('connection', (socket) => {
-                socket.on('error', e => console.error(e));
-                deferred.resolve(socket);
                 ioClient = socket;
+                ioClient.on('error', e => console.error(e));
+                deferred.resolve(ioClient);
             });
             ioServer.on('error', e => console.error(e));
         });
