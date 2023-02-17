@@ -49,7 +49,7 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
-import { waitForDebugger } from 'inspector';
+import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -1193,6 +1193,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     childVariables.push(childVar);
                 }
                 v.childVariables = childVariables;
+            }
+            // if the var is an array and debugProtocol is enabled, include the array size
+            if (this.enableDebugProtocol && v.type === VariableType.Array) {
+                v.value = `${v.type}(${result.elementCount})` as any;
             }
         }
         return v;

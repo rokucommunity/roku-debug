@@ -549,7 +549,6 @@ export class DebugProtocolAdapter {
         }
     }
 
-
     /**
      * Get the list of local variables
      */
@@ -614,10 +613,10 @@ export class DebugProtocolAdapter {
         }
 
         let container: EvaluateContainer = {
-            name: name,
-            evaluateName: evaluateName,
-            type: variableType,
-            value: value,
+            name: name ?? '',
+            evaluateName: evaluateName ?? '',
+            type: variableType ?? '',
+            value: value ?? null,
             highLevelType: undefined,
             //non object/array variables don't have a key type
             keyType: variable.keyType as unknown as KeyType,
