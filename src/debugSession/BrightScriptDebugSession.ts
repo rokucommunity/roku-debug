@@ -27,7 +27,7 @@ import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
-import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
+import { isDebugProtocolAdapter, DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import {
@@ -733,14 +733,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             const scopes = new Array<Scope>();
 
-            if (this.enableDebugProtocol) {
+            if (isDebugProtocolAdapter(this.rokuAdapter)) {
                 let refId = this.getEvaluateRefId('', args.frameId);
                 let v: AugmentedVariable;
                 //if we already looked this item up, return it
                 if (this.variables[refId]) {
                     v = this.variables[refId];
                 } else {
-                    let result = await this.rokuAdapter.getVariable('', args.frameId);
+                    let result = await this.rokuAdapter.getLocalVariables(args.frameId);
                     if (!result) {
                         throw new Error(`Could not get scopes`);
                     }
@@ -841,7 +841,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 logger.log('reference', reference);
                 // NOTE: Legacy telnet support for local vars
                 if (this.launchConfiguration.enableVariablesPanel) {
-                    const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables(reference);
+                    const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables();
 
                     for (const varName of vars) {
                         let result = await this.rokuAdapter.getVariable(varName, -1);

@@ -1,7 +1,7 @@
 
 import { expect } from 'chai';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
-import { DebugProtocolAdapter } from './DebugProtocolAdapter';
+import { DebugProtocolAdapter, EvaluateContainer, KeyType } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 // eslint-disable-next-line @typescript-eslint/no-duplicate-imports
@@ -22,6 +22,7 @@ import { Project, ProjectManager } from '../managers/ProjectManager';
 import { AddBreakpointsRequest } from '../debugProtocol/events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../debugProtocol/events/requests/AddConditionalBreakpointsRequest';
 import { AddConditionalBreakpointsResponse } from '../debugProtocol/events/responses/AddConditionalBreakpointsResponse';
+import { HighLevelType } from '../interfaces';
 const sinon = createSandbox();
 
 let cwd = s`${process.cwd()}`;
@@ -219,7 +220,7 @@ describe('DebugProtocolAdapter', () => {
                     ]
                 })
             );
-            const vars = await adapter.getVariable('', 1);
+            const vars = await adapter.getLocalVariables(1);
             expect(
                 vars?.children.map(x => x.evaluateName)
             ).to.eql([
@@ -228,8 +229,12 @@ describe('DebugProtocolAdapter', () => {
             ]);
         });
 
-        it.skip('works for object properties', async () => {
+        it('works for object properties', async () => {
             await initialize();
+
+            //load the stack trace which is required for variable requests to work
+            const frames = await adapter.getStackTrace(0);
+            const frameId = frames[0].frameId;
 
             plugin.pushResponse(
                 VariablesResponse.fromJson({
@@ -261,13 +266,26 @@ describe('DebugProtocolAdapter', () => {
                     ]
                 })
             );
-            const vars = await adapter.getVariable('person', 0);
+            const container = await adapter.getVariable('person', frameId);
             expect(
-                vars?.children.map(x => x.evaluateName)
+                container?.children.map(x => x.evaluateName)
             ).to.eql([
                 'person["name"]',
                 'person["age"]'
             ]);
+            //the top level object should be an AA
+            expect(container.type).to.eql(VariableType.AA);
+            expect(container.keyType).to.eql(KeyType.string);
+            expect(container.elementCount).to.eql(2);
+
+            //the children should NOT look like objects
+            expect(container.children[0].keyType).not.to.exist;
+            expect(container.children[0].children).not.to.exist;
+            expect(container.children[0].elementCount).not.to.exist;
+
+            expect(container.children[1].keyType).not.to.exist;
+            expect(container.children[1].children).not.to.exist;
+            expect(container.children[1].elementCount).not.to.exist;
         });
     });
 });

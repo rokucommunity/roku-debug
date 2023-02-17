@@ -441,7 +441,7 @@ export class DebugProtocolClient {
      * @param threadIndex the index (or perhaps ID?) of the thread to get variables for
      */
     public async getVariables(variablePathEntries: Array<string> = [], stackFrameIndex: number = this.stackFrameIndex, threadIndex: number = this.primaryThread) {
-        return this.processVariablesRequest(
+        const response = await this.processVariablesRequest(
             VariablesRequest.fromJson({
                 requestId: this.requestIdSequence++,
                 threadIndex: threadIndex,
@@ -456,6 +456,7 @@ export class DebugProtocolClient {
                 enableForceCaseInsensitivity: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
             })
         );
+        return response;
     }
 
     private async processVariablesRequest(request: VariablesRequest) {
@@ -676,14 +677,8 @@ export class DebugProtocolClient {
                 return false;
             }
 
-            //we have a valid event. Clear the buffer of this data
+            //we have a valid event. Remove this data from the buffer
             this.buffer = this.buffer.slice(responseOrUpdate.readOffset);
-
-            //TODO why did we ever do this? Just to handle when we misread incoming data? I think this should be scrapped
-            // if (event.data.requestId > this.totalRequests) {
-            //     this.removedProcessedBytes(genericResponse, slicedBuffer, packetLength);
-            //     return true;
-            // }
 
             if (responseOrUpdate.data.errorCode !== ErrorCode.OK) {
                 this.logger.error(responseOrUpdate.data.errorCode, responseOrUpdate);

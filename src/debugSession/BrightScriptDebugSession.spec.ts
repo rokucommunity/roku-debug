@@ -17,7 +17,6 @@ import { util as bscUtil, standardizePath as s } from 'brighterscript';
 import { DefaultFiles } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
-import { ConsoleTransport } from '@rokucommunity/logger';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -221,7 +220,7 @@ describe('BrightScriptDebugSession', () => {
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
-            sinon.stub(rokuAdapter, 'getScopeVariables').callsFake(x => {
+            sinon.stub(rokuAdapter, 'getScopeVariables').callsFake(() => {
                 return Promise.resolve(['m', 'top', `${session.tempVarPrefix}eval`]);
             });
             sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {

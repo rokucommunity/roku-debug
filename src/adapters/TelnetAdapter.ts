@@ -15,6 +15,7 @@ import { logger } from '../logging';
 import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces';
 import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
+import type { DebugProtocolAdapter } from './DebugProtocolAdapter';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -519,10 +520,9 @@ export class TelnetAdapter {
 
     /**
      * Gets a string array of all the local variables using the var command
-     * @param scope
      */
-    public async getScopeVariables(scope?: string) {
-        this.logger.log('getScopeVariables', { scope });
+    public async getScopeVariables() {
+        this.logger.log('getScopeVariables');
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
@@ -876,7 +876,6 @@ export class TelnetAdapter {
                         type: '<ERROR>',
                         highLevelType: HighLevelType.uninitialized,
                         evaluateName: undefined,
-                        variablePath: [],
                         elementCount: -1,
                         value: '<ERROR>',
                         keyType: KeyType.legacy,
@@ -1086,7 +1085,6 @@ export enum EventName {
 export interface EvaluateContainer {
     name: string;
     evaluateName: string;
-    variablePath: string[];
     type: string;
     value: string;
     keyType: KeyType;
@@ -1136,4 +1134,8 @@ export enum PrimativeType {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
+}
+
+export function isTelnetAdapterAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is TelnetAdapter {
+    return adapter?.constructor.name === TelnetAdapter.name;
 }

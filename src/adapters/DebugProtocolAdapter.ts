@@ -7,7 +7,7 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { ErrorCode, PROTOCOL_ERROR_CODES, StopReasonCode } from '../debugProtocol/Constants';
+import { ErrorCode, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
@@ -17,8 +17,9 @@ import type { ProjectManager } from '../managers/ProjectManager';
 import { ActionQueue } from '../managers/ActionQueue';
 import type { BreakpointsVerifiedEvent, ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
+import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
-import type { VerifiedBreakpoint } from '../debugProtocol/events/updates/BreakpointVerifiedUpdate';
+import type { TelnetAdapter } from './TelnetAdapter';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -495,10 +496,11 @@ export class DebugProtocolAdapter {
     }
 
     /**
-     * Given an expression, evaluate that statement ON the roku
-     * @param expression
+     * Get info about the specified variable.
+     * @param expression the expression for the specified variable (i.e. `m`, `someVar.value`, `arr[1][2].three`). If empty string/undefined is specified, all local variables are retrieved instead
      */
-    public async getVariable(expression: string, frameId: number) {
+    private async getVariablesResponse(expression: string, frameId: number) {
+        const isScopesRequest = expression === '';
         const logger = this.logger.createLogger(' getVariable');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
@@ -526,79 +528,118 @@ export class DebugProtocolAdapter {
             variablePath = expression === '' ? [] : util.getVariablePath(expression?.toLowerCase());
             response = await this.socketDebugger.getVariables(variablePath, frame.frameIndex, frame.threadIndex);
         }
+        return response;
+    }
 
+    /**
+     * Get the variable for the specified expression.
+     */
+    public async getVariable(expression: string, frameId: number) {
+        const response = await this.getVariablesResponse(expression, frameId);
 
-        if (response.data.errorCode === ErrorCode.OK) {
-            let mainContainer: EvaluateContainer;
-            let children: EvaluateContainer[] = [];
-            let firstHandled = false;
-            for (let variable of response.data.variables) {
-                let value;
-                let variableType = variable.type as string;
-                if (variable.value === null) {
-                    value = 'roInvalid';
-                } else if (variableType === 'String') {
-                    value = `\"${variable.value}\"`;
-                } else {
-                    value = variable.value;
-                }
-
-                if (variableType === VariableType.SubtypedObject) {
-                    //subtyped objects can only have string values
-                    let parts = (variable.value as string).split('; ');
-                    variableType = `${parts[0]} (${parts[1]})`;
-                } else if (variableType === 'AA') {
-                    variableType = VariableType.AA;
-                }
-
-                let container = <EvaluateContainer>{
-                    name: expression,
-                    evaluateName: expression,
-                    variablePath: variablePath,
-                    type: variableType,
-                    value: value,
-                    keyType: variable.keyType === VariableType.Integer ? 'Integer' : 'String',
-                    highLevelType: null,
-                    children: null,
-                    elementCount: variable.childCount
-                };
-
-                if (!firstHandled && variablePath.length > 0) {
-                    firstHandled = true;
-                    mainContainer = container;
-                } else {
-                    if (!firstHandled && variablePath.length === 0) {
-                        // If this is a scope request there will be no entries in the variable path
-                        // We will need to create a fake mainContainer
-                        firstHandled = true;
-                        mainContainer = <EvaluateContainer>{
-                            name: expression,
-                            evaluateName: expression,
-                            variablePath: variablePath,
-                            type: '',
-                            value: null,
-                            keyType: 'String',
-                            elementCount: response.data.variables.length
-                        };
-                    }
-
-                    let pathAddition = mainContainer.keyType === 'Integer' ? children.length : variable.name;
-                    container.name = pathAddition.toString();
-                    if (mainContainer.evaluateName) {
-                        container.evaluateName = `${mainContainer.evaluateName}["${pathAddition}"]`;
-                    } else {
-                        container.evaluateName = pathAddition.toString();
-                    }
-                    container.variablePath = [].concat(container.variablePath, [pathAddition.toString()]);
-                    if (container.keyType) {
-                        container.children = [];
-                    }
-                    children.push(container);
-                }
-            }
-            mainContainer.children = children;
-            return mainContainer;
+        if (response?.data?.errorCode === ErrorCode.OK && Array.isArray(response?.data?.variables)) {
+            const container = this.createEvaluateContainer(
+                response.data.variables[0],
+                //the name of the top container is the expression itself
+                expression,
+                //this is the top-level container, so there are no parent keys to this entry
+                undefined
+            );
+            return container;
         }
+    }
+
+
+    /**
+     * Get the list of local variables
+     */
+    public async getLocalVariables(frameId: number) {
+        const response = await this.getVariablesResponse('', frameId);
+
+        if (response?.data?.errorCode === ErrorCode.OK && Array.isArray(response?.data?.variables)) {
+            //create a top-level container to hold all the local vars
+            const container = this.createEvaluateContainer(
+                //dummy data
+                {
+                    isConst: false,
+                    isContainer: true,
+                    keyType: VariableType.String,
+                    refCount: undefined,
+                    type: VariableType.AA,
+                    value: undefined,
+                    children: response.data.variables
+                },
+                //no name, this is a dummy container
+                undefined,
+                //there's no parent path
+                undefined
+            );
+            return container;
+        }
+    }
+
+    /**
+     * Create an EvaluateContainer for the given variable. If the variable has children, those are created and attached as well
+     * @param variable a Variable object from the debug protocol debugger
+     * @param name the name of this variable. For example, `alpha.beta.charlie`, this value would be `charlie`. For local vars, this is the root variable name (i.e. `alpha`)
+     * @param parentEvaluateName the string used to derive the parent, _excluding_ this variable's name (i.e. `alpha.beta` or `alpha[0]`)
+     */
+    private createEvaluateContainer(variable: Variable, name: string, parentEvaluateName: string) {
+        let value;
+        let variableType = variable.type as string;
+        if (variable.value === null) {
+            value = 'roInvalid';
+        } else if (variableType === 'String') {
+            value = `\"${variable.value}\"`;
+        } else {
+            value = variable.value;
+        }
+
+        if (variableType === VariableType.SubtypedObject) {
+            //subtyped objects can only have string values
+            let parts = (variable.value as string).split('; ');
+            variableType = `${parts[0]} (${parts[1]})`;
+        } else if (variableType === 'AA') {
+            variableType = VariableType.AA;
+        }
+
+        //build full evaluate name for this var. (i.e. `alpha["beta"]` + ["charlie"]` === `alpha["beta"]["charlie"]`)
+        let evaluateName: string;
+        if (!parentEvaluateName?.trim()) {
+            evaluateName = name;
+        } else if (typeof name === 'string') {
+            evaluateName = `${parentEvaluateName}["${name}"]`;
+        } else if (typeof name === 'number') {
+            evaluateName = `${parentEvaluateName}[${name}]`;
+        }
+
+        let container: EvaluateContainer = {
+            name: name,
+            evaluateName: evaluateName,
+            type: variableType,
+            value: value,
+            highLevelType: undefined,
+            //non object/array variables don't have a key type
+            keyType: variable.keyType as unknown as KeyType,
+            elementCount: variable.childCount ?? variable.children?.length ?? undefined,
+            //non object/array variables still need to have an empty `children` array to help upstream logic. The `keyType` being null is how we know it doesn't actually have children
+            children: []
+        };
+
+        //recursively generate children containers
+        if ([KeyType.integer, KeyType.string].includes(container.keyType) && Array.isArray(variable.children)) {
+            container.children = [];
+            for (let i = 0; i < variable.children.length; i++) {
+                const childVariable = variable.children[i];
+                const childContainer = this.createEvaluateContainer(
+                    childVariable,
+                    container.keyType === KeyType.integer ? i.toString() : childVariable.name,
+                    container.evaluateName
+                );
+                container.children.push(childContainer);
+            }
+        }
+        return container;
     }
 
     /**
@@ -801,10 +842,9 @@ export enum EventName {
 export interface EvaluateContainer {
     name: string;
     evaluateName: string;
-    variablePath: string[];
     type: string;
     value: string;
-    keyType: KeyType;
+    keyType?: KeyType;
     elementCount: number;
     highLevelType: HighLevelType;
     children: EvaluateContainer[];
@@ -829,4 +869,8 @@ export interface Thread {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
+}
+
+export function isDebugProtocolAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is DebugProtocolAdapter {
+    return adapter?.constructor.name === DebugProtocolAdapter.name;
 }
