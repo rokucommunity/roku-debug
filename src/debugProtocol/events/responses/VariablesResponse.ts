@@ -23,7 +23,7 @@ export class VariablesResponse {
                 delete variable.childCount;
             }
             if (util.isNullish(variable.isContainer)) {
-                variable.isContainer = [VariableType.AA, VariableType.Array, VariableType.List, VariableType.Object, VariableType.SubtypedObject].includes(variable.type);
+                variable.isContainer = [VariableType.AssociativeArray, VariableType.Array, VariableType.List, VariableType.Object, VariableType.SubtypedObject].includes(variable.type);
             }
             if (variable.isContainer && util.isNullish(variable.childCount) && !hasChildrenArray) {
                 throw new Error('Container variable must have one of these properties defined: childCount, children');
@@ -136,7 +136,7 @@ export class VariablesResponse {
             case VariableType.Uninitialized:
             case VariableType.Unknown:
             case VariableType.Invalid:
-            case VariableType.AA:
+            case VariableType.AssociativeArray:
             case VariableType.Array:
             case VariableType.List:
                 return null;
@@ -258,7 +258,7 @@ export class VariablesResponse {
             case VariableType.Uninitialized:
             case VariableType.Unknown:
             case VariableType.Invalid:
-            case VariableType.AA:
+            case VariableType.AssociativeArray:
             case VariableType.Array:
             case VariableType.List:
                 break;
@@ -318,7 +318,7 @@ export enum VariableFlags {
  * Every type of variable supported by the protocol
  */
 export enum VariableType {
-    AA = 'AA',
+    AssociativeArray = 'AssociativeArray',
     Array = 'Array',
     Boolean = 'Boolean',
     Double = 'Double',
@@ -341,7 +341,7 @@ export enum VariableType {
  * An enum used to convert VariableType strings to their protocol integer value
  */
 enum VariableTypeCode {
-    AA = 1,
+    AssociativeArray = 1,
     Array = 2,
     Boolean = 3,
     Double = 4,

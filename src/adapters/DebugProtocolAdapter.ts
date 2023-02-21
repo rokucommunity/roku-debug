@@ -564,7 +564,7 @@ export class DebugProtocolAdapter {
                     isContainer: true,
                     keyType: VariableType.String,
                     refCount: undefined,
-                    type: VariableType.AA,
+                    type: VariableType.AssociativeArray,
                     value: undefined,
                     children: response.data.variables
                 },
@@ -599,7 +599,7 @@ export class DebugProtocolAdapter {
             let parts = (variable.value as string).split('; ');
             variableType = `${parts[0]} (${parts[1]})`;
         } else if (variableType === 'AA') {
-            variableType = VariableType.AA;
+            variableType = VariableType.AssociativeArray;
         }
 
         //build full evaluate name for this var. (i.e. `alpha["beta"]` + ["charlie"]` === `alpha["beta"]["charlie"]`)

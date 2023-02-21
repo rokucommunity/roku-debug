@@ -203,7 +203,7 @@ describe('DebugProtocolAdapter', () => {
                             isConst: false,
                             isContainer: true,
                             refCount: 1,
-                            type: VariableType.AA,
+                            type: VariableType.AssociativeArray,
                             value: undefined,
                             childCount: 4,
                             keyType: VariableType.String,
@@ -244,7 +244,7 @@ describe('DebugProtocolAdapter', () => {
                             isConst: false,
                             isContainer: true,
                             refCount: 1,
-                            type: VariableType.AA,
+                            type: VariableType.AssociativeArray,
                             value: undefined,
                             keyType: VariableType.String,
                             children: [{
@@ -274,7 +274,7 @@ describe('DebugProtocolAdapter', () => {
                 'person["age"]'
             ]);
             //the top level object should be an AA
-            expect(container.type).to.eql(VariableType.AA);
+            expect(container.type).to.eql(VariableType.AssociativeArray);
             expect(container.keyType).to.eql(KeyType.string);
             expect(container.elementCount).to.eql(2);
 

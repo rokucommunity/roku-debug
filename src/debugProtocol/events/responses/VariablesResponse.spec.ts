@@ -29,7 +29,7 @@ describe('VariablesResponse', () => {
             let response = VariablesResponse.fromJson({
                 requestId: 2,
                 variables: [{
-                    type: VariableType.AA,
+                    type: VariableType.AssociativeArray,
                     children: []
                 }, {
                     type: VariableType.Array,
@@ -55,7 +55,7 @@ describe('VariablesResponse', () => {
                 VariablesResponse.fromJson({
                     requestId: 2,
                     variables: [{
-                        type: VariableType.AA
+                        type: VariableType.AssociativeArray
                     }] as any[]
                 });
             }, 'Container variable must have one of these properties defined: childCount, children');
@@ -76,7 +76,7 @@ describe('VariablesResponse', () => {
             expect(VariablesResponse.prototype['readVariableValue'](VariableType.Uninitialized, new SmartBuffer())).to.eql(null);
             expect(VariablesResponse.prototype['readVariableValue'](VariableType.Unknown, new SmartBuffer())).to.eql(null);
             expect(VariablesResponse.prototype['readVariableValue'](VariableType.Invalid, new SmartBuffer())).to.eql(null);
-            expect(VariablesResponse.prototype['readVariableValue'](VariableType.AA, new SmartBuffer())).to.eql(null);
+            expect(VariablesResponse.prototype['readVariableValue'](VariableType.AssociativeArray, new SmartBuffer())).to.eql(null);
             expect(VariablesResponse.prototype['readVariableValue'](VariableType.Array, new SmartBuffer())).to.eql(null);
             expect(VariablesResponse.prototype['readVariableValue'](VariableType.List, new SmartBuffer())).to.eql(null);
         });
@@ -117,7 +117,7 @@ describe('VariablesResponse', () => {
                     isConst: false,
                     isContainer: true,
                     children: [],
-                    type: VariableType.AA,
+                    type: VariableType.AssociativeArray,
                     keyType: VariableType.String,
                     value: undefined
                 }]
@@ -135,7 +135,7 @@ describe('VariablesResponse', () => {
                 refCount: 2,
                 isConst: false,
                 isContainer: true,
-                type: VariableType.AA,
+                type: VariableType.AssociativeArray,
                 keyType: VariableType.String,
                 value: undefined,
                 children: [{
@@ -165,7 +165,7 @@ describe('VariablesResponse', () => {
                 refCount: 2,
                 isConst: false,
                 isContainer: true,
-                type: VariableType.AA,
+                type: VariableType.AssociativeArray,
                 keyType: 'String',
                 value: undefined,
                 children: [{
@@ -203,7 +203,7 @@ describe('VariablesResponse', () => {
                 refCount: 2, // 4 bytes
                 isConst: false, // 0 bytes -- part of flags
                 isContainer: true, // 0 bytes -- part of flags
-                type: VariableType.AA, // 1 byte
+                type: VariableType.AssociativeArray, // 1 byte
                 keyType: 'String', // 1 byte
                 // element_count // 4 bytes
                 children: [{
@@ -247,7 +247,7 @@ describe('VariablesResponse', () => {
                     v('l', VariableType.Uninitialized, undefined),
                     v('m', VariableType.Unknown, undefined),
                     v('n', VariableType.Invalid, undefined),
-                    v('o', VariableType.AA, undefined),
+                    v('o', VariableType.AssociativeArray, undefined),
                     v('p', VariableType.Array, undefined),
                     v('q', VariableType.List, undefined)
                 ]
@@ -277,7 +277,7 @@ describe('VariablesResponse', () => {
                 ['l', VariableType.Uninitialized, undefined],
                 ['m', VariableType.Unknown, undefined],
                 ['n', VariableType.Invalid, undefined],
-                ['o', VariableType.AA, undefined],
+                ['o', VariableType.AssociativeArray, undefined],
                 ['p', VariableType.Array, undefined],
                 ['q', VariableType.List, undefined]
             ].map(x => ({
@@ -307,7 +307,7 @@ describe('VariablesResponse', () => {
         VariablesResponse.prototype['writeVariableValue'](VariableType.Uninitialized, undefined, buffer);
         VariablesResponse.prototype['writeVariableValue'](VariableType.Unknown, undefined, buffer);
         VariablesResponse.prototype['writeVariableValue'](VariableType.Invalid, undefined, buffer);
-        VariablesResponse.prototype['writeVariableValue'](VariableType.AA, undefined, buffer);
+        VariablesResponse.prototype['writeVariableValue'](VariableType.AssociativeArray, undefined, buffer);
         VariablesResponse.prototype['writeVariableValue'](VariableType.Array, undefined, buffer);
         VariablesResponse.prototype['writeVariableValue'](VariableType.List, undefined, buffer);
         expect(buffer.length).to.eql(0);
@@ -358,7 +358,7 @@ describe('VariablesResponse', () => {
                 isConst: false,
                 isContainer: true,
                 childCount: 3,
-                type: VariableType.AA,
+                type: VariableType.AssociativeArray,
                 keyType: VariableType.String,
                 value: undefined
             }, {
@@ -387,7 +387,7 @@ describe('VariablesResponse', () => {
             variables: [{
                 isConst: false,
                 isContainer: true,
-                type: VariableType.AA,
+                type: VariableType.AssociativeArray,
                 name: 'm',
                 refCount: 2,
                 keyType: VariableType.String,
@@ -427,7 +427,7 @@ describe('VariablesResponse', () => {
                 // flags // 1 byte
                 isConst: false, // 0 bytes -- part of flags
                 isContainer: true, // 0 bytes -- part of flags
-                type: VariableType.AA, // 1 byte
+                type: VariableType.AssociativeArray, // 1 byte
                 name: 'm', // 2 bytes
                 refCount: 2, // 4 bytes
                 keyType: VariableType.String, // 1 byte
