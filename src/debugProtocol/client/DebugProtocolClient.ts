@@ -459,7 +459,7 @@ export class DebugProtocolClient {
         );
 
         //if there was an issue, build a "fake" variables response for several known situationsm or throw nicer errors
-        if (util.hasNonNullishProperty(response.data.errorData)) {
+        if (util.hasNonNullishProperty(response?.data.errorData)) {
             let variable = {
                 value: null,
                 isContainer: false,
@@ -493,13 +493,15 @@ export class DebugProtocolClient {
                     return simulatedResponse;
                 }
 
-                if (variablePathEntries.length > 1) {
+                //leftmost var was uninitialized, and tried to read a prop on it
+                //ex: variablePathEntries = ["notThere", "definitelyNotThere"]
+                if (missingKeyIndex === 0 && variablePathEntries.length > 1) {
+                    throw new Error(`Cannot read '${variablePathEntries[missingKeyIndex + 1]}' on type 'Uninitialized'`);
+                }
+
+                if (variablePathEntries.length > 1 && missingKeyIndex > 0) {
                     parentVarType = await getParentVarType();
-                    //leftmost var was uninitialized, and tried to read a prop on it
-                    //ex: variablePathEntries = ["notThere", "definitelyNotThere"]
-                    if (missingKeyIndex === 0 && variablePathEntries.length > 1) {
-                        throw new Error(`Cannot read '${variablePathEntries[missingKeyIndex + 1]}' on type '${parentVarType}'`);
-                    }
+
 
                     // prop at the end of Node or AA doesn't exist. Treat like `invalid`.
                     // ex: variablePathEntries = ['there', 'notThere']
@@ -528,7 +530,7 @@ export class DebugProtocolClient {
                     return simulatedResponse;
                 }
 
-                if (variablePathEntries.length > 1) {
+                if (variablePathEntries.length > 1 && invalidPathIndex > 0) {
                     parentVarType = await getParentVarType();
 
                     //leftmost var is set to literal `invalid`, tried to read prop

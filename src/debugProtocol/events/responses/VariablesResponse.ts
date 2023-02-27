@@ -273,7 +273,10 @@ export class VariablesResponse implements ProtocolResponse {
 
     public readOffset = 0;
 
-    public data = {} as VariablesResponseData;
+    public data = {
+        packetLength: undefined as number,
+        errorCode: ErrorCode.OK
+    } as VariablesResponseData;
 }
 export interface VariablesResponseData extends ProtocolResponseData {
     variables: Variable[];

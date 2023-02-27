@@ -31,11 +31,12 @@ import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsReques
 import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResponse';
 import { RemoveBreakpointsResponse } from '../events/responses/RemoveBreakpointsResponse';
 import { RemoveBreakpointsRequest } from '../events/requests/RemoveBreakpointsRequest';
-import { expectThrowsAsync } from '../../testHelpers.spec';
+import { expectThrows, expectThrowsAsync } from '../../testHelpers.spec';
 import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
 import { IOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
 import * as Net from 'net';
 import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
+import { KeyType } from '../../adapters/DebugProtocolAdapter';
 process.on('uncaughtException', (err) => console.log('node js process error\n', err));
 const sinon = createSandbox();
 
@@ -678,9 +679,27 @@ describe('DebugProtocolClient', () => {
                 })
             );
 
+            //another response for the "go one level up to get type info" request
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: 1,
+                    variables: [{
+                        name: 'someObj',
+                        type: VariableType.Uninitialized,
+                        isConst: false,
+                        isContainer: true,
+                        refCount: 1,
+                        value: undefined,
+                        childCount: 2,
+                        keyType: VariableType.String
+                    }]
+                })
+            );
+
             //getting prop from variable that was never defined
-            const response = await client.getVariables(['notThere', 'definitelyNotThere']);
-            expect(response.data.variables).not.to.exist;
+            await expectThrowsAsync(async () => {
+                await client.getVariables(['notThere', 'definitelyNotThere']);
+            }, `Cannot read 'definitelyNotThere' on type 'Uninitialized'`);
         });
 
         it('returns `invalid` when accessing a property on a defined AA', async () => {
@@ -696,12 +715,29 @@ describe('DebugProtocolClient', () => {
                 })
             );
 
+            //another response for the "go one level up to get type info" request
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: 1,
+                    variables: [{
+                        name: 'there',
+                        type: VariableType.AssociativeArray,
+                        isConst: false,
+                        isContainer: true,
+                        refCount: 1,
+                        value: undefined,
+                        childCount: 2,
+                        keyType: VariableType.String
+                    }]
+                })
+            );
+
             //getting prop from variable that was never defined
             const response = await client.getVariables(['there', 'notThere']);
             expect(response.data.variables[0]).to.eql({
                 name: 'notThere',
                 type: VariableType.Invalid,
-                value: null,
+                value: 'Invalid (not defined)',
                 childCount: 0,
                 isConst: false,
                 isContainer: false,
@@ -722,9 +758,27 @@ describe('DebugProtocolClient', () => {
                 })
             );
 
+            //another response for the "go one level up to get type info" request
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: 1,
+                    variables: [{
+                        name: 'notThere',
+                        type: VariableType.Invalid,
+                        isConst: false,
+                        isContainer: false,
+                        refCount: 1,
+                        value: undefined
+                    }]
+                })
+            );
+
             //getting prop from variable that was never defined
-            const response = await client.getVariables(['there', 'notThere', 'definitelyNotThere']);
-            expect(response.data.variables).not.to.exist;
+
+            //getting prop from variable that was assigned to invalid (i.e. `setToInvalid = invalid`)
+            await expectThrowsAsync(async () => {
+                await client.getVariables(['there', 'notThere', 'definitelyNotThere']);
+            }, `Cannot read 'notThere' on type 'Invalid'`);
         });
 
         it('returns generic response when accessing a property on a variable with the value of `invalid`', async () => {
@@ -740,14 +794,16 @@ describe('DebugProtocolClient', () => {
                 })
             );
 
-            //getting prop from variable that was never defined
-            const response = await client.getVariables(['setToInvalid', 'notThere']);
-            expect(response.data.variables).not.to.exist;
+            //getting prop from variable that was assigned to invalid (i.e. `setToInvalid = invalid`)
+            await expectThrowsAsync(async () => {
+                await client.getVariables(['setToInvalid', 'notThere']);
+            }, `Cannot read 'setToInvalid'`);
         });
 
         it('returns generic response when accessing a property on a property with the value of `invalid`', async () => {
             await connect();
 
+            //the initial response
             plugin.pushResponse(
                 GenericV3Response.fromJson({
                     errorCode: ErrorCode.INVALID_ARGS,
@@ -758,9 +814,27 @@ describe('DebugProtocolClient', () => {
                 })
             );
 
+            //another response for the "go one level up to get type info" request
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: 1,
+                    variables: [{
+                        name: 'someObj',
+                        type: VariableType.AssociativeArray,
+                        isConst: false,
+                        isContainer: true,
+                        refCount: 1,
+                        value: undefined,
+                        childCount: 2,
+                        keyType: VariableType.String
+                    }]
+                })
+            );
+
             //getting prop from variable that was never defined
-            const response = await client.getVariables(['someObj', 'somePropWithValueSetToInvalid', 'notThere']);
-            expect(response.data.variables).not.to.exist;
+            await expectThrowsAsync(async () => {
+                await client.getVariables(['someObj', 'somePropWithValueSetToInvalid', 'notThere']);
+            }, `Cannot read 'somePropWithValueSetToInvalid' on type 'AssociativeArray'`);
         });
 
         it('honors protocol version when deciding to send forceCaseInsensitive variable information', async () => {
