@@ -472,16 +472,23 @@ export class DebugProtocolClient {
                 variables: [variable]
             });
 
-            const getParentVarType = async (index: number) => {
+            let parentVarType: VariableType;
+            let parentVarTypeText: string;
+            const loadParentVarInfo = async (index: number) => {
                 //fetch the variable one level back from the bad one to get its type
                 const parentVar = await this.getVariables(
                     variablePathEntries.slice(0, index),
                     stackFrameIndex,
                     threadIndex
                 );
-                return parentVar?.data?.variables?.[0]?.type;
+                parentVarType = parentVar?.data?.variables?.[0]?.type;
+                parentVarTypeText = parentVarType;
+                //convert `roSGNode; Node` to `roSGNode (Node)`
+                if (parentVarType === VariableType.SubtypedObject) {
+                    const chunks = parentVar?.data?.variables?.[0]?.value?.toString().split(';').map(x => x.trim());
+                    parentVarTypeText = `${chunks[0]} (${chunks[1]})`;
+                }
             };
-            let parentVarType: VariableType;
 
             if (!util.isNullish(response.data.errorData.missingKeyIndex)) {
                 const { missingKeyIndex } = response.data.errorData;
@@ -500,8 +507,7 @@ export class DebugProtocolClient {
                 }
 
                 if (variablePathEntries.length > 1 && missingKeyIndex > 0) {
-                    parentVarType = await getParentVarType(missingKeyIndex);
-
+                    await loadParentVarInfo(missingKeyIndex);
 
                     // prop at the end of Node or AA doesn't exist. Treat like `invalid`.
                     // ex: variablePathEntries = ['there', 'notThere']
@@ -517,7 +523,7 @@ export class DebugProtocolClient {
                 }
                 //prop in the middle is missing, tried reading a prop on it
                 // ex: variablePathEntries = ["there", "notThere", "definitelyNotThere"]
-                throw new Error(`Cannot read '${variablePathEntries[missingKeyIndex]}'${parentVarType ? ` on type '${parentVarType}'` : ''}`);
+                throw new Error(`Cannot read '${variablePathEntries[missingKeyIndex]}'${parentVarType ? ` on type '${parentVarTypeText}'` : ''}`);
             }
 
             if (!util.isNullish(response.data.errorData.invalidPathIndex)) {
@@ -531,11 +537,11 @@ export class DebugProtocolClient {
                 }
 
                 if (variablePathEntries.length > 1 && invalidPathIndex > 0) {
-                    parentVarType = await getParentVarType(invalidPathIndex);
+                    await loadParentVarInfo(invalidPathIndex);
 
                     //leftmost var is set to literal `invalid`, tried to read prop
                     if (invalidPathIndex === 0 && variablePathEntries.length > 1) {
-                        throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex + 1]}' on type '${parentVarType}'`);
+                        throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex + 1]}' on type '${parentVarTypeText}'`);
                     }
 
                     // prop at the end doesn't exist. Treat like `invalid`.
@@ -552,7 +558,7 @@ export class DebugProtocolClient {
                 }
                 //prop in the middle is missing, tried reading a prop on it
                 // ex: variablePathEntries = ["there", "notThere", "definitelyNotThere"]
-                throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex]}'${parentVarType ? ` on type '${parentVarType}'` : ''}`);
+                throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex]}'${parentVarType ? ` on type '${parentVarTypeText}'` : ''}`);
 
             }
         }
