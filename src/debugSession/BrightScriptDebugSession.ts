@@ -1164,7 +1164,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } else {
                     let value: string;
                     if (result.type === VariableType.Invalid) {
-                        value = 'Invalid';
+                        value = result.value ?? 'Invalid';
                     } else if (result.type === VariableType.Uninitialized) {
                         value = 'Uninitialized';
                     } else {

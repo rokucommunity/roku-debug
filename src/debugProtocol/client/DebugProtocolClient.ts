@@ -458,7 +458,7 @@ export class DebugProtocolClient {
             })
         );
 
-        //if there was an issue, build a "fake" variables response for several known situations
+        //if there was an issue, build a "fake" variables response for several known situationsm or throw nicer errors
         if (util.hasNonNullishProperty(response.data.errorData)) {
             let variable = {
                 value: null,
@@ -472,9 +472,20 @@ export class DebugProtocolClient {
                 variables: [variable]
             });
 
+            const getParentVarType = async () => {
+                //fetch the variable one level back to get its type
+                const parentVar = await this.getVariables(
+                    variablePathEntries.slice(0, -1),
+                    stackFrameIndex,
+                    threadIndex
+                );
+                return parentVar?.data?.variables?.[0]?.type;
+            };
+            let parentVarType: VariableType;
+
             if (!util.isNullish(response.data.errorData.missingKeyIndex)) {
                 const { missingKeyIndex } = response.data.errorData;
-                //leftmost var is uninitialized, tried to read it
+                //leftmost var is uninitialized, and we tried to read it
                 //ex: variablePathEntries = [`notThere`]
                 if (variablePathEntries.length === 1 && missingKeyIndex === 0) {
                     variable.name = variablePathEntries[0];
@@ -482,25 +493,29 @@ export class DebugProtocolClient {
                     return simulatedResponse;
                 }
 
-                //TODO improve this logic once we know the TYPE of the var at missingKeyIndex-1
-                // //leftmost var was uninitialized, and tried to read a prop on it
-                // //ex: variablePathEntries = ["notThere", "definitelyNotThere"]
-                // if (missingKeyIndex === 0 && variablePathEntries.length > 1) {
-                //     throw new Error(`Cannot read property '${variablePathEntries[missingKeyIndex + 1]}' of uninitialized`);
-                // }
+                if (variablePathEntries.length > 1) {
+                    parentVarType = await getParentVarType();
+                    //leftmost var was uninitialized, and tried to read a prop on it
+                    //ex: variablePathEntries = ["notThere", "definitelyNotThere"]
+                    if (missingKeyIndex === 0 && variablePathEntries.length > 1) {
+                        throw new Error(`Cannot read '${variablePathEntries[missingKeyIndex + 1]}' on type '${parentVarType}'`);
+                    }
 
-
-                // // prop at the end doesn't exist. Treat like `invalid`.
-                // // ex: variablePathEntries = ['there', 'notThere']
-                // if (missingKeyIndex === variablePathEntries.length - 1) {
-                //     variable.name = variablePathEntries[variablePathEntries.length - 1];
-                //     variable.type = VariableType.Invalid;
-                //     return simulatedResponse;
-                // }
-
+                    // prop at the end of Node or AA doesn't exist. Treat like `invalid`.
+                    // ex: variablePathEntries = ['there', 'notThere']
+                    if (
+                        missingKeyIndex === variablePathEntries.length - 1 &&
+                        [VariableType.AssociativeArray, VariableType.SubtypedObject].includes(parentVarType)
+                    ) {
+                        variable.name = variablePathEntries[variablePathEntries.length - 1];
+                        variable.type = VariableType.Invalid;
+                        variable.value = 'Invalid (not defined)';
+                        return simulatedResponse;
+                    }
+                }
                 //prop in the middle is missing, tried reading a prop on it
                 // ex: variablePathEntries = ["there", "notThere", "definitelyNotThere"]
-                throw new Error(`Cannot read property '${variablePathEntries[missingKeyIndex]}'`);
+                throw new Error(`Cannot read '${variablePathEntries[missingKeyIndex]}'${parentVarType ? ` on type '${parentVarType}'` : ''}`);
             }
 
             if (!util.isNullish(response.data.errorData.invalidPathIndex)) {
@@ -513,23 +528,30 @@ export class DebugProtocolClient {
                     return simulatedResponse;
                 }
 
-                //TODO improve this logic once we know the TYPE of the var at invalidPathIndex-1
-                // //leftmost var is set to literal `invalid`, tried to read prop
-                // if (invalidPathIndex === 0 && variablePathEntries.length > 1) {
-                //     throw new Error(`Cannot read property '${variablePathEntries[invalidPathIndex + 1]}' of invalid`);
-                // }
+                if (variablePathEntries.length > 1) {
+                    parentVarType = await getParentVarType();
 
-                // // prop at the end doesn't exist. Treat like `invalid`.
-                // // ex: variablePathEntries = ['there', 'notThere']
-                // if (invalidPathIndex === variablePathEntries.length - 1) {
-                //     variable.name = variablePathEntries[variablePathEntries.length - 1];
-                //     variable.type = VariableType.Invalid;
-                //     return simulatedResponse;
-                // }
+                    //leftmost var is set to literal `invalid`, tried to read prop
+                    if (invalidPathIndex === 0 && variablePathEntries.length > 1) {
+                        throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex + 1]}' on type '${parentVarType}'`);
+                    }
 
+                    // prop at the end doesn't exist. Treat like `invalid`.
+                    // ex: variablePathEntries = ['there', 'notThere']
+                    if (
+                        invalidPathIndex === variablePathEntries.length - 1 &&
+                        [VariableType.AssociativeArray, VariableType.SubtypedObject].includes(parentVarType)
+                    ) {
+                        variable.name = variablePathEntries[variablePathEntries.length - 1];
+                        variable.type = VariableType.Invalid;
+                        variable.value = 'Invalid (not defined)';
+                        return simulatedResponse;
+                    }
+                }
                 //prop in the middle is missing, tried reading a prop on it
                 // ex: variablePathEntries = ["there", "notThere", "definitelyNotThere"]
-                throw new Error(`Cannot read property '${variablePathEntries[invalidPathIndex]}'`);
+                throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex]}'${parentVarType ? ` on type '${parentVarType}'` : ''}`);
+
             }
         }
         return response;
