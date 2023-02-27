@@ -413,6 +413,15 @@ class Util {
         return value === undefined || value === null;
     }
 
+    /**
+     * Does the supplied value have at least one defined property with a non-nullish value?
+     */
+    public hasNonNullishProperty(value: Record<string, any>) {
+        return Object.values(
+            value ?? {}
+        ).some(x => !this.isNullish(x));
+    }
+
     private minPort = 1;
 
     public async getPort() {
