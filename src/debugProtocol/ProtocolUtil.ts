@@ -1,6 +1,7 @@
 import { SmartBuffer } from 'smart-buffer';
+import { util } from '../util';
 import type { Command, UpdateType } from './Constants';
-import { CommandCode, UpdateTypeCode } from './Constants';
+import { CommandCode, UpdateTypeCode, ErrorCode, ErrorFlags } from './Constants';
 import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events/ProtocolEvent';
 
 export class ProtocolUtil {
@@ -56,10 +57,24 @@ export class ProtocolUtil {
     /**
      * Load the common DebuggerResponse
      */
-    public loadCommonResponseFields(request: ProtocolResponse, smartBuffer: SmartBuffer) {
-        request.data.packetLength = smartBuffer.readUInt32LE(); // packet_length
-        request.data.requestId = smartBuffer.readUInt32LE(); // request_id
-        request.data.errorCode = smartBuffer.readUInt32LE(); // error_code
+    public loadCommonResponseFields(response: ProtocolResponse, smartBuffer: SmartBuffer) {
+        response.data.packetLength = smartBuffer.readUInt32LE(); // packet_length
+        response.data.requestId = smartBuffer.readUInt32LE(); // request_id
+        response.data.errorCode = smartBuffer.readUInt32LE(); // error_code
+
+        //if the error code is non-zero, and we have more bytes, then there will be additional data about the error
+        if (response.data.errorCode !== ErrorCode.OK && response.data.packetLength > smartBuffer.readOffset) {
+            response.data.errorData = {};
+            const errorFlags = smartBuffer.readUInt32LE(); // error_flags
+            // eslint-disable-next-line no-bitwise
+            if (errorFlags & ErrorFlags.INVALID_VALUE_IN_PATH) {
+                response.data.errorData.invalidPathIndex = smartBuffer.readUInt32LE(); // invalid_path_index
+            }
+            // eslint-disable-next-line no-bitwise
+            if (errorFlags & ErrorFlags.MISSING_KEY_IN_PATH) {
+                response.data.errorData.missingKeyIndex = smartBuffer.readUInt32LE(); // missing_key_index
+            }
+        }
     }
 
     public loadCommonUpdateFields(update: ProtocolUpdate, smartBuffer: SmartBuffer, updateType: UpdateType) {
@@ -94,6 +109,31 @@ export class ProtocolUtil {
     }
 
     public insertCommonResponseFields(response: ProtocolResponse, smartBuffer: SmartBuffer) {
+        //insert error data
+        const flags = (
+            // eslint-disable-next-line no-bitwise
+            0 |
+            (util.isNullish(response?.data?.errorData?.invalidPathIndex) ? 0 : ErrorFlags.INVALID_VALUE_IN_PATH) |
+            (util.isNullish(response?.data?.errorData?.missingKeyIndex) ? 0 : ErrorFlags.MISSING_KEY_IN_PATH)
+        );
+        if (
+            response.data.errorCode !== ErrorCode.OK &&
+            //there's some error data
+            Object.values(response.data.errorData ?? {}).some(x => !util.isNullish(x))
+        ) {
+            //do these in reverse order since we're writing to the start of the buffer
+
+            if (!util.isNullish(response.data.errorData.missingKeyIndex)) {
+                smartBuffer.insertUInt32LE(response.data.errorData.missingKeyIndex, 0);
+            }
+            //write error data
+            if (!util.isNullish(response.data.errorData.invalidPathIndex)) {
+                smartBuffer.insertUInt32LE(response.data.errorData.invalidPathIndex, 0);
+            }
+
+            //write flags
+            smartBuffer.insertUInt32LE(flags, 0);
+        }
         smartBuffer.insertUInt32LE(response.data.errorCode, 0); // error_code
         smartBuffer.insertUInt32LE(response.data.requestId, 0); // request_id
         smartBuffer.insertUInt32LE(smartBuffer.writeOffset + 4, 0); // packet_length

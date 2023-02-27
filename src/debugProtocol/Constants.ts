@@ -116,6 +116,11 @@ export enum ErrorCode {
     INVALID_ARGS = 5
 }
 
+export enum ErrorFlags {
+    INVALID_VALUE_IN_PATH = 0x0001,
+    MISSING_KEY_IN_PATH = 0x0002
+}
+
 export enum StopReason {
     /**
      * Uninitialized stopReason.

@@ -57,4 +57,38 @@ describe('GenericV3Response', () => {
             requestId: 3 // 4 bytes
         });
     });
+
+    it('includes error data', () => {
+        const response = GenericV3Response.fromJson({
+            requestId: 3,
+            errorCode: ErrorCode.INVALID_ARGS,
+            errorData: {
+                invalidPathIndex: 1,
+                missingKeyIndex: 2
+            }
+        });
+
+        expect(response.data).to.eql({
+            packetLength: undefined,
+            errorCode: ErrorCode.INVALID_ARGS,
+            requestId: 3,
+            errorData: {
+                invalidPathIndex: 1,
+                missingKeyIndex: 2
+            }
+        });
+
+        expect(
+            GenericV3Response.fromBuffer(response.toBuffer()).data
+        ).to.eql({
+            packetLength: 24, // 4 bytes
+            errorCode: ErrorCode.INVALID_ARGS, // 4 bytes
+            requestId: 3, // 4 bytes
+            //error_flags // 4 bytes
+            errorData: {
+                invalidPathIndex: 1, // 4 bytes
+                missingKeyIndex: 2 // 4 bytes
+            }
+        });
+    });
 });

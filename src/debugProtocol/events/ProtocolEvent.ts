@@ -52,6 +52,23 @@ export interface ProtocolResponseData {
     packetLength: number;
     requestId: number;
     errorCode: number;
+    /**
+     * Data included whenever errorCode > 0.
+     * @since OS 11.5
+     */
+    errorData?: ProtocolResponseErrorData;
+}
+export interface ProtocolResponseErrorData {
+    /**
+     * The index of the element in the requested path that exists, but has invalid or unknown value.
+     * (applies to `VariablesResponse`)
+     */
+    invalidPathIndex?: number;
+    /**
+     * The index of the element in path that was not found
+     * (applies to `VariablesResponse`)
+     */
+    missingKeyIndex?: number;
 }
 export type ProtocolResponse = ProtocolEvent<ProtocolResponseData>;
 

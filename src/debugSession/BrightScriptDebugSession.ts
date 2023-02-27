@@ -7,6 +7,7 @@ import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     DebugSession as BaseDebugSession,
+    ErrorDestination,
     Handles,
     InitializedEvent,
     InvalidatedEvent,
@@ -944,7 +945,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let varIndex = this.getNextVarIndex(args.frameId);
                     let arrayVarName = this.tempVarPrefix + 'eval';
                     if (varIndex === 0) {
-                        await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
+                        const response = await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
+                        console.log(response);
                     }
                     let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
                     args.expression = `${arrayVarName}[${varIndex}]`;
@@ -962,8 +964,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     } else {
                         let result = await this.rokuAdapter.getVariable(args.expression, args.frameId);
                         if (!result) {
-                            throw new Error(`bad variable request "${args.expression}"`);
+                            throw new Error('Error: unable to evaluate expression');
                         }
+
                         v = this.getVariableFromResult(result, args.frameId);
                         //TODO - testing something, remove later
                         // eslint-disable-next-line camelcase
@@ -1008,8 +1011,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         } catch (error) {
             this.logger.error('Error during variables request', error);
+            response.success = false;
+            response.message = error?.message ?? error;
         }
-        //
         try {
             this.sendResponse(response);
         } catch { }
@@ -1158,7 +1162,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         v = new Variable(result.name, result.type, refId, 0, result.elementCount);
                     }
                 } else {
-                    v = new Variable(result.name, `${result.value}`);
+                    let value: string;
+                    if (result.type === VariableType.Invalid) {
+                        value = 'Invalid';
+                    } else if (result.type === VariableType.Uninitialized) {
+                        value = 'Uninitialized';
+                    } else {
+                        value = `${result.value}`;
+                    }
+                    v = new Variable(result.name, value);
                 }
                 this.variables[refId] = v;
             } else {

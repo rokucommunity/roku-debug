@@ -9,7 +9,8 @@ import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
 import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
-import { VariablesResponse } from '../events/responses/VariablesResponse';
+import type { Variable } from '../events/responses/VariablesResponse';
+import { VariablesResponse, VariableType } from '../events/responses/VariablesResponse';
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { DebugProtocolServerTestPlugin } from '../DebugProtocolServerTestPlugin.spec';
 import { ContinueRequest } from '../events/requests/ContinueRequest';
@@ -636,6 +637,130 @@ describe('DebugProtocolClient', () => {
 
             await client.getVariables();
             expect(plugin.latestRequest).not.instanceof(VariablesRequest);
+        });
+
+        it('returns `uninitialized` for never-defined leftmost variable', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        missingKeyIndex: 0
+                    }
+                })
+            );
+
+            //variable was never defined
+            const response = await client.getVariables(['notThere']);
+            expect(response.data.variables[0]).to.eql({
+                name: 'notThere',
+                type: VariableType.Uninitialized,
+                value: null,
+                childCount: 0,
+                isConst: false,
+                isContainer: false,
+                refCount: 0
+            } as Variable);
+        });
+
+        it('returns generic response when accessing a property on never-defined variable', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        missingKeyIndex: 0
+                    }
+                })
+            );
+
+            //getting prop from variable that was never defined
+            const response = await client.getVariables(['notThere', 'definitelyNotThere']);
+            expect(response.data.variables).not.to.exist;
+        });
+
+        it('returns `invalid` when accessing a property on a defined AA', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        missingKeyIndex: 1
+                    }
+                })
+            );
+
+            //getting prop from variable that was never defined
+            const response = await client.getVariables(['there', 'notThere']);
+            expect(response.data.variables[0]).to.eql({
+                name: 'notThere',
+                type: VariableType.Invalid,
+                value: null,
+                childCount: 0,
+                isConst: false,
+                isContainer: false,
+                refCount: 0
+            } as Variable);
+        });
+
+        it('returns generic response when accessing a property on a property that does not exist', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        missingKeyIndex: 1
+                    }
+                })
+            );
+
+            //getting prop from variable that was never defined
+            const response = await client.getVariables(['there', 'notThere', 'definitelyNotThere']);
+            expect(response.data.variables).not.to.exist;
+        });
+
+        it('returns generic response when accessing a property on a variable with the value of `invalid`', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        invalidPathIndex: 0
+                    }
+                })
+            );
+
+            //getting prop from variable that was never defined
+            const response = await client.getVariables(['setToInvalid', 'notThere']);
+            expect(response.data.variables).not.to.exist;
+        });
+
+        it('returns generic response when accessing a property on a property with the value of `invalid`', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        invalidPathIndex: 1
+                    }
+                })
+            );
+
+            //getting prop from variable that was never defined
+            const response = await client.getVariables(['someObj', 'somePropWithValueSetToInvalid', 'notThere']);
+            expect(response.data.variables).not.to.exist;
         });
 
         it('honors protocol version when deciding to send forceCaseInsensitive variable information', async () => {

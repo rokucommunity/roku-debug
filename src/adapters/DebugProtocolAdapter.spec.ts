@@ -3,15 +3,13 @@ import { expect } from 'chai';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolAdapter, EvaluateContainer, KeyType } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
-import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
-// eslint-disable-next-line @typescript-eslint/no-duplicate-imports
-import { VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
+import { VariableType, VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
 import { DebugProtocolServer } from '../debugProtocol/server/DebugProtocolServer';
 import { util } from '../util';
 import { standardizePath as s } from 'brighterscript';
 import { DebugProtocolServerTestPlugin } from '../debugProtocol/DebugProtocolServerTestPlugin.spec';
 import { AllThreadsStoppedUpdate } from '../debugProtocol/events/updates/AllThreadsStoppedUpdate';
-import { StopReason } from '../debugProtocol/Constants';
+import { ErrorCode, StopReason } from '../debugProtocol/Constants';
 import { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
 import { StackTraceV3Response } from '../debugProtocol/events/responses/StackTraceV3Response';
 import { AddBreakpointsResponse } from '../debugProtocol/events/responses/AddBreakpointsResponse';
@@ -22,7 +20,7 @@ import { Project, ProjectManager } from '../managers/ProjectManager';
 import { AddBreakpointsRequest } from '../debugProtocol/events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../debugProtocol/events/requests/AddConditionalBreakpointsRequest';
 import { AddConditionalBreakpointsResponse } from '../debugProtocol/events/responses/AddConditionalBreakpointsResponse';
-import { HighLevelType } from '../interfaces';
+import { GenericV3Response } from '../debugProtocol/events/responses/GenericV3Response';
 const sinon = createSandbox();
 
 let cwd = s`${process.cwd()}`;

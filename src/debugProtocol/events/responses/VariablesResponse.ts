@@ -3,12 +3,14 @@ import { SmartBuffer } from 'smart-buffer';
 import { util } from '../../../util';
 import { ErrorCode } from '../../Constants';
 import { protocolUtil } from '../../ProtocolUtil';
+import type { ProtocolResponse, ProtocolResponseData, ProtocolResponseErrorData } from '../ProtocolEvent';
 
-export class VariablesResponse {
+export class VariablesResponse implements ProtocolResponse {
 
     public static fromJson(data: {
         requestId: number;
         variables: Variable[];
+        errorData?: ProtocolResponseErrorData;
     }) {
         const response = new VariablesResponse();
         protocolUtil.loadJson(response, data);
@@ -271,14 +273,10 @@ export class VariablesResponse {
 
     public readOffset = 0;
 
-    public data = {
-        variables: undefined as Variable[],
-
-        // response fields
-        packetLength: undefined as number,
-        requestId: undefined as number,
-        errorCode: ErrorCode.OK
-    };
+    public data = {} as VariablesResponseData;
+}
+export interface VariablesResponseData extends ProtocolResponseData {
+    variables: Variable[];
 }
 
 export enum VariableFlags {

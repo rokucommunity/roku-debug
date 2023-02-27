@@ -537,7 +537,7 @@ export class DebugProtocolAdapter {
     public async getVariable(expression: string, frameId: number) {
         const response = await this.getVariablesResponse(expression, frameId);
 
-        if (response?.data?.errorCode === ErrorCode.OK && Array.isArray(response?.data?.variables)) {
+        if (Array.isArray(response?.data?.variables)) {
             const container = this.createEvaluateContainer(
                 response.data.variables[0],
                 //the name of the top container is the expression itself
@@ -585,7 +585,7 @@ export class DebugProtocolAdapter {
      */
     private createEvaluateContainer(variable: Variable, name: string, parentEvaluateName: string) {
         let value;
-        let variableType = variable.type as string;
+        let variableType = variable.type;
         if (variable.value === null) {
             value = 'roInvalid';
         } else if (variableType === 'String') {
@@ -597,8 +597,8 @@ export class DebugProtocolAdapter {
         if (variableType === VariableType.SubtypedObject) {
             //subtyped objects can only have string values
             let parts = (variable.value as string).split('; ');
-            variableType = `${parts[0]} (${parts[1]})`;
-        } else if (variableType === 'AA') {
+            (variableType as string) = `${parts[0]} (${parts[1]})`;
+        } else if (variableType === VariableType.AssociativeArray) {
             variableType = VariableType.AssociativeArray;
         }
 

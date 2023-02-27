@@ -7,7 +7,7 @@ import { ExecuteV3Response } from '../events/responses/ExecuteV3Response';
 import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResponse';
 import { AddBreakpointsResponse } from '../events/responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from '../events/responses/RemoveBreakpointsResponse';
-import { util } from '../../util';
+import { defer, util } from '../../util';
 import { BreakpointErrorUpdate } from '../events/updates/BreakpointErrorUpdate';
 import { ContinueRequest } from '../events/requests/ContinueRequest';
 import { StopRequest } from '../events/requests/StopRequest';
@@ -31,7 +31,8 @@ import { CompileErrorUpdate } from '../events/updates/CompileErrorUpdate';
 import { GenericResponse } from '../events/responses/GenericResponse';
 import type { StackTraceResponse } from '../events/responses/StackTraceResponse';
 import { ThreadsResponse } from '../events/responses/ThreadsResponse';
-import { VariablesResponse } from '../events/responses/VariablesResponse';
+import type { Variable } from '../events/responses/VariablesResponse';
+import { VariablesResponse, VariablesResponseData, VariableType } from '../events/responses/VariablesResponse';
 import { IOPortOpenedUpdate, isIOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
 import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
 import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
@@ -456,6 +457,81 @@ export class DebugProtocolClient {
                 enableForceCaseInsensitivity: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
             })
         );
+
+        //if there was an issue, build a "fake" variables response for several known situations
+        if (util.hasNonNullishProperty(response.data.errorData)) {
+            let variable = {
+                value: null,
+                isContainer: false,
+                isConst: false,
+                refCount: 0,
+                childCount: 0
+            } as Variable;
+            const simulatedResponse = VariablesResponse.fromJson({
+                ...response.data,
+                variables: [variable]
+            });
+
+            if (!util.isNullish(response.data.errorData.missingKeyIndex)) {
+                const { missingKeyIndex } = response.data.errorData;
+                //leftmost var is uninitialized, tried to read it
+                //ex: variablePathEntries = [`notThere`]
+                if (variablePathEntries.length === 1 && missingKeyIndex === 0) {
+                    variable.name = variablePathEntries[0];
+                    variable.type = VariableType.Uninitialized;
+                    return simulatedResponse;
+                }
+
+                //TODO improve this logic once we know the TYPE of the var at missingKeyIndex-1
+                // //leftmost var was uninitialized, and tried to read a prop on it
+                // //ex: variablePathEntries = ["notThere", "definitelyNotThere"]
+                // if (missingKeyIndex === 0 && variablePathEntries.length > 1) {
+                //     throw new Error(`Cannot read property '${variablePathEntries[missingKeyIndex + 1]}' of uninitialized`);
+                // }
+
+
+                // // prop at the end doesn't exist. Treat like `invalid`.
+                // // ex: variablePathEntries = ['there', 'notThere']
+                // if (missingKeyIndex === variablePathEntries.length - 1) {
+                //     variable.name = variablePathEntries[variablePathEntries.length - 1];
+                //     variable.type = VariableType.Invalid;
+                //     return simulatedResponse;
+                // }
+
+                //prop in the middle is missing, tried reading a prop on it
+                // ex: variablePathEntries = ["there", "notThere", "definitelyNotThere"]
+                throw new Error(`Cannot read property '${variablePathEntries[missingKeyIndex]}'`);
+            }
+
+            if (!util.isNullish(response.data.errorData.invalidPathIndex)) {
+                const { invalidPathIndex } = response.data.errorData;
+
+                //leftmost var is literal `invalid`, tried to read it
+                if (variablePathEntries.length === 1 && invalidPathIndex === 0) {
+                    variable.name = variablePathEntries[variablePathEntries.length - 1];
+                    variable.type = VariableType.Invalid;
+                    return simulatedResponse;
+                }
+
+                //TODO improve this logic once we know the TYPE of the var at invalidPathIndex-1
+                // //leftmost var is set to literal `invalid`, tried to read prop
+                // if (invalidPathIndex === 0 && variablePathEntries.length > 1) {
+                //     throw new Error(`Cannot read property '${variablePathEntries[invalidPathIndex + 1]}' of invalid`);
+                // }
+
+                // // prop at the end doesn't exist. Treat like `invalid`.
+                // // ex: variablePathEntries = ['there', 'notThere']
+                // if (invalidPathIndex === variablePathEntries.length - 1) {
+                //     variable.name = variablePathEntries[variablePathEntries.length - 1];
+                //     variable.type = VariableType.Invalid;
+                //     return simulatedResponse;
+                // }
+
+                //prop in the middle is missing, tried reading a prop on it
+                // ex: variablePathEntries = ["there", "notThere", "definitelyNotThere"]
+                throw new Error(`Cannot read property '${variablePathEntries[invalidPathIndex]}'`);
+            }
+        }
         return response;
     }
 

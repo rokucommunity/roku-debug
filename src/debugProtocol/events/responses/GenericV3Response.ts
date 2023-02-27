@@ -1,11 +1,13 @@
 import { SmartBuffer } from 'smart-buffer';
 import type { ErrorCode } from '../../Constants';
 import { protocolUtil } from '../../ProtocolUtil';
+import type { ProtocolResponse, ProtocolResponseData, ProtocolResponseErrorData } from '../ProtocolEvent';
 
-export class GenericV3Response {
+export class GenericV3Response implements ProtocolResponse {
     public static fromJson(data: {
         requestId: number;
         errorCode: ErrorCode;
+        errorData?: ProtocolResponseErrorData;
     }) {
         const response = new GenericV3Response();
         protocolUtil.loadJson(response, data);
@@ -15,9 +17,7 @@ export class GenericV3Response {
     public static fromBuffer(buffer: Buffer) {
         const response = new GenericV3Response();
         protocolUtil.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
-            response.data.packetLength = smartBuffer.readUInt32LE(); // packet_length
-            response.data.requestId = smartBuffer.readUInt32LE(); // request_id
-            response.data.errorCode = smartBuffer.readUInt32LE(); // error_code
+            protocolUtil.loadCommonResponseFields(response, smartBuffer);
 
             //this is a generic response, so we don't actually know what the rest of the payload is.
             //so just consume the rest of the payload as throwaway data
@@ -40,5 +40,5 @@ export class GenericV3Response {
         packetLength: undefined as number,
         requestId: Number.MAX_SAFE_INTEGER,
         errorCode: undefined as ErrorCode
-    };
+    } as ProtocolResponseData;
 }
