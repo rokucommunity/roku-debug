@@ -472,10 +472,10 @@ export class DebugProtocolClient {
                 variables: [variable]
             });
 
-            const getParentVarType = async () => {
-                //fetch the variable one level back to get its type
+            const getParentVarType = async (index: number) => {
+                //fetch the variable one level back from the bad one to get its type
                 const parentVar = await this.getVariables(
-                    variablePathEntries.slice(0, -1),
+                    variablePathEntries.slice(0, index),
                     stackFrameIndex,
                     threadIndex
                 );
@@ -500,7 +500,7 @@ export class DebugProtocolClient {
                 }
 
                 if (variablePathEntries.length > 1 && missingKeyIndex > 0) {
-                    parentVarType = await getParentVarType();
+                    parentVarType = await getParentVarType(missingKeyIndex);
 
 
                     // prop at the end of Node or AA doesn't exist. Treat like `invalid`.
@@ -531,7 +531,7 @@ export class DebugProtocolClient {
                 }
 
                 if (variablePathEntries.length > 1 && invalidPathIndex > 0) {
-                    parentVarType = await getParentVarType();
+                    parentVarType = await getParentVarType(invalidPathIndex);
 
                     //leftmost var is set to literal `invalid`, tried to read prop
                     if (invalidPathIndex === 0 && variablePathEntries.length > 1) {

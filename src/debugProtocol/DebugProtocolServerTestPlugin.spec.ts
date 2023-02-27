@@ -52,12 +52,12 @@ export class DebugProtocolServerTestPlugin implements ProtocolServerPlugin {
     /**
      * Get the request at the specified index. Negative indexes count back from the last item in the array
      */
-    public getRequest(index: number) {
+    public getRequest<T extends ProtocolRequest>(index: number) {
         if (index < 0) {
             //add the negative index to the length to "subtract" from the end
             index = this.requests.length + index;
         }
-        return this.requests[index];
+        return this.requests[index] as T;
     }
 
     /**

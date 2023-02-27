@@ -773,12 +773,49 @@ describe('DebugProtocolClient', () => {
                 })
             );
 
-            //getting prop from variable that was never defined
-
             //getting prop from variable that was assigned to invalid (i.e. `setToInvalid = invalid`)
             await expectThrowsAsync(async () => {
                 await client.getVariables(['there', 'notThere', 'definitelyNotThere']);
             }, `Cannot read 'notThere' on type 'Invalid'`);
+
+            //make sure we requested the correct variable
+            expect(plugin.getRequest<VariablesRequest>(-1).data.variablePathEntries.map(x => x.name)).to.eql(['there']);
+        });
+
+        it('returns generic response when accessing a property on a property that does not exist in the middle', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        missingKeyIndex: 1
+                    }
+                })
+            );
+
+            //another response for the "go one level up to get type info" request
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: 1,
+                    variables: [{
+                        name: 'notThere',
+                        type: VariableType.Invalid,
+                        isConst: false,
+                        isContainer: false,
+                        refCount: 1,
+                        value: undefined
+                    }]
+                })
+            );
+            //getting prop from variable that was assigned to invalid (i.e. `setToInvalid = invalid`)
+            await expectThrowsAsync(async () => {
+                await client.getVariables(['there', 'notThere', 'definitelyNotThere', 'reallyNotThere']);
+            }, `Cannot read 'notThere' on type 'Invalid'`);
+
+            //make sure we requested the correct variable
+            expect(plugin.getRequest<VariablesRequest>(-1).data.variablePathEntries.map(x => x.name)).to.eql(['there']);
         });
 
         it('returns generic response when accessing a property on a variable with the value of `invalid`', async () => {
