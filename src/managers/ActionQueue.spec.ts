@@ -1,6 +1,6 @@
-import { expect } from "chai";
-import { expectThrowsAsync } from "../testHelpers.spec";
-import { ActionQueue } from "./ActionQueue";
+import { expect } from 'chai';
+import { expectThrowsAsync } from '../testHelpers.spec';
+import { ActionQueue } from './ActionQueue';
 
 describe('ActionQueue', () => {
     it('rejects after maxTries is reached', async () => {
