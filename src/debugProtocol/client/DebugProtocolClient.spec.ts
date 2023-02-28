@@ -854,7 +854,7 @@ describe('DebugProtocolClient', () => {
             expect(plugin.getRequest<VariablesRequest>(-1).data.variablePathEntries.map(x => x.name)).to.eql(['there']);
         });
 
-        it('returns generic response when accessing a property on a variable with the value of `invalid`', async () => {
+        it('returns faked variable response with invalid', async () => {
             await connect();
 
             plugin.pushResponse(
@@ -868,9 +868,98 @@ describe('DebugProtocolClient', () => {
             );
 
             //getting prop from variable that was assigned to invalid (i.e. `setToInvalid = invalid`)
+            const response = await client.getVariables(['notThere']);
+            expect(response?.data?.variables?.[0]?.type).to.eql(VariableType.Invalid);
+        });
+
+        it('throws when reading prop on invalid', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        invalidPathIndex: 1
+                    }
+                })
+            );
+
+            //another response for the "go one level up to get type info" request
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: 1,
+                    variables: [{
+                        name: 'there',
+                        type: VariableType.Invalid,
+                        isConst: false,
+                        isContainer: false,
+                        refCount: 1,
+                        value: 'Invalid'
+                    }]
+                })
+            );
+            //getting prop from variable that was assigned to invalid (i.e. `setToInvalid = invalid`)
+            await expectThrowsAsync(async () => {
+                await client.getVariables(['there', 'setToInvalid', 'notThere']);
+            }, `Cannot read 'notThere' on type 'Invalid'`);
+
+            //make sure we requested the correct variable
+            expect(plugin.getRequest<VariablesRequest>(-1).data.variablePathEntries.map(x => x.name)).to.eql(['there', 'setToInvalid']);
+        });
+
+        it('returns invalid when left-hand item is an AA but right-hand item is missing', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        invalidPathIndex: 1
+                    }
+                })
+            );
+
+            //another response for the "go one level up to get type info" request
+            plugin.pushResponse(
+                VariablesResponse.fromJson({
+                    requestId: 1,
+                    variables: [{
+                        name: 'there',
+                        type: VariableType.Invalid,
+                        isConst: false,
+                        isContainer: false,
+                        refCount: 1,
+                        value: 'Invalid'
+                    }]
+                })
+            );
+            //getting prop from variable that was assigned to invalid (i.e. `setToInvalid = invalid`)
+            await expectThrowsAsync(async () => {
+                await client.getVariables(['there', 'setToInvalid', 'notThere']);
+            }, `Cannot read 'notThere' on type 'Invalid'`);
+
+            //make sure we requested the correct variable
+            expect(plugin.getRequest<VariablesRequest>(-1).data.variablePathEntries.map(x => x.name)).to.eql(['there', 'setToInvalid']);
+        });
+
+        it('returns generic response when accessing a property on a variable with the value of `invalid`', async () => {
+            await connect();
+
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    requestId: 1,
+                    errorData: {
+                        invalidPathIndex: 0
+                    }
+                })
+            );
+
             await expectThrowsAsync(async () => {
                 await client.getVariables(['setToInvalid', 'notThere']);
-            }, `Cannot read 'setToInvalid'`);
+            }, `Cannot read 'notThere'`);
         });
 
         it('returns generic response when accessing a property on a property with the value of `invalid`', async () => {
@@ -892,14 +981,12 @@ describe('DebugProtocolClient', () => {
                 VariablesResponse.fromJson({
                     requestId: 1,
                     variables: [{
-                        name: 'someObj',
-                        type: VariableType.AssociativeArray,
+                        name: 'somePropWithValueSetToInvalid',
+                        type: VariableType.Invalid,
                         isConst: false,
-                        isContainer: true,
+                        isContainer: false,
                         refCount: 1,
-                        value: undefined,
-                        childCount: 2,
-                        keyType: VariableType.String
+                        value: undefined
                     }]
                 })
             );
@@ -907,7 +994,7 @@ describe('DebugProtocolClient', () => {
             //getting prop from variable that was never defined
             await expectThrowsAsync(async () => {
                 await client.getVariables(['someObj', 'somePropWithValueSetToInvalid', 'notThere']);
-            }, `Cannot read 'somePropWithValueSetToInvalid' on type 'AssociativeArray'`);
+            }, `Cannot read 'notThere' on type 'Invalid'`);
         });
 
         it('honors protocol version when deciding to send forceCaseInsensitive variable information', async () => {

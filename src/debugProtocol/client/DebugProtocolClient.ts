@@ -526,6 +526,7 @@ export class DebugProtocolClient {
                 throw new Error(`Cannot read '${variablePathEntries[missingKeyIndex]}'${parentVarType ? ` on type '${parentVarTypeText}'` : ''}`);
             }
 
+            //this flow is when the item at the index exists, but is set to literally `invalid` or is an unknown value
             if (!util.isNullish(response.data.errorData.invalidPathIndex)) {
                 const { invalidPathIndex } = response.data.errorData;
 
@@ -536,8 +537,13 @@ export class DebugProtocolClient {
                     return simulatedResponse;
                 }
 
-                if (variablePathEntries.length > 1 && invalidPathIndex > 0) {
-                    await loadParentVarInfo(invalidPathIndex);
+                if (
+                    variablePathEntries.length > 1 &&
+                    invalidPathIndex > 0 &&
+                    //only do this logic if the invalid item is not the last item
+                    invalidPathIndex < variablePathEntries.length - 1
+                ) {
+                    await loadParentVarInfo(invalidPathIndex + 1);
 
                     //leftmost var is set to literal `invalid`, tried to read prop
                     if (invalidPathIndex === 0 && variablePathEntries.length > 1) {
@@ -556,10 +562,10 @@ export class DebugProtocolClient {
                         return simulatedResponse;
                     }
                 }
+                console.log('Bronley');
                 //prop in the middle is missing, tried reading a prop on it
-                // ex: variablePathEntries = ["there", "notThere", "definitelyNotThere"]
-                throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex]}'${parentVarType ? ` on type '${parentVarTypeText}'` : ''}`);
-
+                // ex: variablePathEntries = ["there", "thereButSetToInvalid", "definitelyNotThere"]
+                throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex + 1]}'${parentVarType ? ` on type '${parentVarTypeText}'` : ''}`);
             }
         }
         return response;
