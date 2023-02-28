@@ -661,6 +661,9 @@ export class DebugProtocolClient {
     }
 
     private async processRemoveBreakpointsRequest(request: RemoveBreakpointsRequest) {
+        //throw out null breakpoints
+        request.data.breakpointIds = request.data.breakpointIds?.filter(x => typeof x === 'number') ?? [];
+
         if (request.data.breakpointIds?.length > 0) {
             return this.sendRequest<RemoveBreakpointsResponse>(request);
         }

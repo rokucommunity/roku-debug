@@ -754,7 +754,7 @@ export class DebugProtocolAdapter {
     public async syncBreakpoints() {
         //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
         //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
-        if (!this.socketDebugger.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
+        if (!this.socketDebugger?.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
             return;
         }
 
@@ -765,11 +765,12 @@ export class DebugProtocolAdapter {
         if (diff.removed.length > 0) {
             await this.actionQueue.run(async () => {
                 const response = await this.socketDebugger.removeBreakpoints(
-                    diff.removed.map(x => x.deviceId)
+                    //TODO handle retrying to remove unverified breakpoints that might get verified in the future AFTER we've removed them (that's hard...)
+                    diff.removed.map(x => x.deviceId).filter(x => typeof x === 'number')
                 );
                 //return true to mark this action as complete, or false to retry the task again in the future
                 return response.success && response.data.errorCode === ErrorCode.OK;
-            });
+            }, 10);
         }
 
         if (diff.added.length > 0) {

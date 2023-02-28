@@ -20,7 +20,7 @@ import { Project, ProjectManager } from '../managers/ProjectManager';
 import { AddBreakpointsRequest } from '../debugProtocol/events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../debugProtocol/events/requests/AddConditionalBreakpointsRequest';
 import { AddConditionalBreakpointsResponse } from '../debugProtocol/events/responses/AddConditionalBreakpointsResponse';
-import { GenericV3Response } from '../debugProtocol/events/responses/GenericV3Response';
+import { RemoveBreakpointsResponse } from '../debugProtocol/events/responses/RemoveBreakpointsResponse';
 const sinon = createSandbox();
 
 let cwd = s`${process.cwd()}`;
@@ -128,6 +128,31 @@ describe('DebugProtocolAdapter', () => {
     });
 
     describe('syncBreakpoints', () => {
+
+        it('excludes non-numeric breakpoint IDs', async () => {
+            await initialize();
+
+            const breakpoint = adapter['breakpointManager'].setBreakpoint(`${rootDir}/source/main.brs`, {
+                line: 12
+            });
+            plugin.pushResponse(
+                AddBreakpointsResponse.fromJson({
+                    breakpoints: [{ id: 10 } as any],
+                    requestId: 1
+                })
+            );
+            //sync the breakpoints to mark this one as "sent to device"
+            await adapter.syncBreakpoints();
+
+            //replace the breakpoints before they were verified
+            adapter['breakpointManager'].replaceBreakpoints(`${rootDir}/source/main.brs`, []);
+            breakpoint.deviceId = undefined;
+
+            //sync the breakpoints again. Since the breakpoint doesn't have an ID, we shouldn't send any request
+            await adapter.syncBreakpoints();
+
+            expect(plugin.latestRequest?.constructor.name).not.to.eql(RemoveBreakpointsResponse.name);
+        });
 
         it('skips sending AddBreakpoints and AddConditionalBreakpoints command when there are no breakpoints', async () => {
             await initialize();
