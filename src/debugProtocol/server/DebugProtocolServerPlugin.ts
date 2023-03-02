@@ -1,13 +1,14 @@
 import type { DebugProtocolServer } from './DebugProtocolServer';
 import type { Socket } from 'net';
 import type { ProtocolRequest, ProtocolResponse } from '../events/ProtocolEvent';
+import { DebugProtocolServerTestPlugin } from '../DebugProtocolServerTestPlugin.spec';
 
 export interface ProtocolServerPlugin {
     onServerStart?: Handler<OnServerStartEvent>;
     onClientConnected?: Handler<OnClientConnectedEvent>;
 
     provideRequest?: Handler<ProvideRequestEvent>;
-    provideResponse: Handler<ProvideResponseEvent>;
+    provideResponse?: Handler<ProvideResponseEvent>;
 
     beforeSendResponse?: Handler<BeforeSendResponseEvent>;
     afterSendResponse?: Handler<AfterSendResponseEvent>;
@@ -46,4 +47,3 @@ export interface BeforeSendResponseEvent {
 export type AfterSendResponseEvent = BeforeSendResponseEvent;
 
 export type Handler<T, R = void> = (event: T) => R;
-

@@ -1,11 +1,11 @@
 
 import { expect } from 'chai';
-import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
-import { DebugProtocolAdapter, EvaluateContainer, KeyType } from './DebugProtocolAdapter';
+import type { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
+import { DebugProtocolAdapter, KeyType } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import { VariableType, VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
 import { DebugProtocolServer } from '../debugProtocol/server/DebugProtocolServer';
-import { util } from '../util';
+import { defer, util } from '../util';
 import { standardizePath as s } from 'brighterscript';
 import { DebugProtocolServerTestPlugin } from '../debugProtocol/DebugProtocolServerTestPlugin.spec';
 import { AllThreadsStoppedUpdate } from '../debugProtocol/events/updates/AllThreadsStoppedUpdate';
@@ -21,18 +21,26 @@ import { AddBreakpointsRequest } from '../debugProtocol/events/requests/AddBreak
 import { AddConditionalBreakpointsRequest } from '../debugProtocol/events/requests/AddConditionalBreakpointsRequest';
 import { AddConditionalBreakpointsResponse } from '../debugProtocol/events/responses/AddConditionalBreakpointsResponse';
 import { RemoveBreakpointsResponse } from '../debugProtocol/events/responses/RemoveBreakpointsResponse';
+import { BreakpointVerifiedUpdate } from '../debugProtocol/events/updates/BreakpointVerifiedUpdate';
+import { RemoveBreakpointsRequest } from '../debugProtocol/events/requests/RemoveBreakpointsRequest';
+import type { AfterSendRequestEvent } from '../debugProtocol/client/DebugProtocolClientPlugin';
 const sinon = createSandbox();
 
 let cwd = s`${process.cwd()}`;
 let tmpDir = s`${cwd}/.tmp`;
 let rootDir = s`${tmpDir}/rootDir`;
 const outDir = s`${tmpDir}/out`;
+/**
+ * A path to main.brs
+ */
+const srcPath = `${rootDir}/source/main.brs`;
 
 describe('DebugProtocolAdapter', () => {
     let adapter: DebugProtocolAdapter;
     let server: DebugProtocolServer;
     let client: DebugProtocolClient;
     let plugin: DebugProtocolServerTestPlugin;
+    let breakpointManager: BreakpointManager;
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
@@ -42,7 +50,7 @@ describe('DebugProtocolAdapter', () => {
         };
         const sourcemapManager = new SourceMapManager();
         const locationManager = new LocationManager(sourcemapManager);
-        const breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
+        breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
         const projectManager = new ProjectManager(breakpointManager, locationManager);
         projectManager.mainProject = new Project({
             rootDir: rootDir,
@@ -57,10 +65,6 @@ describe('DebugProtocolAdapter', () => {
         server = new DebugProtocolServer(options);
         plugin = server.plugins.add(new DebugProtocolServerTestPlugin());
         await server.start();
-
-        client = new DebugProtocolClient(options);
-        //disable logging for tests because they clutter the test output
-        client['logger'].logLevel = 'off';
     });
 
     afterEach(async () => {
@@ -76,6 +80,9 @@ describe('DebugProtocolAdapter', () => {
      */
     async function initialize() {
         await adapter.connect();
+        client = adapter['socketDebugger'];
+        //disable logging for tests because they clutter the test output
+        client['logger'].logLevel = 'off';
         await Promise.all([
             adapter.once('suspend'),
             plugin.server.sendUpdate(
@@ -128,6 +135,93 @@ describe('DebugProtocolAdapter', () => {
     });
 
     describe('syncBreakpoints', () => {
+        it('removes "added" breakpoints that show up after a breakpoint was already removed', async () => {
+            const bpId = 123;
+            const bpLine = 12;
+            await initialize();
+
+            //force the client to expect the device to verify breakpoints (instead of auto-verifying them as soon as seen)
+            client.protocolVersion = '3.2.0';
+
+            breakpointManager.setBreakpoint(srcPath, {
+                line: bpLine
+            });
+
+            let bpResponseDeferred = defer();
+
+            //once the breakpoint arrives at the server
+            let bpAtServerPromise = new Promise<void>((resolve) => {
+                let handled = false;
+                const tempPlugin = server.plugins.add({
+                    provideResponse: (event) => {
+                        if (!handled && event.request instanceof AddBreakpointsRequest) {
+                            handled = true;
+                            //resolve the outer promise
+                            resolve();
+                            //return a deferred promise for us to flush later
+                            return bpResponseDeferred.promise;
+                        }
+                    }
+                });
+            });
+
+            plugin.pushResponse(
+                AddBreakpointsResponse.fromJson({
+                    requestId: 1,
+                    breakpoints: [{
+                        id: bpId,
+                        errorCode: ErrorCode.OK,
+                        ignoreCount: 0
+                    }]
+                })
+            );
+            //sync the breakpoints to mark this one as "sent to device"
+            void adapter.syncBreakpoints();
+            //wait for the request to arrive at the server (it will be stuck pending until we resolve the bpResponseDeferred)
+            await bpAtServerPromise;
+
+            //delete the breakpoint (before we ever got the deviceId from the server)
+            breakpointManager.replaceBreakpoints(srcPath, []);
+
+            //sync the breakpoints again, forcing the bp to be fully deleted
+            let syncPromise = adapter.syncBreakpoints();
+            //since the breakpoints were deleted before getting deviceIDs, there should be no request sent
+            bpResponseDeferred.resolve();
+            //wait for the second sync to finish
+            await syncPromise;
+
+            //response for the "remove breakpoints" request triggered later
+            plugin.pushResponse(
+                RemoveBreakpointsResponse.fromJson({
+                    requestId: 1,
+                    breakpoints: [{
+                        id: bpId,
+                        errorCode: ErrorCode.OK,
+                        ignoreCount: 0
+                    }]
+                })
+            );
+
+            //listen for the next sent RemoveBreakpointsRequest
+            const sentRequestPromise = client.plugins.onceIf<AfterSendRequestEvent<RemoveBreakpointsRequest>>('afterSendRequest', (event) => {
+                return event.request instanceof RemoveBreakpointsRequest;
+            }, 0);
+
+            //now push the "bp verified" event
+            //the client should recognize that these breakpoints aren't avaiable client-side, and ask the server to delete them
+            await server.sendUpdate(
+                BreakpointVerifiedUpdate.fromJson({
+                    breakpoints: [{
+                        id: bpId
+                    }]
+                })
+            );
+
+            //wait for the request to be sent
+            expect(
+                (await sentRequestPromise).request?.data.breakpointIds
+            ).to.eql([bpId]);
+        });
 
         it('excludes non-numeric breakpoint IDs', async () => {
             await initialize();

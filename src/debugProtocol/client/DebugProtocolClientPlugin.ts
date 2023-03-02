@@ -31,11 +31,11 @@ export interface ProvideResponseOrUpdateEvent {
     responseOrUpdate?: ProtocolResponse | ProtocolUpdate;
 }
 
-export interface BeforeSendRequestEvent {
+export interface BeforeSendRequestEvent<TRequest extends ProtocolRequest = ProtocolRequest> {
     client: DebugProtocolClient;
-    request: ProtocolRequest;
+    request: TRequest;
 }
-export type AfterSendRequestEvent = BeforeSendRequestEvent;
+export type AfterSendRequestEvent<TRequest extends ProtocolRequest = ProtocolRequest> = BeforeSendRequestEvent<TRequest>;
 
 export interface OnUpdateEvent {
     client: DebugProtocolClient;
