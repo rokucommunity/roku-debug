@@ -188,8 +188,11 @@ export class BreakpointManager {
         if (breakpoint) {
             breakpoint.verified = isVerified;
             this.queueVerifyEvent(breakpoint.hash);
+            return true;
+        } else {
+            //couldn't find the breakpoint. return false so the caller can handle that properly
+            return false;
         }
-        //TODO handle the else case, (might be caused by timing issues?)
     }
 
     /**

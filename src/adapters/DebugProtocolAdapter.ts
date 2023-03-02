@@ -283,9 +283,19 @@ export class DebugProtocolAdapter {
 
             //handle when the device verifies breakpoints
             this.socketDebugger.on('breakpoints-verified', (event) => {
+                let unverifiableDeviceIds = [] as number[];
+
                 //mark the breakpoints as verified
                 for (let breakpoint of event?.breakpoints ?? []) {
-                    this.breakpointManager.verifyBreakpoint(breakpoint.id, true);
+                    const success = this.breakpointManager.verifyBreakpoint(breakpoint.id, true);
+                    if (!success) {
+                        unverifiableDeviceIds.push(breakpoint.id);
+                    }
+                }
+                //if there were any unsuccessful breakpoint verifications, we need to ask the device to delete those breakpoints as they've gone missing on our side
+                if (unverifiableDeviceIds.length > 0) {
+                    this.logger.warn('Could not find breakpoints to verify. Removing from device:', { deviceBreakpointIds: unverifiableDeviceIds });
+                    void this.socketDebugger.removeBreakpoints(unverifiableDeviceIds);
                 }
                 this.emit('breakpoints-verified', event);
             });
