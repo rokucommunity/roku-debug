@@ -49,7 +49,7 @@ export class TelnetAdapter {
         });
     }
 
-    public logger = logger.createLogger(`[${TelnetAdapter.name}]`);
+    public logger = logger.createLogger(`[tadapter]`);
     /**
      * Indicates whether the adapter has successfully established a connection with the device
      */

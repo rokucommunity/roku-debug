@@ -88,7 +88,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    public logger = logger.createLogger(`[${BrightScriptDebugSession.name}]`);
+    public logger = logger.createLogger(`[session]`);
 
     /**
      * A sequence used to help identify log statements for requests

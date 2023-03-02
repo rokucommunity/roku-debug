@@ -94,7 +94,7 @@ export interface ThreadInfo {
      */
     stopReasonDetail: string;
     /**
-     * The line number where the stop or failure occurred.
+     * The 1-based line number where the stop or failure occurred.
      */
     lineNumber: number;
     /**

@@ -48,7 +48,7 @@ export class DebugProtocolAdapter {
         });
     }
 
-    private logger = logger.createLogger(`[${DebugProtocolAdapter.name}]`);
+    private logger = logger.createLogger(`[padapter]`);
 
     /**
      * Indicates whether the adapter has successfully established a connection with the device
@@ -511,7 +511,7 @@ export class DebugProtocolAdapter {
      */
     private async getVariablesResponse(expression: string, frameId: number) {
         const isScopesRequest = expression === '';
-        const logger = this.logger.createLogger(' getVariable');
+        const logger = this.logger.createLogger('[getVariable]');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
@@ -522,7 +522,7 @@ export class DebugProtocolAdapter {
             throw new Error('Cannot request variable without a corresponding frame');
         }
 
-        logger.log(`Expression:`, expression);
+        logger.info(`Expression:`, JSON.stringify(expression));
         let variablePath = expression === '' ? [] : util.getVariablePath(expression);
 
         // Temporary workaround related to casing issues over the protocol
@@ -685,7 +685,7 @@ export class DebugProtocolAdapter {
                     // isSelected: threadInfo.isPrimary,
                     filePath: threadInfo.filePath,
                     functionName: threadInfo.functionName,
-                    lineNumber: threadInfo.lineNumber + 1, //protocol is 1-based
+                    lineNumber: threadInfo.lineNumber, //threadInfo.lineNumber is 1-based. Thread requires 1-based line numbers
                     lineContents: threadInfo.codeSnippet,
                     threadId: i
                 };
@@ -869,6 +869,9 @@ export enum KeyType {
 
 export interface Thread {
     isSelected: boolean;
+    /**
+     * The 1-based line number for the thread
+     */
     lineNumber: number;
     filePath: string;
     functionName: string;
