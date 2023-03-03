@@ -1,3 +1,4 @@
+/* eslint-disable prefer-arrow-callback */
 
 import { expect } from 'chai';
 import type { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
@@ -35,7 +36,9 @@ const outDir = s`${tmpDir}/out`;
  */
 const srcPath = `${rootDir}/source/main.brs`;
 
-describe('DebugProtocolAdapter', () => {
+describe('DebugProtocolAdapter', function() {
+    //allow these tests to run for longer since there's more IO overhead due to the socket logic
+    this.timeout(3000);
     let adapter: DebugProtocolAdapter;
     let server: DebugProtocolServer;
     let client: DebugProtocolClient;
