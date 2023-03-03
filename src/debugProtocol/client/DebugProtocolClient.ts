@@ -32,7 +32,7 @@ import { GenericResponse } from '../events/responses/GenericResponse';
 import type { StackTraceResponse } from '../events/responses/StackTraceResponse';
 import { ThreadsResponse } from '../events/responses/ThreadsResponse';
 import type { Variable } from '../events/responses/VariablesResponse';
-import { VariablesResponse, VariablesResponseData, VariableType } from '../events/responses/VariablesResponse';
+import { VariablesResponse, VariableType } from '../events/responses/VariablesResponse';
 import { IOPortOpenedUpdate, isIOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
 import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
 import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
@@ -42,10 +42,11 @@ import PluginInterface from '../PluginInterface';
 import type { VerifiedBreakpoint } from '../events/updates/BreakpointVerifiedUpdate';
 import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUpdate';
 import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
+import * as chalk from 'chalk';
 
 export class DebugProtocolClient {
 
-    public logger = logger.createLogger(`[${DebugProtocolClient.name}]`);
+    public logger = logger.createLogger(`[client]`);
 
     // The highest tested version of the protocol we support.
     public supportedVersionRange = '<=3.0.0';
@@ -736,7 +737,7 @@ export class DebugProtocolClient {
                 }
             });
 
-            this.logger.log(`Request ${request?.data?.requestId}`, request);
+            this.logEvent(request);
             if (this.controlSocket) {
                 const buffer = request.toBuffer();
                 this.logger.info('received client-to-server data\n', { type: 'client-to-server', data: buffer.toJSON() });
@@ -763,6 +764,26 @@ export class DebugProtocolClient {
             ));
             //we have a valid event. Clear the buffer of this data
             this.buffer = this.buffer.slice(response.data.packetLength);
+        }
+    }
+
+    /**
+     * A counter to help give a unique id to each update (mostly just for logging purposes)
+     */
+    private updateSequence = 1;
+
+    private logEvent(event: ProtocolRequest | ProtocolResponse | ProtocolUpdate) {
+        const [, eventName, eventType] = /(.+?)((?:v\d+_?\d*)?(?:request|response|update))/ig.exec(event?.constructor.name) ?? [];
+        if (isProtocolRequest(event)) {
+            this.logger.log(`${eventName} ${event.data.requestId} (${eventType})`, event, `(${event?.constructor.name})`);
+        } else if (isProtocolUpdate(event)) {
+            this.logger.log(`${eventName} ${this.updateSequence++} (${eventType})`, event, `(${event?.constructor.name})`);
+        } else {
+            if (event.data.errorCode === ErrorCode.OK) {
+                this.logger.log(`${eventName} ${event.data.requestId} (${eventType})`, event, `(${event?.constructor.name})`);
+            } else {
+                this.logger.log(`[error] ${eventName} ${event.data.requestId} (${eventType})`, event, `(${event?.constructor.name})`);
+            }
         }
     }
 
@@ -796,21 +817,21 @@ export class DebugProtocolClient {
             this.buffer = this.buffer.slice(responseOrUpdate.readOffset);
 
             if (responseOrUpdate.data.errorCode !== ErrorCode.OK) {
-                this.logger.error(responseOrUpdate.data.errorCode, responseOrUpdate);
+                this.logEvent(responseOrUpdate);
             }
 
             //we got a result
             if (responseOrUpdate) {
                 //emit the corresponding event
                 if (isProtocolUpdate(responseOrUpdate)) {
-                    this.logger.log(`Update:`, responseOrUpdate);
+                    this.logEvent(responseOrUpdate);
                     this.emit('update', responseOrUpdate);
                     await this.plugins.emit('onUpdate', {
                         client: this,
                         update: responseOrUpdate
                     });
                 } else {
-                    this.logger.log(`Response ${responseOrUpdate?.data?.requestId}:`, responseOrUpdate);
+                    this.logEvent(responseOrUpdate);
                     this.emit('response', responseOrUpdate);
                     await this.plugins.emit('onResponse', {
                         client: this,
@@ -1135,16 +1156,24 @@ export interface ConstructorOptions {
 }
 
 /**
- * Is the event a ProtocolUpdate update
+ * Is the event a ProtocolRequest
  */
-export function isProtocolUpdate(event: ProtocolUpdate | ProtocolResponse): event is ProtocolUpdate {
-    return event?.constructor?.name.endsWith('Update') && event?.data?.requestId === 0;
+export function isProtocolRequest(event: ProtocolRequest | ProtocolResponse | ProtocolUpdate): event is ProtocolRequest {
+    return event?.constructor?.name.endsWith('Request') && event?.data?.requestId > 0;
 }
+
 /**
  * Is the event a ProtocolResponse
  */
-export function isProtocolResponse(event: ProtocolUpdate | ProtocolResponse): event is ProtocolResponse {
+export function isProtocolResponse(event: ProtocolRequest | ProtocolResponse | ProtocolUpdate): event is ProtocolResponse {
     return event?.constructor?.name.endsWith('Response') && event?.data?.requestId !== 0;
+}
+
+/**
+ * Is the event a ProtocolUpdate update
+ */
+export function isProtocolUpdate(event: ProtocolRequest | ProtocolResponse | ProtocolUpdate): event is ProtocolUpdate {
+    return event?.constructor?.name.endsWith('Update') && event?.data?.requestId === 0;
 }
 
 export interface BreakpointsVerifiedEvent {

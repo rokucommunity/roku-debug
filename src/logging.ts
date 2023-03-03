@@ -1,7 +1,7 @@
 import { default as defaultLogger } from '@rokucommunity/logger';
 import type { Logger } from '@rokucommunity/logger';
 import { QueuedTransport } from '@rokucommunity/logger/dist/transports/QueuedTransport';
-const logger = defaultLogger.createLogger('[roku-debug]');
+const logger = defaultLogger.createLogger('[dap]');
 
 //disable colors
 logger.enableColor = false;
