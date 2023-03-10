@@ -21,8 +21,8 @@ import { ThreadAttachedUpdate } from './events/updates/ThreadAttachedUpdate';
 describe.skip(DebugProtocolClientReplaySession.name, () => {
     let session: DebugProtocolClientReplaySession;
 
-    afterEach(() => {
-        session.destroy();
+    afterEach(async () => {
+        await session.destroy();
     });
 
     it.skip('works for the failing breakpoint flow in fubo', async function test() {
