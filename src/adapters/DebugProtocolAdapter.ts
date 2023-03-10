@@ -710,22 +710,22 @@ export class DebugProtocolAdapter {
     }
 
     public removeAllListeners() {
-        this.emitter?.removeAllListeners();
+        if (this.emitter) {
+            this.emitter.removeAllListeners();
+        }
     }
 
     /**
      * Disconnect from the telnet session and unset all objects
      */
     public async destroy() {
+        // destroy the debug client if it's defined
         if (this.socketDebugger) {
-            // destroy might be called due to a compile error so the socket debugger might not exist yet
-            await this.socketDebugger.exitChannel();
+            await this.socketDebugger.destroy();
         }
 
         this.cache = undefined;
-        if (this.emitter) {
-            this.emitter.removeAllListeners();
-        }
+        this.removeAllListeners();
         this.emitter = undefined;
     }
 

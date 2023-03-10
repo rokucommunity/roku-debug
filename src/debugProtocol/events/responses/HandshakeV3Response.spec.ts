@@ -123,4 +123,39 @@ describe('HandshakeV3Response', () => {
         let handshakeV3 = HandshakeV3Response.fromBuffer(response.toBuffer());
         expect(handshakeV3.success).to.equal(false);
     });
+
+    it('parses properly with nonstandard magic', () => {
+        const response = HandshakeV3Response.fromJson({
+            magic: 'not correct magic',
+            protocolVersion: '3.1.0',
+            revisionTimestamp: date
+        });
+
+        expect(response.data).to.eql({
+            packetLength: undefined,
+            errorCode: ErrorCode.OK,
+            requestId: HandshakeRequest.REQUEST_ID,
+
+            magic: 'not correct magic',
+            protocolVersion: '3.1.0',
+            revisionTimestamp: date
+        });
+
+        expect(
+            HandshakeV3Response.fromBuffer(response.toBuffer()).data
+        ).to.eql({
+            packetLength: undefined,
+            errorCode: ErrorCode.OK,
+            requestId: HandshakeRequest.REQUEST_ID,
+
+            magic: 'not correct magic', // 18 bytes
+            protocolVersion: '3.1.0', // 12 bytes (each number is sent as uint32)
+            //remaining_packet_length // 4 bytes
+            revisionTimestamp: date // 8 bytes (int64)
+        });
+
+        expect(response.toBuffer().length).to.eql(42);
+        const parsed = HandshakeV3Response.fromBuffer(response.toBuffer());
+        expect(parsed.readOffset).to.eql(42);
+    });
 });

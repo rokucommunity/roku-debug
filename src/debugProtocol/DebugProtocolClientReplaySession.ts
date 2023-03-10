@@ -120,7 +120,7 @@ export class DebugProtocolClientReplaySession {
 
         //stuff to run when the session is disposed
         this.disposables.push(() => {
-            this.client.destroy();
+            return this.client.destroy();
         });
     }
 
@@ -272,10 +272,10 @@ export class DebugProtocolClientReplaySession {
         await util.sleep(gap);
     }
 
-    public destroy() {
+    public async destroy() {
         for (const dispose of this.disposables) {
             try {
-                dispose();
+                await Promise.resolve(dispose());
             } catch { }
         }
     }

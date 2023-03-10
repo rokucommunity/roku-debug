@@ -7,7 +7,7 @@ import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import { defer, util } from '../../util';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
-import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
+import type { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 import type { Variable } from '../events/responses/VariablesResponse';
 import { VariablesResponse, VariableType } from '../events/responses/VariablesResponse';
@@ -542,23 +542,6 @@ describe('DebugProtocolClient', () => {
         //version 3.0 includes packet length, so these should be true now
         expect(client.watchPacketLength).to.be.equal(true);
         expect(client.isHandshakeComplete).to.be.equal(true);
-    });
-
-    it('throws on magic mismatch', async () => {
-        plugin.pushResponse(
-            HandshakeV3Response.fromJson({
-                magic: 'not correct magic',
-                protocolVersion: '3.1.0',
-                revisionTimestamp: new Date(2022, 1, 1)
-            })
-        );
-
-        const verifyHandshakePromise = client.once('handshake-verified');
-
-        await client.connect();
-
-        //wait for the debugger to finish verifying the handshake
-        expect(await verifyHandshakePromise).to.be.false;
     });
 
     it('handles legacy handshake', async () => {

@@ -60,6 +60,7 @@
     },
     "devDependencies": {
         "@types/chai": "^4.2.22",
+        "@types/debounce": "^1.2.1",
         "@types/dedent": "^0.7.0",
         "@types/find-in-files": "^0.5.1",
         "@types/fs-extra": "^9.0.13",
@@ -95,6 +96,7 @@
         "@rokucommunity/logger": "^0.3.1",
         "brighterscript": "^0.61.3",
         "dateformat": "^4.6.3",
+        "debounce": "^1.2.1",
         "eol": "^0.9.1",
         "eventemitter3": "^4.0.7",
         "find-in-files": "^0.5.0",
