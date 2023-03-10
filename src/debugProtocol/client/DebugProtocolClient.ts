@@ -1,4 +1,5 @@
 import * as Net from 'net';
+import * as debounce from 'debounce';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
 import { PROTOCOL_ERROR_CODES, Command, StepType, ErrorCode, UpdateType, UpdateTypeCode, StopReason } from '../Constants';
@@ -42,7 +43,6 @@ import PluginInterface from '../PluginInterface';
 import type { VerifiedBreakpoint } from '../events/updates/BreakpointVerifiedUpdate';
 import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUpdate';
 import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
-import * as chalk from 'chalk';
 
 export class DebugProtocolClient {
 
@@ -98,9 +98,17 @@ export class DebugProtocolClient {
      */
     private controlSocket: Net.Socket;
     /**
+     * Promise that is resolved when the control socket is closed
+     */
+    private controlSocketClosed = defer<void>();
+    /**
      * A socket where the debug server will send stdio
      */
     private ioSocket: Net.Socket;
+    /**
+     * Resolves when the ioSocket has closed
+     */
+    private ioSocketClosed = defer<void>();
     /**
      * The buffer where all unhandled data will be stored until successfully consumed
      */
@@ -204,7 +212,9 @@ export class DebugProtocolClient {
         const pendingSockets = new Set<Net.Socket>();
         const connection = await new Promise<Net.Socket>((resolve) => {
             util.setInterval((cancelInterval) => {
-                const socket = new Net.Socket();
+                const socket = new Net.Socket({
+                    allowHalfOpen: false
+                });
                 pendingSockets.add(socket);
                 socket.on('error', (error) => {
                     console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
@@ -262,16 +272,17 @@ export class DebugProtocolClient {
             });
         });
 
-        this.controlSocket.on('end', () => {
-            this.logger.log('TCP connection closed');
-            this.shutdown('app-exit');
+        this.controlSocket.on('close', () => {
+            this.logger.log('Control socket closed');
+            this.controlSocketClosed.tryResolve();
+            void this.shutdown('app-exit');
         });
 
         // Don't forget to catch error, for your own sake.
         this.controlSocket.once('error', (error) => {
             //the Roku closed the connection for some unknown reason...
-            console.error(`TCP connection error on control port`, error);
-            this.shutdown('close');
+            console.error(`error on control port`, error);
+            void this.shutdown('close');
         });
 
         if (sendHandshake) {
@@ -328,6 +339,9 @@ export class DebugProtocolClient {
         }
     }
 
+    /**
+     * Send the "exit channel" command, which will tell the debug session to immediately quit
+     */
     public async exitChannel() {
         return this.sendRequest<GenericResponse>(
             ExitChannelRequest.fromJson({
@@ -798,7 +812,7 @@ export class DebugProtocolClient {
             });
 
             if (!responseOrUpdate) {
-                responseOrUpdate = this.getResponseOrUpdate(this.buffer);
+                responseOrUpdate = await this.getResponseOrUpdate(this.buffer);
             }
 
             //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
@@ -848,7 +862,7 @@ export class DebugProtocolClient {
     /**
      * Given a buffer, try to parse into a specific ProtocolResponse or ProtocolUpdate
      */
-    public getResponseOrUpdate(buffer: Buffer): ProtocolResponse | ProtocolUpdate {
+    public async getResponseOrUpdate(buffer: Buffer): Promise<ProtocolResponse | ProtocolUpdate> {
         //if we haven't seen a handshake yet, try to convert the buffer into a handshake
         if (!this.isHandshakeComplete) {
             let handshake: HandshakeV3Response | HandshakeResponse;
@@ -859,7 +873,7 @@ export class DebugProtocolClient {
                 handshake = HandshakeResponse.fromBuffer(buffer);
             }
             if (handshake.success) {
-                this.verifyHandshake(handshake);
+                await this.verifyHandshake(handshake);
                 return handshake;
             }
             return;
@@ -987,7 +1001,7 @@ export class DebugProtocolClient {
     /**
      * Verify all the handshake data
      */
-    private verifyHandshake(response: HandshakeResponse | HandshakeV3Response): boolean {
+    private async verifyHandshake(response: HandshakeResponse | HandshakeV3Response): Promise<boolean> {
         if (DebugProtocolClient.DEBUGGER_MAGIC === response.data.magic) {
             this.logger.log('Magic is valid.');
 
@@ -1017,7 +1031,7 @@ export class DebugProtocolClient {
                     message: `Protocol Version ${this.protocolVersion} is not supported.\nIf you believe this is an error please open an issue at https://github.com/rokucommunity/roku-debug/issues`,
                     errorCode: PROTOCOL_ERROR_CODES.NOT_SUPPORTED
                 });
-                this.shutdown('close');
+                await this.shutdown('close');
                 handshakeVerified = false;
             }
 
@@ -1026,7 +1040,7 @@ export class DebugProtocolClient {
         } else {
             this.logger.log('Closing connection due to bad debugger magic', response.data.magic);
             this.emit('handshake-verified', false);
-            this.shutdown('close');
+            await this.shutdown('close');
             return false;
         }
     }
@@ -1037,7 +1051,9 @@ export class DebugProtocolClient {
     private connectToIoPort(update: IOPortOpenedUpdate) {
         if (update.success) {
             // Create a new TCP client.
-            this.ioSocket = new Net.Socket();
+            this.ioSocket = new Net.Socket({
+                allowHalfOpen: false
+            });
             // Send a connection request to the server.
             this.logger.log(`Connect to IO Port ${this.options.host}:${update.data.port}`);
             this.ioSocket.connect({
@@ -1066,9 +1082,9 @@ export class DebugProtocolClient {
                     }
                 });
 
-                this.ioSocket.on('end', () => {
-                    this.ioSocket.end();
-                    this.logger.log('Requested an end to the IO connection');
+                this.ioSocket.on('close', () => {
+                    this.logger.log('IO socket closed');
+                    this.ioSocketClosed.tryResolve();
                 });
 
                 // Don't forget to catch error, for your own sake.
@@ -1082,24 +1098,86 @@ export class DebugProtocolClient {
         return false;
     }
 
-    public destroy() {
-        this.shutdown('close');
+    public async destroy() {
+        await this.shutdown('close');
     }
 
-    private shutdown(eventName: 'app-exit' | 'close') {
-        if (this.controlSocket) {
+    private async shutdown(eventName: 'app-exit' | 'close') {
+        this.logger.log('Shutting down!');
+        //tell the device to exit the channel
+        try {
+            //ask the device to terminate the debug session. We have to wait for this to come back.
+            //The device might be running unstoppable code, so this might take a while. Wait for the device to send back
+            //the response before we continue with the teardown process
+            await Promise.race([
+                this.exitChannel().finally(() => this.logger.log('exit channel completed')),
+                //if the exit channel request took this long to finish, something's terribly wrong
+                util.sleep(30_000)
+            ]);
+        } finally { }
+
+
+        const maxTimeout = 10_000;
+        await Promise.all([
+            this.destroyControlSocket(maxTimeout),
+            this.destroyIOSocket(maxTimeout)
+        ]);
+        this.emit(eventName);
+    }
+
+    private isDestroyingControlSocket = false;
+
+    private async destroyControlSocket(timeout: number) {
+        if (this.controlSocket && !this.isDestroyingControlSocket) {
+            this.isDestroyingControlSocket = true;
+
+            //wait for the controlSocket to be closed
+            await Promise.race([
+                this.controlSocketClosed.promise,
+                util.sleep(timeout)
+            ]);
+
+            this.logger.log('[destroy] controlSocket is: ', this.controlSocketClosed.isResolved ? 'closed' : 'not closed');
+
+            //destroy the controlSocket
             this.controlSocket.removeAllListeners();
             this.controlSocket.destroy();
             this.controlSocket = undefined;
+            this.isDestroyingControlSocket = false;
         }
+    }
 
-        if (this.ioSocket) {
-            this.ioSocket.removeAllListeners();
-            this.ioSocket.destroy();
+    private isDestroyingIOSocket = false;
+
+    private async destroyIOSocket(timeout: number) {
+        if (this.ioSocket && !this.isDestroyingIOSocket) {
+            this.isDestroyingIOSocket = true;
+            //wait for the ioSocket to be closed
+            await Promise.race([
+                this.ioSocketClosed.promise.then(() => this.logger.log('IO socket closed')),
+                util.sleep(timeout)
+            ]);
+
+            //if the io socket is not closed, wait for it to at least settle
+            if (!this.ioSocketClosed.isCompleted) {
+                await new Promise<void>((resolve) => {
+                    const callback = debounce(() => {
+                        resolve();
+                    }, 250);
+                    //trigger the current callback once.
+                    callback();
+                    this.ioSocket?.on('drain', callback as () => void);
+                });
+            }
+
+            this.logger.log('[destroy] ioSocket is: ', this.ioSocketClosed.isResolved ? 'closed' : 'not closed');
+
+            //destroy the ioSocket
+            this.ioSocket?.removeAllListeners?.();
+            this.ioSocket?.destroy?.();
             this.ioSocket = undefined;
+            this.isDestroyingIOSocket = false;
         }
-
-        this.emit(eventName);
     }
 }
 

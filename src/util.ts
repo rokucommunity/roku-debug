@@ -452,6 +452,11 @@ export function defer<T>() {
     });
     return {
         promise: promise,
+        tryResolve: function tryResolve(value?: PromiseLike<T> | T) {
+            if (!this.isCompleted) {
+                this.resolve(value);
+            }
+        },
         resolve: function resolve(value?: PromiseLike<T> | T) {
             if (!this.isResolved) {
                 this.isResolved = true;
@@ -462,6 +467,11 @@ export function defer<T>() {
                     `Attempted to resolve a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +
                     `New value: ${JSON.stringify(value)}`
                 );
+            }
+        },
+        tryReject: function tryReject(reason?: any) {
+            if (!this.isCompleted) {
+                this.reject(reason);
             }
         },
         reject: function reject(reason?: any) {
