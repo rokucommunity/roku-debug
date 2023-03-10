@@ -951,6 +951,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
                     args.expression = `${arrayVarName}[${varIndex}]`;
                     let commandResults = await this.rokuAdapter.evaluate(statement, args.frameId);
+                    if (commandResults.type === 'error') {
+                        throw new Error(commandResults.message);
+                    }
                     variablePath = [arrayVarName, varIndex.toString()];
                 }
 
