@@ -124,6 +124,20 @@ export class BreakpointManager {
     }
 
     /**
+     * Delete a breakpoint
+     */
+    public deleteBreakpoint(srcPath: string, breakpoint: Breakpoint) {
+        const actualBreakpoint = this.getBreakpointByHash(
+            this.getBreakpointKey(srcPath, breakpoint)
+        );
+        if (actualBreakpoint) {
+            const breakpoints = new Set(this.getBreakpointsForFile(srcPath));
+            breakpoints.delete(actualBreakpoint);
+            this.replaceBreakpoints(srcPath, [...breakpoints]);
+        }
+    }
+
+    /**
      * Find a breakpoint by its hash
      * @returns the breakpoint, or undefined if not found
      */
