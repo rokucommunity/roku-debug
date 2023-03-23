@@ -72,6 +72,53 @@ describe('BreakpointManager', () => {
         fsExtra.removeSync(tmpDir);
     });
 
+    describe('setIsPending', () => {
+        it('marks existing breakpoints as pending', () => {
+            const breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 },
+                { line: 3 },
+                { line: 4 }
+            ]);
+            bpManager.setPending(srcPath, breakpoints, false);
+            expect(breakpoints.map(x => x.isPending)).to.eql([false, false, false, false]);
+
+            bpManager.setPending(srcPath, [{ line: 1 }, { line: 3 }], true);
+
+            expect(breakpoints.map(x => x.isPending)).to.eql([true, false, true, false]);
+        });
+
+        it('marks existing breakpoints as not pending', () => {
+            const breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 },
+                { line: 3 },
+                { line: 4 }
+            ]);
+            bpManager.setPending(srcPath, breakpoints, true);
+            expect(breakpoints.map(x => x.isPending)).to.eql([true, true, true, true]);
+
+            bpManager.setPending(srcPath, [{ line: 1 }, { line: 3 }], false);
+
+            expect(breakpoints.map(x => x.isPending)).to.eql([false, true, false, true]);
+        });
+
+        it('ignores not-found breakpoints', () => {
+            const breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 },
+                { line: 3 },
+                { line: 4 }
+            ]);
+            bpManager.setPending(srcPath, breakpoints, true);
+            expect(breakpoints.map(x => x.isPending)).to.eql([true, true, true, true]);
+
+            bpManager.setPending(srcPath, [{ line: 5 }], false);
+
+            expect(breakpoints.map(x => x.isPending)).to.eql([true, true, true, true]);
+        });
+    });
+
     describe('sanitizeSourceFilePath', () => {
         it('returns the original string when no key was found', () => {
             expect(bpManager.sanitizeSourceFilePath('a/b/c')).to.equal(s`a/b/c`);
@@ -1040,6 +1087,5 @@ describe('BreakpointManager', () => {
                 }], removed: [], unchanged: []
             });
         });
-
     });
 });

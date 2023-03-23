@@ -94,6 +94,7 @@ export class BreakpointManager {
             },
             ...breakpoint,
             srcPath: srcPath,
+            isPending: false,
             //assign a hash-like key to this breakpoint (so we can match against other similar breakpoints in the future)
             hash: this.getBreakpointKey(srcPath, breakpoint)
         }) as AugmentedSourceBreakpoint;
@@ -602,7 +603,6 @@ export class BreakpointManager {
         }
     }
 
-
     /**
      * Get a diff of all breakpoints that have changed since the last time the diff was retrieved.
      * Sets the new baseline to the current state, so the next diff will be based on this new baseline.
@@ -675,6 +675,20 @@ export class BreakpointManager {
             this.isGetDiffRunning = false;
         }
     }
+
+    /**
+     * Set the pending status of the given list of breakpoints
+     */
+    public setPending(srcPath: string, breakpoints: Breakpoint[], isPending: boolean) {
+        for (const breakpoint of breakpoints) {
+            const hash = this.getBreakpointKey(srcPath, breakpoint);
+            const bp = this.getBreakpointByHash(hash);
+            if (bp) {
+                bp.isPending = isPending;
+            }
+        }
+    }
+
     /**
      * Flag indicating whether a `getDiff` function is currently running
      */
@@ -709,6 +723,12 @@ export interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoin
      * This breakpoint has been verified (i.e. we were able to set it at the given location)
      */
     verified: boolean;
+    /**
+     * Whenever the breakpoint is currently being handled by an adapter (i.e. add/update/delete), it should
+     * flip this flag to true. then, when the response comes back (success or fail), this should be set to false.
+     * In this way, we can ensure that all breakpoints can be synchronized with the device
+     */
+    isPending?: boolean;
 }
 
 export interface BreakpointWorkItem {
@@ -771,3 +791,5 @@ export interface BreakpointWorkItem {
      */
     type: 'fileMap' | 'sourceDirs' | 'sourceMap';
 }
+
+export type Breakpoint = DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint;
