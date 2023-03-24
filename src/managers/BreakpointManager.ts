@@ -94,9 +94,8 @@ export class BreakpointManager {
             },
             ...breakpoint,
             srcPath: srcPath,
-            isPending: false,
             //assign a hash-like key to this breakpoint (so we can match against other similar breakpoints in the future)
-            hash: this.getBreakpointKey(srcPath, breakpoint)
+            hash: this.getBreakpointHash(srcPath, breakpoint)
         }) as AugmentedSourceBreakpoint;
 
         //generate a new id for this breakpoint if one does not exist
@@ -128,7 +127,7 @@ export class BreakpointManager {
      */
     public deleteBreakpoint(srcPath: string, breakpoint: Breakpoint) {
         const actualBreakpoint = this.getBreakpointByHash(
-            this.getBreakpointKey(srcPath, breakpoint)
+            this.getBreakpointHash(srcPath, breakpoint)
         );
         if (actualBreakpoint) {
             const breakpoints = new Set(this.getBreakpointsForFile(srcPath));
@@ -236,10 +235,10 @@ export class BreakpointManager {
     private isVerifyEventQueued = false;
 
     /**
-     * Generate a key based on the features of the breakpoint. Every breakpoint that exists at the same location
-     * and has the same features should have the same key.
+     * Generate a hash based on the features of the breakpoint. Every breakpoint that exists at the same location
+     * and has the same features should have the same hash.
      */
-    public getBreakpointKey(filePath: string, breakpoint: DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint) {
+    private getBreakpointHash(filePath: string, breakpoint: DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint) {
         const key = `${standardizePath(filePath)}:${breakpoint.line}:${breakpoint.column ?? 0}`;
 
         const condition = breakpoint.condition?.trim();
@@ -691,17 +690,40 @@ export class BreakpointManager {
     }
 
     /**
-     * Set the pending status of the given list of breakpoints
+     * Set the pending status of the given list of breakpoints.
+     *
+     * Whenever the breakpoint is currently being handled by an adapter (i.e. add/update/delete), it should
+     * be marked "pending". Then, when the response comes back (success or fail), "pending" should be set to false.
+     * In this way, we can ensure that all breakpoints can be synchronized with the device
      */
     public setPending(srcPath: string, breakpoints: Breakpoint[], isPending: boolean) {
         for (const breakpoint of breakpoints) {
-            const hash = this.getBreakpointKey(srcPath, breakpoint);
-            const bp = this.getBreakpointByHash(hash);
-            if (bp) {
-                bp.isPending = isPending;
+            if (breakpoint) {
+                const hash = this.getBreakpointHash(srcPath, breakpoint);
+                this.breakpointPendingStatus.set(hash, isPending);
             }
         }
     }
+
+    /**
+     * Determine whether the current breakpoint is pending or not
+     */
+    public isPending(srcPath: string, breakpoint: Breakpoint);
+    public isPending(hash: string);
+    public isPending(...args: [string] | [string, Breakpoint]) {
+        let hash: string;
+        if (args[1]) {
+            hash = this.getBreakpointHash(args[0], args[1]);
+        } else {
+            hash = args[0];
+        }
+        return this.breakpointPendingStatus.get(hash) ?? false;
+    }
+
+    /**
+     * A map of breakpoint hashes, and whether that breakpoint is currently pending or not.
+     */
+    private breakpointPendingStatus = new Map<string, boolean>();
 
     /**
      * Flag indicating whether a `getDiff` function is currently running
@@ -737,12 +759,6 @@ export interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoin
      * This breakpoint has been verified (i.e. we were able to set it at the given location)
      */
     verified: boolean;
-    /**
-     * Whenever the breakpoint is currently being handled by an adapter (i.e. add/update/delete), it should
-     * flip this flag to true. then, when the response comes back (success or fail), this should be set to false.
-     * In this way, we can ensure that all breakpoints can be synchronized with the device
-     */
-    isPending?: boolean;
 }
 
 export interface BreakpointWorkItem {

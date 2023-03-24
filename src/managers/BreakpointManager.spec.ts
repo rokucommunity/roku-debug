@@ -72,7 +72,7 @@ describe('BreakpointManager', () => {
         fsExtra.removeSync(tmpDir);
     });
 
-    describe('setIsPending', () => {
+    describe('pending breakpoints', () => {
         it('marks existing breakpoints as pending', () => {
             const breakpoints = bpManager.replaceBreakpoints(srcPath, [
                 { line: 1 },
@@ -81,11 +81,11 @@ describe('BreakpointManager', () => {
                 { line: 4 }
             ]);
             bpManager.setPending(srcPath, breakpoints, false);
-            expect(breakpoints.map(x => x.isPending)).to.eql([false, false, false, false]);
+            expect(breakpoints.map(x => bpManager.isPending(x.hash))).to.eql([false, false, false, false]);
 
             bpManager.setPending(srcPath, [{ line: 1 }, { line: 3 }], true);
 
-            expect(breakpoints.map(x => x.isPending)).to.eql([true, false, true, false]);
+            expect(breakpoints.map(x => bpManager.isPending(x.hash))).to.eql([true, false, true, false]);
         });
 
         it('marks existing breakpoints as not pending', () => {
@@ -96,11 +96,11 @@ describe('BreakpointManager', () => {
                 { line: 4 }
             ]);
             bpManager.setPending(srcPath, breakpoints, true);
-            expect(breakpoints.map(x => x.isPending)).to.eql([true, true, true, true]);
+            expect(breakpoints.map(x => bpManager.isPending(x.hash))).to.eql([true, true, true, true]);
 
             bpManager.setPending(srcPath, [{ line: 1 }, { line: 3 }], false);
 
-            expect(breakpoints.map(x => x.isPending)).to.eql([false, true, false, true]);
+            expect(breakpoints.map(x => bpManager.isPending(x.hash))).to.eql([false, true, false, true]);
         });
 
         it('ignores not-found breakpoints', () => {
@@ -111,11 +111,34 @@ describe('BreakpointManager', () => {
                 { line: 4 }
             ]);
             bpManager.setPending(srcPath, breakpoints, true);
-            expect(breakpoints.map(x => x.isPending)).to.eql([true, true, true, true]);
+            expect(breakpoints.map(x => bpManager.isPending(x.hash))).to.eql([true, true, true, true]);
 
             bpManager.setPending(srcPath, [{ line: 5 }], false);
 
-            expect(breakpoints.map(x => x.isPending)).to.eql([true, true, true, true]);
+            expect(breakpoints.map(x => bpManager.isPending(x.hash))).to.eql([true, true, true, true]);
+        });
+
+        it('remembers a breakpoint pending status through delete and add', () => {
+            let breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 }
+            ]);
+            //mark the breakpoint as pending
+            bpManager.setPending(srcPath, breakpoints, true);
+            expect(bpManager.isPending(srcPath, breakpoints[0])).to.be.true;
+
+            //delete the breakpoint
+            bpManager.deleteBreakpoint(srcPath, { line: 1 });
+
+            //mark the breakpoint as pending (even though it's not there anymore)
+            bpManager.setPending(srcPath, [{ line: 5 }], true);
+
+            //add the breakpoint again
+            breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 }
+            ]);
+
+            //the breakpoint should be pending even though this is a new instance of the breakpoint
+            expect(bpManager.isPending(srcPath, breakpoints[0])).to.be.true;
         });
     });
 
