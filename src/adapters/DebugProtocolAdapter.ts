@@ -784,7 +784,7 @@ export class DebugProtocolAdapter {
         //compute breakpoint changes since last sync
         const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
 
-        //delete these breakpoints
+        // REMOVE breakpoints (delete these breakpoints from the device)
         if (diff.removed.length > 0) {
             await this.actionQueue.run(async () => {
                 const response = await this.socketDebugger.removeBreakpoints(
@@ -804,45 +804,51 @@ export class DebugProtocolAdapter {
                     lineNumber: breakpoint.line,
                     hitCount: !isNaN(hitCount) ? hitCount : undefined,
                     conditionalExpression: breakpoint.condition,
-                    key: breakpoint.hash,
+                    hash: breakpoint.hash,
                     componentLibraryName: breakpoint.componentLibraryName
                 };
             });
 
-            //send these new breakpoints to the device
-            await this.actionQueue.run(async () => {
-                //split the list into conditional and non-conditional breakpoints.
-                //(TODO we can eliminate this splitting logic once the conditional breakpoints "continue" bug in protocol is fixed)
-                const standardBreakpoints: typeof breakpointsToSendToDevice = [];
-                const conditionalBreakpoints: typeof breakpointsToSendToDevice = [];
-                for (const breakpoint of breakpointsToSendToDevice) {
-                    if (breakpoint?.conditionalExpression?.trim()) {
-                        conditionalBreakpoints.push(breakpoint);
-                    } else {
-                        standardBreakpoints.push(breakpoint);
-                    }
+            //split the list into conditional and non-conditional breakpoints.
+            //(TODO we can eliminate this splitting logic once the conditional breakpoints "continue" bug in protocol is fixed)
+            const standardBreakpoints: typeof breakpointsToSendToDevice = [];
+            const conditionalBreakpoints: typeof breakpointsToSendToDevice = [];
+            for (const breakpoint of breakpointsToSendToDevice) {
+                if (breakpoint?.conditionalExpression?.trim()) {
+                    conditionalBreakpoints.push(breakpoint);
+                } else {
+                    standardBreakpoints.push(breakpoint);
                 }
-                let success = true;
-                for (const breakpoints of [standardBreakpoints, conditionalBreakpoints]) {
-                    const response = await this.socketDebugger.addBreakpoints(breakpoints);
-                    if (response.data.errorCode === ErrorCode.OK) {
-                        for (let i = 0; i < response?.data?.breakpoints?.length ?? 0; i++) {
-                            const deviceBreakpoint = response.data.breakpoints[i];
+            }
+            for (const breakpoints of [standardBreakpoints, conditionalBreakpoints]) {
+                const response = await this.socketDebugger.addBreakpoints(breakpoints);
+
+                //if the response was successful, and we have the correct number of breakpoints in the response
+                if (response.data.errorCode === ErrorCode.OK && response?.data?.breakpoints?.length === breakpoints.length) {
+                    for (let i = 0; i < response?.data?.breakpoints?.length ?? 0; i++) {
+                        const deviceBreakpoint = response.data.breakpoints[i];
+
+                        //if the breakpoint was successful, then keep it
+                        if (deviceBreakpoint.errorCode === ErrorCode.OK) {
                             //sync this breakpoint's deviceId with the roku-assigned breakpoint ID
                             this.breakpointManager.setBreakpointDeviceId(
-                                breakpoints[i].key,
+                                breakpoints[i].hash,
                                 deviceBreakpoint.id
                             );
+
+                            //this breakpoint had an issue. remove it from the client
+                        } else {
+                            this.breakpointManager.deleteBreakpoint(breakpoints[i].hash);
                         }
-                        //return true to mark this action as complete
-                        success &&= true;
-                    } else {
-                        //this action is not yet complete. it should be retried
-                        success &&= false;
                     }
+                    //the entire response was bad. delete these breakpoints from the client
+                } else {
+                    this.breakpointManager.deleteBreakpoints(
+                        breakpoints.map(x => x.hash)
+                    );
                 }
-                return success;
-            });
+
+            }
         }
     }
 

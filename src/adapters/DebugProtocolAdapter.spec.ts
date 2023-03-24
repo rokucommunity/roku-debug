@@ -140,6 +140,35 @@ describe('DebugProtocolAdapter', function() {
     });
 
     describe('syncBreakpoints', () => {
+
+        it('removes any newly-added breakpoints that have errors', async () => {
+            await initialize();
+
+            const [bp1, bp2] = breakpointManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 }
+            ]);
+
+            plugin.pushResponse(AddBreakpointsResponse.fromJson({
+                breakpoints: [{
+                    id: 3,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }, {
+                    id: 4,
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    ignoreCount: 0
+                }],
+                requestId: 1
+            }));
+
+            //sync breakpoints
+            await adapter.syncBreakpoints();
+
+            //the bad breakpoint (id=2) should now be removed
+            expect(breakpointManager.getBreakpoints([bp1, bp2])).to.eql([bp1]);
+        });
+
         it('only allows one to run at a time', async () => {
             let concurrentCount = 0;
             let maxConcurrentCount = 0;

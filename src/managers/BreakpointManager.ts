@@ -134,39 +134,77 @@ export class BreakpointManager {
     /**
      * Delete a breakpoint
      */
-    public deleteBreakpoint(srcPath: string, breakpoint: Breakpoint) {
-        const actualBreakpoint = this.getBreakpointByHash(
-            this.getBreakpointHash(srcPath, breakpoint)
-        );
-        if (actualBreakpoint) {
-            const breakpoints = new Set(this.getBreakpointsForFile(srcPath));
-            breakpoints.delete(actualBreakpoint);
-            this.replaceBreakpoints(srcPath, [...breakpoints]);
-        }
+    public deleteBreakpoint(hash: string);
+    public deleteBreakpoint(breakpoint: AugmentedSourceBreakpoint);
+    public deleteBreakpoint(srcPath: string, breakpoint: Breakpoint);
+    public deleteBreakpoint(...args: [string] | [AugmentedSourceBreakpoint] | [string, Breakpoint]) {
+        this.deleteBreakpoints([
+            this.getBreakpoint(...args as [string])
+        ]);
     }
 
     /**
-     * Find a breakpoint by its hash
-     * @returns the breakpoint, or undefined if not found
+     * Delete a set of breakpoints
      */
-    private getBreakpointByHash(hash: string) {
-        return this.getBreakpointsByHashes([hash])[0];
-    }
-
-    /**
-     * Find a list of breakpoints by their hashes
-     * @returns the breakpoint, or undefined if not found
-     */
-    private getBreakpointsByHashes(hashes: string[]) {
-        const result = [] as AugmentedSourceBreakpoint[];
-        for (const [, breakpoints] of this.breakpointsByFilePath) {
-            for (const breakpoint of breakpoints) {
-                if (hashes.includes(breakpoint.hash)) {
-                    result.push(breakpoint);
-                }
+    public deleteBreakpoints(args: BreakpointRef[]) {
+        for (const breakpoint of this.getBreakpoints(args)) {
+            const actualBreakpoint = this.getBreakpoint(breakpoint);
+            if (actualBreakpoint) {
+                const breakpoints = new Set(this.getBreakpointsForFile(actualBreakpoint.srcPath));
+                breakpoints.delete(actualBreakpoint);
+                this.replaceBreakpoints(actualBreakpoint.srcPath, [...breakpoints]);
             }
         }
-        return result;
+    }
+
+    /**
+     * Get a breakpoint by providing the data you have available
+     */
+    public getBreakpoint(hash: BreakpointRef): AugmentedSourceBreakpoint;
+    public getBreakpoint(srcPath: string, breakpoint: Breakpoint): AugmentedSourceBreakpoint;
+    public getBreakpoint(...args: [BreakpointRef] | [string, Breakpoint]): AugmentedSourceBreakpoint {
+        let ref: BreakpointRef;
+        if (typeof args[0] === 'string' && typeof args[1] === 'object') {
+            ref = this.getBreakpointHash(args[0], args[1]);
+        } else {
+            ref = args[0];
+        }
+        return this.getBreakpoints([ref])[0];
+    }
+
+    /**
+     * Given a breakpoint ref, turn it into a hash
+     */
+    private refToHash(ref: BreakpointRef) {
+        //hash
+        if (typeof ref === 'string') {
+            return ref;
+        }
+        //deviceId
+        if (typeof ref === 'number') {
+            return [...this.breakpointCache].find(x => x[1].deviceId === ref)[1];
+        }
+        //object with a .hash key
+        if ('hash' in ref) {
+            return ref.hash;
+        }
+        //breakpoint with srcPath
+        if (ref?.srcPath) {
+            return this.getBreakpointHash(ref.srcPath, ref);
+        }
+    }
+
+    /**
+     * Get breakpoints by providing a list of breakpoint refs
+     */
+    public getBreakpoints(refs: BreakpointRef[]): AugmentedSourceBreakpoint[] {
+        //convert all refs into a hash
+        const refHashes = new Set(refs.map(x => this.refToHash(x)));
+
+        //find all the breakpoints that match one of the specified refs
+        return [...this.breakpointsByFilePath].map(x => x[1]).flat().filter((x) => {
+            return refHashes.has(x.hash);
+        });
     }
 
     /**
@@ -197,7 +235,7 @@ export class BreakpointManager {
      * Set the deviceId of a breakpoint
      */
     public setBreakpointDeviceId(hash: string, deviceId: number) {
-        const breakpoint = this.getBreakpointByHash(hash);
+        const breakpoint = this.getBreakpoint(hash);
         if (breakpoint) {
             breakpoint.deviceId = deviceId;
         }
@@ -235,9 +273,7 @@ export class BreakpointManager {
 
             process.nextTick(() => {
                 this.isVerifyEventQueued = false;
-                const breakpoints = this.getBreakpointsByHashes(
-                    this.verifiedBreakpointKeys.map(x => x)
-                );
+                const breakpoints = this.getBreakpoints(this.verifiedBreakpointKeys);
                 this.verifiedBreakpointKeys = [];
                 this.emit('breakpoints-verified', {
                     breakpoints: breakpoints
@@ -260,9 +296,7 @@ export class BreakpointManager {
 
             process.nextTick(() => {
                 this.isResurrectEventQueued = false;
-                const breakpoints = this.getBreakpointsByHashes(
-                    this.resurrectedBreakpointKeys.map(x => x)
-                );
+                const breakpoints = this.getBreakpoints(this.resurrectedBreakpointKeys);
                 this.resurrectedBreakpointKeys = [];
                 this.emit('breakpoints-resurrected', {
                     breakpoints: breakpoints
@@ -892,3 +926,13 @@ export interface BreakpointWorkItem {
 }
 
 export type Breakpoint = DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint;
+
+/**
+ * A way to reference a breakpoint.
+ * - `number` - a deviceId
+ * - `string` - a hash
+ * - `AugmentedSourceBreakpoint` an actual breakpoint
+ * - `{hash: string}` - an object containing a breakpoint hash
+ * - `Breakpoint & {srcPath: string}` - an object with all the properties of a breakpoint _and_ an explicitly defined `srcPath`
+ */
+export type BreakpointRef = number | string | AugmentedSourceBreakpoint | { hash: string } | (Breakpoint & { srcPath: string });
