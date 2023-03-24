@@ -140,6 +140,42 @@ describe('DebugProtocolAdapter', function() {
     });
 
     describe('syncBreakpoints', () => {
+        it('only allows one to run at a time', async () => {
+            let concurrentCount = 0;
+            let maxConcurrentCount = 0;
+
+            sinon.stub(adapter, '_syncBreakpoints').callsFake(async () => {
+                console.log('_syncBreakpoints');
+                concurrentCount++;
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                //several nextticks here to give other promises a chance to run
+                await util.sleep(0);
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                await util.sleep(0);
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                await util.sleep(0);
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                await util.sleep(0);
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                concurrentCount--;
+            });
+
+            await Promise.all([
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints()
+            ]);
+            expect(maxConcurrentCount).to.eql(1);
+        });
+
         it('removes "added" breakpoints that show up after a breakpoint was already removed', async () => {
             const bpId = 123;
             const bpLine = 12;

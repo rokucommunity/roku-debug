@@ -761,7 +761,20 @@ export class DebugProtocolAdapter {
     }
     // #endregion
 
+    private syncBreakpointsPromise = Promise.resolve();
     public async syncBreakpoints() {
+        //wait for the previous sync to finish
+        this.syncBreakpointsPromise = this.syncBreakpointsPromise
+            //ignore any errors
+            .catch(() => { })
+            //run the next sync
+            .then(() => this._syncBreakpoints());
+
+        //return the new promise, which will resolve once our latest `syncBreakpoints()` call is finished
+        return this.syncBreakpointsPromise;
+    }
+
+    public async _syncBreakpoints() {
         //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
         //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
         if (!this.socketDebugger?.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
