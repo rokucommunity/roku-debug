@@ -30,6 +30,7 @@ export class BreakpointManager {
     private emitter = new EventEmitter();
 
     private emit(eventName: 'breakpoints-verified', data: { breakpoints: AugmentedSourceBreakpoint[] });
+    private emit(eventName: 'breakpoints-resurrected', data: { breakpoints: AugmentedSourceBreakpoint[] });
     private emit(eventName: string, data: any) {
         this.emitter.emit(eventName, data);
     }
@@ -38,6 +39,7 @@ export class BreakpointManager {
      * Subscribe to an event
      */
     public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
+    public on(eventName: 'breakpoints-resurrected', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
     public on(eventName: string, handler: (data: any) => any) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -113,6 +115,13 @@ export class BreakpointManager {
         if (!existingBreakpoint) {
             breakpointsArray.push(bp);
         }
+
+        //store this latest version of the breakpoint in our breakpoints cache (to use when resurrecting breakpoints)
+        this.breakpointCache.set(bp.hash, {
+            //retain the previously cached breakpoint's deviceId (if present)
+            ...bp,
+            deviceId: this.breakpointCache.get(bp.hash)?.deviceId
+        });
 
         //if this is one of the permanent breakpoints, mark it as verified immediately (only applicable to telnet sessions)
         if (this.getPermanentBreakpoint(bp.hash)) {
@@ -192,6 +201,10 @@ export class BreakpointManager {
         if (breakpoint) {
             breakpoint.deviceId = deviceId;
         }
+        const cachedBreakpoint = this.breakpointCache.get(hash);
+        if (cachedBreakpoint) {
+            cachedBreakpoint.deviceId = deviceId;
+        }
     }
 
     /**
@@ -201,6 +214,7 @@ export class BreakpointManager {
         const breakpoint = this.getBreakpointByDeviceId(deviceId);
         if (breakpoint) {
             breakpoint.verified = isVerified;
+
             this.queueVerifyEvent(breakpoint.hash);
             return true;
         } else {
@@ -233,6 +247,31 @@ export class BreakpointManager {
     }
     private verifiedBreakpointKeys: string[] = [];
     private isVerifyEventQueued = false;
+
+    /**
+     * Whenever breakpoints get verified, they need to be synced back to vscode.
+     * This queues up a future function that will emit a batch of all verified breakpoints.
+     * @param hash the breakpoint hash that identifies this specific breakpoint based on its features
+     */
+    private queueResurrectionEvent(hash: string) {
+        this.resurrectedBreakpointKeys.push(hash);
+        if (!this.isResurrectEventQueued) {
+            this.isResurrectEventQueued = true;
+
+            process.nextTick(() => {
+                this.isResurrectEventQueued = false;
+                const breakpoints = this.getBreakpointsByHashes(
+                    this.resurrectedBreakpointKeys.map(x => x)
+                );
+                this.resurrectedBreakpointKeys = [];
+                this.emit('breakpoints-resurrected', {
+                    breakpoints: breakpoints
+                });
+            });
+        }
+    }
+    private resurrectedBreakpointKeys: string[] = [];
+    private isResurrectEventQueued = false;
 
     /**
      * Generate a hash based on the features of the breakpoint. Every breakpoint that exists at the same location
@@ -679,14 +718,24 @@ export class BreakpointManager {
                 }
             }
             this.lastState = currentState;
-            return {
+
+            const result = {
                 added: [...added.values()],
                 removed: [...removed.values()],
                 unchanged: [...unchanged.values()]
             };
+            //hydrate the breakpoints with any available deviceIds
+            for (const breakpoint of [...result.added, ...result.removed, ...result.unchanged]) {
+                breakpoint.deviceId = this.getLastDeviceId(breakpoint.hash);
+            }
+            return result;
         } finally {
             this.isGetDiffRunning = false;
         }
+    }
+
+    private getLastDeviceId(hash: string) {
+        return this.breakpointCache.get(hash)?.deviceId;
     }
 
     /**
@@ -730,6 +779,26 @@ export class BreakpointManager {
      */
     private isGetDiffRunning = false;
     private lastState = new Map<string, BreakpointWorkItem>();
+
+    /**
+     * A cache of breakpoints. This is useful when the device ends up with phantom breakpoints that we don't recognize anymore,
+     * and the device can't delete them, then we can at least send them back to the client so the client could try to delete them again later
+     */
+    private breakpointCache = new Map<string, AugmentedSourceBreakpoint>();
+
+    /**
+     * Sometimes the device is unable to delete a breakpoint, but the client has already forgotten about it.
+     * This function allows us to "bring back" client-deleted breakpoints, and will add them back to the client
+     */
+    public resurrectBreakpoints(deviceIds: number[]) {
+        for (const deviceId of deviceIds) {
+            const bp = [...this.breakpointCache].map(([, bp]) => bp).find(bp => bp.deviceId === deviceId);
+            if (bp) {
+                this.setBreakpoint(bp.srcPath, bp);
+                this.queueResurrectionEvent(bp.hash);
+            }
+        }
+    }
 }
 
 export interface Diff {

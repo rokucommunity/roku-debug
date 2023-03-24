@@ -50,6 +50,8 @@ describe('DebugProtocolClient', () => {
      */
     async function connect() {
         await client.connect();
+        client['options'].shutdownTimeout = 100;
+        client['options'].exitChannelTimeout = 100;
         //send the AllThreadsStopped event, and also wait for the client to suspend
         await Promise.all([
             server.sendUpdate(AllThreadsStoppedUpdate.fromJson({

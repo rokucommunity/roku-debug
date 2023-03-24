@@ -281,7 +281,8 @@ export class DebugProtocolClient {
         // Don't forget to catch error, for your own sake.
         this.controlSocket.once('error', (error) => {
             //the Roku closed the connection for some unknown reason...
-            console.error(`error on control port`, error);
+            this.logger.error(`error on control port`, error);
+            this.controlSocket?.destroy?.();
             void this.shutdown('close');
         });
 
@@ -1104,6 +1105,7 @@ export class DebugProtocolClient {
 
     private async shutdown(eventName: 'app-exit' | 'close') {
         this.logger.log('Shutting down!');
+        const exitChannelTimeout = this.options?.exitChannelTimeout ?? 30_000;
         //tell the device to exit the channel
         try {
             //ask the device to terminate the debug session. We have to wait for this to come back.
@@ -1112,15 +1114,15 @@ export class DebugProtocolClient {
             await Promise.race([
                 this.exitChannel().finally(() => this.logger.log('exit channel completed')),
                 //if the exit channel request took this long to finish, something's terribly wrong
-                util.sleep(30_000)
+                util.sleep(exitChannelTimeout)
             ]);
         } finally { }
 
 
-        const maxTimeout = 10_000;
+        const shutdownTimeMax = this.options?.shutdownTimeout ?? 10_000;
         await Promise.all([
-            this.destroyControlSocket(maxTimeout),
-            this.destroyIOSocket(maxTimeout)
+            this.destroyControlSocket(shutdownTimeMax),
+            this.destroyIOSocket(shutdownTimeMax)
         ]);
         this.emit(eventName);
     }
@@ -1231,6 +1233,16 @@ export interface ConstructorOptions {
      * This is here to prevent infinitely pinging the Roku device.
      */
     controlConnectMaxTime?: number;
+
+    /**
+     * The number of milliseconds that the client should wait during a shutdown request before forcefully terminating the sockets
+     */
+    shutdownTimeout?: number;
+
+    /**
+     * The max time the client will wait for the `exit channel` response before forcefully terminating the sockets
+     */
+    exitChannelTimeout?: number;
 }
 
 /**

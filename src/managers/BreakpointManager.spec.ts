@@ -142,6 +142,21 @@ describe('BreakpointManager', () => {
         });
     });
 
+    describe('resurrection', () => {
+        it('supports resurrecting breakpoints that already have IDs', () => {
+            const bp = bpManager.setBreakpoint(srcPath, { line: 1, deviceId: 10 });
+            bpManager.setBreakpointDeviceId(bp.hash, 3);
+
+            bpManager.deleteBreakpoint(srcPath, bp);
+
+            bpManager.resurrectBreakpoints([bp.deviceId]);
+
+            expect(
+                bpManager['getBreakpointsForFile'](srcPath)
+            ).to.eql([bp]);
+        });
+    });
+
     describe('sanitizeSourceFilePath', () => {
         it('returns the original string when no key was found', () => {
             expect(bpManager.sanitizeSourceFilePath('a/b/c')).to.equal(s`a/b/c`);
@@ -1109,6 +1124,21 @@ describe('BreakpointManager', () => {
                     pkgPath: 'pkg:/source/main__lib1.brs'
                 }], removed: [], unchanged: []
             });
+        });
+
+        it('includes the deviceId in all breakpoints when possible', async () => {
+            const bp = bpManager.setBreakpoint(srcPath, { line: 1 });
+
+            let diff = await bpManager.getDiff(projectManager.getAllProjects());
+            expect(diff.added[0].deviceId).not.to.exist;
+
+            bpManager.setBreakpointDeviceId(bp.hash, 3);
+
+            bpManager.deleteBreakpoint(srcPath, bp);
+
+            diff = await bpManager.getDiff(projectManager.getAllProjects());
+
+            expect(diff.removed[0].deviceId).to.eql(3);
         });
     });
 });

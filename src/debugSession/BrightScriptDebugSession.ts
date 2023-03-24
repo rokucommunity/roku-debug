@@ -67,11 +67,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         //send newly-verified breakpoints to vscode
-        this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceVerifiedBreakpoints(data));
+        this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceBreakpointsChanged('changed', data));
+        this.breakpointManager.on('breakpoints-resurrected', (data) => this.onDeviceBreakpointsChanged('new', data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
     }
 
-    private onDeviceVerifiedBreakpoints(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
+    private onDeviceBreakpointsChanged(eventName: 'changed' | 'new', data: { breakpoints: AugmentedSourceBreakpoint[] }) {
         this.logger.info('Sending verified device breakpoints to client', data);
         //send all verified breakpoints to the client
         for (const breakpoint of data.breakpoints) {
@@ -84,7 +85,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     path: breakpoint.srcPath
                 }
             };
-            this.sendEvent(new BreakpointEvent('changed', event));
+            this.sendEvent(new BreakpointEvent(eventName, event));
         }
     }
 
