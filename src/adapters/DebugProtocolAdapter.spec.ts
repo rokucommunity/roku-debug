@@ -44,6 +44,7 @@ describe('DebugProtocolAdapter', function() {
     let client: DebugProtocolClient;
     let plugin: DebugProtocolServerTestPlugin;
     let breakpointManager: BreakpointManager;
+    let projectManager: ProjectManager;
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
@@ -54,7 +55,7 @@ describe('DebugProtocolAdapter', function() {
         const sourcemapManager = new SourceMapManager();
         const locationManager = new LocationManager(sourcemapManager);
         breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
-        const projectManager = new ProjectManager(breakpointManager, locationManager);
+        projectManager = new ProjectManager(breakpointManager, locationManager);
         projectManager.mainProject = new Project({
             rootDir: rootDir,
             files: [],
@@ -252,6 +253,9 @@ describe('DebugProtocolAdapter', function() {
 
             //delete the breakpoint (before we ever got the deviceId from the server)
             breakpointManager.replaceBreakpoints(srcPath, []);
+
+            //run another breakpoint diff to simulate the breakpoint being deleted before the device responded with the device IDs
+            await breakpointManager.getDiff(projectManager.getAllProjects());
 
             //sync the breakpoints again, forcing the bp to be fully deleted
             let syncPromise = adapter.syncBreakpoints();
