@@ -48,6 +48,20 @@ export class BreakpointManager {
     }
 
     /**
+     * Get a promise that resolves the next time the specified event occurs
+     */
+    public once(eventName: 'breakpoints-verified'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
+    public once(eventName: 'breakpoints-resurrected'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
+    public once(eventName: string): Promise<any> {
+        return new Promise((resolve) => {
+            const disconnect = this.on(eventName as 'breakpoints-verified', (data) => {
+                disconnect();
+                resolve(data);
+            });
+        });
+    }
+
+    /**
      * A map of breakpoints by what file they were set in.
      * This does not handle any source-to-dest mapping...these breakpoints are stored in the file they were set in.
      * These breakpoints are all set before launch, and then this list is not changed again after that.

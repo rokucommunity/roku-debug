@@ -786,14 +786,20 @@ export class DebugProtocolAdapter {
 
         // REMOVE breakpoints (delete these breakpoints from the device)
         if (diff.removed.length > 0) {
-            await this.actionQueue.run(async () => {
-                const response = await this.socketDebugger.removeBreakpoints(
-                    //TODO handle retrying to remove unverified breakpoints that might get verified in the future AFTER we've removed them (that's hard...)
-                    diff.removed.map(x => x.deviceId).filter(x => typeof x === 'number')
-                );
-                //return true to mark this action as complete, or false to retry the task again in the future
-                return response.success && response.data.errorCode === ErrorCode.OK;
-            }, 10);
+            const response = await this.socketDebugger.removeBreakpoints(
+                //TODO handle retrying to remove unverified breakpoints that might get verified in the future AFTER we've removed them (that's hard...)
+                diff.removed.map(x => x.deviceId).filter(x => typeof x === 'number')
+            );
+
+            //for any failed breakpoint deletions, add them back to the client
+
+            const breakpointsToResurrect = response.data?.errorCode !== ErrorCode.OK
+                //if the entire request failed, resurrect all of these breakpoints
+                ? diff.removed.map(x => x.deviceId)
+                //if individual deletions failed, resurrect those
+                : response.data.breakpoints?.filter(x => x.errorCode !== ErrorCode.OK).map(x => x.id);
+
+            this.breakpointManager.resurrectBreakpoints(breakpointsToResurrect);
         }
 
         if (diff.added.length > 0) {

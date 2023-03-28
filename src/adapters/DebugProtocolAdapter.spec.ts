@@ -143,6 +143,92 @@ describe('DebugProtocolAdapter', function() {
 
     describe('syncBreakpoints', () => {
 
+        it('resurrects breakpoints when the entire delete request failed', async () => {
+            await initialize();
+            //disable auto breakpoint verification
+            client.protocolVersion = '3.2.0';
+
+            //add initial breakpoints
+            const [bp1, bp2, bp3] = breakpointManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 },
+                { line: 3 }
+            ]);
+
+            plugin.pushResponse(AddBreakpointsResponse.fromJson({
+                breakpoints: [
+                    { id: 1, errorCode: ErrorCode.OK, ignoreCount: 0 },
+                    { id: 2, errorCode: ErrorCode.OK, ignoreCount: 0 },
+                    { id: 3, errorCode: ErrorCode.OK, ignoreCount: 0 }
+                ],
+                requestId: 1
+            }));
+
+            await adapter.syncBreakpoints();
+
+            //delete some breakpoints
+            breakpointManager.deleteBreakpoints([bp1, bp3]);
+
+            //causes complete error
+            plugin.pushResponse(GenericV3Response.fromJson({
+                errorCode: ErrorCode.INVALID_ARGS,
+                requestId: 1
+            }));
+
+            const resurrectedPromise = breakpointManager.once('breakpoints-resurrected');
+
+            //sync the breakpoints. this request will fail, so the breakpoints should become resurrected
+            await adapter.syncBreakpoints();
+
+            expect(
+                await resurrectedPromise
+            ).to.eql({ breakpoints: [bp1, bp3] });
+        });
+
+        it('resurrects breakpoints when specific breakpoints failed to delete', async () => {
+            await initialize();
+            //disable auto breakpoint verification
+            client.protocolVersion = '3.2.0';
+
+            //add initial breakpoints
+            const [bp1, bp2, bp3] = breakpointManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 },
+                { line: 3 }
+            ]);
+
+            plugin.pushResponse(AddBreakpointsResponse.fromJson({
+                breakpoints: [
+                    { id: 1, errorCode: ErrorCode.OK, ignoreCount: 0 },
+                    { id: 2, errorCode: ErrorCode.OK, ignoreCount: 0 },
+                    { id: 3, errorCode: ErrorCode.OK, ignoreCount: 0 }
+                ],
+                requestId: 1
+            }));
+
+            await adapter.syncBreakpoints();
+
+            //delete some breakpoints
+            breakpointManager.deleteBreakpoints([bp1, bp3]);
+
+            //causes complete error
+            plugin.pushResponse(RemoveBreakpointsResponse.fromJson({
+                breakpoints: [
+                    { errorCode: ErrorCode.INVALID_ARGS, id: bp1.deviceId, ignoreCount: 0 }
+                ],
+                requestId: 1
+            }));
+
+            const resurrectedPromise = breakpointManager.once('breakpoints-resurrected');
+
+            //sync the breakpoints. this request will succeed but one of the breakpoints was bad, so that one should become resurrected
+            await adapter.syncBreakpoints();
+
+            expect(
+                await resurrectedPromise
+            ).to.eql({ breakpoints: [bp1] });
+        });
+
         it('removes any newly-added breakpoints that have errors', async () => {
             await initialize();
 
