@@ -58,4 +58,9 @@ export class ActionQueue {
         }
         this.isRunning = false;
     }
+
+    public destroy() {
+        this.isRunning = false;
+        this.queueItems = [];
+    }
 }

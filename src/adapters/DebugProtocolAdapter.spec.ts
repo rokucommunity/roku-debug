@@ -25,6 +25,7 @@ import { RemoveBreakpointsResponse } from '../debugProtocol/events/responses/Rem
 import { BreakpointVerifiedUpdate } from '../debugProtocol/events/updates/BreakpointVerifiedUpdate';
 import { RemoveBreakpointsRequest } from '../debugProtocol/events/requests/RemoveBreakpointsRequest';
 import type { AfterSendRequestEvent } from '../debugProtocol/client/DebugProtocolClientPlugin';
+import { GenericV3Response } from '../debugProtocol/events/responses/GenericV3Response';
 const sinon = createSandbox();
 
 let cwd = s`${process.cwd()}`;
@@ -73,7 +74,7 @@ describe('DebugProtocolAdapter', function() {
 
     afterEach(async () => {
         sinon.restore();
-        client?.destroy();
+        client?.destroy(true);
         //shut down and destroy the server after each test
         await server?.stop();
         await util.sleep(10);

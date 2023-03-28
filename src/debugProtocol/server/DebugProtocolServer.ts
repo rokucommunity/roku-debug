@@ -131,7 +131,6 @@ export class DebugProtocolServer {
         //close the client socket
         this.client?.destroy();
 
-
         //now close the server
         try {
             await new Promise<void>((resolve, reject) => {

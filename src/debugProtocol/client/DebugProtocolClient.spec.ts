@@ -36,7 +36,6 @@ import { StackTraceV3Response } from '../events/responses/StackTraceV3Response';
 import { IOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
 import * as Net from 'net';
 import { ThreadAttachedUpdate } from '../events/updates/ThreadAttachedUpdate';
-import { KeyType } from '../../adapters/DebugProtocolAdapter';
 process.on('uncaughtException', (err) => console.log('node js process error\n', err));
 const sinon = createSandbox();
 
@@ -87,13 +86,12 @@ describe('DebugProtocolClient', () => {
         sinon.restore();
 
         try {
-            client?.destroy();
+            await client?.destroy(true);
         } catch (e) { }
         //shut down and destroy the server after each test
         try {
             await server?.destroy();
         } catch (e) { }
-        await util.sleep(10);
     });
 
     it('knows when to enable the thread hopping workaround', () => {
@@ -371,10 +369,6 @@ describe('DebugProtocolClient', () => {
                 lineNumber: 15
             }]);
             expect(response.data.breakpoints).to.eql(responseBreakpoins);
-        });
-
-        it('skips sending command when there are zero conditional breakpoints', async () => {
-
         });
 
         it('sends AddBreakpointsRequest when conditional breakpoints are NOT supported', async () => {
