@@ -79,7 +79,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const event: DebugProtocol.Breakpoint = {
                 line: breakpoint.line,
                 column: breakpoint.column,
-                verified: true,
+                verified: breakpoint.verified,
                 id: breakpoint.id,
                 source: {
                     path: breakpoint.srcPath

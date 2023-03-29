@@ -189,14 +189,14 @@ export class BreakpointManager {
     /**
      * Given a breakpoint ref, turn it into a hash
      */
-    private refToHash(ref: BreakpointRef) {
+    private refToHash(ref: BreakpointRef): string {
         //hash
         if (typeof ref === 'string') {
             return ref;
         }
         //deviceId
         if (typeof ref === 'number') {
-            return [...this.breakpointCache].find(x => x[1].deviceId === ref)[1];
+            return [...this.breakpointCache].find(x => x[1].deviceId === ref)[1]?.hash;
         }
         //object with a .hash key
         if ('hash' in ref) {
@@ -210,15 +210,23 @@ export class BreakpointManager {
 
     /**
      * Get breakpoints by providing a list of breakpoint refs
+     * @param refs a list of breakpoint refs for breakpoints to get
+     * @param includeHistoric if true, will also look through historic breakpoints for a match.
      */
-    public getBreakpoints(refs: BreakpointRef[]): AugmentedSourceBreakpoint[] {
+    public getBreakpoints(refs: BreakpointRef[], includeHistoric = false): AugmentedSourceBreakpoint[] {
         //convert all refs into a hash
         const refHashes = new Set(refs.map(x => this.refToHash(x)));
 
         //find all the breakpoints that match one of the specified refs
-        return [...this.breakpointsByFilePath].map(x => x[1]).flat().filter((x) => {
-            return refHashes.has(x.hash);
-        });
+        if (!includeHistoric) {
+            return [...this.breakpointsByFilePath].map(x => x[1]).flat().filter((x) => {
+                return refHashes.has(x.hash);
+            });
+        } else {
+            return [...this.breakpointCache].map(x => x[1]).flat().filter((x) => {
+                return refHashes.has(x.hash);
+            });
+        }
     }
 
     /**
@@ -741,6 +749,8 @@ export class BreakpointManager {
                             ].join('--');
                             //clone the breakpoint and then add it to the current state
                             currentState.set(key, { ...bp });
+                            //keep all breakpoint work data around forever, to help with resurrection
+                            this.breakpointWorkCache.set(key, { ...bp });
                         }
                     }
                 })
@@ -827,6 +837,7 @@ export class BreakpointManager {
      */
     private isGetDiffRunning = false;
     private lastState = new Map<string, BreakpointWorkItem>();
+    private breakpointWorkCache = new Map<string, BreakpointWorkItem>();
 
     /**
      * A cache of breakpoints. This is useful when the device ends up with phantom breakpoints that we don't recognize anymore,
@@ -843,6 +854,14 @@ export class BreakpointManager {
             const bp = [...this.breakpointCache].map(([, bp]) => bp).find(bp => bp.deviceId === deviceId);
             if (bp) {
                 this.setBreakpoint(bp.srcPath, bp);
+                //re-add any state breakpoint work
+                for (const [key, bpWork] of this.breakpointWorkCache) {
+                    if (bpWork.hash === bp.hash && !this.lastState.has(key)) {
+                        this.lastState.set(key, bpWork);
+                    }
+                }
+
+                //queue the resurrection event to notify outside observers
                 this.queueResurrectionEvent(bp.hash);
             }
         }

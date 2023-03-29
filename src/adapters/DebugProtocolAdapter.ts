@@ -792,14 +792,18 @@ export class DebugProtocolAdapter {
             );
 
             //for any failed breakpoint deletions, add them back to the client
-
-            const breakpointsToResurrect = response.data?.errorCode !== ErrorCode.OK
+            let breakpointsToResurrect = response.data?.errorCode !== ErrorCode.OK
                 //if the entire request failed, resurrect all of these breakpoints
                 ? diff.removed.map(x => x.deviceId)
                 //if individual deletions failed, resurrect those
                 : response.data.breakpoints?.filter(x => x.errorCode !== ErrorCode.OK).map(x => x.id);
 
-            this.breakpointManager.resurrectBreakpoints(breakpointsToResurrect);
+            // breakpointsToResurrect = diff.removed.map(x => x.deviceId);//TODO immediately delete this, it was only for testing
+
+            if (breakpointsToResurrect.length > 0) {
+                this.logger.warn('Failed to remove some breakpoints. re-adding them to the client', this.breakpointManager.getBreakpoints(breakpointsToResurrect, true));
+                this.breakpointManager.resurrectBreakpoints(breakpointsToResurrect);
+            }
         }
 
         if (diff.added.length > 0) {

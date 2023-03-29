@@ -155,6 +155,31 @@ describe('BreakpointManager', () => {
                 bpManager['getBreakpointsForFile'](srcPath)
             ).to.eql([bp]);
         });
+
+        it('shows resurrected breakpoints in the next diff', async () => {
+            const bp = bpManager.setBreakpoint(srcPath, { line: 1, deviceId: 10 });
+            bpManager.setBreakpointDeviceId(bp.hash, 3);
+
+            expect(
+                (await bpManager.getDiff(projectManager.getAllProjects())).added[0]
+            ).to.include(bp);
+
+            bpManager.deleteBreakpoint(srcPath, bp);
+
+            expect(
+                (await bpManager.getDiff(projectManager.getAllProjects())).removed[0]
+            ).to.include(bp);
+
+            //resurrect the breakpoint
+            bpManager.resurrectBreakpoints([bp.deviceId]);
+            //now delete the breakpoint again
+            bpManager.deleteBreakpoint(srcPath, bp);
+
+            //the breakpoint should be in the `removed` list again since it was resurrected
+            expect(
+                (await bpManager.getDiff(projectManager.getAllProjects())).removed[0]
+            ).to.include(bp);
+        });
     });
 
     describe('sanitizeSourceFilePath', () => {
