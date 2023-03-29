@@ -31,6 +31,7 @@ export class BreakpointManager {
 
     private emit(eventName: 'breakpoints-verified', data: { breakpoints: AugmentedSourceBreakpoint[] });
     private emit(eventName: 'breakpoints-resurrected', data: { breakpoints: AugmentedSourceBreakpoint[] });
+    private emit(eventName: 'breakpoints-eliminated', data: { breakpoints: AugmentedSourceBreakpoint[] });
     private emit(eventName: string, data: any) {
         this.emitter.emit(eventName, data);
     }
@@ -40,6 +41,7 @@ export class BreakpointManager {
      */
     public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
     public on(eventName: 'breakpoints-resurrected', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
+    public on(eventName: 'breakpoints-eliminated', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
     public on(eventName: string, handler: (data: any) => any) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -52,6 +54,7 @@ export class BreakpointManager {
      */
     public once(eventName: 'breakpoints-verified'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
     public once(eventName: 'breakpoints-resurrected'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
+    public once(eventName: 'breakpoints-eliminated'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
     public once(eventName: string): Promise<any> {
         return new Promise((resolve) => {
             const disconnect = this.on(eventName as 'breakpoints-verified', (data) => {
@@ -190,6 +193,9 @@ export class BreakpointManager {
      * Given a breakpoint ref, turn it into a hash
      */
     private refToHash(ref: BreakpointRef): string {
+        if (!ref) {
+            return;
+        }
         //hash
         if (typeof ref === 'string') {
             return ref;
@@ -275,7 +281,7 @@ export class BreakpointManager {
         if (breakpoint) {
             breakpoint.verified = isVerified;
 
-            this.queueVerifyEvent(breakpoint.hash);
+            this.queueEvent('breakpoints-verified', breakpoint.hash);
             return true;
         } else {
             //couldn't find the breakpoint. return false so the caller can handle that properly
@@ -283,51 +289,33 @@ export class BreakpointManager {
         }
     }
 
+    private queueEventStates = new Map<string, { pendingRefs: BreakpointRef[]; isQueued: boolean }>();
+
+
     /**
-     * Whenever breakpoints get verified, they need to be synced back to vscode.
-     * This queues up a future function that will emit a batch of all verified breakpoints.
+     * Queue future events to be fired when data settles. Typically this is data that needs synced back to vscode.
+     * This queues up a future function that will emit a batch of all the specified breakpoints.
      * @param hash the breakpoint hash that identifies this specific breakpoint based on its features
      */
-    private queueVerifyEvent(hash: string) {
-        this.verifiedBreakpointKeys.push(hash);
-        if (!this.isVerifyEventQueued) {
-            this.isVerifyEventQueued = true;
+    private queueEvent(event: 'breakpoints-verified' | 'breakpoints-resurrected' | 'breakpoints-eliminated', ref: BreakpointRef) {
+        //get the state (or create a new one)
+        const state = this.queueEventStates.get(event) ?? (this.queueEventStates.set(event, { pendingRefs: [], isQueued: false }).get(event));
+
+        this.queueEventStates.set(event, state);
+        state.pendingRefs.push(ref);
+        if (!state.isQueued) {
+            state.isQueued = true;
 
             process.nextTick(() => {
-                this.isVerifyEventQueued = false;
-                const breakpoints = this.getBreakpoints(this.verifiedBreakpointKeys);
-                this.verifiedBreakpointKeys = [];
-                this.emit('breakpoints-verified', {
+                state.isQueued = false;
+                const breakpoints = this.getBreakpoints(state.pendingRefs);
+                state.pendingRefs = [];
+                this.emit(event as Parameters<typeof this.emit>[0], {
                     breakpoints: breakpoints
                 });
             });
         }
     }
-    private verifiedBreakpointKeys: string[] = [];
-    private isVerifyEventQueued = false;
-
-    /**
-     * Whenever breakpoints get verified, they need to be synced back to vscode.
-     * This queues up a future function that will emit a batch of all verified breakpoints.
-     * @param hash the breakpoint hash that identifies this specific breakpoint based on its features
-     */
-    private queueResurrectionEvent(hash: string) {
-        this.resurrectedBreakpointKeys.push(hash);
-        if (!this.isResurrectEventQueued) {
-            this.isResurrectEventQueued = true;
-
-            process.nextTick(() => {
-                this.isResurrectEventQueued = false;
-                const breakpoints = this.getBreakpoints(this.resurrectedBreakpointKeys);
-                this.resurrectedBreakpointKeys = [];
-                this.emit('breakpoints-resurrected', {
-                    breakpoints: breakpoints
-                });
-            });
-        }
-    }
-    private resurrectedBreakpointKeys: string[] = [];
-    private isResurrectEventQueued = false;
 
     /**
      * Generate a hash based on the features of the breakpoint. Every breakpoint that exists at the same location
@@ -862,7 +850,7 @@ export class BreakpointManager {
                 }
 
                 //queue the resurrection event to notify outside observers
-                this.queueResurrectionEvent(bp.hash);
+                this.queueEvent('breakpoints-resurrected', bp.hash);
             }
         }
     }
