@@ -142,6 +142,39 @@ describe('DebugProtocolAdapter', function() {
     });
 
     describe('syncBreakpoints', () => {
+        it.only('eliminates breakpoints when the entire add request failed', async () => {
+            await initialize();
+            //disable auto breakpoint verification
+            client.protocolVersion = '3.2.0';
+
+            //add a single breakpoint first and do a diff to lock in the diff
+            const bp2 = breakpointManager.setBreakpoint(srcPath, { line: 2 });
+
+            await breakpointManager.getDiff(projectManager.getAllProjects());
+
+            //add breakpoints
+            const [bp1, bp3] = breakpointManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 3 }
+            ]);
+
+            //complete request failure
+            plugin.pushResponse(GenericV3Response.fromJson({
+                errorCode: ErrorCode.INVALID_ARGS,
+                requestId: 1
+            }));
+
+            await adapter.syncBreakpoints();
+
+            const eliminatedPromise = breakpointManager.once('breakpoints-eliminated');
+
+            //sync the breakpoints. this request will fail, so the breakpoints should become resurrected
+            await adapter.syncBreakpoints();
+
+            expect(
+                await eliminatedPromise
+            ).to.eql({ breakpoints: [bp1, bp3] });
+        });
 
         it('resurrects breakpoints when the entire delete request failed', async () => {
             await initialize();
