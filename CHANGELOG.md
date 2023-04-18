@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.18.6](https://github.com/rokucommunity/roku-debug/compare/v0.18.5...v0.18.6) - 2023-04-18
+### Changed
+ - Exclude sourcemaps when sideloading ([#145](https://github.com/rokucommunity/roku-debug/pull/145))
+ - upgrade to [brighterscript@0.64.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0642---2023-04-18). Notable changes since 0.64.1:
+     - Fix namespace-relative enum value ([brighterscript#793](https://github.com/rokucommunity/brighterscript/pull/793))
+
+
+
 ## [0.18.5](https://github.com/rokucommunity/roku-debug/compare/v0.18.4...v0.18.5) - 2023-04-14
 ### Changed
  - upgrade to [brighterscript@0.64.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0641---2023-04-14). Notable changes since 0.62.0:
