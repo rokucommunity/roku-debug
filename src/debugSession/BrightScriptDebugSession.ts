@@ -401,6 +401,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             connectPromise = this.connectRokuAdapter().catch(e => this.logger.error(e));
         }
 
+        this.logger.log('Uploading zip');
+        const start = Date.now();
         let packageIsPublished = false;
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
@@ -411,6 +413,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         });
 
         await publishPromise;
+
+        this.logger.log(`Uploading zip took ${Date.now() - start}ms`);
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.

@@ -54,6 +54,7 @@
     },
     "devDependencies": {
         "@types/chai": "^4.2.22",
+        "@types/decompress": "^4.2.4",
         "@types/dedent": "^0.7.0",
         "@types/find-in-files": "^0.5.1",
         "@types/fs-extra": "^9.0.13",
@@ -68,6 +69,7 @@
         "@typescript-eslint/parser": "^5.2.0",
         "chai": "^4.3.4",
         "coveralls": "^3.1.1",
+        "decompress": "^4.2.1",
         "dedent": "^0.7.0",
         "eslint": "^8.1.0",
         "eslint-plugin-no-only-tests": "^2.6.0",
