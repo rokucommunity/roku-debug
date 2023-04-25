@@ -175,6 +175,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * What level of debug server's internal logging should be performed in the debug session
      */
     logLevel: LogLevel;
+
+    /**
+     * Show variables that are prefixed with a special prefix designated to be hidden
+     */
+    showHiddenVariables: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
