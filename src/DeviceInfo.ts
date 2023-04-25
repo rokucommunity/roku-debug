@@ -66,6 +66,6 @@ export interface DeviceInfo {
     'trc-channel-version'?: string;
     'davinci-version'?: string;
     'av-sync-calibration-enabled'?: number;
-    // Anything nre they might add that we do not know about
+    // Anything new they might add that we do not know about
     [key: string]: any;
 }
