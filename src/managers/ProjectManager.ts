@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import { rokuDeploy, RokuDeploy } from 'roku-deploy';
+import { rokuDeploy, RokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
 import * as glob from 'glob';
 import { promisify } from 'util';
@@ -465,10 +465,32 @@ export class Project {
      * @param stagingPath
      */
     public async zipPackage(params: { retainStagingFolder: true }) {
-        await rokuDeploy.zipPackage({
+        const options = rokuDeploy.getOptions({
             ...this,
             ...params
         });
+
+        //make sure the output folder exists
+        await fsExtra.ensureDir(options.outDir);
+
+        let zipFilePath = rokuDeploy.getOutputZipFilePath(options);
+
+        //ensure the manifest file exists in the staging folder
+        if (!await rokuDeployUtil.fileExistsCaseInsensitive(`${options.stagingDir}/manifest`)) {
+            throw new Error(`Cannot zip package: missing manifest file in "${options.stagingDir}"`);
+        }
+
+        // create a zip of the staging folder
+        await rokuDeploy.zipFolder(options.stagingDir, zipFilePath, undefined, [
+            '**/*',
+            //exclude sourcemap files (they're large and can't be parsed on-device anyway...)
+            '!**/*.map'
+        ]);
+
+        //delete the staging folder unless told to retain it.
+        if (options.retainStagingDir !== true) {
+            await fsExtra.remove(options.stagingDir);
+        }
     }
 
     /**

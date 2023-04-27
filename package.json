@@ -1,6 +1,6 @@
 {
     "name": "roku-debug",
-    "version": "0.18.4",
+    "version": "0.18.6",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
@@ -61,6 +61,7 @@
     "devDependencies": {
         "@types/chai": "^4.2.22",
         "@types/debounce": "^1.2.1",
+        "@types/decompress": "^4.2.4",
         "@types/dedent": "^0.7.0",
         "@types/find-in-files": "^0.5.1",
         "@types/fs-extra": "^9.0.13",
@@ -73,8 +74,10 @@
         "@types/vscode": "^1.61.0",
         "@typescript-eslint/eslint-plugin": "^5.2.0",
         "@typescript-eslint/parser": "^5.2.0",
+        "axios": "^1.2.2",
         "chai": "^4.3.4",
         "coveralls": "^3.1.1",
+        "decompress": "^4.2.1",
         "dedent": "^0.7.0",
         "eslint": "^8.1.0",
         "eslint-plugin-no-only-tests": "^2.6.0",
@@ -94,7 +97,7 @@
     },
     "dependencies": {
         "@rokucommunity/logger": "^0.3.2",
-        "brighterscript": "^0.62.0",
+        "brighterscript": "^0.64.2",
         "dateformat": "^4.6.3",
         "debounce": "^1.2.1",
         "eol": "^0.9.1",
@@ -104,7 +107,7 @@
         "natural-orderby": "^2.0.3",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
-        "roku-deploy": "^3.10.0",
+        "roku-deploy": "^3.10.1",
         "semver": "^7.3.5",
         "serialize-error": "^8.1.0",
         "smart-buffer": "^4.2.0",
@@ -112,6 +115,7 @@
         "telnet-client": "^1.4.9",
         "vscode-debugadapter": "^1.49.0",
         "vscode-debugprotocol": "^1.49.0",
-        "vscode-languageserver": "^6.1.1"
+        "vscode-languageserver": "^6.1.1",
+        "xml2js": "^0.5.0"
     }
 }

@@ -50,7 +50,10 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
+import type { DeviceInfo } from '../DeviceInfo';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
+import axios from 'axios';
+import * as xml2js from 'xml2js';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -191,6 +194,44 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new PopupMessageEvent(message, severity));
     }
 
+    public async fetchDeviceInfo(host: string, remotePort: number) {
+
+        this.logger.info('Fetching Roku Device Info');
+
+        try {
+            // concatenates the url string using template literals
+            const res = await axios.get(`http://${host}:${remotePort}/query/device-info`);
+            let xml = res.data;
+
+            // parses the xml data to JSON object
+            const result = (await xml2js.parseStringPromise(xml))['device-info'];
+
+            // converts any true or false string values to boolean
+            for (let key in result) {
+                result[key] = result[key][0];
+                if (result[key] === 'true') {
+                    result[key] = true;
+                } else if (result[key] === 'false') {
+                    result[key] = false;
+                }
+            }
+
+            // parses string value to int for the following fields
+            result['software-build'] = parseInt(result['software-build'] as string);
+            result.uptime = parseInt(result.uptime as string);
+            result['trc-version'] = parseInt(result['trc-version'] as string);
+            result['av-sync-calibration-enabled'] = parseInt(result['av-sync-calibration-enabled'] as string);
+            result['time-zone-offset'] = parseInt(result['time-zone-offset'] as string);
+            return result;
+        } catch (e) {
+            const errorMessage = `Could not fetch Roku device-info`;
+            this.showPopupMessage(errorMessage, 'error');
+            throw e;
+        }
+    }
+
+    public deviceInfo: DeviceInfo;
+
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         this.logger.log('[launchRequest] begin');
         this.launchConfiguration = config;
@@ -208,6 +249,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.showPopupMessage(errorMessage, 'error');
             throw e;
         }
+
+        // fetches the device info and parses the xml data to JSON object
+        this.deviceInfo = await this.fetchDeviceInfo(this.launchConfiguration.host, this.launchConfiguration.remotePort);
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
@@ -403,6 +447,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             connectPromise = this.connectRokuAdapter().catch(e => this.logger.error(e));
         }
 
+        this.logger.log('Uploading zip');
+        const start = Date.now();
         let packageIsPublished = false;
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
@@ -413,6 +459,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         });
 
         await publishPromise;
+
+        this.logger.log(`Uploading zip took ${Date.now() - start}ms`);
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.
