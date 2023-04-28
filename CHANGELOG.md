@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.18.7](https://github.com/rokucommunity/roku-debug/compare/v0.18.6...0.18.7) - 2023-04-28
+### Added 
+ - better error for failed session starts ([#147](https://github.com/rokucommunity/roku-debug/pull/147))
+ - adds device-info query results to debug session ([#130](https://github.com/rokucommunity/roku-debug/pull/130))
+### Changed
+ - Bump xml2js from 0.4.23 to 0.5.0 ([#146](https://github.com/rokucommunity/roku-debug/pull/146))
+ - upgrade to [brighterscript@0.64.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0643---2023-04-28). Notable changes since 0.64.2:
+     - Improves performance in symbol table fetching ([brighterscript#797](https://github.com/rokucommunity/brighterscript/pull/797))
+
+
+
 ## [0.18.6](https://github.com/rokucommunity/roku-debug/compare/v0.18.5...v0.18.6) - 2023-04-18
 ### Changed
  - Exclude sourcemaps when sideloading ([#145](https://github.com/rokucommunity/roku-debug/pull/145))
