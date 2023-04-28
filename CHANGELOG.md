@@ -6,7 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [0.18.7](https://github.com/rokucommunity/roku-debug/compare/v0.18.6...0.18.7) - 2023-04-28
+## [0.18.8](https://github.com/rokucommunity/roku-debug/compare/v0.18.7...v0.18.8) - 2023-04-28
+### Changed
+ - Make axios a prod dependency ([#148](https://github.com/rokucommunity/roku-debug/pull/148))
+
+
+
+## [0.18.7](https://github.com/rokucommunity/roku-debug/compare/v0.18.6...v0.18.7) - 2023-04-28
 ### Added 
  - better error for failed session starts ([#147](https://github.com/rokucommunity/roku-debug/pull/147))
  - adds device-info query results to debug session ([#130](https://github.com/rokucommunity/roku-debug/pull/130))
