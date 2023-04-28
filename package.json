@@ -67,7 +67,6 @@
         "@types/vscode": "^1.61.0",
         "@typescript-eslint/eslint-plugin": "^5.2.0",
         "@typescript-eslint/parser": "^5.2.0",
-        "axios": "^1.2.2",
         "chai": "^4.3.4",
         "coveralls": "^3.1.1",
         "decompress": "^4.2.1",
@@ -88,6 +87,7 @@
     },
     "dependencies": {
         "@rokucommunity/logger": "^0.3.2",
+        "axios": "^1.2.2",
         "brighterscript": "^0.64.3",
         "dateformat": "^4.6.3",
         "eol": "^0.9.1",
