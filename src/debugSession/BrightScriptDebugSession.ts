@@ -221,9 +221,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             result['time-zone-offset'] = parseInt(result['time-zone-offset'] as string);
             return result;
         } catch (e) {
-            throw new Error(`Unable to fetch device-info from '${url}'`, {
-                cause: e
-            });
+            throw new Error(`Unable to fetch device-info from '${url}'`);
         }
     }
 
