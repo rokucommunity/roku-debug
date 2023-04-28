@@ -1295,7 +1295,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
-            await this.rokuAdapter?.destroy();
+            await this.rokuAdapter?.destroy?.();
             //press the home button to return to the home screen
             try {
                 await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
