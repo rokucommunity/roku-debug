@@ -51,6 +51,9 @@ import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
+import type { DeviceInfo } from '../DeviceInfo';
+import axios from 'axios';
+import * as xml2js from 'xml2js';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -190,6 +193,42 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new PopupMessageEvent(message, severity));
     }
 
+    public async fetchDeviceInfo(host: string, remotePort: number) {
+
+        this.logger.info('Fetching Roku Device Info');
+        const url = `http://${host}:${remotePort}/query/device-info`;
+        try {
+            // concatenates the url string using template literals
+            const res = await axios.get(url);
+            let xml = res.data;
+
+            // parses the xml data to JSON object
+            const result = (await xml2js.parseStringPromise(xml))['device-info'];
+
+            // converts any true or false string values to boolean
+            for (let key in result) {
+                result[key] = result[key][0];
+                if (result[key] === 'true') {
+                    result[key] = true;
+                } else if (result[key] === 'false') {
+                    result[key] = false;
+                }
+            }
+
+            // parses string value to int for the following fields
+            result['software-build'] = parseInt(result['software-build'] as string);
+            result.uptime = parseInt(result.uptime as string);
+            result['trc-version'] = parseInt(result['trc-version'] as string);
+            result['av-sync-calibration-enabled'] = parseInt(result['av-sync-calibration-enabled'] as string);
+            result['time-zone-offset'] = parseInt(result['time-zone-offset'] as string);
+            return result;
+        } catch (e) {
+            throw new Error(`Unable to fetch device-info from '${url}'`);
+        }
+    }
+
+    public deviceInfo: DeviceInfo;
+
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         this.logger.log('[launchRequest] begin');
         this.launchConfiguration = config;
@@ -203,9 +242,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
         } catch (e) {
-            const errorMessage = `Could not resolve ip address for "${this.launchConfiguration.host}"`;
-            this.showPopupMessage(errorMessage, 'error');
-            throw e;
+            return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
+        }
+
+        // fetches the device info and parses the xml data to JSON object
+        try {
+            this.deviceInfo = await this.fetchDeviceInfo(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+        } catch (e) {
+            return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
+        }
+
+        if (!this.deviceInfo['developer-enabled']) {
+            return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
@@ -293,13 +341,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     this.logger.log('on app-exit', message);
                     this.sendEvent(new LogOutputEvent(message));
-                    if (this.rokuAdapter) {
-                        void this.rokuAdapter.destroy();
-                    }
-                    //return to the home screen
-                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-                    this.shutdown();
-                    this.sendEvent(new TerminatedEvent());
+                    await this.shutdown();
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
                     this.logger.log('[launchRequest]', message);
@@ -349,8 +391,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //send any compile errors to the client
             await this.rokuAdapter.sendErrors();
             this.logger.error('Error. Shutting down.', e);
-            this.shutdown();
-            return;
+            return this.shutdown();
         }
 
         //at this point, the project has been deployed. If we need to use a deep link, launch it now.
@@ -391,8 +432,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         this.sendEvent(new DiagnosticsEvent(diagnostics));
         //stop the roku adapter and exit the channel
-        void this.rokuAdapter.destroy();
-        void this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+        return this.shutdown();
     }
 
     private async connectAndPublish() {
@@ -402,6 +442,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             connectPromise = this.connectRokuAdapter().catch(e => this.logger.error(e));
         }
 
+        this.logger.log('Uploading zip');
+        const start = Date.now();
         let packageIsPublished = false;
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
@@ -413,6 +455,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         await publishPromise;
 
+        this.logger.log(`Uploading zip took ${Date.now() - start}ms`);
+
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
@@ -422,13 +466,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('Finished racing promises');
         //if the adapter is still not connected, then it will probably never connect. Abort.
         if (packageIsPublished && !this.rokuAdapter.connected) {
-            //kill the session cuz it won't ever come back
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-            const message = 'Debug session cancelled: failed to connect to debug protocol control port.';
-            this.showPopupMessage(message, 'error');
-            this.logger.error(message);
-            this.shutdown();
-            this.sendEvent(new TerminatedEvent());
+            return this.shutdown('Debug session cancelled: failed to connect to debug protocol control port.');
         }
     }
 
@@ -1092,7 +1130,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         // If the roku says it can't continue, we are no longer able to debug, so kill the debug session
         this.rokuAdapter.on('cannot-continue', () => {
-            this.sendEvent(new TerminatedEvent());
+            void this.shutdown();
         });
 
         //make the connection
@@ -1258,11 +1296,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Called when the debugger is terminated
      */
-    public shutdown() {
+    public async shutdown(errorMessage?: string) {
         //if configured, delete the staging directory
         if (!this.launchConfiguration.retainStagingFolder) {
-            let stagingFolderPaths = this.projectManager.getStagingFolderPaths();
-            for (let stagingFolderPath of stagingFolderPaths) {
+            for (let stagingFolderPath of this.projectManager?.getStagingFolderPaths() ?? []) {
                 try {
                     fsExtra.removeSync(stagingFolderPath);
                 } catch (e) {
@@ -1270,7 +1307,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             }
         }
-        super.shutdown();
+
+        //if there was an error message, display it to the user
+        if (errorMessage) {
+            this.logger.error(errorMessage);
+            this.showPopupMessage(errorMessage, 'error');
+        }
+
+        if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
+            await this.rokuAdapter?.destroy?.();
+            //press the home button to return to the home screen
+            try {
+                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        this.sendEvent(new TerminatedEvent());
     }
 }
 

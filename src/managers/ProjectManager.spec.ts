@@ -10,6 +10,7 @@ import { Project, ComponentLibraryProject, ProjectManager } from './ProjectManag
 import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
+import * as decompress from 'decompress';
 
 let sinon = sinonActual.createSandbox();
 let n = fileUtils.standardizePath.bind(fileUtils);
@@ -647,6 +648,26 @@ describe('Project', () => {
             await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true\n             '        ${Project.RDB_ODC_ENTRY}      \n        end sub`), expectedXml, 'xml');
         });
     });
+
+
+    describe('zipPackage', () => {
+        it('excludes sourcemaps', async () => {
+            fsExtra.outputFileSync(`${project.stagingFolderPath}/manifest`, '#stuff');
+            fsExtra.outputFileSync(`${project.stagingFolderPath}/source/main.brs`, 'sub main() : end sub');
+            fsExtra.outputFileSync(`${project.stagingFolderPath}/source/main.brs.map`, '{}');
+            await project.zipPackage({ retainStagingFolder: true });
+            const zipPath = path.join(
+                project.outDir,
+                fsExtra.readdirSync(project.outDir).find(x => x?.toLowerCase().endsWith('.zip'))
+            );
+
+            await decompress(zipPath, `${tempPath}/extracted`);
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/manifest`)).to.be.true;
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs`)).to.be.true;
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs.map`)).to.be.false;
+        });
+    });
+
 });
 
 describe('ComponentLibraryProject', () => {
