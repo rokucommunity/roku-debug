@@ -94,6 +94,7 @@ export class RendezvousTracker {
         if (this.hasMinVersion(currVersion)) {
             const rendezvousQuery = await this.getEcpRendezvous();
             const rendezvousQueryData = rendezvousQuery.data;
+        }
     }
 
     public hasMinVersion(currVersion: string): boolean {
