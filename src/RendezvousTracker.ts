@@ -91,9 +91,23 @@ export class RendezvousTracker {
 
     public async checkForEcpTracking(): Promise<void> {
         let currVersion = <string> this.deviceInfo['software-version'];
+        if (this.hasMinVersion(currVersion)) {
+            const rendezvousQuery = await this.getEcpRendezvous();
+            const rendezvousQueryData = rendezvousQuery.data;
     }
 
     public hasMinVersion(currVersion: string): boolean {
+        const currVersionArr = currVersion.split('.').map((n) => parseInt(n));
+        const minimumVersionArr = minVersion.split('.').map((n) => parseInt(n));
+
+        // Compare major, minor, and patch versions, loop if versions are equal
+        for (let i = 0; i < 3; i++) {
+            if (currVersionArr[i] < minimumVersionArr[i]) {
+                return false;
+            } else if (currVersionArr[i] > minimumVersionArr[i]) {
+                return true;
+            }
+        }
         return true;
     }
 
