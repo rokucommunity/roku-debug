@@ -2,9 +2,20 @@ import { EventEmitter } from 'events';
 import * as path from 'path';
 import * as replaceLast from 'replace-last';
 import type { SourceLocation } from './managers/LocationManager';
+import { logger } from './logging';
+import axios from 'axios';
+import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
+import * as xml2js from 'xml2js';
+
+const minVersion = '11.5.0';
+const rendezvousEcpString = '<tracking-enabled>true</tracking-enabled>';
+const logRendezvousString = 'on\n';
+let logRendezvousEnabled = false;
 
 export class RendezvousTracker {
-    constructor() {
+    constructor(
+        private deviceInfo
+    ) {
         this.clientPathsMap = {};
         this.emitter = new EventEmitter();
         this.filterOutLogs = true;
@@ -18,6 +29,7 @@ export class RendezvousTracker {
     private rendezvousBlocks: RendezvousBlocks;
     private rendezvousHistory: RendezvousHistory;
 
+    public logger = logger.createLogger(`[${RendezvousTracker.name}]`);
     public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
