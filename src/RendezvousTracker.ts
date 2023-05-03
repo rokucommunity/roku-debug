@@ -76,6 +76,33 @@ export class RendezvousTracker {
         this.emit('rendezvous', this.rendezvousHistory);
     }
 
+    public startEcpPingTimer(): void {
+        setInterval(() => {
+            void this.pingEcpRendezvous();
+        }, 1000);
+    }
+
+    public async pingEcpRendezvous(): Promise<void> {
+        // Get ECP rendezvous data, parse it, and send it to event emitter
+        const rendezvousQuery = await this.getEcpRendezvous();
+        let rendezvousQueryData = rendezvousQuery.data;
+        let items = [];
+    }
+
+    public async checkForEcpTracking(): Promise<void> {
+        let currVersion = <string> this.deviceInfo['software-version'];
+    }
+
+    public hasMinVersion(currVersion: string): boolean {
+        return true;
+    }
+
+    public async getEcpRendezvous(): Promise<Record<any, any>> {
+        // Send rendezvous query to ECP
+        const rendezvousQuery = await axios.get(`http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/query/sgrendezvous`);
+        return rendezvousQuery;
+    }
+
     /**
      * Takes the debug output from the device and parses it for any rendezvous information.
      * Also if consoleOutput was not set to 'full' then any rendezvous output will be filtered from the output.
@@ -92,61 +119,65 @@ export class RendezvousTracker {
             // see the following for an explanation for this regex: https://regex101.com/r/In0t7d/6
             if (match) {
                 let [, type, id, fileName, lineNumber, duration] = match;
-                if (type === 'BLOCK') {
-                    // detected the start of a rendezvous event
-                    this.rendezvousBlocks[id] = {
-                        fileName: await this.updateClientPathMap(fileName, parseInt(lineNumber)),
-                        lineNumber: lineNumber
-                    };
-                } else if (type === 'UNBLOCK' && this.rendezvousBlocks[id]) {
-                    // detected the completion of a rendezvous event
-                    dataChanged = true;
-                    let blockInfo = this.rendezvousBlocks[id];
-                    let clientLineNumber: string = this.clientPathsMap[blockInfo.fileName]?.clientLines[blockInfo.lineNumber].toString() ?? blockInfo.lineNumber;
-
-                    if (this.rendezvousHistory.occurrences[blockInfo.fileName]) {
-                        // file is in history
-                        if (this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber]) {
-                            // line is in history, just update it
-                            this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber].totalTime += this.getTime(duration);
-                            this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber].hitCount++;
-                        } else {
-                            // new line to be added to a file in history
-                            this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber] = this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration);
-                        }
-                    } else {
-                        // new file to be added to the history
-                        this.rendezvousHistory.occurrences[blockInfo.fileName] = {
-                            occurrences: {
-                                [clientLineNumber]: this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration)
-                            },
-                            hitCount: 0,
-                            totalTime: 0,
-                            type: 'fileInfo',
-                            zeroCostHitCount: 0
+                if (!logRendezvousEnabled) {
+                    this.logger.log('match', match);
+                    if (type === 'BLOCK') {
+                        // detected the start of a rendezvous event
+                        this.rendezvousBlocks[id] = {
+                            fileName: await this.updateClientPathMap(fileName, parseInt(lineNumber)),
+                            lineNumber: lineNumber
                         };
+                    } else if (type === 'UNBLOCK' && this.rendezvousBlocks[id]) {
+                        // detected the completion of a rendezvous event
+                        dataChanged = true;
+                        let blockInfo = this.rendezvousBlocks[id];
+                        let clientLineNumber: string = this.clientPathsMap[blockInfo.fileName]?.clientLines[blockInfo.lineNumber].toString() ?? blockInfo.lineNumber;
+
+                        if (this.rendezvousHistory.occurrences[blockInfo.fileName]) {
+                            // file is in history
+                            if (this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber]) {
+                                // line is in history, just update it
+                                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber].totalTime += this.getTime(duration);
+                                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber].hitCount++;
+                            } else {
+                                // new line to be added to a file in history
+                                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber] = this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration);
+                            }
+                        } else {
+                            // new file to be added to the history
+                            this.rendezvousHistory.occurrences[blockInfo.fileName] = {
+                                occurrences: {
+                                    [clientLineNumber]: this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration)
+                                },
+                                hitCount: 0,
+                                totalTime: 0,
+                                type: 'fileInfo',
+                                zeroCostHitCount: 0
+                            };
+                        }
+
+                        // how much time to add to the files total time
+                        let timeToAdd = this.getTime(duration);
+
+                        // increment hit count and add to the total time for this file
+                        this.rendezvousHistory.occurrences[blockInfo.fileName].hitCount++;
+                        this.rendezvousHistory.hitCount++;
+
+                        // increment hit count and add to the total time for the history as a whole
+                        this.rendezvousHistory.occurrences[blockInfo.fileName].totalTime += timeToAdd;
+                        this.rendezvousHistory.totalTime += timeToAdd;
+
+                        if (timeToAdd === 0) {
+                            this.rendezvousHistory.occurrences[blockInfo.fileName].zeroCostHitCount++;
+                            this.rendezvousHistory.zeroCostHitCount++;
+                        }
+
+                        // remove this event from pre history tracking
+                        delete this.rendezvousBlocks[id];
                     }
-
-                    // how much time to add to the files total time
-                    let timeToAdd = this.getTime(duration);
-
-                    // increment hit count and add to the total time for this file
-                    this.rendezvousHistory.occurrences[blockInfo.fileName].hitCount++;
-                    this.rendezvousHistory.hitCount++;
-
-                    // increment hit count and add to the total time for the history as a whole
-                    this.rendezvousHistory.occurrences[blockInfo.fileName].totalTime += timeToAdd;
-                    this.rendezvousHistory.totalTime += timeToAdd;
-
-                    if (timeToAdd === 0) {
-                        this.rendezvousHistory.occurrences[blockInfo.fileName].zeroCostHitCount++;
-                        this.rendezvousHistory.zeroCostHitCount++;
-                    }
-
-                    // remove this event from pre history tracking
-                    delete this.rendezvousBlocks[id];
                 }
 
+                //  still need to empty logs even if rendezvous tracking through ECP is enabled
                 if (this.filterOutLogs) {
                     lines.splice(i--, 1);
                 }
