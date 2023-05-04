@@ -10,7 +10,12 @@ describe('BrightScriptFileUtils ', () => {
     let expectedHistory: RendezvousHistory;
 
     beforeEach(() => {
-        rendezvousTracker = new RendezvousTracker();
+        let deviceInfo = {
+            'software-version': '11.5.0',
+            'host': '192.168.1.5',
+            'remotePort': 8060
+        };
+        rendezvousTracker = new RendezvousTracker(deviceInfo);
         rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
             //remove preceding pkg:
             if (debuggerPath.toLowerCase().startsWith('pkg:')) {
@@ -261,6 +266,14 @@ describe('BrightScriptFileUtils ', () => {
 
     afterEach(() => {
         rendezvousTrackerMock.restore();
+    });
+
+    describe('hasMinVersion ', () => {
+        it('works', () => {
+            expect(rendezvousTracker.hasMinVersion('11.0.0')).to.equal(false);
+            expect(rendezvousTracker.hasMinVersion('11.5.0')).to.equal(true);
+            expect(rendezvousTracker.hasMinVersion('12.0.1')).to.equal(true);
+        });
     });
 
     describe('processLog ', () => {

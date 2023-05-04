@@ -2,8 +2,15 @@ import { EventEmitter } from 'events';
 import * as path from 'path';
 import * as replaceLast from 'replace-last';
 import type { SourceLocation } from './managers/LocationManager';
+import { logger } from './logging';
+import axios from 'axios';
+import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
+import * as xml2js from 'xml2js';
 
 const minVersion = '11.5.0';
+const rendezvousEcpString = '<tracking-enabled>true</tracking-enabled>';
+const logRendezvousString = 'on\n';
+let logRendezvousEnabled = false;
 
 export class RendezvousTracker {
     constructor(
@@ -22,6 +29,7 @@ export class RendezvousTracker {
     private rendezvousBlocks: RendezvousBlocks;
     private rendezvousHistory: RendezvousHistory;
 
+    public logger = logger.createLogger(`[${RendezvousTracker.name}]`);
     public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
@@ -68,6 +76,27 @@ export class RendezvousTracker {
         this.emit('rendezvous', this.rendezvousHistory);
     }
 
+    public startEcpPingTimer(): void {
+        setInterval(() => {
+            void this.pingEcpRendezvous();
+        }, 1000);
+    }
+
+    public async pingEcpRendezvous(): Promise<void> {
+        // Get ECP rendezvous data, parse it, and send it to event emitter
+        const rendezvousQuery = await this.getEcpRendezvous();
+        let rendezvousQueryData = rendezvousQuery.data;
+        let items = [];
+    }
+
+    public async checkForEcpTracking(): Promise<void> {
+        let currVersion = <string> this.deviceInfo['software-version'];
+        if (this.hasMinVersion(currVersion)) {
+            const rendezvousQuery = await this.getEcpRendezvous();
+            const rendezvousQueryData = rendezvousQuery.data;
+        }
+    }
+
     public hasMinVersion(currVersion: string): boolean {
         const currVersionArr = currVersion.split('.').map((n) => parseInt(n));
         const minimumVersionArr = minVersion.split('.').map((n) => parseInt(n));
@@ -81,6 +110,12 @@ export class RendezvousTracker {
             }
         }
         return true;
+    }
+
+    public async getEcpRendezvous(): Promise<Record<any, any>> {
+        // Send rendezvous query to ECP
+        const rendezvousQuery = await axios.get(`http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/query/sgrendezvous`);
+        return rendezvousQuery;
     }
 
     /**
