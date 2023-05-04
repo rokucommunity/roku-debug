@@ -4,8 +4,7 @@ import * as EventEmitter from 'events';
 import { Socket } from 'net';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
-import type { RendezvousHistory } from '../RendezvousTracker';
-import { RendezvousTracker } from '../RendezvousTracker';
+import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
@@ -26,12 +25,12 @@ export class DebugProtocolAdapter {
     constructor(
         private options: AdapterOptions & ConstructorOptions,
         private projectManager: ProjectManager,
-        private breakpointManager: BreakpointManager
+        private breakpointManager: BreakpointManager,
+        private rendezvousTracker: RendezvousTracker
     ) {
         util.normalizeAdapterOptions(this.options);
         this.emitter = new EventEmitter();
         this.chanperfTracker = new ChanperfTracker();
-        this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
         this.connected = false;
 
@@ -63,7 +62,6 @@ export class DebugProtocolAdapter {
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
     private chanperfTracker: ChanperfTracker;
-    private rendezvousTracker: RendezvousTracker;
     private socketDebugger: Debugger;
     private nextFrameId = 1;
 

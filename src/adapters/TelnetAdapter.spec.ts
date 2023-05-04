@@ -3,14 +3,23 @@ import type { EvaluateContainer } from './TelnetAdapter';
 import { TelnetAdapter } from './TelnetAdapter';
 import * as dedent from 'dedent';
 import { HighLevelType } from '../interfaces';
+import { RendezvousTracker } from '../RendezvousTracker';
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
+    let deviceInfo = {
+        'software-version': '11.5.0',
+        'host': '192.168.1.5',
+        'remotePort': 8060
+    };
+    let rendezvousTracker = new RendezvousTracker(deviceInfo);
 
     beforeEach(() => {
         adapter = new TelnetAdapter({
             host: '127.0.0.1'
-        });
+        },
+        rendezvousTracker
+        );
     });
 
     describe('getHighLevelTypeDetails', () => {

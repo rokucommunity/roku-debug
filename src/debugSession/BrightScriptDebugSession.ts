@@ -30,6 +30,7 @@ import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
+import { RendezvousTracker } from '../RendezvousTracker';
 import {
     LaunchStartEvent,
     LogOutputEvent,
@@ -125,6 +126,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variableHandles = new Handles<string>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
+
+    private rendezvousTracker: RendezvousTracker;
 
     public tempVarPrefix = '__rokudebug__';
 
@@ -272,7 +275,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
-            this.createRokuAdapter(this.launchConfiguration.host);
+            this.rendezvousTracker = new RendezvousTracker(this.deviceInfo);
+            // start rendezvous tracking
+            // await this.rendezvousTracker.checkForEcpTracking();
+            this.createRokuAdapter(this.launchConfiguration.host, this.rendezvousTracker);
             if (!this.enableDebugProtocol) {
                 //connect to the roku debug via telnet
                 if (!this.rokuAdapter.connected) {
@@ -412,7 +418,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     /**
-     * Anytime a roku adapter emits diagnostics, this methid is called to handle it.
+     * Anytime a roku adapter emits diagnostics, this method is called to handle it.
      */
     private async handleDiagnostics(diagnostics: BSDebugDiagnostic[]) {
         // Roku device and sourcemap work with 1-based line numbers, VSCode expects 0-based lines.
@@ -1070,11 +1076,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
     }
 
-    private createRokuAdapter(host: string) {
+    private createRokuAdapter(host: string, rendezvousTracker: RendezvousTracker) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager);
+            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager, rendezvousTracker);
         } else {
-            this.rokuAdapter = new TelnetAdapter(this.launchConfiguration);
+            this.rokuAdapter = new TelnetAdapter(this.launchConfiguration, rendezvousTracker);
         }
     }
 

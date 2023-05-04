@@ -5,8 +5,7 @@ import { rokuDeploy } from 'roku-deploy';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
-import type { RendezvousHistory } from '../RendezvousTracker';
-import { RendezvousTracker } from '../RendezvousTracker';
+import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
@@ -23,7 +22,8 @@ export class TelnetAdapter {
     constructor(
         private options: AdapterOptions & {
             enableDebuggerAutoRecovery?: boolean;
-        }
+        },
+        private rendezvousTracker: RendezvousTracker
     ) {
         util.normalizeAdapterOptions(this.options);
         this.options.enableDebuggerAutoRecovery ??= false;
@@ -33,7 +33,6 @@ export class TelnetAdapter {
         this.debugStartRegex = /BrightScript Micro Debugger\./ig;
         this.debugEndRegex = /Brightscript Debugger>/ig;
         this.chanperfTracker = new ChanperfTracker();
-        this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
 
 
@@ -62,7 +61,6 @@ export class TelnetAdapter {
     private debugStartRegex: RegExp;
     private debugEndRegex: RegExp;
     private chanperfTracker: ChanperfTracker;
-    private rendezvousTracker: RendezvousTracker;
 
     private cache = {};
 

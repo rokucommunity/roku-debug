@@ -6,11 +6,18 @@ import { createSandbox } from 'sinon';
 import type { VariableInfo } from '../debugProtocol/responses';
 import { VariableResponse } from '../debugProtocol/responses';
 import { ERROR_CODES } from './../debugProtocol/Constants';
+import { RendezvousTracker } from '../RendezvousTracker';
 const sinon = createSandbox();
 
 describe('DebugProtocolAdapter', () => {
     let adapter: DebugProtocolAdapter;
     let socketDebugger: Debugger;
+    let deviceInfo = {
+        'software-version': '11.5.0',
+        'host': '192.168.1.5',
+        'remotePort': 8060
+    };
+    let rendezvousTracker = new RendezvousTracker(deviceInfo);
     beforeEach(() => {
 
         adapter = new DebugProtocolAdapter(
@@ -18,7 +25,8 @@ describe('DebugProtocolAdapter', () => {
                 host: '127.0.0.1'
             },
             undefined,
-            undefined
+            undefined,
+            rendezvousTracker
         );
         socketDebugger = new Debugger(undefined);
         adapter['socketDebugger'] = socketDebugger;

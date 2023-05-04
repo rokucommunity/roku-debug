@@ -4,7 +4,9 @@ import * as replaceLast from 'replace-last';
 import type { SourceLocation } from './managers/LocationManager';
 
 export class RendezvousTracker {
-    constructor() {
+    constructor(
+        private deviceInfo
+    ) {
         this.clientPathsMap = {};
         this.emitter = new EventEmitter();
         this.filterOutLogs = true;
