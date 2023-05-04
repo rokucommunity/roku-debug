@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as replaceLast from 'replace-last';
 import type { SourceLocation } from './managers/LocationManager';
 
+const minVersion = '11.5.0';
+
 export class RendezvousTracker {
     constructor(
         private deviceInfo
@@ -64,6 +66,21 @@ export class RendezvousTracker {
     public clearHistory() {
         this.rendezvousHistory = this.createNewRendezvousHistory();
         this.emit('rendezvous', this.rendezvousHistory);
+    }
+
+    public hasMinVersion(currVersion: string): boolean {
+        const currVersionArr = currVersion.split('.').map((n) => parseInt(n));
+        const minimumVersionArr = minVersion.split('.').map((n) => parseInt(n));
+
+        // Compare major, minor, and patch versions, loop if versions are equal
+        for (let i = 0; i < 3; i++) {
+            if (currVersionArr[i] < minimumVersionArr[i]) {
+                return false;
+            } else if (currVersionArr[i] > minimumVersionArr[i]) {
+                return true;
+            }
+        }
+        return true;
     }
 
     /**

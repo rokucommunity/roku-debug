@@ -10,12 +10,7 @@ describe('BrightScriptFileUtils ', () => {
     let expectedHistory: RendezvousHistory;
 
     beforeEach(() => {
-        let deviceInfo = {
-            'software-version': '11.5.0',
-            'host': '192.168.1.5',
-            'remotePort': 8060
-        };
-        let rendezvousTracker = new RendezvousTracker(deviceInfo);
+        rendezvousTracker = new RendezvousTracker();
         rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
             //remove preceding pkg:
             if (debuggerPath.toLowerCase().startsWith('pkg:')) {
