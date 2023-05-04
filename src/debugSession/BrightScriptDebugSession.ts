@@ -216,6 +216,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             }
 
+            result.host = this.launchConfiguration.host;
+            result.remotePort = this.launchConfiguration.remotePort;
+
             // parses string value to int for the following fields
             result['software-build'] = parseInt(result['software-build'] as string);
             result.uptime = parseInt(result.uptime as string);
