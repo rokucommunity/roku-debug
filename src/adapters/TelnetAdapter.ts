@@ -5,7 +5,7 @@ import { rokuDeploy } from 'roku-deploy';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
-import type { RendezvousHistory } from '../RendezvousTracker';
+import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
@@ -23,7 +23,7 @@ export class TelnetAdapter {
         private options: AdapterOptions & {
             enableDebuggerAutoRecovery?: boolean;
         },
-        private rendezvousTracker
+        private rendezvousTracker: RendezvousTracker
     ) {
         util.normalizeAdapterOptions(this.options);
         this.options.enableDebuggerAutoRecovery ??= false;
