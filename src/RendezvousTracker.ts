@@ -87,6 +87,62 @@ export class RendezvousTracker {
         const rendezvousQuery = await this.getEcpRendezvous();
         let rendezvousQueryData = rendezvousQuery.data;
         let items = [];
+        const parsedContent = await xml2js.parseString(rendezvousQueryData, (err, result) => {
+            if (err) {
+                this.logger.log(err);
+            } else {
+                items = result.sgrendezvous.data[0].item;
+            }
+        });
+
+        if (typeof items !== 'undefined') {
+            for (let blockInfo of items) {
+                // TODO: These don't mention block or unblock
+                let clientLineNumber: string = blockInfo['line-number'][0];
+                let file: string = blockInfo.file[0];
+                let fileName = await this.updateClientPathMap(file, parseInt(clientLineNumber));
+                let duration = '0';
+                if (this.rendezvousHistory.occurrences[fileName]) {
+                    // file is in history
+                    if (this.rendezvousHistory.occurrences[fileName].occurrences[clientLineNumber]) {
+                        // line is in history, just update it
+                        this.rendezvousHistory.occurrences[fileName].occurrences[clientLineNumber].totalTime += this.getTime(duration);
+                        this.rendezvousHistory.occurrences[fileName].occurrences[clientLineNumber].hitCount++;
+                    } else {
+                        // new line to be added to a file in history
+                        this.rendezvousHistory.occurrences[fileName].occurrences[clientLineNumber] = this.createLineObject(fileName, parseInt(clientLineNumber));
+                    }
+                } else {
+                    // new file to be added to the history
+                    this.rendezvousHistory.occurrences[fileName] = {
+                        occurrences: {
+                            [clientLineNumber]: this.createLineObject(fileName, parseInt(clientLineNumber), duration)
+                        },
+                        hitCount: 0,
+                        totalTime: 0,
+                        type: 'fileInfo',
+                        zeroCostHitCount: 0
+                    };
+                }
+
+                // how much time to add to the files total time
+                let timeToAdd = this.getTime(duration);
+
+                // increment hit count and add to the total time for this file
+                this.rendezvousHistory.occurrences[fileName].hitCount++;
+                this.rendezvousHistory.hitCount++;
+
+                // increment hit count and add to the total time for the history as a whole
+                this.rendezvousHistory.occurrences[fileName].totalTime += timeToAdd;
+                this.rendezvousHistory.totalTime += timeToAdd;
+
+                if (timeToAdd === 0) {
+                    this.rendezvousHistory.occurrences[fileName].zeroCostHitCount++;
+                    this.rendezvousHistory.zeroCostHitCount++;
+                }
+
+            this.emit('rendezvous', this.rendezvousHistory);
+        }
     }
 
     public async checkForEcpTracking(): Promise<void> {
@@ -94,6 +150,11 @@ export class RendezvousTracker {
         if (this.hasMinVersion(currVersion)) {
             const rendezvousQuery = await this.getEcpRendezvous();
             const rendezvousQueryData = rendezvousQuery.data;
+
+            if (rendezvousQueryData.indexOf(rendezvousEcpString) !== -1 || logRendezvousEnabled) {
+                this.startEcpPingTimer();
+            }
+            this.emit('rendezvous', this.rendezvousHistory);
         }
     }
 
