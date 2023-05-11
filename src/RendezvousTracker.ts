@@ -251,7 +251,6 @@ export class RendezvousTracker {
             }
         } else {
             // new file to be added to the history
-            this.logger.log('file name', blockInfo.fileName, typeof duration);
             this.rendezvousHistory.occurrences[blockInfo.fileName] = {
                 occurrences: {
                     [clientLineNumber]: this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration)
