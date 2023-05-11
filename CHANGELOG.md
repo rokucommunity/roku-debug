@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.18.9](https://github.com/rokucommunity/roku-debug/compare/v0.18.8...v0.18.9) - 2023-05-10
+### Changed
+ - upgrade to [brighterscript@0.64.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0644---2023-05-10)
+ - upgrade to [roku-deploy@3.10.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3102---2023-05-10). Notable changes since 3.10.1:
+     - Fix audit issues ([roku-deploy#116](https://github.com/rokucommunity/roku-deploy/pull/116))
+     - fix nodejs 19 bug ([roku-deploy#115](https://github.com/rokucommunity/roku-deploy/pull/115))
+
+
+
 ## [0.18.8](https://github.com/rokucommunity/roku-debug/compare/v0.18.7...v0.18.8) - 2023-04-28
 ### Changed
  - Make axios a prod dependency ([#148](https://github.com/rokucommunity/roku-debug/pull/148))
