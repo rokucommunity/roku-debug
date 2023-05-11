@@ -6,11 +6,12 @@ import { logger } from './logging';
 import axios from 'axios';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
 import * as xml2js from 'xml2js';
+import * as request from 'request';
 
 const minVersion = '11.5.0';
-const rendezvousEcpString = '<tracking-enabled>true</tracking-enabled>';
-const logRendezvousString = 'on\n';
-let logRendezvousEnabled = false;
+const ecpRendezvousString = '<tracking-enabled>true</tracking-enabled>';
+const telnetRendezvousString = 'on\n';
+let ecpRendezvousTracking = false;
 
 export class RendezvousTracker {
     constructor(
@@ -86,75 +87,69 @@ export class RendezvousTracker {
         // Get ECP rendezvous data, parse it, and send it to event emitter
         const rendezvousQuery = await this.getEcpRendezvous();
         let rendezvousQueryData = rendezvousQuery.data;
-        let items = [];
-        const parsedContent = await xml2js.parseString(rendezvousQueryData, (err, result) => {
-            if (err) {
-                this.logger.log(err);
-            } else {
-                items = result.sgrendezvous.data[0].item;
-            }
+
+        // Parse rendezvous query data
+        let items: RendezvousEcpItem[] = [];
+        const parsedContent = await new Promise((resolve, reject) => {
+            xml2js.parseString(rendezvousQueryData, (err, result) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    const itemArray = result.sgrendezvous.data[0].item;
+                    if (Array.isArray(itemArray)) {
+                        items = itemArray.map((obj: any) => ({
+                            id: obj.id[0],
+                            startTime: obj['start-tm'][0],
+                            endTime: obj['end-tm'][0],
+                            lineNumber: obj['line-number'][0],
+                            file: obj.file[0]
+                        }));
+                    }
+                    resolve(items);
+                }
+            });
         });
 
-        if (typeof items !== 'undefined') {
-            for (let blockInfo of items) {
-                // TODO: These don't mention block or unblock
-                let clientLineNumber: string = blockInfo['line-number'][0];
-                let file: string = blockInfo.file[0];
-                let fileName = await this.updateClientPathMap(file, parseInt(clientLineNumber));
-                let duration = '0';
-                if (this.rendezvousHistory.occurrences[fileName]) {
-                    // file is in history
-                    if (this.rendezvousHistory.occurrences[fileName].occurrences[clientLineNumber]) {
-                        // line is in history, just update it
-                        this.rendezvousHistory.occurrences[fileName].occurrences[clientLineNumber].totalTime += this.getTime(duration);
-                        this.rendezvousHistory.occurrences[fileName].occurrences[clientLineNumber].hitCount++;
-                    } else {
-                        // new line to be added to a file in history
-                        this.rendezvousHistory.occurrences[fileName].occurrences[clientLineNumber] = this.createLineObject(fileName, parseInt(clientLineNumber));
-                    }
-                } else {
-                    // new file to be added to the history
-                    this.rendezvousHistory.occurrences[fileName] = {
-                        occurrences: {
-                            [clientLineNumber]: this.createLineObject(fileName, parseInt(clientLineNumber), duration)
-                        },
-                        hitCount: 0,
-                        totalTime: 0,
-                        type: 'fileInfo',
-                        zeroCostHitCount: 0
-                    };
-                }
-
-                // how much time to add to the files total time
-                let timeToAdd = this.getTime(duration);
-
-                // increment hit count and add to the total time for this file
-                this.rendezvousHistory.occurrences[fileName].hitCount++;
-                this.rendezvousHistory.hitCount++;
-
-                // increment hit count and add to the total time for the history as a whole
-                this.rendezvousHistory.occurrences[fileName].totalTime += timeToAdd;
-                this.rendezvousHistory.totalTime += timeToAdd;
-
-                if (timeToAdd === 0) {
-                    this.rendezvousHistory.occurrences[fileName].zeroCostHitCount++;
-                    this.rendezvousHistory.zeroCostHitCount++;
-                }
-
-            this.emit('rendezvous', this.rendezvousHistory);
+        for (let blockInfo of items) {
+            let duration = ((parseInt(blockInfo.endTime) - parseInt(blockInfo.startTime)) / 1000).toString();
+            this.rendezvousBlocks[blockInfo.id] = {
+                fileName: await this.updateClientPathMap(blockInfo.file, parseInt(blockInfo.lineNumber)),
+                lineNumber: blockInfo.lineNumber
+            };
+            this.parseRendezvousLog(this.rendezvousBlocks[blockInfo.id], duration);
         }
+
+        this.emit('rendezvous', this.rendezvousHistory);
     }
 
     public async checkForEcpTracking(): Promise<void> {
         let currVersion = <string> this.deviceInfo['software-version'];
+        let host = <string> this.deviceInfo.host;
+        let telnetRendezvousTracking = false;
         if (this.hasMinVersion(currVersion)) {
             const rendezvousQuery = await this.getEcpRendezvous();
             const rendezvousQueryData = rendezvousQuery.data;
-
-            if (rendezvousQueryData.indexOf(rendezvousEcpString) !== -1 || logRendezvousEnabled) {
+            ecpRendezvousTracking = rendezvousQueryData.indexOf(ecpRendezvousString) !== -1;
+            if (!ecpRendezvousTracking) {
+                let connection = new SceneGraphDebugCommandController(host);
+                try {
+                    let logRendezvousResponse = await connection.logrendezvous('status');
+                    telnetRendezvousTracking = logRendezvousResponse.result.rawResponse.endsWith(telnetRendezvousString);
+                } catch (error) {
+                    this.logger.warn('An error occurred getting logRendezvous');
+                }
+                await connection.end();
+            }
+            if (telnetRendezvousTracking || ecpRendezvousTracking) {
+                // Toggle ECP tracking off and on to clear the log and then continue tracking
+                let untrack = await this.toggleEcpTracking('untrack');
+                let track = await this.toggleEcpTracking('track');
+                ecpRendezvousTracking = track && untrack;
+            }
+            if (ecpRendezvousTracking) {
+                this.logger.log('ecp rendezvous logging is enabled');
                 this.startEcpPingTimer();
             }
-            this.emit('rendezvous', this.rendezvousHistory);
         }
     }
 
@@ -179,6 +174,21 @@ export class RendezvousTracker {
         return rendezvousQuery;
     }
 
+    public async toggleEcpTracking(toggle: string): Promise<boolean> {
+        // Send rendezvous query to ECP
+        const url = `http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/sgrendezvous/${toggle}`;
+        const data = '';
+        let results: boolean = await new Promise((resolve, reject) => {
+            request.post(url, { body: data }, (err, resp, body) => {
+                if (err) {
+                    return reject(err);
+                }
+                resolve(true);
+            });
+        });
+        return results;
+    }
+
     /**
      * Takes the debug output from the device and parses it for any rendezvous information.
      * Also if consoleOutput was not set to 'full' then any rendezvous output will be filtered from the output.
@@ -194,9 +204,8 @@ export class RendezvousTracker {
             let match = /\[sg\.node\.(BLOCK|UNBLOCK)\s{0,}\] Rendezvous\[(\d+)\](?:\s\w+\n|\s\w{2}\s(.*)\((\d+)\)|[\s\w]+(\d+\.\d+)+|\s\w+)/g.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/In0t7d/6
             if (match) {
-                let [, type, id, fileName, lineNumber, duration] = match;
-                if (!logRendezvousEnabled) {
-                    this.logger.log('match', match);
+                if (!ecpRendezvousTracking) {
+                    let [, type, id, fileName, lineNumber, duration] = match;
                     if (type === 'BLOCK') {
                         // detected the start of a rendezvous event
                         this.rendezvousBlocks[id] = {
@@ -207,46 +216,7 @@ export class RendezvousTracker {
                         // detected the completion of a rendezvous event
                         dataChanged = true;
                         let blockInfo = this.rendezvousBlocks[id];
-                        let clientLineNumber: string = this.clientPathsMap[blockInfo.fileName]?.clientLines[blockInfo.lineNumber].toString() ?? blockInfo.lineNumber;
-
-                        if (this.rendezvousHistory.occurrences[blockInfo.fileName]) {
-                            // file is in history
-                            if (this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber]) {
-                                // line is in history, just update it
-                                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber].totalTime += this.getTime(duration);
-                                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber].hitCount++;
-                            } else {
-                                // new line to be added to a file in history
-                                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber] = this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration);
-                            }
-                        } else {
-                            // new file to be added to the history
-                            this.rendezvousHistory.occurrences[blockInfo.fileName] = {
-                                occurrences: {
-                                    [clientLineNumber]: this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration)
-                                },
-                                hitCount: 0,
-                                totalTime: 0,
-                                type: 'fileInfo',
-                                zeroCostHitCount: 0
-                            };
-                        }
-
-                        // how much time to add to the files total time
-                        let timeToAdd = this.getTime(duration);
-
-                        // increment hit count and add to the total time for this file
-                        this.rendezvousHistory.occurrences[blockInfo.fileName].hitCount++;
-                        this.rendezvousHistory.hitCount++;
-
-                        // increment hit count and add to the total time for the history as a whole
-                        this.rendezvousHistory.occurrences[blockInfo.fileName].totalTime += timeToAdd;
-                        this.rendezvousHistory.totalTime += timeToAdd;
-
-                        if (timeToAdd === 0) {
-                            this.rendezvousHistory.occurrences[blockInfo.fileName].zeroCostHitCount++;
-                            this.rendezvousHistory.zeroCostHitCount++;
-                        }
+                        this.parseRendezvousLog(blockInfo, duration);
 
                         // remove this event from pre history tracking
                         delete this.rendezvousBlocks[id];
@@ -265,6 +235,49 @@ export class RendezvousTracker {
         }
 
         return lines.join('\n');
+    }
+
+    private parseRendezvousLog(blockInfo: { fileName: string; lineNumber: string }, duration: string) {
+        let clientLineNumber: string = this.clientPathsMap[blockInfo.fileName]?.clientLines[blockInfo.lineNumber].toString() ?? blockInfo.lineNumber;
+        if (this.rendezvousHistory.occurrences[blockInfo.fileName]) {
+            // file is in history
+            if (this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber]) {
+                // line is in history, just update it
+                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber].totalTime += this.getTime(duration);
+                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber].hitCount++;
+            } else {
+                // new line to be added to a file in history
+                this.rendezvousHistory.occurrences[blockInfo.fileName].occurrences[clientLineNumber] = this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration);
+            }
+        } else {
+            // new file to be added to the history
+            this.logger.log('file name', blockInfo.fileName, typeof duration);
+            this.rendezvousHistory.occurrences[blockInfo.fileName] = {
+                occurrences: {
+                    [clientLineNumber]: this.createLineObject(blockInfo.fileName, parseInt(clientLineNumber), duration)
+                },
+                hitCount: 0,
+                totalTime: 0,
+                type: 'fileInfo',
+                zeroCostHitCount: 0
+            };
+        }
+
+        // how much time to add to the files total time
+        let timeToAdd = this.getTime(duration);
+
+        // increment hit count and add to the total time for this file
+        this.rendezvousHistory.occurrences[blockInfo.fileName].hitCount++;
+        this.rendezvousHistory.hitCount++;
+
+        // increment hit count and add to the total time for the history as a whole
+        this.rendezvousHistory.occurrences[blockInfo.fileName].totalTime += timeToAdd;
+        this.rendezvousHistory.totalTime += timeToAdd;
+
+        if (timeToAdd === 0) {
+            this.rendezvousHistory.occurrences[blockInfo.fileName].zeroCostHitCount++;
+            this.rendezvousHistory.zeroCostHitCount++;
+        }
     }
 
     /**
@@ -391,6 +404,14 @@ type RendezvousBlocks = Record<string, {
     fileName: string;
     lineNumber: string;
 }>;
+
+interface RendezvousEcpItem {
+    id: string;
+    startTime: string;
+    endTime: string;
+    lineNumber: string;
+    file: string;
+}
 
 type ElementType = 'fileInfo' | 'historyInfo' | 'lineInfo';
 
