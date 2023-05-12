@@ -1,4 +1,5 @@
-import * as sinon from 'sinon';
+import { createSandbox } from 'sinon';
+const sinon = createSandbox();
 import { assert, expect } from 'chai';
 import type { RendezvousHistory } from './RendezvousTracker';
 import { RendezvousTracker } from './RendezvousTracker';
@@ -265,6 +266,7 @@ describe('BrightScriptFileUtils ', () => {
     });
 
     afterEach(() => {
+        sinon.restore();
         rendezvousTrackerMock.restore();
     });
 
@@ -273,6 +275,14 @@ describe('BrightScriptFileUtils ', () => {
             expect(rendezvousTracker.hasMinVersion('11.0.0')).to.equal(false);
             expect(rendezvousTracker.hasMinVersion('11.5.0')).to.equal(true);
             expect(rendezvousTracker.hasMinVersion('12.0.1')).to.equal(true);
+        });
+    });
+
+    describe('pingEcpRendezvous ', () => {
+        it('works', async() => {
+            sinon.stub(rendezvousTracker, 'getEcpRendezvous').returns(Promise.resolve({ 'trackingEnabled': true, 'items': [{ 'id': '1403', 'startTime': '97771301', 'endTime': '97771319', 'lineNumber': '11', 'file': 'pkg:/components/Tasks/GetSubReddit.brs' }, { 'id': '1404', 'startTime': '97771322', 'endTime': '97771322', 'lineNumber': '15', 'file': 'pkg:/components/Tasks/GetSubReddit.brs' }] }));
+            await rendezvousTracker.pingEcpRendezvous();
+            expect(rendezvousTracker['rendezvousHistory']).to.eql({ 'hitCount': 2, 'occurrences': { 'pkg:/components/Tasks/GetSubReddit.brs': { 'occurrences': { '11': { 'clientLineNumber': 11, 'clientPath': '/components/Tasks/GetSubReddit.brs', 'hitCount': 1, 'totalTime': 0.018, 'type': 'lineInfo' }, '15': { 'clientLineNumber': 15, 'clientPath': '/components/Tasks/GetSubReddit.brs', 'hitCount': 1, 'totalTime': 0, 'type': 'lineInfo' } }, 'hitCount': 2, 'totalTime': 0.018, 'type': 'fileInfo', 'zeroCostHitCount': 1 } }, 'totalTime': 0.018, 'type': 'historyInfo', 'zeroCostHitCount': 1 });
         });
     });
 
