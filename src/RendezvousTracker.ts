@@ -27,10 +27,7 @@ export class RendezvousTracker {
     private filterOutLogs: boolean;
     private rendezvousBlocks: RendezvousBlocks;
     private rendezvousHistory: RendezvousHistory;
-    private ecpData: ecpRendezvousData = {
-        ecpTrackingEnabled: false,
-        items: []
-    };
+    private ecpTrackingEnabled = false;
 
     public logger = logger.createLogger(`[${RendezvousTracker.name}]`);
     public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
@@ -87,8 +84,8 @@ export class RendezvousTracker {
 
     public async pingEcpRendezvous(): Promise<void> {
         // Get ECP rendezvous data, parse it, and send it to event emitter
-        await this.getEcpRendezvous();
-        for (let blockInfo of this.ecpData.items) {
+        let ecpData = await this.getEcpRendezvous();
+        for (let blockInfo of ecpData.items) {
             let duration = ((parseInt(blockInfo.endTime) - parseInt(blockInfo.startTime)) / 1000).toString();
             this.rendezvousBlocks[blockInfo.id] = {
                 fileName: await this.updateClientPathMap(blockInfo.file, parseInt(blockInfo.lineNumber)),
@@ -97,7 +94,6 @@ export class RendezvousTracker {
             this.parseRendezvousLog(this.rendezvousBlocks[blockInfo.id], duration);
         }
         this.emit('rendezvous', this.rendezvousHistory);
-        this.ecpData.items = [];
     }
 
     public async checkForEcpTracking(): Promise<void> {
@@ -105,8 +101,9 @@ export class RendezvousTracker {
         let host = <string> this.deviceInfo.host;
         let telnetRendezvousTracking = false;
         if (this.hasMinVersion(currVersion)) {
-            await this.getEcpRendezvous();
-            if (!this.ecpData.ecpTrackingEnabled) {
+            let ecpData = await this.getEcpRendezvous();
+            this.ecpTrackingEnabled = ecpData.trackingEnabled;
+            if (!this.ecpTrackingEnabled) {
                 let connection = new SceneGraphDebugCommandController(host);
                 try {
                     let logRendezvousResponse = await connection.logrendezvous('status');
@@ -116,13 +113,13 @@ export class RendezvousTracker {
                 }
                 await connection.end();
             }
-            if (telnetRendezvousTracking || this.ecpData.ecpTrackingEnabled) {
+            if (telnetRendezvousTracking || this.ecpTrackingEnabled) {
                 // Toggle ECP tracking off and on to clear the log and then continue tracking
                 let untrack = await this.toggleEcpTracking('untrack');
                 let track = await this.toggleEcpTracking('track');
-                this.ecpData.ecpTrackingEnabled = untrack && track;
+                this.ecpTrackingEnabled = untrack && track;
             }
-            if (this.ecpData.ecpTrackingEnabled) {
+            if (this.ecpTrackingEnabled) {
                 this.logger.log('ecp rendezvous logging is enabled');
                 this.startEcpPingTimer();
             }
@@ -144,21 +141,25 @@ export class RendezvousTracker {
         return true;
     }
 
-    public async getEcpRendezvous(): Promise<void> {
+    public async getEcpRendezvous(): Promise<EcpRendezvousData> {
         // Send rendezvous query to ECP
         const rendezvousQuery = await axios.get(`http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/query/sgrendezvous`);
         let rendezvousQueryData = rendezvousQuery.data;
+        let ecpData: EcpRendezvousData = {
+            trackingEnabled: false,
+            items: []
+        };
 
         // Parse rendezvous query data
-        await new Promise<void>((resolve, reject) => {
+        await new Promise<EcpRendezvousData>((resolve, reject) => {
             xml2js.parseString(rendezvousQueryData, (err, result) => {
                 if (err) {
                     reject(err);
                 } else {
                     const itemArray = result.sgrendezvous.data[0].item;
-                    this.ecpData.ecpTrackingEnabled = result.sgrendezvous.data[0]['tracking-enabled'][0];
+                    ecpData.trackingEnabled = result.sgrendezvous.data[0]['tracking-enabled'][0];
                     if (Array.isArray(itemArray)) {
-                        this.ecpData.items = itemArray.map((obj: any) => ({
+                        ecpData.items = itemArray.map((obj: any) => ({
                             id: obj.id[0],
                             startTime: obj['start-tm'][0],
                             endTime: obj['end-tm'][0],
@@ -166,10 +167,11 @@ export class RendezvousTracker {
                             file: obj.file[0]
                         }));
                     }
-                    resolve();
+                    resolve(ecpData);
                 }
             });
         });
+        return ecpData;
     }
 
     public async toggleEcpTracking(toggle: string): Promise<boolean> {
@@ -202,7 +204,7 @@ export class RendezvousTracker {
             let match = /\[sg\.node\.(BLOCK|UNBLOCK)\s{0,}\] Rendezvous\[(\d+)\](?:\s\w+\n|\s\w{2}\s(.*)\((\d+)\)|[\s\w]+(\d+\.\d+)+|\s\w+)/g.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/In0t7d/6
             if (match) {
-                if (!this.ecpData.ecpTrackingEnabled) {
+                if (!this.ecpTrackingEnabled) {
                     let [, type, id, fileName, lineNumber, duration] = match;
                     if (type === 'BLOCK') {
                         // detected the start of a rendezvous event
@@ -400,12 +402,12 @@ type RendezvousBlocks = Record<string, {
     lineNumber: string;
 }>;
 
-interface ecpRendezvousData {
-    ecpTrackingEnabled: boolean;
-    items: ecpRendezvousItem[];
+interface EcpRendezvousData {
+    trackingEnabled: boolean;
+    items: EcpRendezvousItem[];
 }
 
-interface ecpRendezvousItem {
+interface EcpRendezvousItem {
     id: string;
     startTime: string;
     endTime: string;
