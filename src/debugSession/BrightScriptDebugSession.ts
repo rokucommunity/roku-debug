@@ -188,6 +188,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info') {
+        this.logger.trace('[showPopupMessage]', severity, message);
         this.sendEvent(new PopupMessageEvent(message, severity));
     }
 
@@ -1273,38 +1274,67 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+    private shutdownPromise: Promise<void> | undefined = undefined;
+
     /**
-     * Called when the debugger is terminated
+     * Called when the debugger is terminated. Feel free to call this as frequently as you want; we'll only run the shutdown process the first time, and return
+     * the same promise on subsequent calls
      */
-    public async shutdown(errorMessage?: string) {
-        //if configured, delete the staging directory
-        if (!this.launchConfiguration.retainStagingFolder) {
-            for (let stagingFolderPath of this.projectManager?.getStagingFolderPaths() ?? []) {
-                try {
-                    fsExtra.removeSync(stagingFolderPath);
-                } catch (e) {
-                    util.log(`Error removing staging directory '${stagingFolderPath}': ${JSON.stringify(e)}`);
+    public async shutdown(errorMessage?: string): Promise<void> {
+        if (this.shutdownPromise === undefined) {
+            this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
+            this.shutdownPromise = this._shutdown(errorMessage);
+        } else {
+            this.logger.log('[shutdown] Tried to call `.shutdown()` again. Returning the same promise');
+        }
+        return this.shutdownPromise;
+    }
+
+    private async _shutdown(errorMessage?: string): Promise<void> {
+        try {
+            //if configured, delete the staging directory
+            if (!this.launchConfiguration.retainStagingFolder) {
+                const stagingFolders = this.projectManager?.getStagingFolderPaths() ?? [];
+                this.logger.info('deleting staging folders', stagingFolders);
+                for (let stagingFolderPath of stagingFolders) {
+                    try {
+                        fsExtra.removeSync(stagingFolderPath);
+                    } catch (e) {
+                        this.logger.error(e);
+                        util.log(`Error removing staging directory '${stagingFolderPath}': ${JSON.stringify(e)}`);
+                    }
                 }
             }
-        }
 
-        //if there was an error message, display it to the user
-        if (errorMessage) {
-            this.logger.error(errorMessage);
-            this.showPopupMessage(errorMessage, 'error');
-        }
-
-        if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
-            await this.rokuAdapter?.destroy?.();
-            //press the home button to return to the home screen
-            try {
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-            } catch (e) {
-                console.error(e);
+            //if there was an error message, display it to the user
+            if (errorMessage) {
+                this.logger.error(errorMessage);
+                this.showPopupMessage(errorMessage, 'error');
             }
-        }
 
-        this.sendEvent(new TerminatedEvent());
+            if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
+                this.logger.log('Destroy rokuAdapter');
+                await this.rokuAdapter?.destroy?.();
+                //press the home button to return to the home screen
+                try {
+                    this.logger.log('Press home button');
+                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                } catch (e) {
+                    console.error(e);
+                    this.logger.error(e);
+                }
+            }
+
+            this.logger.log('Send terminated event');
+            this.sendEvent(new TerminatedEvent());
+
+            //shut down the process
+            this.logger.log('super.shutdown()');
+            super.shutdown();
+            this.logger.log('shutdown complete');
+        } catch (e) {
+            this.logger.error(e);
+        }
     }
 }
 
