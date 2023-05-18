@@ -61,6 +61,7 @@
         "@types/glob": "^7.2.0",
         "@types/mocha": "^9.0.0",
         "@types/node": "^16.11.6",
+        "@types/request": "^2.48.8",
         "@types/semver": "^7.3.9",
         "@types/sinon": "^10.0.6",
         "@types/vscode": "^1.61.0",
@@ -86,7 +87,6 @@
     },
     "dependencies": {
         "@rokucommunity/logger": "^0.3.3",
-        "axios": "^1.2.2",
         "brighterscript": "^0.65.0",
         "dateformat": "^4.6.3",
         "eol": "^0.9.1",
