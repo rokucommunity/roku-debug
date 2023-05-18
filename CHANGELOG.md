@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.18.12](https://github.com/rokucommunity/roku-debug/compare/v0.18.11...v0.18.12) - 2023-05-18
+### Changed
+ - remove axios in favor of postman-request ([#153](https://github.com/rokucommunity/roku-debug/pull/153))
+### Fixed
+ - Fix `file already exists` error and hung process ([#152](https://github.com/rokucommunity/roku-debug/pull/152))
+
+
+
 ## [0.18.11](https://github.com/rokucommunity/roku-debug/compare/v0.18.10...v0.18.11) - 2023-05-17
 ### Changed
  - Fix crash by using postman-request ([#151](https://github.com/rokucommunity/roku-debug/pull/151))
