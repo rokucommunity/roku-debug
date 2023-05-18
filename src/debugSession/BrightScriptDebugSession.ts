@@ -1,7 +1,6 @@
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
-import * as request from 'postman-request';
 import { rokuDeploy, CompileError } from 'roku-deploy';
 import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
@@ -50,7 +49,6 @@ import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, debugServerLogOutputEventTransport } from '../logging';
 import type { DeviceInfo } from '../DeviceInfo';
-import axios from 'axios';
 import * as xml2js from 'xml2js';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
@@ -198,8 +196,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         const url = `http://${host}:${remotePort}/query/device-info`;
         try {
             // concatenates the url string using template literals
-            const res = await axios.get(url);
-            let xml = res.data;
+            const ressponse = await util.httpGet(url);
+            const xml = ressponse.body;
 
             // parses the xml data to JSON object
             const result = (await xml2js.parseStringPromise(xml))['device-info'];
@@ -404,11 +402,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //convert a hostname to an ip address
             const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
             //send the deep link http request
-            await new Promise((resolve, reject) => {
-                request.post(deepLinkUrl, (err, response) => {
-                    return err ? reject(err) : resolve(response);
-                });
-            });
+            await util.httpPost(deepLinkUrl);
         }
     }
 
