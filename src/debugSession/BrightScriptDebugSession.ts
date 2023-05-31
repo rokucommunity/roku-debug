@@ -48,8 +48,7 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
-import { logger, debugServerLogOutputEventTransport } from '../logging';
-import { waitForDebugger } from 'inspector';
+import { logger, debugServerLogOutputEventTransport, FileLoggingManager } from '../logging';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -68,6 +67,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //send newly-verified breakpoints to vscode
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceVerifiedBreakpoints(data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
+        this.fileLoggingManager = new FileLoggingManager();
     }
 
     private onDeviceVerifiedBreakpoints(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
@@ -97,6 +97,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public fileManager: FileManager;
 
     public projectManager: ProjectManager;
+
+    public fileLoggingManager: FileLoggingManager;
 
     public breakpointManager: BreakpointManager;
 
@@ -189,6 +191,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new PopupMessageEvent(message, severity));
     }
 
+    /**
+     * Get the cwd from the launchConfiguration, or default to process.cwd()
+     */
+    private get cwd() {
+        return this.launchConfiguration?.cwd ?? process.cwd();
+    }
+
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         this.logger.log('[launchRequest] begin');
         this.launchConfiguration = config;
@@ -206,6 +215,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.showPopupMessage(errorMessage, 'error');
             throw e;
         }
+
+        //initialize all file logging (rokuDevice, debugger, etc)
+        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging);
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
@@ -436,6 +448,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param logOutput
      */
     private sendLogOutput(logOutput: string) {
+        this.fileLoggingManager.writeRokuDeviceLog(logOutput);
         const lines = logOutput.split(/\r?\n/g);
         for (let line of lines) {
             line += '\n';

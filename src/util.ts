@@ -426,6 +426,10 @@ class Util {
 
         return cancel;
     }
+
+    public isNullish(item: any) {
+        return item === undefined || item === null;
+    }
 }
 
 export function defer<T>() {

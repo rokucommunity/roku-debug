@@ -189,13 +189,14 @@ export class Debugger {
         this.controllerClient = await this.establishControllerConnection();
 
         this.controllerClient.on('data', (buffer) => {
+            this.writeToBufferLog('server-to-client', buffer);
             if (this.unhandledData) {
                 this.unhandledData = Buffer.concat([this.unhandledData, buffer]);
             } else {
                 this.unhandledData = buffer;
             }
 
-            this.logger.debug(`on('data'): incoming bytes`, buffer.length);
+            this.logger.debug(`on('data'): incoming bytes`, buffer.length, buffer.toJSON());
             const startBufferSize = this.unhandledData.length;
 
             this.parseUnhandledData(this.unhandledData);
@@ -227,8 +228,22 @@ export class Debugger {
     private sendMagic() {
         let buffer = new SmartBuffer({ size: Buffer.byteLength(Debugger.DEBUGGER_MAGIC) + 1 }).writeStringNT(Debugger.DEBUGGER_MAGIC).toBuffer();
         this.logger.log('Sending magic to server');
+        this.writeToBufferLog('client-to-server', buffer);
         this.controllerClient.write(buffer);
     }
+
+    /**
+     * Write a specific buffer log entry to the logger, which, when file logging is enabled
+     * can be extracted and processed through the DebugProtocolClientReplaySession
+     */
+    private writeToBufferLog(type: 'server-to-client' | 'client-to-server' | 'io', buffer: Buffer) {
+        this.logger.log('[[bufferLog]]:', JSON.stringify({
+            type: type,
+            timestamp: new Date().toISOString(),
+            buffer: buffer.toJSON()
+        }));
+    }
+
 
     public async continue() {
         if (this.stopped) {
@@ -458,7 +473,9 @@ export class Debugger {
 
             this.logger.debug('makeRequest', `requestId=${requestId}`, this.activeRequests[requestId]);
             if (this.controllerClient) {
-                this.controllerClient.write(buffer.toBuffer());
+                const buff = buffer.toBuffer();
+                this.writeToBufferLog('client-to-server', buff);
+                this.controllerClient.write(buff);
             } else {
                 throw new Error(`Controller connection was closed - Command: ${COMMANDS[command]}`);
             }
@@ -476,7 +493,7 @@ export class Debugger {
             let packetLength = debuggerRequestResponse.packetLength;
             let slicedBuffer = packetLength ? buffer.slice(4) : buffer;
 
-            this.logger.log(`incoming bytes: ${buffer.length}`, debuggerRequestResponse);
+            this.logger.log(`incoming bytes: ${buffer.length}`, debuggerRequestResponse, slicedBuffer.toJSON());
             if (debuggerRequestResponse.success) {
                 if (debuggerRequestResponse.requestId > this.totalRequests) {
                     this.removedProcessedBytes(debuggerRequestResponse, slicedBuffer, packetLength);
@@ -497,6 +514,7 @@ export class Debugger {
                         case UPDATE_TYPES.ALL_THREADS_STOPPED:
                         case UPDATE_TYPES.THREAD_ATTACHED:
                             let debuggerUpdateThreads = new UpdateThreadsResponse(slicedBuffer);
+                            this.logger.log(debuggerUpdateThreads);
                             if (debuggerUpdateThreads.success) {
                                 this.handleThreadsUpdate(debuggerUpdateThreads);
                                 this.removedProcessedBytes(debuggerUpdateThreads, slicedBuffer, packetLength);
@@ -659,6 +677,7 @@ export class Debugger {
 
                 let lastPartialLine = '';
                 this.ioClient.on('data', (buffer) => {
+                    this.writeToBufferLog('io', buffer);
                     let responseText = buffer.toString();
                     if (!responseText.endsWith('\n')) {
                         // buffer was split, save the partial line
