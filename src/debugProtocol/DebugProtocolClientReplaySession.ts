@@ -46,7 +46,10 @@ export class DebugProtocolClientReplaySession {
     private parseBufferLog(bufferLog: string) {
         this.entries = bufferLog
             .split(/\r?\n/g)
-            .map(x => x.trim())
+            //only keep lines that include the `[[bufferLog]]` magic text
+            .filter(x => x.includes('[[bufferLog]]'))
+            //remove leading text, leaving only the raw bufferLog entry
+            .map(x => x.replace(/.*?\[\[bufferLog\]\]:/, '').trim())
             .filter(x => !!x)
             .map(line => {
                 const entry = JSON.parse(line);
@@ -55,6 +58,7 @@ export class DebugProtocolClientReplaySession {
                 entry.buffer = Buffer.from(entry.buffer);
                 return entry;
             });
+        return this.entries;
     }
 
     public result: Array<ProtocolRequest | ProtocolResponse | ProtocolUpdate> = [];
