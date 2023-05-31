@@ -431,6 +431,10 @@ class Util {
         return cancel;
     }
 
+    public isNullish(item: any) {
+        return item === undefined || item === null;
+    }
+
     /**
      * Do an http GET request
      */
