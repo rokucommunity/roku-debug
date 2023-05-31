@@ -217,7 +217,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         //initialize all file logging (rokuDevice, debugger, etc)
-        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging);
+        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;

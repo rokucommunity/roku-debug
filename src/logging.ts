@@ -47,7 +47,7 @@ export class FileLoggingManager {
     /**
      * Activate this manager and start processing log data
      */
-    public activate(config?: LaunchConfiguration['fileLogging'], cwd?: string) {
+    public activate(config: LaunchConfiguration['fileLogging'], cwd: string) {
         cwd ??= process.cwd();
         this.fileLogging = {
             rokuDevice: {
