@@ -638,7 +638,7 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('shutdown', () => {
-        it('erases all staging folders when configured to do so', () => {
+        it('erases all staging folders when configured to do so', async () => {
             let stub = sinon.stub(fsExtra, 'removeSync').returns(null);
             session.projectManager.mainProject = <any>{
                 stagingFolderPath: 'stagingPathA'
@@ -652,7 +652,7 @@ describe('BrightScriptDebugSession', () => {
             //stub the super shutdown call so it doesn't kill the test session
             sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
 
-            session.shutdown();
+            await session.shutdown();
             expect(stub.callCount).to.equal(2);
             expect(stub.args.map(x => x[0])).to.eql([
                 'stagingPathA',

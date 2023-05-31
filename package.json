@@ -1,6 +1,6 @@
 {
     "name": "roku-debug",
-    "version": "0.18.2",
+    "version": "0.18.12",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
@@ -55,20 +55,22 @@
     "devDependencies": {
         "@types/chai": "^4.2.22",
         "@types/dateformat": "~3",
+        "@types/decompress": "^4.2.4",
         "@types/dedent": "^0.7.0",
         "@types/find-in-files": "^0.5.1",
         "@types/fs-extra": "^9.0.13",
         "@types/glob": "^7.2.0",
         "@types/mocha": "^9.0.0",
         "@types/node": "^16.11.6",
-        "@types/request": "^2.48.7",
+        "@types/request": "^2.48.8",
         "@types/semver": "^7.3.9",
         "@types/sinon": "^10.0.6",
         "@types/vscode": "^1.61.0",
         "@typescript-eslint/eslint-plugin": "^5.2.0",
         "@typescript-eslint/parser": "^5.2.0",
         "chai": "^4.3.4",
-        "coveralls": "^3.1.1",
+        "coveralls-next": "^4.2.0",
+        "decompress": "^4.2.1",
         "dedent": "^0.7.0",
         "eslint": "^8.1.0",
         "eslint-plugin-no-only-tests": "^2.6.0",
@@ -85,8 +87,8 @@
         "typescript": "^4.4.4"
     },
     "dependencies": {
-        "@rokucommunity/logger": "^0.3.1",
-        "brighterscript": "^0.61.3",
+        "@rokucommunity/logger": "^0.3.3",
+        "brighterscript": "^0.65.0",
         "dateformat": "~4",
         "eol": "^0.9.1",
         "eventemitter3": "^4.0.7",
@@ -94,9 +96,10 @@
         "find-in-files": "^0.5.0",
         "fs-extra": "^10.0.0",
         "natural-orderby": "^2.0.3",
+        "postman-request": "^2.88.1-postman.32",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
-        "roku-deploy": "^3.9.3",
+        "roku-deploy": "^3.10.2",
         "semver": "^7.3.5",
         "serialize-error": "^8.1.0",
         "smart-buffer": "^4.2.0",
@@ -104,6 +107,7 @@
         "telnet-client": "^1.4.9",
         "vscode-debugadapter": "^1.49.0",
         "vscode-debugprotocol": "^1.49.0",
-        "vscode-languageserver": "^6.1.1"
+        "vscode-languageserver": "^6.1.1",
+        "xml2js": "^0.5.0"
     }
 }

@@ -6,6 +6,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.18.12](https://github.com/rokucommunity/roku-debug/compare/v0.18.11...v0.18.12) - 2023-05-18
+### Changed
+ - remove axios in favor of postman-request ([#153](https://github.com/rokucommunity/roku-debug/pull/153))
+### Fixed
+ - Fix `file already exists` error and hung process ([#152](https://github.com/rokucommunity/roku-debug/pull/152))
+
+
+
+## [0.18.11](https://github.com/rokucommunity/roku-debug/compare/v0.18.10...v0.18.11) - 2023-05-17
+### Changed
+ - Fix crash by using postman-request ([#151](https://github.com/rokucommunity/roku-debug/pull/151))
+
+
+
+## [0.18.10](https://github.com/rokucommunity/roku-debug/compare/v0.18.9...v0.18.10) - 2023-05-17
+### Changed
+ - upgrade to [brighterscript@0.65.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0650---2023-05-17)
+ - upgrade to [@rokucommunity/logger@0.3.3](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#033---2023-05-17). Notable changes since 0.3.2:
+     - Fix dependencies ([#@rokucommunity/logger04af7a0](https://github.com/rokucommunity/logger/commit/04af7a0))
+
+
+
+## [0.18.9](https://github.com/rokucommunity/roku-debug/compare/v0.18.8...v0.18.9) - 2023-05-10
+### Changed
+ - upgrade to [brighterscript@0.64.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0644---2023-05-10)
+ - upgrade to [roku-deploy@3.10.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3102---2023-05-10). Notable changes since 3.10.1:
+     - Fix audit issues ([roku-deploy#116](https://github.com/rokucommunity/roku-deploy/pull/116))
+     - fix nodejs 19 bug ([roku-deploy#115](https://github.com/rokucommunity/roku-deploy/pull/115))
+
+
+
+## [0.18.8](https://github.com/rokucommunity/roku-debug/compare/v0.18.7...v0.18.8) - 2023-04-28
+### Changed
+ - Make axios a prod dependency ([#148](https://github.com/rokucommunity/roku-debug/pull/148))
+
+
+
+## [0.18.7](https://github.com/rokucommunity/roku-debug/compare/v0.18.6...v0.18.7) - 2023-04-28
+### Added 
+ - better error for failed session starts ([#147](https://github.com/rokucommunity/roku-debug/pull/147))
+ - adds device-info query results to debug session ([#130](https://github.com/rokucommunity/roku-debug/pull/130))
+### Changed
+ - Bump xml2js from 0.4.23 to 0.5.0 ([#146](https://github.com/rokucommunity/roku-debug/pull/146))
+ - upgrade to [brighterscript@0.64.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0643---2023-04-28). Notable changes since 0.64.2:
+     - Improves performance in symbol table fetching ([brighterscript#797](https://github.com/rokucommunity/brighterscript/pull/797))
+
+
+
+## [0.18.6](https://github.com/rokucommunity/roku-debug/compare/v0.18.5...v0.18.6) - 2023-04-18
+### Changed
+ - Exclude sourcemaps when sideloading ([#145](https://github.com/rokucommunity/roku-debug/pull/145))
+ - upgrade to [brighterscript@0.64.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0642---2023-04-18). Notable changes since 0.64.1:
+     - Fix namespace-relative enum value ([brighterscript#793](https://github.com/rokucommunity/brighterscript/pull/793))
+
+
+
+## [0.18.5](https://github.com/rokucommunity/roku-debug/compare/v0.18.4...v0.18.5) - 2023-04-14
+### Changed
+ - upgrade to [brighterscript@0.64.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0641---2023-04-14). Notable changes since 0.62.0:
+     - Bump xml2js from 0.4.23 to 0.5.0 ([brighterscript#790](https://github.com/rokucommunity/brighterscript/pull/790))
+ - upgrade to [roku-deploy@3.10.1](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3101---2023-04-14). Notable changes since 3.10.0:
+     - Bump xml2js from 0.4.23 to 0.5.0 ([roku-deploy#112](https://github.com/rokucommunity/roku-deploy/pull/112))
+
+
+
+## [0.18.4](https://github.com/rokucommunity/roku-debug/compare/v0.18.3...v0.18.4) - 2023-03-17
+### Changed
+ - upgrade to [brighterscript@0.62.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0620---2023-03-17). Notable changes since 0.61.3:
+     - Fix crash when func has no block ([brighterscript#774](https://github.com/rokucommunity/brighterscript/pull/774))
+     - Move not-referenced check into ProgramValidator ([brighterscript#773](https://github.com/rokucommunity/brighterscript/pull/773))
+ - upgrade to [@rokucommunity/logger@0.3.2](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#032---2023-03-16). Notable changes since 0.3.1:
+     - Fix crash when encountering bigint ([@rokucommunity/logger#3](https://github.com/rokucommunity/logger/pull/3))
+ - upgrade to [roku-deploy@3.10.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3100---2023-03-16). Notable changes since 3.9.3:
+     - Use micromatch instead of picomatch ([roku-deploy#109](https://github.com/rokucommunity/roku-deploy/pull/109))
+
+
+
+## [0.18.3](https://github.com/rokucommunity/roku-debug/compare/v0.18.2...v0.18.3) - 2023-01-31
+### Fixed
+ - Increase the timeout for debug protocol control to prevent timeout with large projects ([#134](https://github.com/rokucommunity/roku-debug/pull/134))
+
+
+
 ## [0.18.2](https://github.com/rokucommunity/roku-debug/compare/v0.18.1...v0.18.2) - 2023-01-27
 ### Fixed
  - off-by-1 bug with threads over protocol ([#132](https://github.com/rokucommunity/roku-debug/pull/132))
