@@ -10,7 +10,7 @@ import { fileUtils } from '../FileUtils';
 import type { EvaluateContainer, StackFrame, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { PrimativeType } from '../adapters/TelnetAdapter';
 import { defer } from '../util';
-import { HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
+import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { util as bscUtil, standardizePath as s } from 'brighterscript';
@@ -29,11 +29,6 @@ describe('BrightScriptDebugSession', () => {
     let responseDeferreds = [];
     let responses = [];
 
-    afterEach(() => {
-        fsExtra.removeSync(outDir);
-        sinon.restore();
-    });
-
     let session: BrightScriptDebugSession;
 
     let launchConfiguration: LaunchConfiguration;
@@ -43,7 +38,11 @@ describe('BrightScriptDebugSession', () => {
     let errorSpy: sinon.SinonSpy;
 
     beforeEach(() => {
+        fsExtra.emptydirSync(tempDir);
         sinon.restore();
+
+        //stub the DebugSession shutdown call so it doesn't kill the test session
+        sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
 
         try {
             session = new BrightScriptDebugSession();
@@ -134,6 +133,12 @@ describe('BrightScriptDebugSession', () => {
                 }
             }
         });
+    });
+
+    afterEach(() => {
+        fsExtra.emptydirSync(tempDir);
+        fsExtra.removeSync(outDir);
+        sinon.restore();
     });
 
     describe('evaluateRequest', () => {
@@ -646,8 +651,6 @@ describe('BrightScriptDebugSession', () => {
             (session as any).launchConfiguration = {
                 retainStagingFolder: false
             };
-            //stub the super shutdown call so it doesn't kill the test session
-            sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
 
             await session.shutdown();
             expect(stub.callCount).to.equal(2);
