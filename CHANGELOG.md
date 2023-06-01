@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.19.0](https://github.com/rokucommunity/roku-debug/compare/v0.18.12...v0.19.0) - 2023-06-01
+### Added
+ - File logging ([#155](https://github.com/rokucommunity/roku-debug/pull/155))
+
+
+
 ## [0.18.12](https://github.com/rokucommunity/roku-debug/compare/v0.18.11...v0.18.12) - 2023-05-18
 ### Changed
  - remove axios in favor of postman-request ([#153](https://github.com/rokucommunity/roku-debug/pull/153))
