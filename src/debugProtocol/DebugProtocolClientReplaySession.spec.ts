@@ -1,4 +1,3 @@
-/* eslint-disable prefer-arrow-callback */
 import { expect } from 'chai';
 import { DebugProtocolClientReplaySession } from './DebugProtocolClientReplaySession';
 import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from './events/ProtocolEvent';
@@ -17,8 +16,9 @@ import { VariablesResponse } from './events/responses/VariablesResponse';
 import { AllThreadsStoppedUpdate } from './events/updates/AllThreadsStoppedUpdate';
 import { IOPortOpenedUpdate } from './events/updates/IOPortOpenedUpdate';
 import { ThreadAttachedUpdate } from './events/updates/ThreadAttachedUpdate';
+import * as fsExtra from 'fs-extra';
 
-describe.skip(DebugProtocolClientReplaySession.name, () => {
+describe(DebugProtocolClientReplaySession.name, () => {
     let session: DebugProtocolClientReplaySession;
 
     afterEach(async () => {
