@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.19.1](https://github.com/rokucommunity/roku-debug/compare/v0.19.0...v0.19.1) - 2023-06-08
+### Changed
+ - Move @types/request to deps to fix d.bs files ([691a7be](https://github.com/rokucommunity/roku-debug/commit/691a7be))
+
+
+
 ## [0.19.0](https://github.com/rokucommunity/roku-debug/compare/v0.18.12...v0.19.0) - 2023-06-01
 ### Added
  - File logging ([#155](https://github.com/rokucommunity/roku-debug/pull/155))
