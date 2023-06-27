@@ -1,7 +1,6 @@
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
-import * as request from 'request';
 import { rokuDeploy, CompileError } from 'roku-deploy';
 import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
@@ -49,9 +48,8 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
-import { logger, debugServerLogOutputEventTransport } from '../logging';
+import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '../logging';
 import type { DeviceInfo } from '../DeviceInfo';
-import axios from 'axios';
 import * as xml2js from 'xml2js';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
@@ -71,6 +69,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //send newly-verified breakpoints to vscode
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceVerifiedBreakpoints(data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
+        this.fileLoggingManager = new FileLoggingManager();
     }
 
     private onDeviceVerifiedBreakpoints(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
@@ -100,6 +99,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public fileManager: FileManager;
 
     public projectManager: ProjectManager;
+
+    public fileLoggingManager: FileLoggingManager;
 
     public breakpointManager: BreakpointManager;
 
@@ -191,7 +192,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info') {
+        this.logger.trace('[showPopupMessage]', severity, message);
         this.sendEvent(new PopupMessageEvent(message, severity));
+    }
+    /**
+      * Get the cwd from the launchConfiguration, or default to process.cwd()
+      */
+    private get cwd() {
+        return this.launchConfiguration?.cwd ?? process.cwd();
     }
 
     public async fetchDeviceInfo(host: string, remotePort: number) {
@@ -200,8 +208,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         const url = `http://${host}:${remotePort}/query/device-info`;
         try {
             // concatenates the url string using template literals
-            const res = await axios.get(url);
-            let xml = res.data;
+            const ressponse = await util.httpGet(url);
+            const xml = ressponse.body;
 
             // parses the xml data to JSON object
             const result = (await xml2js.parseStringPromise(xml))['device-info'];
@@ -259,6 +267,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (!this.deviceInfo['developer-enabled']) {
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
+
+        //initialize all file logging (rokuDevice, debugger, etc)
+        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
@@ -412,11 +423,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //convert a hostname to an ip address
             const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
             //send the deep link http request
-            await new Promise((resolve, reject) => {
-                request.post(deepLinkUrl, (err, response) => {
-                    return err ? reject(err) : resolve(response);
-                });
-            });
+            await util.httpPost(deepLinkUrl);
         }
     }
 
@@ -482,6 +489,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param logOutput
      */
     private sendLogOutput(logOutput: string) {
+        this.fileLoggingManager.writeRokuDeviceLog(logOutput);
         const lines = logOutput.split(/\r?\n/g);
         for (let line of lines) {
             line += '\n';
@@ -1282,38 +1290,67 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+    private shutdownPromise: Promise<void> | undefined = undefined;
+
     /**
-     * Called when the debugger is terminated
+     * Called when the debugger is terminated. Feel free to call this as frequently as you want; we'll only run the shutdown process the first time, and return
+     * the same promise on subsequent calls
      */
-    public async shutdown(errorMessage?: string) {
-        //if configured, delete the staging directory
-        if (!this.launchConfiguration.retainStagingFolder) {
-            for (let stagingFolderPath of this.projectManager?.getStagingFolderPaths() ?? []) {
-                try {
-                    fsExtra.removeSync(stagingFolderPath);
-                } catch (e) {
-                    util.log(`Error removing staging directory '${stagingFolderPath}': ${JSON.stringify(e)}`);
+    public async shutdown(errorMessage?: string): Promise<void> {
+        if (this.shutdownPromise === undefined) {
+            this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
+            this.shutdownPromise = this._shutdown(errorMessage);
+        } else {
+            this.logger.log('[shutdown] Tried to call `.shutdown()` again. Returning the same promise');
+        }
+        return this.shutdownPromise;
+    }
+
+    private async _shutdown(errorMessage?: string): Promise<void> {
+        try {
+            //if configured, delete the staging directory
+            if (!this.launchConfiguration.retainStagingFolder) {
+                const stagingFolders = this.projectManager?.getStagingFolderPaths() ?? [];
+                this.logger.info('deleting staging folders', stagingFolders);
+                for (let stagingFolderPath of stagingFolders) {
+                    try {
+                        fsExtra.removeSync(stagingFolderPath);
+                    } catch (e) {
+                        this.logger.error(e);
+                        util.log(`Error removing staging directory '${stagingFolderPath}': ${JSON.stringify(e)}`);
+                    }
                 }
             }
-        }
 
-        //if there was an error message, display it to the user
-        if (errorMessage) {
-            this.logger.error(errorMessage);
-            this.showPopupMessage(errorMessage, 'error');
-        }
-
-        if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
-            await this.rokuAdapter?.destroy?.();
-            //press the home button to return to the home screen
-            try {
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-            } catch (e) {
-                console.error(e);
+            //if there was an error message, display it to the user
+            if (errorMessage) {
+                this.logger.error(errorMessage);
+                this.showPopupMessage(errorMessage, 'error');
             }
-        }
 
-        this.sendEvent(new TerminatedEvent());
+            if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
+                this.logger.log('Destroy rokuAdapter');
+                await this.rokuAdapter?.destroy?.();
+                //press the home button to return to the home screen
+                try {
+                    this.logger.log('Press home button');
+                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                } catch (e) {
+                    console.error(e);
+                    this.logger.error(e);
+                }
+            }
+
+            this.logger.log('Send terminated event');
+            this.sendEvent(new TerminatedEvent());
+
+            //shut down the process
+            this.logger.log('super.shutdown()');
+            super.shutdown();
+            this.logger.log('shutdown complete');
+        } catch (e) {
+            this.logger.error(e);
+        }
     }
 }
 

@@ -10,6 +10,10 @@ import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeve
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
 import type { AdapterOptions } from './interfaces';
+import * as r from 'postman-request';
+import type { Response } from 'request';
+import type * as requestType from 'request';
+const request = r as typeof requestType;
 
 class Util {
     /**
@@ -425,6 +429,32 @@ class Util {
         callback(cancel);
 
         return cancel;
+    }
+
+    public isNullish(item: any) {
+        return item === undefined || item === null;
+    }
+
+    /**
+     * Do an http GET request
+     */
+    public httpGet(url: string) {
+        return new Promise<Response>((resolve, reject) => {
+            request.get(url, (err, response) => {
+                return err ? reject(err) : resolve(response);
+            });
+        });
+    }
+
+    /**
+     * Do an http POST request
+     */
+    public httpPost(url: string) {
+        return new Promise<Response>((resolve, reject) => {
+            request.post(url, (err, response) => {
+                return err ? reject(err) : resolve(response);
+            });
+        });
     }
 }
 

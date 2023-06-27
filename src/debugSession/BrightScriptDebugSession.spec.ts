@@ -10,14 +10,14 @@ import { fileUtils } from '../FileUtils';
 import type { EvaluateContainer, StackFrame, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { PrimativeType } from '../adapters/TelnetAdapter';
 import { defer } from '../util';
-import { HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
+import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { util as bscUtil, standardizePath as s } from 'brighterscript';
 import { DefaultFiles } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
-import { ConsoleTransport } from '@rokucommunity/logger';
+import * as dateFormat from 'dateformat';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -31,6 +31,7 @@ describe('BrightScriptDebugSession', () => {
     let responses = [];
 
     afterEach(() => {
+        fsExtra.emptydirSync(tempDir);
         fsExtra.removeSync(outDir);
         sinon.restore();
     });
@@ -44,6 +45,7 @@ describe('BrightScriptDebugSession', () => {
     let errorSpy: sinon.SinonSpy;
 
     beforeEach(() => {
+        fsExtra.emptydirSync(tempDir);
         sinon.restore();
 
         try {
