@@ -287,4 +287,10 @@ export interface ComponentLibraryConfiguration {
      * This is an absolute path to the TrackerTask.xml file to be injected into the component library during a debug session.
      */
     raleTrackerTaskFileLocation: string;
+    /**
+     * If true, turn on ECP tracking, unless unsupported, then turn on 8080 tracking.
+     * If false, turn off both.
+     * TODO - this isn't actually implemented yet
+     */
+    rendezvousTracking: boolean;
 }

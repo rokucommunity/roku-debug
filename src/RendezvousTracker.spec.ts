@@ -3,6 +3,7 @@ const sinon = createSandbox();
 import { assert, expect } from 'chai';
 import type { RendezvousHistory } from './RendezvousTracker';
 import { RendezvousTracker } from './RendezvousTracker';
+import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
 
 describe('BrightScriptFileUtils ', () => {
     let rendezvousTracker: RendezvousTracker;
@@ -268,21 +269,127 @@ describe('BrightScriptFileUtils ', () => {
     afterEach(() => {
         sinon.restore();
         rendezvousTrackerMock.restore();
+        rendezvousTracker?.destroy();
     });
 
-    describe('hasMinVersion ', () => {
+    describe('isEcpRendezvousTrackingSupported ', () => {
         it('works', () => {
-            expect(rendezvousTracker.hasMinVersion('11.0.0')).to.equal(false);
-            expect(rendezvousTracker.hasMinVersion('11.5.0')).to.equal(true);
-            expect(rendezvousTracker.hasMinVersion('12.0.1')).to.equal(true);
+            rendezvousTracker['deviceInfo']['software-version'] = '11.0.0';
+            expect(rendezvousTracker.isEcpRendezvousTrackingSupported).to.be.false;
+
+            rendezvousTracker['deviceInfo']['software-version'] = '11.5.0';
+            expect(rendezvousTracker.isEcpRendezvousTrackingSupported).to.be.true;
+
+            rendezvousTracker['deviceInfo']['software-version'] = '12.0.1';
+            expect(rendezvousTracker.isEcpRendezvousTrackingSupported).to.be.true;
+        });
+    });
+
+    describe('on', () => {
+        it('supports unsubscribing', () => {
+            const spy = sinon.spy();
+            const disconnect = rendezvousTracker.on('rendezvous', spy);
+            rendezvousTracker['emit']('rendezvous', {});
+            rendezvousTracker['emit']('rendezvous', {});
+            expect(spy.callCount).to.eql(2);
+            disconnect();
+            expect(spy.callCount).to.eql(2);
+            //disconnect again to fix code coverage
+            delete rendezvousTracker['emitter'];
+            disconnect();
+        });
+    });
+
+    describe('getIsTelnetRendezvousTrackingEnabled', () => {
+        async function doTest(rawResponse: string, expectedValue: boolean) {
+            const stub = sinon.stub(SceneGraphDebugCommandController.prototype, 'logrendezvous').returns(Promise.resolve({
+                result: {
+                    rawResponse: 'on\n'
+                }
+            } as any));
+            expect(
+                await rendezvousTracker.getIsTelnetRendezvousTrackingEnabled()
+            ).to.be.true;
+            stub.restore();
+        }
+
+        it('handles various responses', async () => {
+            await doTest('on', true);
+            await doTest('on\n', true);
+            await doTest('on \n', true);
+            await doTest('off', false);
+            await doTest('off\n', false);
+            await doTest('off \n', false);
+        });
+
+        it('does not crash on missing response', async () => {
+            await doTest(undefined, true);
+        });
+
+        it('logs an error', async () => {
+            const stub = sinon.stub(rendezvousTracker['logger'], 'warn');
+            sinon.stub(
+                SceneGraphDebugCommandController.prototype, 'logrendezvous'
+            ).returns(
+                Promise.reject(new Error('crash'))
+            );
+            await rendezvousTracker.getIsTelnetRendezvousTrackingEnabled();
+            expect(stub.called).to.be.true;
+        });
+    });
+
+    describe('startEcpPingTimer', () => {
+        it('only sets the timer once', () => {
+            rendezvousTracker.startEcpPingTimer();
+            const ecpPingTimer = rendezvousTracker['ecpPingTimer'];
+            rendezvousTracker.startEcpPingTimer();
+            //the timer reference shouldn't have changed
+            expect(ecpPingTimer).to.eql(rendezvousTracker['ecpPingTimer']);
+            //stop the timer
+            rendezvousTracker.stopEcpPingTimer();
+            expect(rendezvousTracker['ecpPingTimer']).to.be.undefined;
+            //stopping while stopped is a noop
+            rendezvousTracker.stopEcpPingTimer();
         });
     });
 
     describe('pingEcpRendezvous ', () => {
-        it('works', async() => {
+        it('works', async () => {
             sinon.stub(rendezvousTracker, 'getEcpRendezvous').returns(Promise.resolve({ 'trackingEnabled': true, 'items': [{ 'id': '1403', 'startTime': '97771301', 'endTime': '97771319', 'lineNumber': '11', 'file': 'pkg:/components/Tasks/GetSubReddit.brs' }, { 'id': '1404', 'startTime': '97771322', 'endTime': '97771322', 'lineNumber': '15', 'file': 'pkg:/components/Tasks/GetSubReddit.brs' }] }));
             await rendezvousTracker.pingEcpRendezvous();
             expect(rendezvousTracker['rendezvousHistory']).to.eql({ 'hitCount': 2, 'occurrences': { 'pkg:/components/Tasks/GetSubReddit.brs': { 'occurrences': { '11': { 'clientLineNumber': 11, 'clientPath': '/components/Tasks/GetSubReddit.brs', 'hitCount': 1, 'totalTime': 0.018, 'type': 'lineInfo' }, '15': { 'clientLineNumber': 15, 'clientPath': '/components/Tasks/GetSubReddit.brs', 'hitCount': 1, 'totalTime': 0, 'type': 'lineInfo' } }, 'hitCount': 2, 'totalTime': 0.018, 'type': 'fileInfo', 'zeroCostHitCount': 1 } }, 'totalTime': 0.018, 'type': 'historyInfo', 'zeroCostHitCount': 1 });
+        });
+    });
+
+    describe('activateEcpTracking', () => {
+        beforeEach(() => {
+            sinon.stub(rendezvousTracker, 'pingEcpRendezvous').returns(Promise.resolve());
+            sinon.stub(rendezvousTracker, 'startEcpPingTimer').callsFake(() => { });
+            sinon.stub(rendezvousTracker, 'toggleEcpRendezvousTracking').returns(Promise.resolve(true));
+        });
+
+        it('does not activate if telnet and ecp are both off', async () => {
+            sinon.stub(rendezvousTracker, 'getIsEcpRendezvousTrackingEnabled').returns(Promise.resolve(false));
+            sinon.stub(rendezvousTracker, 'getIsTelnetRendezvousTrackingEnabled').returns(Promise.resolve(false));
+            expect(
+                await rendezvousTracker.activateEcpTracking()
+            ).to.be.false;
+        });
+
+        it('activates if telnet is enabled but ecp is disabled', async () => {
+            sinon.stub(rendezvousTracker, 'getIsEcpRendezvousTrackingEnabled').returns(Promise.resolve(false));
+            sinon.stub(rendezvousTracker, 'getIsTelnetRendezvousTrackingEnabled').returns(Promise.resolve(true));
+            expect(
+                await rendezvousTracker.activateEcpTracking()
+            ).to.be.true;
+        });
+
+        it('activates if telnet is disabled but ecp is enabled', async () => {
+            sinon.stub(rendezvousTracker, 'getIsEcpRendezvousTrackingEnabled').returns(Promise.resolve(true));
+            sinon.stub(rendezvousTracker, 'getIsTelnetRendezvousTrackingEnabled').returns(Promise.resolve(false));
+            expect(
+                await rendezvousTracker.activateEcpTracking()
+            ).to.be.true;
         });
     });
 

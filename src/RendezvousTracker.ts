@@ -3,12 +3,12 @@ import * as path from 'path';
 import * as replaceLast from 'replace-last';
 import type { SourceLocation } from './managers/LocationManager';
 import { logger } from './logging';
-import axios from 'axios';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
 import * as xml2js from 'xml2js';
 import * as request from 'request';
+import { util } from './util';
+import * as semver from 'semver';
 
-const minVersion = '11.5.0';
 const telnetRendezvousString = 'on\n';
 
 export class RendezvousTracker {
@@ -28,6 +28,13 @@ export class RendezvousTracker {
     private rendezvousBlocks: RendezvousBlocks;
     private rendezvousHistory: RendezvousHistory;
     private ecpTrackingEnabled = false;
+
+    /**
+     * Determine if the current Roku device supports the ECP rendezvous tracking feature
+     */
+    public get isEcpRendezvousTrackingSupported() {
+        return semver.gte(this.deviceInfo['software-version'] as string, '11.5.0');
+    }
 
     public logger = logger.createLogger(`[${RendezvousTracker.name}]`);
     public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
@@ -76,10 +83,21 @@ export class RendezvousTracker {
         this.emit('rendezvous', this.rendezvousHistory);
     }
 
+    private ecpPingTimer: NodeJS.Timer;
+
     public startEcpPingTimer(): void {
-        setInterval(() => {
-            void this.pingEcpRendezvous();
-        }, 1000);
+        if (!this.ecpPingTimer) {
+            this.ecpPingTimer = setInterval(() => {
+                void this.pingEcpRendezvous();
+            }, 1000);
+        }
+    }
+
+    public stopEcpPingTimer() {
+        if (this.ecpPingTimer) {
+            clearInterval(this.ecpPingTimer);
+            this.ecpPingTimer = undefined;
+        }
     }
 
     public async pingEcpRendezvous(): Promise<void> {
@@ -96,55 +114,60 @@ export class RendezvousTracker {
         this.emit('rendezvous', this.rendezvousHistory);
     }
 
-    public async checkForEcpTracking(): Promise<void> {
-        let currVersion = <string> this.deviceInfo['software-version'];
-        let host = <string> this.deviceInfo.host;
-        let telnetRendezvousTracking = false;
-        if (this.hasMinVersion(currVersion)) {
-            let ecpData = await this.getEcpRendezvous();
-            this.ecpTrackingEnabled = ecpData.trackingEnabled;
-            if (!this.ecpTrackingEnabled) {
-                let connection = new SceneGraphDebugCommandController(host);
-                try {
-                    let logRendezvousResponse = await connection.logrendezvous('status');
-                    telnetRendezvousTracking = logRendezvousResponse.result.rawResponse.endsWith(telnetRendezvousString);
-                } catch (error) {
-                    this.logger.warn('An error occurred getting logRendezvous');
-                }
-                await connection.end();
-            }
-            if (telnetRendezvousTracking || this.ecpTrackingEnabled) {
-                // Toggle ECP tracking off and on to clear the log and then continue tracking
-                let untrack = await this.toggleEcpTracking('untrack');
-                let track = await this.toggleEcpTracking('track');
-                this.ecpTrackingEnabled = untrack && track;
-            }
-            if (this.ecpTrackingEnabled) {
-                this.logger.log('ecp rendezvous logging is enabled');
-                this.startEcpPingTimer();
-            }
+    /**
+     * Determine if rendezvous tracking is enabled via the 8080 telnet command
+     */
+    public async getIsTelnetRendezvousTrackingEnabled() {
+        let host = this.deviceInfo.host as string;
+        let sgDebugCommandController = new SceneGraphDebugCommandController(host);
+        try {
+            let logRendezvousResponse = await sgDebugCommandController.logrendezvous('status');
+            return logRendezvousResponse.result.rawResponse?.trim()?.toLowerCase() === 'on';
+        } catch (error) {
+            this.logger.warn('An error occurred getting logRendezvous');
+        } finally {
+            await sgDebugCommandController.end();
         }
     }
 
-    public hasMinVersion(currVersion: string): boolean {
-        const currVersionArr = currVersion.split('.').map((n) => parseInt(n));
-        const minimumVersionArr = minVersion.split('.').map((n) => parseInt(n));
-
-        // Compare major, minor, and patch versions, loop if versions are equal
-        for (let i = 0; i < 3; i++) {
-            if (currVersionArr[i] < minimumVersionArr[i]) {
-                return false;
-            } else if (currVersionArr[i] > minimumVersionArr[i]) {
-                return true;
-            }
-        }
-        return true;
+    /**
+     * Determine if rendezvous tracking is enabled via the ECP command
+     */
+    public async getIsEcpRendezvousTrackingEnabled() {
+        let ecpData = await this.getEcpRendezvous();
+        return ecpData.trackingEnabled;
     }
 
+    public async activateEcpTracking(): Promise<boolean> {
+        //ECP tracking not supported, return early
+        if (!this.isEcpRendezvousTrackingSupported) {
+            return;
+        }
+
+        let isTelnetRendezvousTrackingEnabled = false;
+        this.ecpTrackingEnabled = await this.getIsEcpRendezvousTrackingEnabled();
+        isTelnetRendezvousTrackingEnabled = await this.getIsTelnetRendezvousTrackingEnabled();
+
+        if (this.ecpTrackingEnabled || isTelnetRendezvousTrackingEnabled) {
+            // Toggle ECP tracking off and on to clear the log and then continue tracking
+            let untrack = await this.toggleEcpRendezvousTracking('untrack');
+            let track = await this.toggleEcpRendezvousTracking('track');
+            this.ecpTrackingEnabled = untrack && track;
+        }
+        if (this.ecpTrackingEnabled) {
+            this.logger.log('ecp rendezvous logging is enabled');
+            this.startEcpPingTimer();
+        }
+        return this.ecpTrackingEnabled;
+    }
+
+    /**
+     * Get the response from an ECP sgrendezvous request from the Roku
+     */
     public async getEcpRendezvous(): Promise<EcpRendezvousData> {
         // Send rendezvous query to ECP
-        const rendezvousQuery = await axios.get(`http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/query/sgrendezvous`);
-        let rendezvousQueryData = rendezvousQuery.data;
+        const rendezvousQuery = await util.httpGet(`http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/query/sgrendezvous`);
+        let rendezvousQueryData = rendezvousQuery.body;
         let ecpData: EcpRendezvousData = {
             trackingEnabled: false,
             items: []
@@ -174,19 +197,21 @@ export class RendezvousTracker {
         return ecpData;
     }
 
-    public async toggleEcpTracking(toggle: string): Promise<boolean> {
-        // Send rendezvous query to ECP
-        const url = `http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/sgrendezvous/${toggle}`;
-        const data = '';
-        let results: boolean = await new Promise((resolve, reject) => {
-            request.post(url, { body: data }, (err, resp, body) => {
-                if (err) {
-                    return reject(err);
-                }
-                resolve(true);
-            });
-        });
-        return results;
+    /**
+     * Enable/Disable ECP Rendezvous tracking on the Roku device
+     * @returns true if successful, false if there was an issue setting the value
+     */
+    public async toggleEcpRendezvousTracking(toggle: 'track' | 'untrack'): Promise<boolean> {
+        try {
+            const response = await util.httpPost(
+                `http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/sgrendezvous/${toggle}`,
+                //not sure if we need this, but it works...so probably better to just leave it here
+                { body: '' }
+            );
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     /**
@@ -370,6 +395,13 @@ export class RendezvousTracker {
      */
     private getTime(duration?: string): number {
         return duration ? parseFloat(duration) : 0.000;
+    }
+
+    /**
+     * Destroy/tear down this class
+     */
+    public destroy() {
+        this.stopEcpPingTimer();
     }
 }
 

@@ -48,6 +48,9 @@ describe('BrightScriptDebugSession', () => {
         fsExtra.emptydirSync(tempDir);
         sinon.restore();
 
+        //prevent calling DebugSession.shutdown() because that calls process.kill(), which would kill the test session
+        sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
+
         try {
             session = new BrightScriptDebugSession();
         } catch (e) {
@@ -649,8 +652,6 @@ describe('BrightScriptDebugSession', () => {
             (session as any).launchConfiguration = {
                 retainStagingFolder: false
             };
-            //stub the super shutdown call so it doesn't kill the test session
-            sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
 
             await session.shutdown();
             expect(stub.callCount).to.equal(2);

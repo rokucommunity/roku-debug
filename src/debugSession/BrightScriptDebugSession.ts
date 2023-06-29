@@ -290,8 +290,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
             this.rendezvousTracker = new RendezvousTracker(this.deviceInfo);
-            // start rendezvous tracking
-            await this.rendezvousTracker.checkForEcpTracking();
+
+            // start ECP rendezvous tracking (if possible)
+            await this.rendezvousTracker.activateEcpTracking();
+
             this.createRokuAdapter(this.launchConfiguration.host, this.rendezvousTracker);
             if (!this.enableDebugProtocol) {
                 //connect to the roku debug via telnet
@@ -1308,6 +1310,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string): Promise<void> {
         try {
+            //
+            this.rendezvousTracker?.destroy?.();
+
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
                 const stagingFolders = this.projectManager?.getStagingFolderPaths() ?? [];
