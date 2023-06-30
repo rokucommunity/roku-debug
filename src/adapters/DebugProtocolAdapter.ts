@@ -38,11 +38,6 @@ export class DebugProtocolAdapter {
         this.chanperfTracker.on('chanperf', (output) => {
             this.emit('chanperf', output);
         });
-
-        // watch for rendezvous events
-        this.rendezvousTracker.on('rendezvous', (output) => {
-            this.emit('rendezvous', output);
-        });
     }
 
     private logger = logger.createLogger(`[${DebugProtocolAdapter.name}]`);
@@ -91,7 +86,6 @@ export class DebugProtocolAdapter {
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
     public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
-    public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);

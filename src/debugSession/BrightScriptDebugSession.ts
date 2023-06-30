@@ -289,10 +289,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
-            this.rendezvousTracker = new RendezvousTracker(this.deviceInfo);
-
-            // start ECP rendezvous tracking (if possible)
-            await this.rendezvousTracker.activateEcpTracking();
+            await this.initRendezvousTracking();
 
             this.createRokuAdapter(this.launchConfiguration.host, this.rendezvousTracker);
             if (!this.enableDebugProtocol) {
@@ -331,11 +328,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // Send chanperf events to the extension
             this.rokuAdapter.on('chanperf', (output) => {
                 this.sendEvent(new ChanperfEvent(output));
-            });
-
-            // Send rendezvous events to the extension
-            this.rokuAdapter.on('rendezvous', (output) => {
-                this.sendEvent(new RendezvousEvent(output));
             });
 
             //listen for a closed connection (shut down when received)
@@ -426,6 +418,42 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
             //send the deep link http request
             await util.httpPost(deepLinkUrl);
+        }
+    }
+
+    /**
+     * Activate rendezvous tracking (IF enabled in the LaunchConfig)
+     */
+    public async initRendezvousTracking() {
+        const timeout = 5000;
+        let initCompleted = false;
+        await Promise.race([
+            util.sleep(timeout),
+            this._initRendezvousTracking().finally(() => {
+                initCompleted = true;
+            })
+        ]);
+
+        if (initCompleted === false) {
+            this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn');
+        }
+    }
+
+    private async _initRendezvousTracking() {
+        this.rendezvousTracker = new RendezvousTracker(this.deviceInfo);
+
+        // Send rendezvous events to the debug protocol client
+        this.rendezvousTracker.on('rendezvous', (output) => {
+            this.sendEvent(new RendezvousEvent(output));
+        });
+
+        //clear the history so the user doesn't have leftover rendezvous data from a previous session
+        this.rendezvousTracker.clearHistory();
+
+        //if rendezvous tracking is enabled, then enable it on the device
+        if (this.launchConfiguration.rendezvousTracking !== false) {
+            // start ECP rendezvous tracking (if possible)
+            await this.rendezvousTracker.activate();
         }
     }
 

@@ -35,15 +35,9 @@ export class TelnetAdapter {
         this.chanperfTracker = new ChanperfTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
 
-
         // watch for chanperf events
         this.chanperfTracker.on('chanperf', (output) => {
             this.emit('chanperf', output);
-        });
-
-        // watch for rendezvous events
-        this.rendezvousTracker.on('rendezvous', (output) => {
-            this.emit('rendezvous', output);
         });
     }
 
@@ -83,7 +77,6 @@ export class TelnetAdapter {
     public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void);
-    public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);

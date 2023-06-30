@@ -17,7 +17,7 @@ import { util as bscUtil, standardizePath as s } from 'brighterscript';
 import { DefaultFiles } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
-import * as dateFormat from 'dateformat';
+import { RendezvousTracker } from '../RendezvousTracker';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -545,6 +545,33 @@ describe('BrightScriptDebugSession', () => {
             //works with extra spacing
             await doTest('function   RunScreenSaver()\nend function', 'function   RunScreenSaver()', 1);
             await doTest('function RunScreenSaver   ()\nend function', 'function RunScreenSaver   ()', 1);
+        });
+    });
+
+    describe('initRendezvousTracking', () => {
+        it('clears history when disabled', async () => {
+            const stub = sinon.stub(session, 'sendEvent');
+            const activateStub = sinon.stub(RendezvousTracker.prototype, 'activate');
+            const clearHistoryStub = sinon.stub(RendezvousTracker.prototype, 'clearHistory');
+
+            session['launchConfiguration'].rendezvousTracking = false;
+
+            await session['initRendezvousTracking']();
+            expect(clearHistoryStub.called).to.be.true;
+            expect(activateStub.called).to.be.false;
+        });
+
+        it('activates when not disabled', async () => {
+            const stub = sinon.stub(session, 'sendEvent');
+            const activateStub = sinon.stub(RendezvousTracker.prototype, 'activate');
+            const clearHistoryStub = sinon.stub(RendezvousTracker.prototype, 'clearHistory');
+
+            session['launchConfiguration'].rendezvousTracking = undefined;
+
+            await session['initRendezvousTracking']();
+            expect(clearHistoryStub.called).to.be.true;
+            expect(activateStub.called).to.be.true;
+
         });
     });
 

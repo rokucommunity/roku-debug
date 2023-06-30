@@ -27,12 +27,17 @@ export class RendezvousTracker {
     private filterOutLogs: boolean;
     private rendezvousBlocks: RendezvousBlocks;
     private rendezvousHistory: RendezvousHistory;
-    private ecpTrackingEnabled = false;
+
+    /**
+     * Where should the rendezvous data be tracked from? If ecp, then the ecp ping data will be reported. If telnet, then any
+     * rendezvous data from telnet will reported. If 'off', then no data will be reported
+     */
+    private trackingSource: 'telnet' | 'ecp' | 'off' = 'off';
 
     /**
      * Determine if the current Roku device supports the ECP rendezvous tracking feature
      */
-    public get isEcpRendezvousTrackingSupported() {
+    public get doesHostSupportEcpRendezvousTracking() {
         return semver.gte(this.deviceInfo['software-version'] as string, '11.5.0');
     }
 
@@ -118,13 +123,18 @@ export class RendezvousTracker {
      * Determine if rendezvous tracking is enabled via the 8080 telnet command
      */
     public async getIsTelnetRendezvousTrackingEnabled() {
-        let host = this.deviceInfo.host as string;
-        let sgDebugCommandController = new SceneGraphDebugCommandController(host);
+        return (await this.runSGLogrendezvousCommand('status'))?.trim()?.toLowerCase() === 'on';
+    }
+
+    /**
+     * Run a SceneGraph logendezvous 8080 command and get the text output
+     */
+    private async runSGLogrendezvousCommand(command: 'status' | 'on' | 'off'): Promise<string> {
+        let sgDebugCommandController = new SceneGraphDebugCommandController(this.deviceInfo.host as string);
         try {
-            let logRendezvousResponse = await sgDebugCommandController.logrendezvous('status');
-            return logRendezvousResponse.result.rawResponse?.trim()?.toLowerCase() === 'on';
+            return (await sgDebugCommandController.logrendezvous(command)).result.rawResponse;
         } catch (error) {
-            this.logger.warn('An error occurred getting logRendezvous');
+            this.logger.warn(`An error occurred running SG command "${command}"`, error);
         } finally {
             await sgDebugCommandController.end();
         }
@@ -138,27 +148,32 @@ export class RendezvousTracker {
         return ecpData.trackingEnabled;
     }
 
-    public async activateEcpTracking(): Promise<boolean> {
-        //ECP tracking not supported, return early
-        if (!this.isEcpRendezvousTrackingSupported) {
-            return;
-        }
-
-        let isTelnetRendezvousTrackingEnabled = false;
-        this.ecpTrackingEnabled = await this.getIsEcpRendezvousTrackingEnabled();
-        isTelnetRendezvousTrackingEnabled = await this.getIsTelnetRendezvousTrackingEnabled();
-
-        if (this.ecpTrackingEnabled || isTelnetRendezvousTrackingEnabled) {
+    public async activate(): Promise<boolean> {
+        //if ECP tracking is supported, turn that on
+        if (this.doesHostSupportEcpRendezvousTracking) {
             // Toggle ECP tracking off and on to clear the log and then continue tracking
             let untrack = await this.toggleEcpRendezvousTracking('untrack');
             let track = await this.toggleEcpRendezvousTracking('track');
-            this.ecpTrackingEnabled = untrack && track;
+            const isEcpTrackingEnabled = untrack && track && await this.getIsEcpRendezvousTrackingEnabled();
+            if (isEcpTrackingEnabled) {
+                this.trackingSource = 'ecp';
+                this.startEcpPingTimer();
+
+                //disable telnet rendezvous tracking since ECP is working
+                try {
+                    await this.runSGLogrendezvousCommand('off');
+                } catch { }
+                return true;
+            }
         }
-        if (this.ecpTrackingEnabled) {
-            this.logger.log('ecp rendezvous logging is enabled');
-            this.startEcpPingTimer();
+
+        //ECP tracking is not supported (or had an issue). Try enabling telnet rendezvous tracking (that only works with run_as_process=0, but worth a try...)
+        await this.runSGLogrendezvousCommand('on');
+        if (await this.getIsTelnetRendezvousTrackingEnabled()) {
+            this.trackingSource = 'telnet';
+            return true;
         }
-        return this.ecpTrackingEnabled;
+        return false;
     }
 
     /**
@@ -229,7 +244,7 @@ export class RendezvousTracker {
             let match = /\[sg\.node\.(BLOCK|UNBLOCK)\s{0,}\] Rendezvous\[(\d+)\](?:\s\w+\n|\s\w{2}\s(.*)\((\d+)\)|[\s\w]+(\d+\.\d+)+|\s\w+)/g.exec(line);
             // see the following for an explanation for this regex: https://regex101.com/r/In0t7d/6
             if (match) {
-                if (!this.ecpTrackingEnabled) {
+                if (this.trackingSource === 'telnet') {
                     let [, type, id, fileName, lineNumber, duration] = match;
                     if (type === 'BLOCK') {
                         // detected the start of a rendezvous event
@@ -400,8 +415,20 @@ export class RendezvousTracker {
     /**
      * Destroy/tear down this class
      */
-    public destroy() {
+    public async destroy() {
+        this.emitter?.removeAllListeners();
         this.stopEcpPingTimer();
+        //turn off ECP rendezvous tracking
+        if (this.doesHostSupportEcpRendezvousTracking) {
+            await this.toggleEcpRendezvousTracking('untrack');
+        }
+
+        //turn off telnet rendezvous tracking
+        try {
+            await this.runSGLogrendezvousCommand('off');
+        } catch (e) {
+            this.logger.error('Failed to disable logrendezvous over 8080', e);
+        }
     }
 }
 
