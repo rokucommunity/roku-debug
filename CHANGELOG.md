@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.0](https://github.com/rokucommunity/roku-debug/compare/v0.19.1...v0.20.0) - 2023-07-05
+### Added
+ - Support sgrendezvous through ECP ([#150](https://github.com/rokucommunity/roku-debug/pull/150))
+### Changed
+ - upgrade to [brighterscript@0.65.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0651---2023-06-09)
+
+
+
 ## [0.19.1](https://github.com/rokucommunity/roku-debug/compare/v0.19.0...v0.19.1) - 2023-06-08
 ### Changed
  - Move @types/request to deps to fix d.bs files ([691a7be](https://github.com/rokucommunity/roku-debug/commit/691a7be))
