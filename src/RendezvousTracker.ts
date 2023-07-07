@@ -111,15 +111,18 @@ export class RendezvousTracker {
         try {
             // Get ECP rendezvous data, parse it, and send it to event emitter
             let ecpData = await this.getEcpRendezvous();
-            for (let blockInfo of ecpData?.items ?? []) {
-                let duration = ((parseInt(blockInfo.endTime) - parseInt(blockInfo.startTime)) / 1000).toString();
-                this.rendezvousBlocks[blockInfo.id] = {
-                    fileName: await this.updateClientPathMap(blockInfo.file, parseInt(blockInfo.lineNumber)),
-                    lineNumber: blockInfo.lineNumber
-                };
-                this.parseRendezvousLog(this.rendezvousBlocks[blockInfo.id], duration);
+            const items = ecpData?.items ?? [];
+            if (items.length > 0) {
+                for (let blockInfo of items) {
+                    let duration = ((parseInt(blockInfo.endTime) - parseInt(blockInfo.startTime)) / 1000).toString();
+                    this.rendezvousBlocks[blockInfo.id] = {
+                        fileName: await this.updateClientPathMap(blockInfo.file, parseInt(blockInfo.lineNumber)),
+                        lineNumber: blockInfo.lineNumber
+                    };
+                    this.parseRendezvousLog(this.rendezvousBlocks[blockInfo.id], duration);
+                }
+                this.emit('rendezvous', this.rendezvousHistory);
             }
-            this.emit('rendezvous', this.rendezvousHistory);
         } catch (e) {
             //if there was an error pinging rendezvous, log the error but don't bring down the app
             console.error('There was an error fetching rendezvous data', e?.stack);
