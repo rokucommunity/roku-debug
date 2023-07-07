@@ -1026,14 +1026,6 @@ export class TelnetAdapter {
         return Promise.resolve();
     }
 
-    // #region Rendezvous Tracker pass though functions
-    /**
-     * Passes the debug functions used to locate the client files and lines to the RendezvousTracker
-     */
-    public registerSourceLocator(sourceLocator: (debuggerPath: string, lineNumber: number) => Promise<SourceLocation>) {
-        this.rendezvousTracker.registerSourceLocator(sourceLocator);
-    }
-
     /**
      * Passes the log level down to the RendezvousTracker and ChanperfTracker
      * @param outputLevel the consoleOutput from the launch config
@@ -1056,7 +1048,6 @@ export class TelnetAdapter {
     public clearChanperfHistory() {
         this.chanperfTracker.clearHistory();
     }
-    // #endregion
 
     public async syncBreakpoints() {
         //we can't send dynamic breakpoints to the server...so just do nothing

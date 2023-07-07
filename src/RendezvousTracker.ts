@@ -84,6 +84,7 @@ export class RendezvousTracker {
      * Clears the current rendezvous history
      */
     public clearHistory() {
+        this.logger.log('Clear rendezvous history');
         this.rendezvousHistory = this.createNewRendezvousHistory();
         this.emit('rendezvous', this.rendezvousHistory);
     }
@@ -91,6 +92,7 @@ export class RendezvousTracker {
     private ecpPingTimer: NodeJS.Timer;
 
     public startEcpPingTimer(): void {
+        this.logger.log('Start ecp ping timer');
         if (!this.ecpPingTimer) {
             this.ecpPingTimer = setInterval(() => {
                 void this.pingEcpRendezvous();
@@ -106,17 +108,22 @@ export class RendezvousTracker {
     }
 
     public async pingEcpRendezvous(): Promise<void> {
-        // Get ECP rendezvous data, parse it, and send it to event emitter
-        let ecpData = await this.getEcpRendezvous();
-        for (let blockInfo of ecpData.items) {
-            let duration = ((parseInt(blockInfo.endTime) - parseInt(blockInfo.startTime)) / 1000).toString();
-            this.rendezvousBlocks[blockInfo.id] = {
-                fileName: await this.updateClientPathMap(blockInfo.file, parseInt(blockInfo.lineNumber)),
-                lineNumber: blockInfo.lineNumber
-            };
-            this.parseRendezvousLog(this.rendezvousBlocks[blockInfo.id], duration);
+        try {
+            // Get ECP rendezvous data, parse it, and send it to event emitter
+            let ecpData = await this.getEcpRendezvous();
+            for (let blockInfo of ecpData?.items ?? []) {
+                let duration = ((parseInt(blockInfo.endTime) - parseInt(blockInfo.startTime)) / 1000).toString();
+                this.rendezvousBlocks[blockInfo.id] = {
+                    fileName: await this.updateClientPathMap(blockInfo.file, parseInt(blockInfo.lineNumber)),
+                    lineNumber: blockInfo.lineNumber
+                };
+                this.parseRendezvousLog(this.rendezvousBlocks[blockInfo.id], duration);
+            }
+            this.emit('rendezvous', this.rendezvousHistory);
+        } catch (e) {
+            //if there was an error pinging rendezvous, log the error but don't bring down the app
+            console.error('There was an error fetching rendezvous data', e?.stack);
         }
-        this.emit('rendezvous', this.rendezvousHistory);
     }
 
     /**
@@ -132,6 +139,7 @@ export class RendezvousTracker {
     private async runSGLogrendezvousCommand(command: 'status' | 'on' | 'off'): Promise<string> {
         let sgDebugCommandController = new SceneGraphDebugCommandController(this.deviceInfo.host as string);
         try {
+            this.logger.info(`port 8080 command: logrendezvous ${command}`);
             return (await sgDebugCommandController.logrendezvous(command)).result.rawResponse;
         } catch (error) {
             this.logger.warn(`An error occurred running SG command "${command}"`, error);
@@ -151,11 +159,13 @@ export class RendezvousTracker {
     public async activate(): Promise<boolean> {
         //if ECP tracking is supported, turn that on
         if (this.doesHostSupportEcpRendezvousTracking) {
+            this.logger.log('Activating rendezvous tracking');
             // Toggle ECP tracking off and on to clear the log and then continue tracking
             let untrack = await this.toggleEcpRendezvousTracking('untrack');
             let track = await this.toggleEcpRendezvousTracking('track');
             const isEcpTrackingEnabled = untrack && track && await this.getIsEcpRendezvousTrackingEnabled();
             if (isEcpTrackingEnabled) {
+                this.logger.info('ECP tracking is enabled');
                 this.trackingSource = 'ecp';
                 this.startEcpPingTimer();
 
@@ -167,11 +177,15 @@ export class RendezvousTracker {
             }
         }
 
+        this.logger.log('ECP tracking is not supported or had an issue. Trying to use telnet rendezvous tracking');
         //ECP tracking is not supported (or had an issue). Try enabling telnet rendezvous tracking (that only works with run_as_process=0, but worth a try...)
         await this.runSGLogrendezvousCommand('on');
         if (await this.getIsTelnetRendezvousTrackingEnabled()) {
+            this.logger.log('telnet rendezvous tracking is enabled');
             this.trackingSource = 'telnet';
             return true;
+        } else {
+            this.logger.log('telnet rendezvous tracking is disabled or encountered an issue. rendezvous tracking is now disabled');
         }
         return false;
     }
@@ -180,14 +194,17 @@ export class RendezvousTracker {
      * Get the response from an ECP sgrendezvous request from the Roku
      */
     public async getEcpRendezvous(): Promise<EcpRendezvousData> {
+        const url = `http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/query/sgrendezvous`;
+        this.logger.info(`Sending ECP rendezvous request:`, url);
         // Send rendezvous query to ECP
-        const rendezvousQuery = await util.httpGet(`http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/query/sgrendezvous`);
+        const rendezvousQuery = await util.httpGet(url);
         let rendezvousQueryData = rendezvousQuery.body;
         let ecpData: EcpRendezvousData = {
             trackingEnabled: false,
             items: []
         };
 
+        this.logger.debug('Parsing rendezvous response', rendezvousQuery);
         // Parse rendezvous query data
         await new Promise<EcpRendezvousData>((resolve, reject) => {
             xml2js.parseString(rendezvousQueryData, (err, result) => {
@@ -209,6 +226,7 @@ export class RendezvousTracker {
                 }
             });
         });
+        this.logger.debug('Parsed ECP rendezvous data:', ecpData);
         return ecpData;
     }
 
@@ -218,6 +236,7 @@ export class RendezvousTracker {
      */
     public async toggleEcpRendezvousTracking(toggle: 'track' | 'untrack'): Promise<boolean> {
         try {
+            this.logger.log(`Sending ecp sgrendezvous request: ${toggle}`);
             const response = await util.httpPost(
                 `http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/sgrendezvous/${toggle}`,
                 //not sure if we need this, but it works...so probably better to just leave it here

@@ -306,11 +306,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //press the home button to ensure we're at the home screen
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
 
-            //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
-            this.rokuAdapter.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
-                return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
-            });
-
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
 
@@ -441,6 +436,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _initRendezvousTracking() {
         this.rendezvousTracker = new RendezvousTracker(this.deviceInfo);
+
+        //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
+        this.rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
+            return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
+        });
 
         // Send rendezvous events to the debug protocol client
         this.rendezvousTracker.on('rendezvous', (output) => {
