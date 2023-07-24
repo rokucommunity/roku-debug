@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.2](https://github.com/rokucommunity/roku-debug/compare/v0.20.1...v0.20.2) - 2023-07-24
+### Changed
+ - Bump word-wrap from 1.2.3 to 1.2.4 ([#157](https://github.com/rokucommunity/roku-debug/pull/157))
+ - upgrade to [brighterscript@0.65.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0654---2023-07-24). Notable changes since 0.65.1:
+     - Bump word-wrap from 1.2.3 to 1.2.4 ([brighterscript#851](https://github.com/rokucommunity/brighterscript/pull/851))
+     - Bump semver from 6.3.0 to 6.3.1 in /benchmarks ([brighterscript#838](https://github.com/rokucommunity/brighterscript/pull/838))
+     - Bump semver from 5.7.1 to 5.7.2 ([brighterscript#837](https://github.com/rokucommunity/brighterscript/pull/837))
+     - Prevent crashing when diagnostic is missing range. ([brighterscript#832](https://github.com/rokucommunity/brighterscript/pull/832))
+     - Prevent crash when diagnostic is missing range ([brighterscript#831](https://github.com/rokucommunity/brighterscript/pull/831))
+ - upgrade to [roku-deploy@3.10.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3103---2023-07-22). Notable changes since 3.10.2:
+     - Bump word-wrap from 1.2.3 to 1.2.4 ([roku-deploy#117](https://github.com/rokucommunity/roku-deploy/pull/117))
+
+
+
 ## [0.20.1](https://github.com/rokucommunity/roku-debug/compare/v0.20.0...v0.20.1) - 2023-07-07
 ### Changed
  - Fix rendezvous crash ([#156](https://github.com/rokucommunity/roku-debug/pull/156))
