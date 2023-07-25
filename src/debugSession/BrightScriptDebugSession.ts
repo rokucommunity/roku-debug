@@ -30,6 +30,7 @@ import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { isDebugProtocolAdapter, DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
+import { RendezvousTracker } from '../RendezvousTracker';
 import {
     LaunchStartEvent,
     LogOutputEvent,
@@ -49,9 +50,9 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '../logging';
-import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { DeviceInfo } from '../DeviceInfo';
 import * as xml2js from 'xml2js';
+import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -130,6 +131,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
 
+    private rendezvousTracker: RendezvousTracker;
+
     public tempVarPrefix = '__rokudebug__';
 
     private get enableDebugProtocol() {
@@ -198,7 +201,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
       * Get the cwd from the launchConfiguration, or default to process.cwd()
       */
-    private get cwd(): string {
+    private get cwd() {
         return this.launchConfiguration?.cwd ?? process.cwd();
     }
 
@@ -223,6 +226,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     result[key] = false;
                 }
             }
+
+            result.host = this.launchConfiguration.host;
+            result.remotePort = this.launchConfiguration.remotePort;
 
             // parses string value to int for the following fields
             result['software-build'] = parseInt(result['software-build'] as string);
@@ -286,7 +292,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
-            this.createRokuAdapter(this.launchConfiguration.host);
+            await this.initRendezvousTracking();
+
+            this.createRokuAdapter(this.launchConfiguration.host, this.rendezvousTracker);
             if (!this.enableDebugProtocol) {
                 //connect to the roku debug via telnet
                 if (!this.rokuAdapter.connected) {
@@ -300,11 +308,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //press the home button to ensure we're at the home screen
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-
-            //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
-            this.rokuAdapter.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
-                return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
-            });
 
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
@@ -323,11 +326,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // Send chanperf events to the extension
             this.rokuAdapter.on('chanperf', (output) => {
                 this.sendEvent(new ChanperfEvent(output));
-            });
-
-            // Send rendezvous events to the extension
-            this.rokuAdapter.on('rendezvous', (output) => {
-                this.sendEvent(new RendezvousEvent(output));
             });
 
             //listen for a closed connection (shut down when received)
@@ -422,7 +420,48 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     /**
-     * Anytime a roku adapter emits diagnostics, this methid is called to handle it.
+     * Activate rendezvous tracking (IF enabled in the LaunchConfig)
+     */
+    public async initRendezvousTracking() {
+        const timeout = 5000;
+        let initCompleted = false;
+        await Promise.race([
+            util.sleep(timeout),
+            this._initRendezvousTracking().finally(() => {
+                initCompleted = true;
+            })
+        ]);
+
+        if (initCompleted === false) {
+            this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn');
+        }
+    }
+
+    private async _initRendezvousTracking() {
+        this.rendezvousTracker = new RendezvousTracker(this.deviceInfo);
+
+        //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
+        this.rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
+            return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
+        });
+
+        // Send rendezvous events to the debug protocol client
+        this.rendezvousTracker.on('rendezvous', (output) => {
+            this.sendEvent(new RendezvousEvent(output));
+        });
+
+        //clear the history so the user doesn't have leftover rendezvous data from a previous session
+        this.rendezvousTracker.clearHistory();
+
+        //if rendezvous tracking is enabled, then enable it on the device
+        if (this.launchConfiguration.rendezvousTracking !== false) {
+            // start ECP rendezvous tracking (if possible)
+            await this.rendezvousTracker.activate();
+        }
+    }
+
+    /**
+     * Anytime a roku adapter emits diagnostics, this method is called to handle it.
      */
     private async handleDiagnostics(diagnostics: BSDebugDiagnostic[]) {
         // Roku device and sourcemap work with 1-based line numbers, VSCode expects 0-based lines.
@@ -1087,11 +1126,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
     }
 
-    private createRokuAdapter(host: string) {
+    private createRokuAdapter(host: string, rendezvousTracker: RendezvousTracker) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager);
+            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager, rendezvousTracker);
         } else {
-            this.rokuAdapter = new TelnetAdapter(this.launchConfiguration);
+            this.rokuAdapter = new TelnetAdapter(this.launchConfiguration, rendezvousTracker);
         }
     }
 
@@ -1320,6 +1359,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string): Promise<void> {
         try {
+            this.rendezvousTracker?.destroy?.();
+
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
                 const stagingFolders = this.projectManager?.getStagingFolderPaths() ?? [];

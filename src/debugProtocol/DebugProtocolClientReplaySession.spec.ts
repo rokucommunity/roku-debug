@@ -10,7 +10,7 @@ describe(DebugProtocolClientReplaySession.name, () => {
         await session.destroy();
     });
 
-    it.only('debug this debugger.log file', async function test() {
+    it.skip('debug this debugger.log file', async function test() {
         this.timeout(10000000000);
         const logPath = 'C:/users/bronley/downloads/2023-06-01T12∶21∶04-debugger.log';
         session = new DebugProtocolClientReplaySession({

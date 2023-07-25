@@ -460,9 +460,9 @@ class Util {
     /**
      * Do an http POST request
      */
-    public httpPost(url: string) {
+    public httpPost(url: string, options?: requestType.CoreOptions) {
         return new Promise<Response>((resolve, reject) => {
-            request.post(url, (err, response) => {
+            request.post(url, options, (err, response) => {
                 return err ? reject(err) : resolve(response);
             });
         });

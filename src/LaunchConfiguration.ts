@@ -253,6 +253,13 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * Show variables that are prefixed with a special prefix designated to be hidden
      */
     showHiddenVariables: boolean;
+
+    /**
+     * If true: turn on ECP rendezvous tracking, or turn on 8080 rendezvous tracking if ECP unsupported
+     * If false, turn off both.
+     * @default true
+     */
+    rendezvousTracking: boolean;
 }
 
 export interface ComponentLibraryConfiguration {

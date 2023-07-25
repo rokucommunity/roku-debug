@@ -26,6 +26,7 @@ import { BreakpointVerifiedUpdate } from '../debugProtocol/events/updates/Breakp
 import { RemoveBreakpointsRequest } from '../debugProtocol/events/requests/RemoveBreakpointsRequest';
 import type { AfterSendRequestEvent } from '../debugProtocol/client/DebugProtocolClientPlugin';
 import { GenericV3Response } from '../debugProtocol/events/responses/GenericV3Response';
+import { RendezvousTracker } from '../RendezvousTracker';
 const sinon = createSandbox();
 
 let cwd = s`${process.cwd()}`;
@@ -46,6 +47,12 @@ describe('DebugProtocolAdapter', function() {
     let plugin: DebugProtocolServerTestPlugin;
     let breakpointManager: BreakpointManager;
     let projectManager: ProjectManager;
+    let deviceInfo = {
+        'software-version': '11.5.0',
+        'host': '192.168.1.5',
+        'remotePort': 8060
+    };
+    let rendezvousTracker = new RendezvousTracker(deviceInfo);
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
@@ -62,7 +69,7 @@ describe('DebugProtocolAdapter', function() {
             files: [],
             outDir: outDir
         });
-        adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager);
+        adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager, rendezvousTracker);
 
         if (!options.controlPort) {
             options.controlPort = await util.getPort();
