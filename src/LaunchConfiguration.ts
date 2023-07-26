@@ -260,6 +260,12 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default true
      */
     rendezvousTracking: boolean;
+
+    /**
+     * Delete any currently installed dev channel before starting the debug session
+     * @default false
+     */
+    deleteDevChannelBeforeInstall: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
