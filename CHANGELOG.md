@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.3](https://github.com/rokucommunity/roku-debug/compare/v0.20.2...0.20.3) - 2023-07-26
+### Added
+ - Add `deleteDevChannelBeforeInstall` launch option ([#158](https://github.com/rokucommunity/roku-debug/pull/158))
+
+
+
 ## [0.20.2](https://github.com/rokucommunity/roku-debug/compare/v0.20.1...v0.20.2) - 2023-07-24
 ### Changed
  - Bump word-wrap from 1.2.3 to 1.2.4 ([#157](https://github.com/rokucommunity/roku-debug/pull/157))
