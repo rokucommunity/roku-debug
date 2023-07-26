@@ -492,6 +492,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('Uploading zip');
         const start = Date.now();
         let packageIsPublished = false;
+
+        //delete any currently installed dev channel (if enabled to do so)
+        if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
+            await this.rokuDeploy.deleteInstalledChannel({
+                ...this.launchConfiguration
+            } as any as RokuDeployOptions);
+        }
+
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
             ...this.launchConfiguration,
