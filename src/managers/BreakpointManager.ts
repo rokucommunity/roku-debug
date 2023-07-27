@@ -73,6 +73,11 @@ export class BreakpointManager {
     private breakpointsByFilePath = new Map<string, AugmentedSourceBreakpoint[]>();
 
     /**
+     * A list of breakpoints that failed to delete and will be deleted as soon as possible
+     */
+    public failedDeletions = [] as BreakpointWorkItem[];
+
+    /**
      * A sequence used to generate unique client breakpoint IDs
      */
     private breakpointIdSequence = 1;
@@ -767,9 +772,10 @@ export class BreakpointManager {
 
             const result = {
                 added: [...added.values()],
-                removed: [...removed.values()],
+                removed: [...removed.values(), ...this.failedDeletions],
                 unchanged: [...unchanged.values()]
             };
+            this.failedDeletions = [];
             //hydrate the breakpoints with any available deviceIds
             for (const breakpoint of [...result.added, ...result.removed, ...result.unchanged]) {
                 breakpoint.deviceId = this.getLastDeviceId(breakpoint.hash);
@@ -833,27 +839,6 @@ export class BreakpointManager {
      */
     private breakpointCache = new Map<string, AugmentedSourceBreakpoint>();
 
-    /**
-     * Sometimes the device is unable to delete a breakpoint, but the client has already forgotten about it.
-     * This function allows us to "bring back" client-deleted breakpoints, and will add them back to the client
-     */
-    public resurrectBreakpoints(deviceIds: number[]) {
-        for (const deviceId of deviceIds) {
-            const bp = [...this.breakpointCache].map(([, bp]) => bp).find(bp => bp.deviceId === deviceId);
-            if (bp) {
-                this.setBreakpoint(bp.srcPath, bp);
-                //re-add any state breakpoint work
-                for (const [key, bpWork] of this.breakpointWorkCache) {
-                    if (bpWork.hash === bp.hash && !this.lastState.has(key)) {
-                        this.lastState.set(key, bpWork);
-                    }
-                }
-
-                //queue the resurrection event to notify outside observers
-                this.queueEvent('breakpoints-resurrected', bp.hash);
-            }
-        }
-    }
 }
 
 export interface Diff {

@@ -770,22 +770,23 @@ export class DebugProtocolAdapter {
         // REMOVE breakpoints (delete these breakpoints from the device)
         if (diff.removed.length > 0) {
             const response = await this.socketDebugger.removeBreakpoints(
-                //TODO handle retrying to remove unverified breakpoints that might get verified in the future AFTER we've removed them (that's hard...)
+                //TODO handle retrying to remove breakpoints that don't have deviceIds yet but might get one in the future
                 diff.removed.map(x => x.deviceId).filter(x => typeof x === 'number')
             );
 
-            //for any failed breakpoint deletions, add them back to the client
-            let breakpointsToResurrect = response.data?.errorCode !== ErrorCode.OK
-                //if the entire request failed, resurrect all of these breakpoints
-                ? diff.removed.map(x => x.deviceId)
-                //if individual deletions failed, resurrect those
-                : response.data.breakpoints?.filter(x => x.errorCode !== ErrorCode.OK).map(x => x.id);
+            if (response.data?.errorCode === ErrorCode.NOT_STOPPED) {
+                this.breakpointManager.failedDeletions.push(...diff.removed);
+            } else {
+                //for any failed breakpoint deletions, add them back to the client
+                let breakpointsToResurrect = (response.data?.errorCode !== ErrorCode.OK)
+                    //if the entire request failed, resurrect all of these breakpoints
+                    ? diff.removed.map(x => x.deviceId)
+                    //if individual deletions failed, resurrect those
+                    : response.data.breakpoints?.filter(x => x.errorCode !== ErrorCode.OK).map(x => x.id);
 
-            // breakpointsToResurrect = diff.removed.map(x => x.deviceId);//TODO immediately delete this, it was only for testing
-
-            if (breakpointsToResurrect.length > 0) {
-                this.logger.warn('Failed to remove some breakpoints. re-adding them to the client', this.breakpointManager.getBreakpoints(breakpointsToResurrect, true));
-                this.breakpointManager.resurrectBreakpoints(breakpointsToResurrect);
+                if (breakpointsToResurrect?.length > 0) {
+                    this.logger.warn('Failed to remove some breakpoints', this.breakpointManager.getBreakpoints(breakpointsToResurrect, true));
+                }
             }
         }
 

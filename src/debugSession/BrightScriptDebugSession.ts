@@ -1199,10 +1199,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //clear the index for storing evalutated expressions
         this.evaluateVarIndexByFrameId.clear();
 
-        //sync breakpoints
-        await this.rokuAdapter?.syncBreakpoints();
-        this.logger.info('received "suspend" event from adapter');
-
         const threads = await this.rokuAdapter.getThreads();
         const activeThread = threads.find(x => x.isSelected);
 
@@ -1218,6 +1214,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             })
         );
+
+        outer:for (const bp of this.breakpointManager.failedDeletions) {
+            for (const thread of threads) {
+                let sourceLocation = await this.projectManager.getSourceLocation(thread.filePath, thread.lineNumber);
+                // This stop was due to a breakpoint that we tried to delete, but couldn't.
+                // Now that we are stopped, we can delete it. We won't stop here again unless you re-add the breakpoint. You're welcome.
+                if ((bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
+                    this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info');
+                    this.logger.warn(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops`, bp, thread, sourceLocation);
+                    break outer;
+                }
+            }
+        }
+
+        //sync breakpoints
+        await this.rokuAdapter?.syncBreakpoints();
+        this.logger.info('received "suspend" event from adapter');
 
         //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
         if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
