@@ -40,7 +40,7 @@ const srcPath = `${rootDir}/source/main.brs`;
 
 describe('DebugProtocolAdapter', function() {
     //allow these tests to run for longer since there's more IO overhead due to the socket logic
-    // this.timeout(3000);
+    this.timeout(3000);
     let adapter: DebugProtocolAdapter;
     let server: DebugProtocolServer;
     let client: DebugProtocolClient;
@@ -150,7 +150,7 @@ describe('DebugProtocolAdapter', function() {
     });
 
     describe('syncBreakpoints', () => {
-        it.skip('eliminates breakpoints when the entire add request failed', async () => {
+        it('retries at next sync() to delete breakpoints if first request failed', async () => {
             await initialize();
             //disable auto breakpoint verification
             client.protocolVersion = '3.2.0';
@@ -166,22 +166,54 @@ describe('DebugProtocolAdapter', function() {
                 { line: 3 }
             ]);
 
-            //complete request failure
+            //sync the breakpoints so they get added
+            plugin.pushResponse(AddBreakpointsResponse.fromJson({
+                breakpoints: [{
+                    id: 8,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }, {
+                    id: 9,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }],
+                requestId: 1
+            }));
+
+            //sync the breakpoints. this request will fail, so try deleting the breakpoints again later
+            await adapter.syncBreakpoints();
+
+            //now try to delete the breakpoints
+            breakpointManager.deleteBreakpoints([bp1, bp3]);
+
+            //complete request failure because debugger not stopped
             plugin.pushResponse(GenericV3Response.fromJson({
-                errorCode: ErrorCode.INVALID_ARGS,
+                errorCode: ErrorCode.NOT_STOPPED,
+                requestId: 1
+            }));
+
+            //sync the breakpoints again. ask to delete the breakpoints, but it fails.
+            await adapter.syncBreakpoints();
+
+            expect(
+                [...breakpointManager.failedDeletions.values()].map(x => x.deviceId)
+            ).to.eql([8, 9]);
+
+            plugin.pushResponse(RemoveBreakpointsResponse.fromJson({
+                breakpoints: [{
+                    id: 8,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }, {
+                    id: 9,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }],
                 requestId: 1
             }));
 
             await adapter.syncBreakpoints();
-
-            const eliminatedPromise = breakpointManager.once('breakpoints-eliminated');
-
-            //sync the breakpoints. this request will fail, so the breakpoints should become resurrected
-            await adapter.syncBreakpoints();
-
-            const eliminatedBreakpoints = await eliminatedPromise;
-
-            expect(eliminatedBreakpoints).to.eql({ breakpoints: [bp1, bp3] });
+            expect(plugin.getLatestRequest<RemoveBreakpointsRequest>().data.breakpointIds).to.eql([8, 9]);
         });
 
         it('removes any newly-added breakpoints that have errors', async () => {

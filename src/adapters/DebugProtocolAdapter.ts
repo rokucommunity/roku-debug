@@ -836,8 +836,6 @@ export class DebugProtocolAdapter {
             }
         }
     }
-
-    private actionQueue = new ActionQueue();
 }
 
 export interface StackFrame {

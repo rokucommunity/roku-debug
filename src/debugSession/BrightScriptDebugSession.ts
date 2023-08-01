@@ -70,7 +70,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         //send newly-verified breakpoints to vscode
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceBreakpointsChanged('changed', data));
-        this.breakpointManager.on('breakpoints-resurrected', (data) => this.onDeviceBreakpointsChanged('new', data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
         this.fileLoggingManager = new FileLoggingManager();
     }

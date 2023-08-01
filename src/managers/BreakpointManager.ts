@@ -30,8 +30,6 @@ export class BreakpointManager {
     private emitter = new EventEmitter();
 
     private emit(eventName: 'breakpoints-verified', data: { breakpoints: AugmentedSourceBreakpoint[] });
-    private emit(eventName: 'breakpoints-resurrected', data: { breakpoints: AugmentedSourceBreakpoint[] });
-    private emit(eventName: 'breakpoints-eliminated', data: { breakpoints: AugmentedSourceBreakpoint[] });
     private emit(eventName: string, data: any) {
         this.emitter.emit(eventName, data);
     }
@@ -40,8 +38,6 @@ export class BreakpointManager {
      * Subscribe to an event
      */
     public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
-    public on(eventName: 'breakpoints-resurrected', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
-    public on(eventName: 'breakpoints-eliminated', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
     public on(eventName: string, handler: (data: any) => any) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -53,8 +49,6 @@ export class BreakpointManager {
      * Get a promise that resolves the next time the specified event occurs
      */
     public once(eventName: 'breakpoints-verified'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
-    public once(eventName: 'breakpoints-resurrected'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
-    public once(eventName: 'breakpoints-eliminated'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
     public once(eventName: string): Promise<any> {
         return new Promise((resolve) => {
             const disconnect = this.on(eventName as 'breakpoints-verified', (data) => {
@@ -138,9 +132,6 @@ export class BreakpointManager {
             breakpointsArray.push(bp);
         }
 
-        //store this latest version of the breakpoint in our breakpoints cache (to use when resurrecting breakpoints)
-        this.breakpointCache.set(bp.srcHash, { ...bp });
-
         //if this is one of the permanent breakpoints, mark it as verified immediately (only applicable to telnet sessions)
         if (this.getPermanentBreakpoint(bp.srcHash)) {
             this.setBreakpointDeviceId(bp.srcHash, bp.srcHash, bp.id);
@@ -216,20 +207,14 @@ export class BreakpointManager {
      * @param refs a list of breakpoint refs for breakpoints to get
      * @param includeHistoric if true, will also look through historic breakpoints for a match.
      */
-    public getBreakpoints(refs: BreakpointRef[], includeHistoric = false): AugmentedSourceBreakpoint[] {
+    public getBreakpoints(refs: BreakpointRef[]): AugmentedSourceBreakpoint[] {
         //convert all refs into a hash
         const refHashes = new Set(refs.map(x => this.refToHash(x)));
 
         //find all the breakpoints that match one of the specified refs
-        if (!includeHistoric) {
-            return [...this.breakpointsByFilePath].map(x => x[1]).flat().filter((x) => {
-                return refHashes.has(x.srcHash);
-            });
-        } else {
-            return [...this.breakpointCache].map(x => x[1]).flat().filter((x) => {
-                return refHashes.has(x.srcHash);
-            });
-        }
+        return [...this.breakpointsByFilePath].map(x => x[1]).flat().filter((x) => {
+            return refHashes.has(x.srcHash);
+        });
     }
 
     /**
@@ -276,7 +261,7 @@ export class BreakpointManager {
      * This queues up a future function that will emit a batch of all the specified breakpoints.
      * @param hash the breakpoint hash that identifies this specific breakpoint based on its features
      */
-    private queueEvent(event: 'breakpoints-verified' | 'breakpoints-resurrected' | 'breakpoints-eliminated', ref: BreakpointRef) {
+    private queueEvent(event: 'breakpoints-verified', ref: BreakpointRef) {
         //get the state (or create a new one)
         const state = this.queueEventStates.get(event) ?? (this.queueEventStates.set(event, { pendingRefs: [], isQueued: false }).get(event));
 
@@ -744,8 +729,6 @@ export class BreakpointManager {
                             ].join('--');
                             //clone the breakpoint and then add it to the current state
                             currentState.set(key, { ...bp, deviceId: this.deviceIdByDestHash.get(bp.destHash)?.deviceId });
-                            //keep all breakpoint work data around forever, to help with resurrection
-                            this.breakpointWorkCache.set(key, { ...bp });
                         }
                     }
                 })
@@ -829,14 +812,6 @@ export class BreakpointManager {
      */
     private isGetDiffRunning = false;
     private lastState = new Map<string, BreakpointWorkItem>();
-    private breakpointWorkCache = new Map<string, BreakpointWorkItem>();
-
-    /**
-     * A cache of breakpoints. This is useful when the device ends up with phantom breakpoints that we don't recognize anymore,
-     * and the device can't delete them, then we can at least send them back to the client so the client could try to delete them again later
-     */
-    private breakpointCache = new Map<string, AugmentedSourceBreakpoint>();
-
 }
 
 export interface Diff {
