@@ -254,7 +254,7 @@ describe('DebugProtocolAdapter', function() {
             //causes complete error
             plugin.pushResponse(RemoveBreakpointsResponse.fromJson({
                 breakpoints: [
-                    { errorCode: ErrorCode.INVALID_ARGS, id: bp1.deviceId, ignoreCount: 0 }
+                    { errorCode: ErrorCode.INVALID_ARGS, id: 1, ignoreCount: 0 }
                 ],
                 requestId: 1
             }));
@@ -279,7 +279,7 @@ describe('DebugProtocolAdapter', function() {
                 //causes complete error
                 plugin.pushResponse(RemoveBreakpointsResponse.fromJson({
                     breakpoints: [
-                        { errorCode: ErrorCode.INVALID_ARGS, id: bp1.deviceId, ignoreCount: 0 }
+                        { errorCode: ErrorCode.INVALID_ARGS, id: 1, ignoreCount: 0 }
                     ],
                     requestId: 1
                 }));
