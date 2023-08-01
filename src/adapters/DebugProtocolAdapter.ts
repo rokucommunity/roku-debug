@@ -668,7 +668,7 @@ export class DebugProtocolAdapter {
             let threads: Thread[] = [];
             let threadsResponse = await this.socketDebugger.threads();
 
-            for (let i = 0; i < threadsResponse.data.threads.length; i++) {
+            for (let i = 0; i < threadsResponse.data?.threads?.length ?? 0; i++) {
                 let threadInfo = threadsResponse.data.threads[i];
                 let thread = <Thread>{
                     // NOTE: On THREAD_ATTACHED events the threads request is marking the wrong thread as primary.
@@ -776,17 +776,6 @@ export class DebugProtocolAdapter {
 
             if (response.data?.errorCode === ErrorCode.NOT_STOPPED) {
                 this.breakpointManager.failedDeletions.push(...diff.removed);
-            } else {
-                //for any failed breakpoint deletions, add them back to the client
-                let breakpointsToResurrect = (response.data?.errorCode !== ErrorCode.OK)
-                    //if the entire request failed, resurrect all of these breakpoints
-                    ? diff.removed.map(x => x.deviceId)
-                    //if individual deletions failed, resurrect those
-                    : response.data.breakpoints?.filter(x => x.errorCode !== ErrorCode.OK).map(x => x.id);
-
-                if (breakpointsToResurrect?.length > 0) {
-                    this.logger.warn('Failed to remove some breakpoints', this.breakpointManager.getBreakpoints(breakpointsToResurrect, true));
-                }
             }
         }
 
@@ -798,7 +787,8 @@ export class DebugProtocolAdapter {
                     lineNumber: breakpoint.line,
                     hitCount: !isNaN(hitCount) ? hitCount : undefined,
                     conditionalExpression: breakpoint.condition,
-                    hash: breakpoint.hash,
+                    srcHash: breakpoint.srcHash,
+                    destHash: breakpoint.destHash,
                     componentLibraryName: breakpoint.componentLibraryName
                 };
             });
@@ -826,19 +816,20 @@ export class DebugProtocolAdapter {
                         if (deviceBreakpoint.errorCode === ErrorCode.OK) {
                             //sync this breakpoint's deviceId with the roku-assigned breakpoint ID
                             this.breakpointManager.setBreakpointDeviceId(
-                                breakpoints[i].hash,
+                                breakpoints[i].srcHash,
+                                breakpoints[i].destHash,
                                 deviceBreakpoint.id
                             );
 
                             //this breakpoint had an issue. remove it from the client
                         } else {
-                            this.breakpointManager.deleteBreakpoint(breakpoints[i].hash);
+                            this.breakpointManager.deleteBreakpoint(breakpoints[i].srcHash);
                         }
                     }
                     //the entire response was bad. delete these breakpoints from the client
                 } else {
                     this.breakpointManager.deleteBreakpoints(
-                        breakpoints.map(x => x.hash)
+                        breakpoints.map(x => x.srcHash)
                     );
                 }
 

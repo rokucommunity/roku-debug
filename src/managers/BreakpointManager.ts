@@ -119,8 +119,8 @@ export class BreakpointManager {
             ...breakpoint,
             srcPath: srcPath,
             //assign a hash-like key to this breakpoint (so we can match against other similar breakpoints in the future)
-            hash: this.getBreakpointHash(srcPath, breakpoint)
-        }) as AugmentedSourceBreakpoint;
+            srcHash: this.getBreakpointSrcHash(srcPath, breakpoint)
+        } as AugmentedSourceBreakpoint);
 
         //generate a new id for this breakpoint if one does not exist
         bp.id ??= this.breakpointIdSequence++;
@@ -129,7 +129,7 @@ export class BreakpointManager {
         bp.verified ??= false;
 
         //if the breakpoint hash changed, mark the breakpoint as unverified
-        if (existingBreakpoint?.hash !== bp.hash) {
+        if (existingBreakpoint?.srcHash !== bp.srcHash) {
             bp.verified = false;
         }
 
@@ -139,15 +139,11 @@ export class BreakpointManager {
         }
 
         //store this latest version of the breakpoint in our breakpoints cache (to use when resurrecting breakpoints)
-        this.breakpointCache.set(bp.hash, {
-            //retain the previously cached breakpoint's deviceId (if present)
-            ...bp,
-            deviceId: this.breakpointCache.get(bp.hash)?.deviceId
-        });
+        this.breakpointCache.set(bp.srcHash, { ...bp });
 
         //if this is one of the permanent breakpoints, mark it as verified immediately (only applicable to telnet sessions)
-        if (this.getPermanentBreakpoint(bp.hash)) {
-            this.setBreakpointDeviceId(bp.hash, bp.id);
+        if (this.getPermanentBreakpoint(bp.srcHash)) {
+            this.setBreakpointDeviceId(bp.srcHash, bp.srcHash, bp.id);
             this.verifyBreakpoint(bp.id, true);
         }
         return bp;
@@ -187,7 +183,7 @@ export class BreakpointManager {
     public getBreakpoint(...args: [BreakpointRef] | [string, Breakpoint]): AugmentedSourceBreakpoint {
         let ref: BreakpointRef;
         if (typeof args[0] === 'string' && typeof args[1] === 'object') {
-            ref = this.getBreakpointHash(args[0], args[1]);
+            ref = this.getBreakpointSrcHash(args[0], args[1]);
         } else {
             ref = args[0];
         }
@@ -205,17 +201,13 @@ export class BreakpointManager {
         if (typeof ref === 'string') {
             return ref;
         }
-        //deviceId
-        if (typeof ref === 'number') {
-            return [...this.breakpointCache].find(x => x[1].deviceId === ref)[1]?.hash;
-        }
         //object with a .hash key
-        if ('hash' in ref) {
-            return ref.hash;
+        if ('srcHash' in ref) {
+            return ref.srcHash;
         }
         //breakpoint with srcPath
         if (ref?.srcPath) {
-            return this.getBreakpointHash(ref.srcPath, ref);
+            return this.getBreakpointSrcHash(ref.srcPath, ref);
         }
     }
 
@@ -231,11 +223,11 @@ export class BreakpointManager {
         //find all the breakpoints that match one of the specified refs
         if (!includeHistoric) {
             return [...this.breakpointsByFilePath].map(x => x[1]).flat().filter((x) => {
-                return refHashes.has(x.hash);
+                return refHashes.has(x.srcHash);
             });
         } else {
             return [...this.breakpointCache].map(x => x[1]).flat().filter((x) => {
-                return refHashes.has(x.hash);
+                return refHashes.has(x.srcHash);
             });
         }
     }
@@ -245,37 +237,19 @@ export class BreakpointManager {
       * @returns the breakpoint, or undefined if not found
       */
     private getBreakpointByDeviceId(deviceId: number) {
-        return this.getBreakpointsByDeviceIds([deviceId])[0];
+        const bpRef = [...this.deviceIdByDestHash.values()].find(x => {
+            return x.deviceId === deviceId;
+        });
+        return this.getBreakpoint(bpRef.srcHash);
     }
 
-    /**
-     * Find a list of breakpoints by their deviceIds
-     * @returns the breakpoints, or undefined if not found
-     */
-    private getBreakpointsByDeviceIds(deviceIds: number[]) {
-        const result = [] as AugmentedSourceBreakpoint[];
-        for (const [, breakpoints] of this.breakpointsByFilePath) {
-            for (const breakpoint of breakpoints) {
-                if (deviceIds.includes(breakpoint.deviceId)) {
-                    result.push(breakpoint);
-                }
-            }
-        }
-        return result;
-    }
+    private deviceIdByDestHash = new Map<string, { srcHash: string; deviceId: number }>();
 
     /**
      * Set the deviceId of a breakpoint
      */
-    public setBreakpointDeviceId(hash: string, deviceId: number) {
-        const breakpoint = this.getBreakpoint(hash);
-        if (breakpoint) {
-            breakpoint.deviceId = deviceId;
-        }
-        const cachedBreakpoint = this.breakpointCache.get(hash);
-        if (cachedBreakpoint) {
-            cachedBreakpoint.deviceId = deviceId;
-        }
+    public setBreakpointDeviceId(srcHash: string, destHast: string, deviceId: number) {
+        this.deviceIdByDestHash.set(destHast, { srcHash: srcHash, deviceId: deviceId });
     }
 
     /**
@@ -286,7 +260,7 @@ export class BreakpointManager {
         if (breakpoint) {
             breakpoint.verified = isVerified;
 
-            this.queueEvent('breakpoints-verified', breakpoint.hash);
+            this.queueEvent('breakpoints-verified', breakpoint.srcHash);
             return true;
         } else {
             //couldn't find the breakpoint. return false so the caller can handle that properly
@@ -326,8 +300,32 @@ export class BreakpointManager {
      * Generate a hash based on the features of the breakpoint. Every breakpoint that exists at the same location
      * and has the same features should have the same hash.
      */
-    private getBreakpointHash(filePath: string, breakpoint: DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint) {
+    private getBreakpointSrcHash(filePath: string, breakpoint: DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpoint) {
         const key = `${standardizePath(filePath)}:${breakpoint.line}:${breakpoint.column ?? 0}`;
+
+        const condition = breakpoint.condition?.trim();
+        if (condition) {
+            return `${key}-condition=${condition}`;
+        }
+
+        const hitCondition = parseInt(breakpoint.hitCondition?.trim());
+        if (!isNaN(hitCondition)) {
+            return `${key}-hitCondition=${hitCondition}`;
+        }
+
+        if (breakpoint.logMessage) {
+            return `${key}-logMessage=${breakpoint.logMessage}`;
+        }
+
+        return `${key}-standard`;
+    }
+
+    /**
+     * Generate a hash based on the features of the breakpoint. Every breakpoint that exists at the same location
+     * and has the same features should have the same hash.
+     */
+    private getBreakpointDestHash(breakpoint: BreakpointWorkItem) {
+        const key = `${standardizePath(breakpoint.stagingFilePath)}:${breakpoint.line}:${breakpoint.column ?? 0}`;
 
         const condition = breakpoint.condition?.trim();
         if (condition) {
@@ -415,6 +413,7 @@ export class BreakpointManager {
                         ...breakpoint,
                         //add additional info
                         srcPath: sourceFilePath,
+                        destHash: undefined,
                         rootDirFilePath: s`${project.rootDir}/${relativeStagingPath}`,
                         line: stagingLocation.lineNumber,
                         column: stagingLocation.columnIndex,
@@ -423,6 +422,9 @@ export class BreakpointManager {
                         pkgPath: pkgPath,
                         componentLibraryName: (project as ComponentLibraryProject).name
                     };
+                    obj.destHash = this.getBreakpointDestHash(obj);
+                    obj.deviceId = this.deviceIdByDestHash.get(obj.destHash)?.deviceId;
+
                     if (!result[stagingLocation.filePath]) {
                         result[stagingLocation.filePath] = [];
                     }
@@ -467,7 +469,7 @@ export class BreakpointManager {
             promises.push(this.writeBreakpointsToFile(stagingFilePath, breakpoints));
             for (const breakpoint of breakpoints) {
                 //mark this breakpoint as verified
-                this.setBreakpointDeviceId(breakpoint.hash, breakpoint.id);
+                this.setBreakpointDeviceId(breakpoint.srcHash, breakpoint.destHash, breakpoint.id);
                 this.verifyBreakpoint(breakpoint.id, true);
                 //add this breakpoint to the list of "permanent" breakpoints
                 this.registerPermanentBreakpoint(breakpoint);
@@ -650,7 +652,7 @@ export class BreakpointManager {
     public getPermanentBreakpoint(hash: string) {
         for (const [, breakpoints] of this.permanentBreakpointsBySrcPath) {
             for (const breakpoint of breakpoints) {
-                if (breakpoint.hash === hash) {
+                if (breakpoint.srcHash === hash) {
                     return breakpoint;
                 }
             }
@@ -741,7 +743,7 @@ export class BreakpointManager {
                                 bp.logMessage
                             ].join('--');
                             //clone the breakpoint and then add it to the current state
-                            currentState.set(key, { ...bp });
+                            currentState.set(key, { ...bp, deviceId: this.deviceIdByDestHash.get(bp.destHash)?.deviceId });
                             //keep all breakpoint work data around forever, to help with resurrection
                             this.breakpointWorkCache.set(key, { ...bp });
                         }
@@ -778,16 +780,12 @@ export class BreakpointManager {
             this.failedDeletions = [];
             //hydrate the breakpoints with any available deviceIds
             for (const breakpoint of [...result.added, ...result.removed, ...result.unchanged]) {
-                breakpoint.deviceId = this.getLastDeviceId(breakpoint.hash);
+                breakpoint.deviceId = this.deviceIdByDestHash.get(breakpoint.destHash)?.deviceId;
             }
             return result;
         } finally {
             this.isGetDiffRunning = false;
         }
-    }
-
-    private getLastDeviceId(hash: string) {
-        return this.breakpointCache.get(hash)?.deviceId;
     }
 
     /**
@@ -800,7 +798,7 @@ export class BreakpointManager {
     public setPending(srcPath: string, breakpoints: Breakpoint[], isPending: boolean) {
         for (const breakpoint of breakpoints) {
             if (breakpoint) {
-                const hash = this.getBreakpointHash(srcPath, breakpoint);
+                const hash = this.getBreakpointSrcHash(srcPath, breakpoint);
                 this.breakpointPendingStatus.set(hash, isPending);
             }
         }
@@ -814,7 +812,7 @@ export class BreakpointManager {
     public isPending(...args: [string] | [string, Breakpoint]) {
         let hash: string;
         if (args[1]) {
-            hash = this.getBreakpointHash(args[0], args[1]);
+            hash = this.getBreakpointSrcHash(args[0], args[1]);
         } else {
             hash = args[0];
         }
@@ -855,11 +853,7 @@ export interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoin
     /**
      * A unique hash generated for the breakpoint at this exact file/line/column/feature. Every breakpoint with these same features should get the same hash
      */
-    hash: string;
-    /**
-     * The device-provided breakpoint id. A missing ID means this breakpoint has not yet been verified by the device.
-     */
-    deviceId?: number;
+    srcHash: string;
     /**
      * A unique ID the debug adapter generates to help send updates to the client about this breakpoint
      */
@@ -902,7 +896,11 @@ export interface BreakpointWorkItem {
     /**
      * A unique hash generated for the breakpoint at this exact file/line/column/feature. Every breakpoint with these same features should get the same hash
      */
-    hash: string;
+    srcHash: string;
+    /**
+     *
+     */
+    destHash: string;
     /**
      * The 0-based column index
      */
@@ -935,10 +933,9 @@ export type Breakpoint = DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpo
 
 /**
  * A way to reference a breakpoint.
- * - `number` - a deviceId
  * - `string` - a hash
  * - `AugmentedSourceBreakpoint` an actual breakpoint
  * - `{hash: string}` - an object containing a breakpoint hash
  * - `Breakpoint & {srcPath: string}` - an object with all the properties of a breakpoint _and_ an explicitly defined `srcPath`
  */
-export type BreakpointRef = number | string | AugmentedSourceBreakpoint | { hash: string } | (Breakpoint & { srcPath: string });
+export type BreakpointRef = string | AugmentedSourceBreakpoint | { srcHash: string } | (Breakpoint & { srcPath: string });
