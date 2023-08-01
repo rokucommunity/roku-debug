@@ -240,7 +240,7 @@ export class BreakpointManager {
         const bpRef = [...this.deviceIdByDestHash.values()].find(x => {
             return x.deviceId === deviceId;
         });
-        return this.getBreakpoint(bpRef.srcHash);
+        return this.getBreakpoint(bpRef?.srcHash);
     }
 
     private deviceIdByDestHash = new Map<string, { srcHash: string; deviceId: number }>();

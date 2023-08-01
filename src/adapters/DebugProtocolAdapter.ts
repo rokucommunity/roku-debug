@@ -812,17 +812,17 @@ export class DebugProtocolAdapter {
                     for (let i = 0; i < response?.data?.breakpoints?.length ?? 0; i++) {
                         const deviceBreakpoint = response.data.breakpoints[i];
 
-                        //if the breakpoint was successful, then keep it
-                        if (deviceBreakpoint.errorCode === ErrorCode.OK) {
+                        if (typeof deviceBreakpoint?.id === 'number') {
                             //sync this breakpoint's deviceId with the roku-assigned breakpoint ID
                             this.breakpointManager.setBreakpointDeviceId(
                                 breakpoints[i].srcHash,
                                 breakpoints[i].destHash,
                                 deviceBreakpoint.id
                             );
+                        }
 
-                            //this breakpoint had an issue. remove it from the client
-                        } else {
+                        //this breakpoint had an issue. remove it from the client
+                        if (deviceBreakpoint.errorCode !== ErrorCode.OK) {
                             this.breakpointManager.deleteBreakpoint(breakpoints[i].srcHash);
                         }
                     }
