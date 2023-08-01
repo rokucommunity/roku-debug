@@ -1,7 +1,6 @@
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
-import * as request from 'request';
 import { rokuDeploy, CompileError } from 'roku-deploy';
 import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
@@ -31,6 +30,7 @@ import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { isDebugProtocolAdapter, DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
+import { RendezvousTracker } from '../RendezvousTracker';
 import {
     LaunchStartEvent,
     LogOutputEvent,
@@ -49,10 +49,9 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
-import { logger, debugServerLogOutputEventTransport } from '../logging';
+import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { DeviceInfo } from '../DeviceInfo';
-import axios from 'axios';
 import * as xml2js from 'xml2js';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
@@ -72,6 +71,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //send newly-verified breakpoints to vscode
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceVerifiedBreakpoints(data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
+        this.fileLoggingManager = new FileLoggingManager();
     }
 
     private onDeviceVerifiedBreakpoints(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
@@ -102,6 +102,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public projectManager: ProjectManager;
 
+    public fileLoggingManager: FileLoggingManager;
+
     public breakpointManager: BreakpointManager;
 
     public locationManager: LocationManager;
@@ -127,6 +129,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private variableHandles = new Handles<string>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
+
+    private rendezvousTracker: RendezvousTracker;
 
     public tempVarPrefix = '__rokudebug__';
 
@@ -190,7 +194,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info') {
+        this.logger.trace('[showPopupMessage]', severity, message);
         this.sendEvent(new PopupMessageEvent(message, severity));
+    }
+    /**
+      * Get the cwd from the launchConfiguration, or default to process.cwd()
+      */
+    private get cwd() {
+        return this.launchConfiguration?.cwd ?? process.cwd();
     }
 
     public async fetchDeviceInfo(host: string, remotePort: number) {
@@ -199,8 +210,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         const url = `http://${host}:${remotePort}/query/device-info`;
         try {
             // concatenates the url string using template literals
-            const res = await axios.get(url);
-            let xml = res.data;
+            const ressponse = await util.httpGet(url);
+            const xml = ressponse.body;
 
             // parses the xml data to JSON object
             const result = (await xml2js.parseStringPromise(xml))['device-info'];
@@ -214,6 +225,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     result[key] = false;
                 }
             }
+
+            result.host = this.launchConfiguration.host;
+            result.remotePort = this.launchConfiguration.remotePort;
 
             // parses string value to int for the following fields
             result['software-build'] = parseInt(result['software-build'] as string);
@@ -256,6 +270,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
 
+        //initialize all file logging (rokuDevice, debugger, etc)
+        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
+
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
 
@@ -274,7 +291,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
 
-            this.createRokuAdapter(this.launchConfiguration.host);
+            await this.initRendezvousTracking();
+
+            this.createRokuAdapter(this.launchConfiguration.host, this.rendezvousTracker);
             if (!this.enableDebugProtocol) {
                 //connect to the roku debug via telnet
                 if (!this.rokuAdapter.connected) {
@@ -288,11 +307,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //press the home button to ensure we're at the home screen
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-
-            //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
-            this.rokuAdapter.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
-                return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
-            });
 
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
@@ -311,11 +325,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // Send chanperf events to the extension
             this.rokuAdapter.on('chanperf', (output) => {
                 this.sendEvent(new ChanperfEvent(output));
-            });
-
-            // Send rendezvous events to the extension
-            this.rokuAdapter.on('rendezvous', (output) => {
-                this.sendEvent(new RendezvousEvent(output));
             });
 
             //listen for a closed connection (shut down when received)
@@ -405,16 +414,53 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //convert a hostname to an ip address
             const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
             //send the deep link http request
-            await new Promise((resolve, reject) => {
-                request.post(deepLinkUrl, (err, response) => {
-                    return err ? reject(err) : resolve(response);
-                });
-            });
+            await util.httpPost(deepLinkUrl);
         }
     }
 
     /**
-     * Anytime a roku adapter emits diagnostics, this methid is called to handle it.
+     * Activate rendezvous tracking (IF enabled in the LaunchConfig)
+     */
+    public async initRendezvousTracking() {
+        const timeout = 5000;
+        let initCompleted = false;
+        await Promise.race([
+            util.sleep(timeout),
+            this._initRendezvousTracking().finally(() => {
+                initCompleted = true;
+            })
+        ]);
+
+        if (initCompleted === false) {
+            this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn');
+        }
+    }
+
+    private async _initRendezvousTracking() {
+        this.rendezvousTracker = new RendezvousTracker(this.deviceInfo);
+
+        //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
+        this.rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
+            return this.projectManager.getSourceLocation(debuggerPath, lineNumber);
+        });
+
+        // Send rendezvous events to the debug protocol client
+        this.rendezvousTracker.on('rendezvous', (output) => {
+            this.sendEvent(new RendezvousEvent(output));
+        });
+
+        //clear the history so the user doesn't have leftover rendezvous data from a previous session
+        this.rendezvousTracker.clearHistory();
+
+        //if rendezvous tracking is enabled, then enable it on the device
+        if (this.launchConfiguration.rendezvousTracking !== false) {
+            // start ECP rendezvous tracking (if possible)
+            await this.rendezvousTracker.activate();
+        }
+    }
+
+    /**
+     * Anytime a roku adapter emits diagnostics, this method is called to handle it.
      */
     private async handleDiagnostics(diagnostics: BSDebugDiagnostic[]) {
         // Roku device and sourcemap work with 1-based line numbers, VSCode expects 0-based lines.
@@ -445,6 +491,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('Uploading zip');
         const start = Date.now();
         let packageIsPublished = false;
+
+        //delete any currently installed dev channel (if enabled to do so)
+        if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
+            await this.rokuDeploy.deleteInstalledChannel({
+                ...this.launchConfiguration
+            } as any as RokuDeployOptions);
+        }
+
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
             ...this.launchConfiguration,
@@ -475,6 +529,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param logOutput
      */
     private sendLogOutput(logOutput: string) {
+        this.fileLoggingManager.writeRokuDeviceLog(logOutput);
         const lines = logOutput.split(/\r?\n/g);
         for (let line of lines) {
             line += '\n';
@@ -1078,11 +1133,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
     }
 
-    private createRokuAdapter(host: string) {
+    private createRokuAdapter(host: string, rendezvousTracker: RendezvousTracker) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager);
+            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager, rendezvousTracker);
         } else {
-            this.rokuAdapter = new TelnetAdapter(this.launchConfiguration);
+            this.rokuAdapter = new TelnetAdapter(this.launchConfiguration, rendezvousTracker);
         }
     }
 
@@ -1293,38 +1348,70 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+    private shutdownPromise: Promise<void> | undefined = undefined;
+
     /**
-     * Called when the debugger is terminated
+     * Called when the debugger is terminated. Feel free to call this as frequently as you want; we'll only run the shutdown process the first time, and return
+     * the same promise on subsequent calls
      */
-    public async shutdown(errorMessage?: string) {
-        //if configured, delete the staging directory
-        if (!this.launchConfiguration.retainStagingFolder) {
-            for (let stagingFolderPath of this.projectManager?.getStagingFolderPaths() ?? []) {
-                try {
-                    fsExtra.removeSync(stagingFolderPath);
-                } catch (e) {
-                    util.log(`Error removing staging directory '${stagingFolderPath}': ${JSON.stringify(e)}`);
+    public async shutdown(errorMessage?: string): Promise<void> {
+        if (this.shutdownPromise === undefined) {
+            this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
+            this.shutdownPromise = this._shutdown(errorMessage);
+        } else {
+            this.logger.log('[shutdown] Tried to call `.shutdown()` again. Returning the same promise');
+        }
+        return this.shutdownPromise;
+    }
+
+    private async _shutdown(errorMessage?: string): Promise<void> {
+        try {
+            //
+            this.rendezvousTracker?.destroy?.();
+
+            //if configured, delete the staging directory
+            if (!this.launchConfiguration.retainStagingFolder) {
+                const stagingFolders = this.projectManager?.getStagingFolderPaths() ?? [];
+                this.logger.info('deleting staging folders', stagingFolders);
+                for (let stagingFolderPath of stagingFolders) {
+                    try {
+                        fsExtra.removeSync(stagingFolderPath);
+                    } catch (e) {
+                        this.logger.error(e);
+                        util.log(`Error removing staging directory '${stagingFolderPath}': ${JSON.stringify(e)}`);
+                    }
                 }
             }
-        }
 
-        //if there was an error message, display it to the user
-        if (errorMessage) {
-            this.logger.error(errorMessage);
-            this.showPopupMessage(errorMessage, 'error');
-        }
-
-        if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
-            await this.rokuAdapter?.destroy?.();
-            //press the home button to return to the home screen
-            try {
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-            } catch (e) {
-                console.error(e);
+            //if there was an error message, display it to the user
+            if (errorMessage) {
+                this.logger.error(errorMessage);
+                this.showPopupMessage(errorMessage, 'error');
             }
-        }
 
-        this.sendEvent(new TerminatedEvent());
+            if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
+                this.logger.log('Destroy rokuAdapter');
+                await this.rokuAdapter?.destroy?.();
+                //press the home button to return to the home screen
+                try {
+                    this.logger.log('Press home button');
+                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                } catch (e) {
+                    console.error(e);
+                    this.logger.error(e);
+                }
+            }
+
+            this.logger.log('Send terminated event');
+            this.sendEvent(new TerminatedEvent());
+
+            //shut down the process
+            this.logger.log('super.shutdown()');
+            super.shutdown();
+            this.logger.log('shutdown complete');
+        } catch (e) {
+            this.logger.error(e);
+        }
     }
 }
 

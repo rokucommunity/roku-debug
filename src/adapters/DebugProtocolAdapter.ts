@@ -2,8 +2,7 @@ import * as EventEmitter from 'events';
 import { Socket } from 'net';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
-import type { RendezvousHistory } from '../RendezvousTracker';
-import { RendezvousTracker } from '../RendezvousTracker';
+import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
@@ -28,23 +27,18 @@ export class DebugProtocolAdapter {
     constructor(
         private options: AdapterOptions & ConstructorOptions,
         private projectManager: ProjectManager,
-        private breakpointManager: BreakpointManager
+        private breakpointManager: BreakpointManager,
+        private rendezvousTracker: RendezvousTracker
     ) {
         util.normalizeAdapterOptions(this.options);
         this.emitter = new EventEmitter();
         this.chanperfTracker = new ChanperfTracker();
-        this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
         this.connected = false;
 
         // watch for chanperf events
         this.chanperfTracker.on('chanperf', (output) => {
             this.emit('chanperf', output);
-        });
-
-        // watch for rendezvous events
-        this.rendezvousTracker.on('rendezvous', (output) => {
-            this.emit('rendezvous', output);
         });
     }
 
@@ -65,7 +59,6 @@ export class DebugProtocolAdapter {
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
     private chanperfTracker: ChanperfTracker;
-    private rendezvousTracker: RendezvousTracker;
     private socketDebugger: DebugProtocolClient;
     private nextFrameId = 1;
 
@@ -121,7 +114,6 @@ export class DebugProtocolAdapter {
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void); // TODO: might be able to remove this at some point.
     public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => void);
-    public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
@@ -729,14 +721,6 @@ export class DebugProtocolAdapter {
         this.emitter = undefined;
     }
 
-    // #region Rendezvous Tracker pass though functions
-    /**
-     * Passes the debug functions used to locate the client files and lines to the RendezvousTracker
-     */
-    public registerSourceLocator(sourceLocator: (debuggerPath: string, lineNumber: number) => Promise<SourceLocation>) {
-        this.rendezvousTracker.registerSourceLocator(sourceLocator);
-    }
-
     /**
      * Passes the log level down to the RendezvousTracker and ChanperfTracker
      * @param outputLevel the consoleOutput from the launch config
@@ -759,7 +743,6 @@ export class DebugProtocolAdapter {
     public clearChanperfHistory() {
         this.chanperfTracker.clearHistory();
     }
-    // #endregion
 
     public async syncBreakpoints() {
         //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).

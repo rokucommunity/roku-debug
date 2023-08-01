@@ -5,8 +5,7 @@ import { rokuDeploy } from 'roku-deploy';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
-import type { RendezvousHistory } from '../RendezvousTracker';
-import { RendezvousTracker } from '../RendezvousTracker';
+import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
@@ -24,7 +23,8 @@ export class TelnetAdapter {
     constructor(
         private options: AdapterOptions & {
             enableDebuggerAutoRecovery?: boolean;
-        }
+        },
+        private rendezvousTracker: RendezvousTracker
     ) {
         util.normalizeAdapterOptions(this.options);
         this.options.enableDebuggerAutoRecovery ??= false;
@@ -34,18 +34,11 @@ export class TelnetAdapter {
         this.debugStartRegex = /BrightScript Micro Debugger\./ig;
         this.debugEndRegex = /Brightscript Debugger>/ig;
         this.chanperfTracker = new ChanperfTracker();
-        this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
-
 
         // watch for chanperf events
         this.chanperfTracker.on('chanperf', (output) => {
             this.emit('chanperf', output);
-        });
-
-        // watch for rendezvous events
-        this.rendezvousTracker.on('rendezvous', (output) => {
-            this.emit('rendezvous', output);
         });
     }
 
@@ -63,7 +56,6 @@ export class TelnetAdapter {
     private debugStartRegex: RegExp;
     private debugEndRegex: RegExp;
     private chanperfTracker: ChanperfTracker;
-    private rendezvousTracker: RendezvousTracker;
 
     private cache = {};
 
@@ -86,7 +78,6 @@ export class TelnetAdapter {
     public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void);
-    public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
@@ -1034,14 +1025,6 @@ export class TelnetAdapter {
         return Promise.resolve();
     }
 
-    // #region Rendezvous Tracker pass though functions
-    /**
-     * Passes the debug functions used to locate the client files and lines to the RendezvousTracker
-     */
-    public registerSourceLocator(sourceLocator: (debuggerPath: string, lineNumber: number) => Promise<SourceLocation>) {
-        this.rendezvousTracker.registerSourceLocator(sourceLocator);
-    }
-
     /**
      * Passes the log level down to the RendezvousTracker and ChanperfTracker
      * @param outputLevel the consoleOutput from the launch config
@@ -1064,7 +1047,6 @@ export class TelnetAdapter {
     public clearChanperfHistory() {
         this.chanperfTracker.clearHistory();
     }
-    // #endregion
 
     public async syncBreakpoints() {
         //we can't send dynamic breakpoints to the server...so just do nothing

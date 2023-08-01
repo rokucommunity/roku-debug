@@ -25,6 +25,7 @@ import { RemoveBreakpointsResponse } from '../debugProtocol/events/responses/Rem
 import { BreakpointVerifiedUpdate } from '../debugProtocol/events/updates/BreakpointVerifiedUpdate';
 import { RemoveBreakpointsRequest } from '../debugProtocol/events/requests/RemoveBreakpointsRequest';
 import type { AfterSendRequestEvent } from '../debugProtocol/client/DebugProtocolClientPlugin';
+import { RendezvousTracker } from '../RendezvousTracker';
 const sinon = createSandbox();
 
 let cwd = s`${process.cwd()}`;
@@ -53,6 +54,7 @@ describe('DebugProtocolAdapter', function() {
         };
         const sourcemapManager = new SourceMapManager();
         const locationManager = new LocationManager(sourcemapManager);
+        const rendezvousTracker = new RendezvousTracker({});
         breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
         const projectManager = new ProjectManager(breakpointManager, locationManager);
         projectManager.mainProject = new Project({
@@ -60,7 +62,7 @@ describe('DebugProtocolAdapter', function() {
             files: [],
             outDir: outDir
         });
-        adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager);
+        adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager, rendezvousTracker);
 
         if (!options.controlPort) {
             options.controlPort = await util.getPort();

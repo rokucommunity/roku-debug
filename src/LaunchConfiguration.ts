@@ -7,6 +7,10 @@ import type { LogLevel } from './logging';
  */
 export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArguments {
     /**
+     * The current working directory of the launcher. When running from vscode, this should be the value from `${workspaceFolder}`
+     */
+    cwd: string;
+    /**
      * The host or ip address for the target Roku
      */
     host: string;
@@ -78,6 +82,75 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * 'normal' excludes output initiated by the adapter and rendezvous logs if enabled on the device.
      */
     consoleOutput: 'full' | 'normal';
+
+    fileLogging?: boolean | {
+        /**
+         * Should file logging be enabled
+         */
+        enabled?: boolean;
+        /**
+         * Directory where log files should be stored. used when filename is relative
+         */
+        dir?: string;
+        /**
+         * The number of log files to keep. undefined or < 0 means keep all
+         */
+        logLimit?: number;
+        /**
+         * File logging for the telnet or IO output from the Roku device currently being debugged. (i.e. all the stuff produced by `print` statements in your code)
+         */
+        rokuDevice?: boolean | {
+            /**
+             * Should file logging be enabled for this logging type?
+             */
+            enabled?: boolean;
+            /**
+             * Directory where log files should be stored. used when filename is relative
+             */
+            dir?: string;
+            /**
+             * The name of the log file. When mode==='session', a datestamp will be prepended to this filename.
+             * Can be absolute or relative, and relative paths will be relative to `this.dir`
+             */
+            filename?: string;
+            /**
+             * - 'session' means a unique timestamped file will be created on every debug session.
+             * - 'append' means all logs will be appended to a single file
+             */
+            mode?: 'session' | 'append';
+            /**
+             * The number of log files to keep. undefined or < 0 means keep all
+             */
+            logLimit?: number;
+        };
+        /**
+         * File logging for the debugger. Mostly used to provide crash logs to the RokuCommunity team.
+         */
+        debugger?: boolean | {
+            /**
+             * Should file logging be enabled for this logging type?
+             */
+            enabled?: boolean;
+            /**
+             * Directory where log files should be stored. used when filename is relative
+             */
+            dir?: string;
+            /**
+             * The name of the log file. When mode==='session', a datestamp will be prepended to this filename.
+             * Can be absolute or relative, and relative paths will be relative to `this.dir`
+             */
+            filename?: string;
+            /**
+             * - 'session' means a unique timestamped file will be created on every debug session.
+             * - 'append' means all logs will be appended to a single file
+             */
+            mode?: 'session' | 'append';
+            /**
+             * The number of log files to keep. undefined or < 0 means keep all
+             */
+            logLimit?: number;
+        };
+    };
 
     /**
      * If specified, the debug session will start the roku app using the deep link
@@ -180,6 +253,19 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * Show variables that are prefixed with a special prefix designated to be hidden
      */
     showHiddenVariables: boolean;
+
+    /**
+     * If true: turn on ECP rendezvous tracking, or turn on 8080 rendezvous tracking if ECP unsupported
+     * If false, turn off both.
+     * @default true
+     */
+    rendezvousTracking: boolean;
+
+    /**
+     * Delete any currently installed dev channel before starting the debug session
+     * @default false
+     */
+    deleteDevChannelBeforeInstall: boolean;
 }
 
 export interface ComponentLibraryConfiguration {

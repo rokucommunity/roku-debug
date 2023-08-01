@@ -260,8 +260,8 @@ export class DebugProtocolClient {
         this.controlSocket = await this.establishControlConnection();
 
         this.controlSocket.on('data', (data) => {
+            this.writeToBufferLog('server-to-client', data);
             this.emit('data', data);
-            this.logger.info('received server-to-client data\n', { type: 'server-to-client', data: data.toJSON() });
             //queue up processing the new data, chunk by chunk
             void this.bufferQueue.run(async () => {
                 this.buffer = Buffer.concat([this.buffer, data]);
@@ -308,6 +308,18 @@ export class DebugProtocolClient {
 
         //send the handshake request, and wait for the handshake response from the device
         return this.sendRequest<HandshakeV3Response | HandshakeResponse>(request);
+    }
+
+    /**
+     * Write a specific buffer log entry to the logger, which, when file logging is enabled
+     * can be extracted and processed through the DebugProtocolClientReplaySession
+     */
+    private writeToBufferLog(type: 'server-to-client' | 'client-to-server' | 'io', buffer: Buffer) {
+        this.logger.log('[[bufferLog]]:', JSON.stringify({
+            type: type,
+            timestamp: new Date().toISOString(),
+            buffer: buffer.toJSON()
+        }));
     }
 
     public continue() {
@@ -754,7 +766,8 @@ export class DebugProtocolClient {
             this.logEvent(request);
             if (this.controlSocket) {
                 const buffer = request.toBuffer();
-                this.logger.info('received client-to-server data\n', { type: 'client-to-server', data: buffer.toJSON() });
+                this.writeToBufferLog('client-to-server', buffer);
+
                 this.controlSocket.write(buffer);
                 void this.plugins.emit('afterSendRequest', {
                     client: this,
@@ -1066,7 +1079,7 @@ export class DebugProtocolClient {
 
                 let lastPartialLine = '';
                 this.ioSocket.on('data', (buffer) => {
-                    this.logger.info('received IO data\n', { type: 'io', data: buffer.toJSON() });
+                    this.writeToBufferLog('io', buffer);
                     let responseText = buffer.toString();
                     if (!responseText.endsWith('\n')) {
                         // buffer was split, save the partial line

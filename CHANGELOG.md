@@ -6,6 +6,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.3](https://github.com/rokucommunity/roku-debug/compare/v0.20.2...0.20.3) - 2023-07-26
+### Added
+ - Add `deleteDevChannelBeforeInstall` launch option ([#158](https://github.com/rokucommunity/roku-debug/pull/158))
+
+
+
+## [0.20.2](https://github.com/rokucommunity/roku-debug/compare/v0.20.1...v0.20.2) - 2023-07-24
+### Changed
+ - Bump word-wrap from 1.2.3 to 1.2.4 ([#157](https://github.com/rokucommunity/roku-debug/pull/157))
+ - upgrade to [brighterscript@0.65.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0654---2023-07-24). Notable changes since 0.65.1:
+     - Bump word-wrap from 1.2.3 to 1.2.4 ([brighterscript#851](https://github.com/rokucommunity/brighterscript/pull/851))
+     - Bump semver from 6.3.0 to 6.3.1 in /benchmarks ([brighterscript#838](https://github.com/rokucommunity/brighterscript/pull/838))
+     - Bump semver from 5.7.1 to 5.7.2 ([brighterscript#837](https://github.com/rokucommunity/brighterscript/pull/837))
+     - Prevent crashing when diagnostic is missing range. ([brighterscript#832](https://github.com/rokucommunity/brighterscript/pull/832))
+     - Prevent crash when diagnostic is missing range ([brighterscript#831](https://github.com/rokucommunity/brighterscript/pull/831))
+ - upgrade to [roku-deploy@3.10.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3103---2023-07-22). Notable changes since 3.10.2:
+     - Bump word-wrap from 1.2.3 to 1.2.4 ([roku-deploy#117](https://github.com/rokucommunity/roku-deploy/pull/117))
+
+
+
+## [0.20.1](https://github.com/rokucommunity/roku-debug/compare/v0.20.0...v0.20.1) - 2023-07-07
+### Changed
+ - Fix rendezvous crash ([#156](https://github.com/rokucommunity/roku-debug/pull/156))
+
+
+
+## [0.20.0](https://github.com/rokucommunity/roku-debug/compare/v0.19.1...v0.20.0) - 2023-07-05
+### Added
+ - Support sgrendezvous through ECP ([#150](https://github.com/rokucommunity/roku-debug/pull/150))
+### Changed
+ - upgrade to [brighterscript@0.65.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0651---2023-06-09)
+
+
+
+## [0.19.1](https://github.com/rokucommunity/roku-debug/compare/v0.19.0...v0.19.1) - 2023-06-08
+### Changed
+ - Move @types/request to deps to fix d.bs files ([691a7be](https://github.com/rokucommunity/roku-debug/commit/691a7be))
+
+
+
+## [0.19.0](https://github.com/rokucommunity/roku-debug/compare/v0.18.12...v0.19.0) - 2023-06-01
+### Added
+ - File logging ([#155](https://github.com/rokucommunity/roku-debug/pull/155))
+
+
+
+## [0.18.12](https://github.com/rokucommunity/roku-debug/compare/v0.18.11...v0.18.12) - 2023-05-18
+### Changed
+ - remove axios in favor of postman-request ([#153](https://github.com/rokucommunity/roku-debug/pull/153))
+### Fixed
+ - Fix `file already exists` error and hung process ([#152](https://github.com/rokucommunity/roku-debug/pull/152))
+
+
+
+## [0.18.11](https://github.com/rokucommunity/roku-debug/compare/v0.18.10...v0.18.11) - 2023-05-17
+### Changed
+ - Fix crash by using postman-request ([#151](https://github.com/rokucommunity/roku-debug/pull/151))
+
+
+
+## [0.18.10](https://github.com/rokucommunity/roku-debug/compare/v0.18.9...v0.18.10) - 2023-05-17
+### Changed
+ - upgrade to [brighterscript@0.65.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0650---2023-05-17)
+ - upgrade to [@rokucommunity/logger@0.3.3](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#033---2023-05-17). Notable changes since 0.3.2:
+     - Fix dependencies ([#@rokucommunity/logger04af7a0](https://github.com/rokucommunity/logger/commit/04af7a0))
+
+
+
+## [0.18.9](https://github.com/rokucommunity/roku-debug/compare/v0.18.8...v0.18.9) - 2023-05-10
+### Changed
+ - upgrade to [brighterscript@0.64.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0644---2023-05-10)
+ - upgrade to [roku-deploy@3.10.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3102---2023-05-10). Notable changes since 3.10.1:
+     - Fix audit issues ([roku-deploy#116](https://github.com/rokucommunity/roku-deploy/pull/116))
+     - fix nodejs 19 bug ([roku-deploy#115](https://github.com/rokucommunity/roku-deploy/pull/115))
+
+
+
 ## [0.18.8](https://github.com/rokucommunity/roku-debug/compare/v0.18.7...v0.18.8) - 2023-04-28
 ### Changed
  - Make axios a prod dependency ([#148](https://github.com/rokucommunity/roku-debug/pull/148))
