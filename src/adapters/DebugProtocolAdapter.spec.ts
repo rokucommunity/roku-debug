@@ -62,6 +62,7 @@ describe('DebugProtocolAdapter', function() {
         };
         const sourcemapManager = new SourceMapManager();
         const locationManager = new LocationManager(sourcemapManager);
+        const rendezvousTracker = new RendezvousTracker({});
         breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
         projectManager = new ProjectManager(breakpointManager, locationManager);
         projectManager.mainProject = new Project({

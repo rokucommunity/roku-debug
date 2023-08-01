@@ -260,8 +260,8 @@ export class DebugProtocolClient {
         this.controlSocket = await this.establishControlConnection();
 
         this.controlSocket.on('data', (data) => {
-            this.emit('data', data);
             this.writeToBufferLog('server-to-client', data);
+            this.emit('data', data);
             //queue up processing the new data, chunk by chunk
             void this.bufferQueue.run(async () => {
                 this.buffer = Buffer.concat([this.buffer, data]);
