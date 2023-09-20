@@ -50,9 +50,9 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '../logging';
-import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { DeviceInfo } from '../DeviceInfo';
 import * as xml2js from 'xml2js';
+import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -69,25 +69,25 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         //send newly-verified breakpoints to vscode
-        this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceVerifiedBreakpoints(data));
+        this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceBreakpointsChanged('changed', data));
         this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
         this.fileLoggingManager = new FileLoggingManager();
     }
 
-    private onDeviceVerifiedBreakpoints(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
+    private onDeviceBreakpointsChanged(eventName: 'changed' | 'new', data: { breakpoints: AugmentedSourceBreakpoint[] }) {
         this.logger.info('Sending verified device breakpoints to client', data);
         //send all verified breakpoints to the client
         for (const breakpoint of data.breakpoints) {
             const event: DebugProtocol.Breakpoint = {
                 line: breakpoint.line,
                 column: breakpoint.column,
-                verified: true,
+                verified: breakpoint.verified,
                 id: breakpoint.id,
                 source: {
                     path: breakpoint.srcPath
                 }
             };
-            this.sendEvent(new BreakpointEvent('changed', event));
+            this.sendEvent(new BreakpointEvent(eventName, event));
         }
     }
 
@@ -1198,10 +1198,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //clear the index for storing evalutated expressions
         this.evaluateVarIndexByFrameId.clear();
 
-        //sync breakpoints
-        await this.rokuAdapter?.syncBreakpoints();
-        this.logger.info('received "suspend" event from adapter');
-
         const threads = await this.rokuAdapter.getThreads();
         const activeThread = threads.find(x => x.isSelected);
 
@@ -1217,6 +1213,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             })
         );
+
+        outer: for (const bp of this.breakpointManager.failedDeletions) {
+            for (const thread of threads) {
+                let sourceLocation = await this.projectManager.getSourceLocation(thread.filePath, thread.lineNumber);
+                // This stop was due to a breakpoint that we tried to delete, but couldn't.
+                // Now that we are stopped, we can delete it. We won't stop here again unless you re-add the breakpoint. You're welcome.
+                if ((bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
+                    this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info');
+                    this.logger.warn(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops`, bp, thread, sourceLocation);
+                    break outer;
+                }
+            }
+        }
+
+        //sync breakpoints
+        await this.rokuAdapter?.syncBreakpoints();
+        this.logger.info('received "suspend" event from adapter');
 
         //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
         if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
@@ -1366,7 +1379,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string): Promise<void> {
         try {
-            //
             this.rendezvousTracker?.destroy?.();
 
             //if configured, delete the staging directory

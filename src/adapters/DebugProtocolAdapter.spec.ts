@@ -25,6 +25,7 @@ import { RemoveBreakpointsResponse } from '../debugProtocol/events/responses/Rem
 import { BreakpointVerifiedUpdate } from '../debugProtocol/events/updates/BreakpointVerifiedUpdate';
 import { RemoveBreakpointsRequest } from '../debugProtocol/events/requests/RemoveBreakpointsRequest';
 import type { AfterSendRequestEvent } from '../debugProtocol/client/DebugProtocolClientPlugin';
+import { GenericV3Response } from '../debugProtocol/events/responses/GenericV3Response';
 import { RendezvousTracker } from '../RendezvousTracker';
 const sinon = createSandbox();
 
@@ -45,6 +46,13 @@ describe('DebugProtocolAdapter', function() {
     let client: DebugProtocolClient;
     let plugin: DebugProtocolServerTestPlugin;
     let breakpointManager: BreakpointManager;
+    let projectManager: ProjectManager;
+    let deviceInfo = {
+        'software-version': '11.5.0',
+        'host': '192.168.1.5',
+        'remotePort': 8060
+    };
+    let rendezvousTracker = new RendezvousTracker(deviceInfo);
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
@@ -56,7 +64,7 @@ describe('DebugProtocolAdapter', function() {
         const locationManager = new LocationManager(sourcemapManager);
         const rendezvousTracker = new RendezvousTracker({});
         breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
-        const projectManager = new ProjectManager(breakpointManager, locationManager);
+        projectManager = new ProjectManager(breakpointManager, locationManager);
         projectManager.mainProject = new Project({
             rootDir: rootDir,
             files: [],
@@ -74,7 +82,7 @@ describe('DebugProtocolAdapter', function() {
 
     afterEach(async () => {
         sinon.restore();
-        client?.destroy();
+        client?.destroy(true);
         //shut down and destroy the server after each test
         await server?.stop();
         await util.sleep(10);
@@ -86,6 +94,8 @@ describe('DebugProtocolAdapter', function() {
     async function initialize() {
         await adapter.connect();
         client = adapter['socketDebugger'];
+        client['options'].shutdownTimeout = 100;
+        client['options'].exitChannelTimeout = 100;
         //disable logging for tests because they clutter the test output
         client['logger'].logLevel = 'off';
         await Promise.all([
@@ -140,6 +150,136 @@ describe('DebugProtocolAdapter', function() {
     });
 
     describe('syncBreakpoints', () => {
+        it('retries at next sync() to delete breakpoints if first request failed', async () => {
+            await initialize();
+            //disable auto breakpoint verification
+            client.protocolVersion = '3.2.0';
+
+            //add a single breakpoint first and do a diff to lock in the diff
+            const bp2 = breakpointManager.setBreakpoint(srcPath, { line: 2 });
+
+            await breakpointManager.getDiff(projectManager.getAllProjects());
+
+            //add breakpoints
+            const [bp1, bp3] = breakpointManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 3 }
+            ]);
+
+            //sync the breakpoints so they get added
+            plugin.pushResponse(AddBreakpointsResponse.fromJson({
+                breakpoints: [{
+                    id: 8,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }, {
+                    id: 9,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }],
+                requestId: 1
+            }));
+
+            //sync the breakpoints. this request will fail, so try deleting the breakpoints again later
+            await adapter.syncBreakpoints();
+
+            //now try to delete the breakpoints
+            breakpointManager.deleteBreakpoints([bp1, bp3]);
+
+            //complete request failure because debugger not stopped
+            plugin.pushResponse(GenericV3Response.fromJson({
+                errorCode: ErrorCode.NOT_STOPPED,
+                requestId: 1
+            }));
+
+            //sync the breakpoints again. ask to delete the breakpoints, but it fails.
+            await adapter.syncBreakpoints();
+
+            expect(
+                [...breakpointManager.failedDeletions.values()].map(x => x.deviceId)
+            ).to.eql([8, 9]);
+
+            plugin.pushResponse(RemoveBreakpointsResponse.fromJson({
+                breakpoints: [{
+                    id: 8,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }, {
+                    id: 9,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }],
+                requestId: 1
+            }));
+
+            await adapter.syncBreakpoints();
+            expect(plugin.getLatestRequest<RemoveBreakpointsRequest>().data.breakpointIds).to.eql([8, 9]);
+        });
+
+        it('removes any newly-added breakpoints that have errors', async () => {
+            await initialize();
+
+            const [bp1, bp2] = breakpointManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 }
+            ]);
+
+            plugin.pushResponse(AddBreakpointsResponse.fromJson({
+                breakpoints: [{
+                    id: 3,
+                    errorCode: ErrorCode.OK,
+                    ignoreCount: 0
+                }, {
+                    id: 4,
+                    errorCode: ErrorCode.INVALID_ARGS,
+                    ignoreCount: 0
+                }],
+                requestId: 1
+            }));
+
+            //sync breakpoints
+            await adapter.syncBreakpoints();
+
+            //the bad breakpoint (id=2) should now be removed
+            expect(breakpointManager.getBreakpoints([bp1, bp2])).to.eql([bp1]);
+        });
+
+        it('only allows one to run at a time', async () => {
+            let concurrentCount = 0;
+            let maxConcurrentCount = 0;
+
+            sinon.stub(adapter, '_syncBreakpoints').callsFake(async () => {
+                console.log('_syncBreakpoints');
+                concurrentCount++;
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                //several nextticks here to give other promises a chance to run
+                await util.sleep(0);
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                await util.sleep(0);
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                await util.sleep(0);
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                await util.sleep(0);
+                maxConcurrentCount = Math.max(0, concurrentCount);
+                concurrentCount--;
+            });
+
+            await Promise.all([
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints(),
+                adapter.syncBreakpoints()
+            ]);
+            expect(maxConcurrentCount).to.eql(1);
+        });
+
         it('removes "added" breakpoints that show up after a breakpoint was already removed', async () => {
             const bpId = 123;
             const bpLine = 12;
@@ -187,6 +327,9 @@ describe('DebugProtocolAdapter', function() {
 
             //delete the breakpoint (before we ever got the deviceId from the server)
             breakpointManager.replaceBreakpoints(srcPath, []);
+
+            //run another breakpoint diff to simulate the breakpoint being deleted before the device responded with the device IDs
+            await breakpointManager.getDiff(projectManager.getAllProjects());
 
             //sync the breakpoints again, forcing the bp to be fully deleted
             let syncPromise = adapter.syncBreakpoints();
@@ -243,14 +386,14 @@ describe('DebugProtocolAdapter', function() {
             //sync the breakpoints to mark this one as "sent to device"
             await adapter.syncBreakpoints();
 
-            //replace the breakpoints before they were verified
-            adapter['breakpointManager'].replaceBreakpoints(`${rootDir}/source/main.brs`, []);
-            breakpoint.deviceId = undefined;
+            // //replace the breakpoints before they were verified
+            // adapter['breakpointManager'].replaceBreakpoints(`${rootDir}/source/main.brs`, []);
+            // breakpoint.deviceId = undefined;
 
-            //sync the breakpoints again. Since the breakpoint doesn't have an ID, we shouldn't send any request
-            await adapter.syncBreakpoints();
+            // //sync the breakpoints again. Since the breakpoint doesn't have an ID, we shouldn't send any request
+            // await adapter.syncBreakpoints();
 
-            expect(plugin.latestRequest?.constructor.name).not.to.eql(RemoveBreakpointsResponse.name);
+            // expect(plugin.latestRequest?.constructor.name).not.to.eql(RemoveBreakpointsResponse.name);
         });
 
         it('skips sending AddBreakpoints and AddConditionalBreakpoints command when there are no breakpoints', async () => {

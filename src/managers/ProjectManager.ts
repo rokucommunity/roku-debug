@@ -11,6 +11,7 @@ import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
 import { logger } from '../logging';
+import { Cache } from 'brighterscript/dist/Cache';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -96,50 +97,54 @@ export class ProjectManager {
         return sourceLineByDebuggerLine[debuggerLineNumber];
     }
 
+    public sourceLocationCache = new Cache<string, Promise<SourceLocation>>();
+
     /**
      * @param debuggerPath
      * @param debuggerLineNumber - the 1-based line number from the debugger
      */
     public async getSourceLocation(debuggerPath: string, debuggerLineNumber: number) {
-        //get source location using
-        let stagingFileInfo = await this.getStagingFileInfo(debuggerPath);
-        if (!stagingFileInfo) {
-            return;
-        }
-        let project = stagingFileInfo.project;
+        return this.sourceLocationCache.getOrAdd(`${debuggerPath}-${debuggerLineNumber}`, async () => {
+            //get source location using
+            let stagingFileInfo = await this.getStagingFileInfo(debuggerPath);
+            if (!stagingFileInfo) {
+                return;
+            }
+            let project = stagingFileInfo.project;
 
-        //remove the component library postfix if present
-        if (project instanceof ComponentLibraryProject) {
-            stagingFileInfo.absolutePath = fileUtils.unPostfixFilePath(stagingFileInfo.absolutePath, project.postfix);
-            stagingFileInfo.relativePath = fileUtils.unPostfixFilePath(stagingFileInfo.relativePath, project.postfix);
-        }
+            //remove the component library postfix if present
+            if (project instanceof ComponentLibraryProject) {
+                stagingFileInfo.absolutePath = fileUtils.unPostfixFilePath(stagingFileInfo.absolutePath, project.postfix);
+                stagingFileInfo.relativePath = fileUtils.unPostfixFilePath(stagingFileInfo.relativePath, project.postfix);
+            }
 
-        let sourceLocation = await this.locationManager.getSourceLocation({
-            lineNumber: debuggerLineNumber,
-            columnIndex: 0,
-            fileMappings: project.fileMappings,
-            rootDir: project.rootDir,
-            stagingFilePath: stagingFileInfo.absolutePath,
-            stagingFolderPath: project.stagingFolderPath,
-            sourceDirs: project.sourceDirs,
-            enableSourceMaps: this.launchConfiguration?.enableSourceMaps ?? true
+            let sourceLocation = await this.locationManager.getSourceLocation({
+                lineNumber: debuggerLineNumber,
+                columnIndex: 0,
+                fileMappings: project.fileMappings,
+                rootDir: project.rootDir,
+                stagingFilePath: stagingFileInfo.absolutePath,
+                stagingFolderPath: project.stagingFolderPath,
+                sourceDirs: project.sourceDirs,
+                enableSourceMaps: this.launchConfiguration?.enableSourceMaps ?? true
+            });
+
+            //if sourcemaps are disabled, and this is a telnet debug dession, account for breakpoint offsets
+            if (sourceLocation && this.launchConfiguration?.enableSourceMaps === false && !this.launchConfiguration.enableDebugProtocol) {
+                sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
+            }
+
+            if (!sourceLocation?.filePath) {
+                //couldn't find a source location. At least send back the staging file information so the user can still debug
+                return {
+                    filePath: stagingFileInfo.absolutePath,
+                    lineNumber: sourceLocation?.lineNumber || debuggerLineNumber,
+                    columnIndex: 0
+                } as SourceLocation;
+            } else {
+                return sourceLocation;
+            }
         });
-
-        //if sourcemaps are disabled, and this is a telnet debug dession, account for breakpoint offsets
-        if (sourceLocation && this.launchConfiguration?.enableSourceMaps === false && !this.launchConfiguration.enableDebugProtocol) {
-            sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
-        }
-
-        if (!sourceLocation?.filePath) {
-            //couldn't find a source location. At least send back the staging file information so the user can still debug
-            return {
-                filePath: stagingFileInfo.absolutePath,
-                lineNumber: sourceLocation?.lineNumber || debuggerLineNumber,
-                columnIndex: 0
-            } as SourceLocation;
-        } else {
-            return sourceLocation;
-        }
     }
 
     /**

@@ -281,7 +281,8 @@ export class DebugProtocolClient {
         // Don't forget to catch error, for your own sake.
         this.controlSocket.once('error', (error) => {
             //the Roku closed the connection for some unknown reason...
-            console.error(`error on control port`, error);
+            this.logger.error(`error on control port`, error);
+            this.controlSocket?.destroy?.();
             void this.shutdown('close');
         });
 
@@ -767,7 +768,6 @@ export class DebugProtocolClient {
             if (this.controlSocket) {
                 const buffer = request.toBuffer();
                 this.writeToBufferLog('client-to-server', buffer);
-
                 this.controlSocket.write(buffer);
                 void this.plugins.emit('afterSendRequest', {
                     client: this,
@@ -1111,31 +1111,47 @@ export class DebugProtocolClient {
         return false;
     }
 
-    public async destroy() {
-        await this.shutdown('close');
+    /**
+     * Destroy this instance, shutting down any sockets or other long-running items and cleaning up.
+     * @param immediate if true, all sockets are immediately closed and do not gracefully shut down
+     */
+    public async destroy(immediate = false) {
+        await this.shutdown('close', immediate);
     }
 
-    private async shutdown(eventName: 'app-exit' | 'close') {
+    private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
         this.logger.log('Shutting down!');
+        let exitChannelTimeout = this.options?.exitChannelTimeout ?? 30_000;
+        let shutdownTimeMax = this.options?.shutdownTimeout ?? 10_000;
+        //if immediate is true, this is an instant shutdown force. don't wait for anything
+        if (immediate) {
+            exitChannelTimeout = 0;
+            shutdownTimeMax = 0;
+        }
+
         //tell the device to exit the channel
         try {
             //ask the device to terminate the debug session. We have to wait for this to come back.
             //The device might be running unstoppable code, so this might take a while. Wait for the device to send back
             //the response before we continue with the teardown process
             await Promise.race([
-                this.exitChannel().finally(() => this.logger.log('exit channel completed')),
+                immediate
+                    ? Promise.resolve(null)
+                    : this.exitChannel().finally(() => this.logger.log('exit channel completed')),
                 //if the exit channel request took this long to finish, something's terribly wrong
-                util.sleep(30_000)
+                util.sleep(exitChannelTimeout)
             ]);
         } finally { }
 
 
-        const maxTimeout = 10_000;
         await Promise.all([
-            this.destroyControlSocket(maxTimeout),
-            this.destroyIOSocket(maxTimeout)
+            this.destroyControlSocket(shutdownTimeMax),
+            this.destroyIOSocket(shutdownTimeMax, immediate)
         ]);
         this.emit(eventName);
+        this.emitter?.removeAllListeners();
+        this.buffer = Buffer.alloc(0);
+        this.bufferQueue.destroy();
     }
 
     private isDestroyingControlSocket = false;
@@ -1162,7 +1178,10 @@ export class DebugProtocolClient {
 
     private isDestroyingIOSocket = false;
 
-    private async destroyIOSocket(timeout: number) {
+    /**
+     * @param immediate if true, force close immediately instead of waiting for it to settle
+     */
+    private async destroyIOSocket(timeout: number, immediate = false) {
         if (this.ioSocket && !this.isDestroyingIOSocket) {
             this.isDestroyingIOSocket = true;
             //wait for the ioSocket to be closed
@@ -1172,7 +1191,7 @@ export class DebugProtocolClient {
             ]);
 
             //if the io socket is not closed, wait for it to at least settle
-            if (!this.ioSocketClosed.isCompleted) {
+            if (!this.ioSocketClosed.isCompleted && !immediate) {
                 await new Promise<void>((resolve) => {
                     const callback = debounce(() => {
                         resolve();
@@ -1244,6 +1263,16 @@ export interface ConstructorOptions {
      * This is here to prevent infinitely pinging the Roku device.
      */
     controlConnectMaxTime?: number;
+
+    /**
+     * The number of milliseconds that the client should wait during a shutdown request before forcefully terminating the sockets
+     */
+    shutdownTimeout?: number;
+
+    /**
+     * The max time the client will wait for the `exit channel` response before forcefully terminating the sockets
+     */
+    exitChannelTimeout?: number;
 }
 
 /**

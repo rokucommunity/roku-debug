@@ -142,6 +142,12 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    afterEach(() => {
+        fsExtra.emptydirSync(tempDir);
+        fsExtra.removeSync(outDir);
+        sinon.restore();
+    });
+
     describe('evaluateRequest', () => {
         it('resets local var counter on suspend', async () => {
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
