@@ -1,8 +1,7 @@
 import { EventEmitter } from 'events';
 import type { Diagnostic } from 'vscode-languageserver-protocol/node';
 import { logger } from './logging';
-import { DiagnosticSeverity as BSDiagnosticSeverity, util as bscUtil } from 'brighterscript';
-import { DiagnosticSeverity } from 'vscode';
+import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 
 export class CompileErrorProcessor {
 
@@ -139,7 +138,7 @@ export class CompileErrorProcessor {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: this.buildMessage(message),
                     code: undefined,
-                    severity: BSDiagnosticSeverity.Error
+                    severity: DiagnosticSeverity.Error
                 }))
                 .filter(x => !!x);
         }
@@ -168,7 +167,7 @@ export class CompileErrorProcessor {
                 message: this.buildMessage(message, context),
                 range: this.getRange(lineNumber), //lineNumber is 1-based
                 code: code,
-                severity: BSDiagnosticSeverity.Error
+                severity: DiagnosticSeverity.Error
             }];
         }
     }
@@ -204,7 +203,8 @@ export class CompileErrorProcessor {
                         path: filePath,
                         range: this.getRange(lineNumber), //lineNumber is 1-based
                         message: this.buildMessage(message),
-                        code: undefined
+                        code: undefined,
+                        severity: DiagnosticSeverity.Error
                     });
                 } else {
                     //assume there are no more errors for this file
@@ -238,7 +238,8 @@ export class CompileErrorProcessor {
                 message: this.buildMessage(message),
                 path: this.sanitizeCompilePath(filePath),
                 range: this.getRange(),
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }];
         }
     }
@@ -260,7 +261,8 @@ export class CompileErrorProcessor {
             return [{
                 path: 'pkg:/manifest',
                 range: bscUtil.createRange(0, 0, 0, 999),
-                message: this.buildMessage(message)
+                message: this.buildMessage(message),
+                severity: DiagnosticSeverity.Error
             }];
         }
     }
@@ -380,6 +382,10 @@ export interface BSDebugDiagnostic extends Diagnostic {
      * main app.
      */
     componentLibraryName?: string;
+    /**
+     * The diagnostic's severity.
+     */
+    severity: DiagnosticSeverity;
 }
 
 export enum CompileStatus {

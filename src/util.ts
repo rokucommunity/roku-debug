@@ -410,11 +410,30 @@ class Util {
         return cancel;
     }
 
+    public isNullish(item: any) {
+        return item === undefined || item === null;
+    }
+
     /**
-     * Is the given value null or undefined
+     * Do an http GET request
      */
-    public isNullish(value: any) {
-        return value === undefined || value === null;
+    public httpGet(url: string) {
+        return new Promise<Response>((resolve, reject) => {
+            request.get(url, (err, response) => {
+                return err ? reject(err) : resolve(response);
+            });
+        });
+    }
+
+    /**
+     * Do an http POST request
+     */
+    public httpPost(url: string, options?: requestType.CoreOptions) {
+        return new Promise<Response>((resolve, reject) => {
+            request.post(url, options, (err, response) => {
+                return err ? reject(err) : resolve(response);
+            });
+        });
     }
 
     /**
@@ -444,28 +463,6 @@ class Util {
         }
         this.minPort = port + 1;
         return port;
-    }
-
-    /**
-     * Do an http GET request
-     */
-    public httpGet(url: string) {
-        return new Promise<Response>((resolve, reject) => {
-            request.get(url, (err, response) => {
-                return err ? reject(err) : resolve(response);
-            });
-        });
-    }
-
-    /**
-     * Do an http POST request
-     */
-    public httpPost(url: string, options?: requestType.CoreOptions) {
-        return new Promise<Response>((resolve, reject) => {
-            request.post(url, options, (err, response) => {
-                return err ? reject(err) : resolve(response);
-            });
-        });
     }
 }
 

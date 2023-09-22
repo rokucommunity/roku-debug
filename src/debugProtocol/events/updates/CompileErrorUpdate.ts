@@ -45,6 +45,7 @@ export class CompileErrorUpdate {
     public toBuffer() {
         let smartBuffer = new SmartBuffer();
 
+        smartBuffer.writeUInt32LE(this.data.flags ?? 0); // flags
         smartBuffer.writeStringNT(this.data.errorMessage); // error_string
         smartBuffer.writeStringNT(this.data.filePath); // file_spec
         smartBuffer.writeUInt32LE(this.data.lineNumber); // line_number
