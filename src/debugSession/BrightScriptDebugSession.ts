@@ -135,7 +135,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public tempVarPrefix = '__rokudebug__';
 
+    /**
+     * The first encountered compile error, will be used to send to the client as a runtime error (nicer UI presentation)
+     */
     private compileError: BSDebugDiagnostic;
+
+    /**
+     * A magic number to represent a fake thread that will be used for showing compile errors in the UI as if they were runtime crashes
+     */
     private COMPILE_ERROR_THREAD_ID = 7_777;
 
     private get enableDebugProtocol() {
@@ -248,7 +255,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public deviceInfo: DeviceInfo;
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-        let hasSentResponse = false;
+        let didSendResponse = false;
+
+        const trySendResponse = () => {
+            //we need to send the response for the debugger to be in a stable state...but only send if we haven't sent yet
+            if (!didSendResponse) {
+                didSendResponse = true;
+                this.sendResponse(response);
+            }
+        };
+
         this.logger.log('[launchRequest] begin');
         this.launchConfiguration = config;
 
@@ -383,19 +399,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 if (this.rokuAdapter.connected) {
                     this.logger.info('Host connection was established before the main public process was completed');
                     this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
-                    if (!hasSentResponse) {
-                        hasSentResponse = true;
-                        this.sendResponse(response);
-                    }
+                    trySendResponse();
                 } else {
                     this.logger.info('Main public process was completed but we are still waiting for a connection to the host');
                     this.rokuAdapter.on('connected', (status) => {
                         if (status) {
                             this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
-                            if (!hasSentResponse) {
-                                hasSentResponse = true;
-                                this.sendResponse(response);
-                            }
+                            trySendResponse();
                         }
                     });
                 }
@@ -405,18 +415,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
             if (e instanceof CompileError) {
-                if (!hasSentResponse) {
-                    hasSentResponse = true;
-                    this.sendResponse(response);
-                }
+                trySendResponse();
                 //this.sendEvent(new StoppedEvent(StoppedEventReason.exception, 0, 'Compile ERROR'));
             } else {
                 util.log('Encountered an issue during the publish process');
                 util.log((e as Error)?.stack);
                 this.sendErrorResponse(response, -1, (e as Error)?.stack);
 
-                await this.rokuAdapter?.sendErrors();
                 //send any compile errors to the client
+                await this.rokuAdapter?.sendErrors();
+
                 this.logger.error('Error. Shutting down.', e);
             }
         }
@@ -494,6 +502,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         }
 
+        //find the first compile error (i.e. first DiagnosticSeverity.Error) if there is one
         this.compileError = diagnostics.find(x => x.severity === DiagnosticSeverity.Error);
         if (this.compileError) {
             this.sendEvent(new StoppedEvent(
@@ -768,6 +777,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         let threads = [];
 
+        //This is a bit of a hack. If there's a compile error, send a thread to represent it so we can show the compile error like a runtime exception
         if (this.compileError) {
             threads.push(new Thread(this.COMPILE_ERROR_THREAD_ID, 'Compile Error'));
         } else {
@@ -797,6 +807,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             this.logger.log('stackTraceRequest');
             let frames = [];
+
+            //this is a bit of a hack. If there's a compile error, send a full stack frame so we can show the compile error like a runtime crash
             if (this.compileError) {
                 frames.push(new StackFrame(
                     0,

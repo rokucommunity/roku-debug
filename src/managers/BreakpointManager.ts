@@ -29,8 +29,6 @@ export class BreakpointManager {
     private emitter = new EventEmitter();
 
     private emit(eventName: 'breakpoints-verified', data: { breakpoints: AugmentedSourceBreakpoint[] });
-    private emit(eventName: 'breakpoints-resurrected', data: { breakpoints: AugmentedSourceBreakpoint[] });
-    private emit(eventName: 'breakpoints-eliminated', data: { breakpoints: AugmentedSourceBreakpoint[] });
     private emit(eventName: string, data: any) {
         this.emitter.emit(eventName, data);
     }
@@ -39,8 +37,6 @@ export class BreakpointManager {
      * Subscribe to an event
      */
     public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
-    public on(eventName: 'breakpoints-resurrected', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
-    public on(eventName: 'breakpoints-eliminated', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
     public on(eventName: string, handler: (data: any) => any) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -134,9 +130,6 @@ export class BreakpointManager {
         if (!existingBreakpoint) {
             breakpointsArray.push(bp);
         }
-
-        //store this latest version of the breakpoint in our breakpoints cache (to use when resurrecting breakpoints)
-        this.breakpointCache.set(bp.srcHash, { ...bp });
 
         //if this is one of the permanent breakpoints, mark it as verified immediately (only applicable to telnet sessions)
         if (this.getPermanentBreakpoint(bp.srcHash)) {
@@ -818,14 +811,6 @@ export class BreakpointManager {
      */
     private isGetDiffRunning = false;
     private lastState = new Map<string, BreakpointWorkItem>();
-    private breakpointWorkCache = new Map<string, BreakpointWorkItem>();
-
-    /**
-     * A cache of breakpoints. This is useful when the device ends up with phantom breakpoints that we don't recognize anymore,
-     * and the device can't delete them, then we can at least send them back to the client so the client could try to delete them again later
-     */
-    private breakpointCache = new Map<string, AugmentedSourceBreakpoint>();
-
 }
 
 export interface Diff {

@@ -303,16 +303,15 @@ export class DebugProtocolAdapter {
             }
 
             this.socketDebugger.on('compile-error', (update) => {
-                //this.compileClient.end();
-                let errors: BSDebugDiagnostic[] = [];
-                errors.push({
+                let diagnostics: BSDebugDiagnostic[] = [];
+                diagnostics.push({
                     path: update.data.filePath,
                     range: bscUtil.createRange(update.data.lineNumber - 1, 0, update.data.lineNumber - 1, 999),
                     message: update.data.errorMessage,
                     severity: DiagnosticSeverity.Error,
                     code: undefined
                 });
-                this.emit('diagnostics', errors);
+                this.emit('diagnostics', diagnostics);
             });
 
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
@@ -333,13 +332,16 @@ export class DebugProtocolAdapter {
         }, 200);
     }
 
+    /**
+     * Determines if the current version of the debug protocol supports emitting compile error updates.
+     */
     public get supportsCompileErrorReporting() {
         return semver.satisfies(this.deviceInfo['brightscript-debugger-version'], '>=3.1.0');
     }
 
     public async watchCompileOutput() {
         let deferred = defer();
-        //If debugProtocol supports compile error update, don't scrap telnet logs for compile errors
+        //If the debugProtocol supports compile error updates, don't scrape telnet logs for compile errors
         if (this.supportsCompileErrorReporting) {
             return deferred.resolve();
         }
@@ -729,6 +731,10 @@ export class DebugProtocolAdapter {
         }
     }
 
+    /**
+     * Indicates whether this class had `.destroy()` called at least once. Mostly used for checking externally to see if
+     * the whole debug session has been terminated or is in a bad state.
+     */
     public isDestroyed = false;
     /**
      * Disconnect from the telnet session and unset all objects

@@ -1007,6 +1007,10 @@ export class TelnetAdapter {
         this.emitter?.removeAllListeners();
     }
 
+    /**
+     * Indicates whether this class has had `.destroy()` called at least once. Mostly used for checking externally to see if
+     * the whole debug session has been terminated or is in a bad state.
+     */
     public isDestroyed = false;
     /**
      * Disconnect from the telnet session and unset all objects

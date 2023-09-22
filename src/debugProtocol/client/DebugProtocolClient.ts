@@ -210,9 +210,16 @@ export class DebugProtocolClient {
         }, 0);
     }
 
-    private cancelControlConnectInterval;
+    /**
+     * A function that can be used to cancel the repeating interval that's running to try and establish a connection to the control socket.
+     */
+    private cancelControlConnectInterval: () => void;
 
-    private pendingControlConnectionSockets;
+    /**
+     * A collection of sockets created when trying to connect to the debug protocol's control socket. We keep these around for quicker tear-down
+     * whenever there is an early-terminated debug session
+     */
+    private pendingControlConnectionSockets: Set<Net.Socket>;
 
     private async establishControlConnection() {
         this.pendingControlConnectionSockets = new Set<Net.Socket>();
