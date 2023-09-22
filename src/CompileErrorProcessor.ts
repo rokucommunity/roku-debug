@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events';
 import type { Diagnostic } from 'vscode-languageserver-protocol/node';
 import { logger } from './logging';
-import { util as bscUtil } from 'brighterscript';
+import { DiagnosticSeverity as BSDiagnosticSeverity, util as bscUtil } from 'brighterscript';
+import { DiagnosticSeverity } from 'vscode';
 
 export class CompileErrorProcessor {
 
@@ -137,7 +138,8 @@ export class CompileErrorProcessor {
                     path: this.sanitizeCompilePath(filePath),
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: this.buildMessage(message),
-                    code: undefined
+                    code: undefined,
+                    severity: BSDiagnosticSeverity.Error
                 }))
                 .filter(x => !!x);
         }
@@ -165,7 +167,8 @@ export class CompileErrorProcessor {
                 path: this.sanitizeCompilePath(filePath),
                 message: this.buildMessage(message, context),
                 range: this.getRange(lineNumber), //lineNumber is 1-based
-                code: code
+                code: code,
+                severity: BSDiagnosticSeverity.Error
             }];
         }
     }

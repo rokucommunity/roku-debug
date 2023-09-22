@@ -69,7 +69,7 @@ describe('DebugProtocolAdapter', function() {
             files: [],
             outDir: outDir
         });
-        adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager, rendezvousTracker);
+        adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager, rendezvousTracker, deviceInfo);
 
         if (!options.controlPort) {
             options.controlPort = await util.getPort();

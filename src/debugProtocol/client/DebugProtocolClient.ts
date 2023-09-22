@@ -173,6 +173,7 @@ export class DebugProtocolClient {
         });
     }
 
+    public on(eventName: 'compile-error', handler: (event: CompileErrorUpdate) => void);
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
     public on(eventName: 'breakpoints-verified', handler: (event: BreakpointsVerifiedEvent) => void);
     public on(eventName: 'response', handler: (response: ProtocolResponse) => void);
@@ -194,6 +195,7 @@ export class DebugProtocolClient {
         };
     }
 
+    private emit(eventName: 'compile-error', response: CompileErrorUpdate);
     private emit(eventName: 'response', response: ProtocolResponse);
     private emit(eventName: 'update', update: ProtocolUpdate);
     private emit(eventName: 'data', update: Buffer);
@@ -208,23 +210,27 @@ export class DebugProtocolClient {
         }, 0);
     }
 
+    private cancelControlConnectInterval;
+
+    private pendingControlConnectionSockets;
+
     private async establishControlConnection() {
-        const pendingSockets = new Set<Net.Socket>();
+        this.pendingControlConnectionSockets = new Set<Net.Socket>();
         const connection = await new Promise<Net.Socket>((resolve) => {
-            util.setInterval((cancelInterval) => {
+            this.cancelControlConnectInterval = util.setInterval((cancelInterval) => {
                 const socket = new Net.Socket({
                     allowHalfOpen: false
                 });
-                pendingSockets.add(socket);
+                this.pendingControlConnectionSockets.add(socket);
                 socket.on('error', (error) => {
                     console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
                 });
                 socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
                     cancelInterval();
 
-                    this.logger.debug(`Connected to debug protocol control port. Socket ${[...pendingSockets].indexOf(socket)} of ${pendingSockets.size} was the winner`);
+                    this.logger.debug(`Connected to debug protocol control port. Socket ${[...this.pendingControlConnectionSockets].indexOf(socket)} of ${this.pendingControlConnectionSockets.size} was the winner`);
                     //clean up all remaining pending sockets
-                    for (const pendingSocket of pendingSockets) {
+                    for (const pendingSocket of this.pendingControlConnectionSockets) {
                         pendingSocket.removeAllListeners();
                         //cleanup and destroy all other sockets
                         if (pendingSocket !== socket) {
@@ -232,7 +238,7 @@ export class DebugProtocolClient {
                             pendingSocket?.destroy();
                         }
                     }
-                    pendingSockets.clear();
+                    this.pendingControlConnectionSockets.clear();
                     resolve(socket);
                 });
             }, this.options.controlConnectInterval ?? 250);
@@ -959,7 +965,11 @@ export class DebugProtocolClient {
                 //we do nothing with breakpoint errors at this time.
                 return BreakpointErrorUpdate.fromBuffer(buffer);
             case UpdateType.CompileError:
-                return CompileErrorUpdate.fromBuffer(buffer);
+                let compileErrorUpdate = CompileErrorUpdate.fromBuffer(buffer);
+                if (compileErrorUpdate?.data?.errorMessage !== '') {
+                    this.emit('compile-error', compileErrorUpdate);
+                }
+                return compileErrorUpdate;
             case UpdateType.BreakpointVerified:
                 let response = BreakpointVerifiedUpdate.fromBuffer(buffer);
                 if (response?.data?.breakpoints?.length > 0) {
@@ -1121,6 +1131,17 @@ export class DebugProtocolClient {
 
     private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
         this.logger.log('Shutting down!');
+
+        this.cancelControlConnectInterval?.();
+        for (const pendingSocket of this.pendingControlConnectionSockets) {
+            pendingSocket.removeAllListeners();
+            //cleanup and destroy all other sockets
+            if (pendingSocket !== this.controlSocket) {
+                pendingSocket.end();
+                pendingSocket?.destroy();
+            }
+        }
+
         let exitChannelTimeout = this.options?.exitChannelTimeout ?? 30_000;
         let shutdownTimeMax = this.options?.shutdownTimeout ?? 10_000;
         //if immediate is true, this is an instant shutdown force. don't wait for anything

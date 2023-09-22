@@ -53,6 +53,7 @@ import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '
 import type { DeviceInfo } from '../DeviceInfo';
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
+import { DiagnosticSeverity } from 'brighterscript';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -134,6 +135,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private rendezvousTracker: RendezvousTracker;
 
     public tempVarPrefix = '__rokudebug__';
+
+    private compileError: BSDebugDiagnostic;
+    private COMPILE_ERROR_THREAD_ID = 7_777;
 
     private get enableDebugProtocol() {
         return this.launchConfiguration.enableDebugProtocol;
@@ -245,6 +249,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public deviceInfo: DeviceInfo;
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
+        let hasSentResponse = false;
         this.logger.log('[launchRequest] begin');
         this.launchConfiguration = config;
 
@@ -372,18 +377,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //tell the adapter adapter that the channel has been launched.
             await this.rokuAdapter.activate();
-
+            if (this.rokuAdapter.isDestroyed) {
+                throw new Error('Debug session encountered an error');
+            }
             if (!error) {
                 if (this.rokuAdapter.connected) {
                     this.logger.info('Host connection was established before the main public process was completed');
                     this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
-                    this.sendResponse(response);
+                    if (!hasSentResponse) {
+                        hasSentResponse = true;
+                        this.sendResponse(response);
+                    }
                 } else {
                     this.logger.info('Main public process was completed but we are still waiting for a connection to the host');
                     this.rokuAdapter.on('connected', (status) => {
                         if (status) {
                             this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
-                            this.sendResponse(response);
+                            if (!hasSentResponse) {
+                                hasSentResponse = true;
+                                this.sendResponse(response);
+                            }
                         }
                     });
                 }
@@ -392,16 +405,21 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
-            if (!(e instanceof CompileError)) {
+            if (e instanceof CompileError) {
+                if (!hasSentResponse) {
+                    hasSentResponse = true;
+                    this.sendResponse(response);
+                }
+                //this.sendEvent(new StoppedEvent(StoppedEventReason.exception, 0, 'Compile ERROR'));
+            } else {
                 util.log('Encountered an issue during the publish process');
-                util.log((e as Error).message);
-                this.sendErrorResponse(response, -1, (e as Error).message);
-            }
+                util.log((e as Error)?.stack);
+                this.sendErrorResponse(response, -1, (e as Error)?.stack);
 
-            //send any compile errors to the client
-            await this.rokuAdapter.sendErrors();
-            this.logger.error('Error. Shutting down.', e);
-            return this.shutdown();
+                await this.rokuAdapter?.sendErrors();
+                //send any compile errors to the client
+                this.logger.error('Error. Shutting down.', e);
+            }
         }
 
         //at this point, the project has been deployed. If we need to use a deep link, launch it now.
@@ -475,6 +493,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 // TODO: may need to add a custom event if the source location could not be found by the ProjectManager
                 diagnostic.path = fileUtils.removeLeadingSlash(util.removeFileScheme(diagnostic.path));
             }
+        }
+
+        this.compileError = diagnostics.find(x => x.severity === DiagnosticSeverity.Error);
+        if (this.compileError) {
+            this.sendEvent(new StoppedEvent(
+                StoppedEventReason.exception,
+                this.COMPILE_ERROR_THREAD_ID,
+                `CompileError: ${this.compileError.message}`
+            ));
         }
 
         this.sendEvent(new DiagnosticsEvent(diagnostics));
@@ -744,17 +771,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         let threads = [];
 
-        //only send the threads request if we are at the debugger prompt
-        if (this.rokuAdapter.isAtDebuggerPrompt) {
-            let rokuThreads = await this.rokuAdapter.getThreads();
-
-            for (let thread of rokuThreads) {
-                threads.push(
-                    new Thread(thread.threadId, `Thread ${thread.threadId}`)
-                );
-            }
+        if (this.compileError) {
+            threads.push(new Thread(this.COMPILE_ERROR_THREAD_ID, 'Compile Error'));
         } else {
-            this.logger.log('Skipped getting threads because the RokuAdapter is not accepting input at this time.');
+            //only send the threads request if we are at the debugger prompt
+            if (this.rokuAdapter.isAtDebuggerPrompt) {
+                let rokuThreads = await this.rokuAdapter.getThreads();
+
+                for (let thread of rokuThreads) {
+                    threads.push(
+                        new Thread(thread.threadId, `Thread ${thread.threadId}`)
+                    );
+                }
+            } else {
+                this.logger.log('Skipped getting threads because the RokuAdapter is not accepting input at this time.');
+            }
+
         }
 
         response.body = {
@@ -768,49 +800,59 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             this.logger.log('stackTraceRequest');
             let frames = [];
-
-            if (this.rokuAdapter.isAtDebuggerPrompt) {
-                let stackTrace = await this.rokuAdapter.getStackTrace(args.threadId);
-
-                for (let debugFrame of stackTrace) {
-                    let sourceLocation = await this.projectManager.getSourceLocation(debugFrame.filePath, debugFrame.lineNumber);
-
-                    //the stacktrace returns function identifiers in all lower case. Try to get the actual case
-                    //load the contents of the file and get the correct casing for the function identifier
-                    try {
-                        let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation?.filePath, debugFrame.functionIdentifier);
-                        if (functionName) {
-
-                            //search for original function name if this is an anonymous function.
-                            //anonymous function names are prefixed with $ in the stack trace (i.e. $anon_1 or $functionname_40002)
-                            if (functionName.startsWith('$')) {
-                                functionName = this.fileManager.getFunctionNameAtPosition(
-                                    sourceLocation.filePath,
-                                    sourceLocation.lineNumber - 1,
-                                    functionName
-                                );
-                            }
-                            debugFrame.functionIdentifier = functionName;
-                        }
-                    } catch (error) {
-                        this.logger.error('Error correcting function identifier case', { error, sourceLocation, debugFrame });
-                    }
-                    const filePath = sourceLocation?.filePath ?? debugFrame.filePath;
-
-                    const frame: DebugProtocol.StackFrame = new StackFrame(
-                        debugFrame.frameId,
-                        `${debugFrame.functionIdentifier}`,
-                        new Source(path.basename(filePath), filePath),
-                        sourceLocation?.lineNumber ?? debugFrame.lineNumber,
-                        1
-                    );
-                    if (!sourceLocation) {
-                        frame.presentationHint = 'subtle';
-                    }
-                    frames.push(frame);
-                }
+            if (this.compileError) {
+                frames.push(new StackFrame(
+                    0,
+                    'Compile Error',
+                    new Source(path.basename(this.compileError.path), this.compileError.path),
+                    //diagnostics are 0 based, vscode expects 1 based
+                    this.compileError.range.start.line + 1,
+                    this.compileError.range.start.character + 1
+                ));
             } else {
-                this.logger.log('Skipped calculating stacktrace because the RokuAdapter is not accepting input at this time');
+                if (this.rokuAdapter.isAtDebuggerPrompt) {
+                    let stackTrace = await this.rokuAdapter.getStackTrace(args.threadId);
+
+                    for (let debugFrame of stackTrace) {
+                        let sourceLocation = await this.projectManager.getSourceLocation(debugFrame.filePath, debugFrame.lineNumber);
+
+                        //the stacktrace returns function identifiers in all lower case. Try to get the actual case
+                        //load the contents of the file and get the correct casing for the function identifier
+                        try {
+                            let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation?.filePath, debugFrame.functionIdentifier);
+                            if (functionName) {
+
+                                //search for original function name if this is an anonymous function.
+                                //anonymous function names are prefixed with $ in the stack trace (i.e. $anon_1 or $functionname_40002)
+                                if (functionName.startsWith('$')) {
+                                    functionName = this.fileManager.getFunctionNameAtPosition(
+                                        sourceLocation.filePath,
+                                        sourceLocation.lineNumber - 1,
+                                        functionName
+                                    );
+                                }
+                                debugFrame.functionIdentifier = functionName;
+                            }
+                        } catch (error) {
+                            this.logger.error('Error correcting function identifier case', { error, sourceLocation, debugFrame });
+                        }
+                        const filePath = sourceLocation?.filePath ?? debugFrame.filePath;
+
+                        const frame: DebugProtocol.StackFrame = new StackFrame(
+                            debugFrame.frameId,
+                            `${debugFrame.functionIdentifier}`,
+                            new Source(path.basename(filePath), filePath),
+                            sourceLocation?.lineNumber ?? debugFrame.lineNumber,
+                            1
+                        );
+                        if (!sourceLocation) {
+                            frame.presentationHint = 'subtle';
+                        }
+                        frames.push(frame);
+                    }
+                } else {
+                    this.logger.log('Skipped calculating stacktrace because the RokuAdapter is not accepting input at this time');
+                }
             }
             response.body = {
                 stackFrames: frames,
@@ -1123,20 +1165,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param args
      */
     protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
-        if (this.rokuAdapter) {
-            await this.rokuAdapter.destroy();
-        }
         //return to the home screen
         if (!this.enableDebugProtocol) {
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
         }
-        this.componentLibraryServer.stop();
         this.sendResponse(response);
+        await this.shutdown();
     }
 
     private createRokuAdapter(host: string, rendezvousTracker: RendezvousTracker) {
         if (this.enableDebugProtocol) {
-            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager, rendezvousTracker);
+            this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager, rendezvousTracker, this.deviceInfo);
         } else {
             this.rokuAdapter = new TelnetAdapter(this.launchConfiguration, rendezvousTracker);
         }
@@ -1380,6 +1419,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string): Promise<void> {
         try {
+            this.componentLibraryServer?.stop();
+
             this.rendezvousTracker?.destroy?.();
 
             //if configured, delete the staging directory
@@ -1402,7 +1443,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.showPopupMessage(errorMessage, 'error');
             }
 
-            if (this.launchConfiguration.stopDebuggerOnAppExit !== false) {
+            if (this.enableDebugProtocol || this.launchConfiguration.stopDebuggerOnAppExit !== false) {
                 this.logger.log('Destroy rokuAdapter');
                 await this.rokuAdapter?.destroy?.();
                 //press the home button to return to the home screen

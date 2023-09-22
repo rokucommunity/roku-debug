@@ -1,12 +1,13 @@
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
+import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { ErrorCode, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { ErrorCode, PROTOCOL_ERROR_CODES, UpdateType } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
@@ -19,6 +20,7 @@ import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient
 import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { TelnetAdapter } from './TelnetAdapter';
+import type { DeviceInfo } from '../DeviceInfo';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -28,7 +30,8 @@ export class DebugProtocolAdapter {
         private options: AdapterOptions & ConstructorOptions,
         private projectManager: ProjectManager,
         private breakpointManager: BreakpointManager,
-        private rendezvousTracker: RendezvousTracker
+        private rendezvousTracker: RendezvousTracker,
+        private deviceInfo: DeviceInfo
     ) {
         util.normalizeAdapterOptions(this.options);
         this.emitter = new EventEmitter();
@@ -119,11 +122,9 @@ export class DebugProtocolAdapter {
     public on(eventName: 'start', handler: () => void);
     public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
     public on(eventName: string, handler: (payload: any) => void) {
-        this.emitter.on(eventName, handler);
+        this.emitter?.on(eventName, handler);
         return () => {
-            if (this.emitter !== undefined) {
-                this.emitter.removeListener(eventName, handler);
-            }
+            this.emitter?.removeListener(eventName, handler);
         };
     }
 
@@ -301,6 +302,19 @@ export class DebugProtocolAdapter {
                 this.compileClient = undefined;
             }
 
+            this.socketDebugger.on('compile-error', (update) => {
+                //this.compileClient.end();
+                let errors: BSDebugDiagnostic[] = [];
+                errors.push({
+                    path: update.data.filePath,
+                    range: bscUtil.createRange(update.data.lineNumber - 1, 0, update.data.lineNumber - 1, 999),
+                    message: update.data.errorMessage,
+                    severity: DiagnosticSeverity.Error,
+                    code: undefined
+                });
+                this.emit('diagnostics', errors);
+            });
+
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
             this.emit('connected', this.connected);
 
@@ -319,8 +333,16 @@ export class DebugProtocolAdapter {
         }, 200);
     }
 
+    public get supportsCompileErrorReporting() {
+        return semver.satisfies(this.deviceInfo['brightscript-debugger-version'], '>=3.1.0');
+    }
+
     public async watchCompileOutput() {
         let deferred = defer();
+        //If debugProtocol supports compile error update, don't scrap telnet logs for compile errors
+        if (this.supportsCompileErrorReporting) {
+            return deferred.resolve();
+        }
         try {
             this.compileClient = new Socket();
             this.compileErrorProcessor.on('diagnostics', (errors) => {
@@ -707,10 +729,13 @@ export class DebugProtocolAdapter {
         }
     }
 
+    public isDestroyed = false;
     /**
      * Disconnect from the telnet session and unset all objects
      */
     public async destroy() {
+        this.isDestroyed = true;
+
         // destroy the debug client if it's defined
         if (this.socketDebugger) {
             await this.socketDebugger.destroy();

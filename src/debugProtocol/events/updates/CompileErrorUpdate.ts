@@ -33,7 +33,7 @@ export class CompileErrorUpdate {
         const update = new CompileErrorUpdate();
         protocolUtil.bufferLoaderHelper(update, buffer, 20, (smartBuffer) => {
             protocolUtil.loadCommonUpdateFields(update, smartBuffer, update.data.updateType);
-
+            update.data.flags = smartBuffer.readUInt32LE(); // flags - always 0, reserved for future use
             update.data.errorMessage = protocolUtil.readStringNT(smartBuffer); // error_string
             update.data.filePath = protocolUtil.readStringNT(smartBuffer); // file_spec
             update.data.lineNumber = smartBuffer.readUInt32LE(); // line_number
@@ -62,6 +62,7 @@ export class CompileErrorUpdate {
     public readOffset: number = undefined;
 
     public data = {
+        flags: undefined as number,
         /**
          * A text message describing the compiler error.
          *

@@ -1007,10 +1007,13 @@ export class TelnetAdapter {
         this.emitter?.removeAllListeners();
     }
 
+    public isDestroyed = false;
     /**
      * Disconnect from the telnet session and unset all objects
      */
     public destroy() {
+        this.isDestroyed = true;
+
         if (this.requestPipeline) {
             this.requestPipeline.destroy();
         }
