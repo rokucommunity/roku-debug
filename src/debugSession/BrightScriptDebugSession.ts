@@ -505,8 +505,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         this.sendEvent(new DiagnosticsEvent(diagnostics));
-        //stop the roku adapter and exit the channel
-        return this.shutdown();
     }
 
     private async connectAndPublish() {
@@ -1254,7 +1252,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             })
         );
 
-        outer:for (const bp of this.breakpointManager.failedDeletions) {
+        outer: for (const bp of this.breakpointManager.failedDeletions) {
             for (const thread of threads) {
                 let sourceLocation = await this.projectManager.getSourceLocation(thread.filePath, thread.lineNumber);
                 // This stop was due to a breakpoint that we tried to delete, but couldn't.

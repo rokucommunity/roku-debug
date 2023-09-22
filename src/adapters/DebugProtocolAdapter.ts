@@ -738,7 +738,11 @@ export class DebugProtocolAdapter {
 
         // destroy the debug client if it's defined
         if (this.socketDebugger) {
-            await this.socketDebugger.destroy();
+            try {
+                await this.socketDebugger.destroy();
+            } catch (e) {
+                this.logger.error(e);
+            }
         }
 
         this.cache = undefined;
