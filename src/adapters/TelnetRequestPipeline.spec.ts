@@ -1,5 +1,5 @@
 import { TelnetCommand, TelnetRequestPipeline } from './TelnetRequestPipeline';
-import { util } from '../util';
+import { defer, util } from '../util';
 import { expect } from 'chai';
 import dedent = require('dedent');
 import { logger } from '../logging';
@@ -242,7 +242,7 @@ describe('RequestPipeline', () => {
     it('joins split log messages together', async () => {
         socket.messageQueue.push();
         const outputEvents = [] as string[];
-        const deferred = new Deferred();
+        const deferred = defer();
         //there should be 2 events
         pipeline.on('console-output', (data) => {
             outputEvents.push(data);

@@ -1,6 +1,6 @@
 import type { Socket } from 'net';
 import * as EventEmitter from 'eventemitter3';
-import { util } from '../util';
+import { defer, util } from '../util';
 import type { Logger } from '../logging';
 import { createLogger } from '../logging';
 import { Deferred } from 'brighterscript';
@@ -228,7 +228,7 @@ export class TelnetCommand {
 
     public logger: Logger;
 
-    private deferred = new Deferred<string>();
+    private deferred = defer<string>();
 
     /**
      * Promise that completes when the command is finished
