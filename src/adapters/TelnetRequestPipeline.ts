@@ -1,6 +1,6 @@
 import type { Socket } from 'net';
 import * as EventEmitter from 'eventemitter3';
-import { util } from '../util';
+import { defer, util } from '../util';
 import type { Logger } from '../logging';
 import { createLogger } from '../logging';
 import { Deferred } from 'brighterscript';
@@ -14,7 +14,7 @@ export class TelnetRequestPipeline {
 
     private logger = createLogger(`[${TelnetRequestPipeline.name}]`);
 
-    private commands: Command[] = [];
+    private commands: TelnetCommand[] = [];
 
     public isAtDebuggerPrompt = false;
 
@@ -22,7 +22,7 @@ export class TelnetRequestPipeline {
         return this.activeCommand !== undefined;
     }
 
-    private activeCommand: Command = undefined;
+    private activeCommand: TelnetCommand = undefined;
 
     private emitter = new EventEmitter();
 
@@ -138,7 +138,7 @@ export class TelnetRequestPipeline {
          */
         insertAtFront?: boolean;
     }) {
-        const command = new Command(
+        const command = new TelnetCommand(
             commandText,
             options?.waitForPrompt ?? true,
             this.logger,
@@ -212,7 +212,7 @@ export class TelnetRequestPipeline {
     }
 }
 
-class Command {
+export class TelnetCommand {
     public constructor(
         public commandText: string,
         /**
@@ -228,7 +228,7 @@ class Command {
 
     public logger: Logger;
 
-    private deferred = new Deferred<string>();
+    private deferred = defer<string>();
 
     /**
      * Promise that completes when the command is finished
@@ -257,7 +257,7 @@ class Command {
             this.pipeline.isAtDebuggerPrompt = false;
         } catch (e) {
             this.logger.error('Error executing command', e);
-            this.deferred.reject('Error executing command');
+            this.deferred.reject(new Error('Error executing command'));
         }
     }
 
@@ -279,30 +279,43 @@ class Command {
         //get the first response
         const match = /Brightscript Debugger>\s*/is.exec(pipeline.unhandledText);
         if (match) {
-            const response = this.removeJunk(
-                pipeline.unhandledText.substring(0, match.index)
-            );
+            try {
+                const response = this.removeJunk(
+                    pipeline.unhandledText.substring(0, match.index)
+                );
 
-            this.logger.debug('Found response before the first "Brightscript Debugger>" prompt', { response, allText: pipeline.unhandledText });
-            //remove the response from the unhandled text
-            pipeline.unhandledText = pipeline.unhandledText.substring(match.index + match[0].length);
+                this.logger.debug('Found response before the first "Brightscript Debugger>" prompt', { response, allText: pipeline.unhandledText });
+                //remove the response from the unhandled text
+                pipeline.unhandledText = pipeline.unhandledText.substring(match.index + match[0].length);
 
-            //emit the remaining unhandled text
-            if (pipeline.unhandledText?.length > 0) {
-                pipeline.emit('unhandled-console-output', pipeline.unhandledText);
-            }
-            //clear the unhandled text
-            pipeline.unhandledText = '';
+                //emit the remaining unhandled text
+                if (pipeline.unhandledText?.length > 0) {
+                    pipeline.emit('unhandled-console-output', pipeline.unhandledText);
+                }
+                //clear the unhandled text
+                pipeline.unhandledText = '';
 
-            this.logger.debug(`execute result`, { commandText: this.commandText, response });
-            if (!this.deferred.isCompleted) {
-                this.logger.debug('resolving promise', { response });
-                this.deferred.resolve(response);
-            } else {
-                this.logger.error('Command already completed', { response, commandText: this.commandText, stacktrace: new Error().stack });
+                this.logger.debug(`execute result`, { commandText: this.commandText, response });
+                if (!this.deferred.isCompleted) {
+                    this.logger.debug('resolving promise', { response });
+                    this.deferred.resolve(response);
+                } else {
+                    this.logger.error('Command already completed', { response, commandText: this.commandText, stacktrace: new Error().stack });
+                }
+            } catch (e) {
+                this.deferred.reject(e as unknown as Error);
             }
         } else {
             // no prompt found, wait for more data from the device
         }
+    }
+
+    toJSON() {
+        return {
+            commandText: this.commandText,
+            id: this.id,
+            isCompleted: this.isCompleted,
+            waitForPrompt: this.waitForPrompt
+        };
     }
 }
