@@ -30,6 +30,7 @@ const createLogger = logger.createLogger.bind(logger) as typeof Logger.prototype
 
 export { logger, createLogger };
 export type { Logger, LogMessage, LogLevel } from '@rokucommunity/logger';
+export { LogLevelPriority } from '@rokucommunity/logger';
 
 export class FileLoggingManager {
 

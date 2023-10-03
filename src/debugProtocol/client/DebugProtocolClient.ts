@@ -329,11 +329,15 @@ export class DebugProtocolClient {
      * can be extracted and processed through the DebugProtocolClientReplaySession
      */
     private writeToBufferLog(type: 'server-to-client' | 'client-to-server' | 'io', buffer: Buffer) {
-        this.logger.log('[[bufferLog]]:', JSON.stringify({
+        let obj = {
             type: type,
             timestamp: new Date().toISOString(),
             buffer: buffer.toJSON()
-        }));
+        };
+        if (type === 'io') {
+            (obj as any).text = buffer.toString();
+        }
+        this.logger.log('[[bufferLog]]:', JSON.stringify(obj));
     }
 
     public continue() {
@@ -1086,6 +1090,9 @@ export class DebugProtocolClient {
             });
             // Send a connection request to the server.
             this.logger.log(`Connect to IO Port ${this.options.host}:${update.data.port}`);
+
+            //sometimes the server shuts down before we had a chance to connect, so recover more gracefully
+            try {
             this.ioSocket.connect({
                 port: update.data.port,
                 host: this.options.host
@@ -1124,6 +1131,10 @@ export class DebugProtocolClient {
                 });
             });
             return true;
+            } catch (e) {
+                this.logger.error(`Failed to connect to IO socket at ${this.options.host}:${update.data.port}`, e);
+                void this.shutdown('app-exit');
+            }
         }
         return false;
     }

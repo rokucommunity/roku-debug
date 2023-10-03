@@ -379,11 +379,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             });
 
-            //ignore the compile error failure from within the publish
-            (this.launchConfiguration as any).failOnCompileError = false;
-            // Set the remote debug flag on the args to be passed to roku deploy so the socket debugger can be started if needed.
-            (this.launchConfiguration as any).remoteDebug = this.enableDebugProtocol;
-
             await this.connectAndPublish();
 
             this.sendEvent(new ChannelPublishedEvent(
@@ -536,9 +531,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
             ...this.launchConfiguration,
+            //typing fix
+            logLevel: LogLevelPriority[this.logger.logLevel],
+            // enable the debug protocol if true
+            remoteDebug: this.enableDebugProtocol,
+            //necessary for capturing compile errors from the protocol (has no effect on telnet)
+            remoteDebugConnectEarly: false,
+            //we don't want to fail if there were compile errors...we'll let our compile error processor handle that
             failOnCompileError: true
-        } as any as RokuDeployOptions).then(() => {
+        }).then(() => {
             packageIsPublished = true;
+        }).catch((e) => {
+            this.logger.error(e);
         });
 
         await publishPromise;
