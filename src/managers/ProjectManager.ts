@@ -39,6 +39,8 @@ export class ProjectManager {
         enableDebugProtocol?: boolean;
     };
 
+    public logger = logger.createLogger('[ProjectManager]');
+
     public mainProject: Project;
     public componentLibraryProjects = [] as ComponentLibraryProject[];
 
@@ -158,6 +160,7 @@ export class ProjectManager {
         //convert entry point staging location to source location
         let sourceLocation = await this.getSourceLocation(entryPoint.relativePath, entryPoint.lineNumber);
 
+        this.logger.info(`Registering entry breakpoint at ${sourceLocation.filePath}:${sourceLocation.lineNumber} (${entryPoint.pathAbsolute}:${entryPoint.lineNumber})`);
         //register the entry breakpoint
         this.breakpointManager.setBreakpoint(sourceLocation.filePath, {
             //+1 to select the first line of the function

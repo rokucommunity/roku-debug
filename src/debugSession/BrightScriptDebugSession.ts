@@ -398,7 +398,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //send any compile errors to the client
-            await this.rokuAdapter.sendErrors();
+            await this.rokuAdapter?.sendErrors();
             this.logger.error('Error. Shutting down.', e);
             return this.shutdown();
         }
@@ -720,6 +720,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Called every time a breakpoint is created, modified, or deleted, for each file. This receives the entire list of breakpoints every time.
      */
     public async setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) {
+        this.logger.log('setBreakpointsRequest');
         let sanitizedBreakpoints = this.breakpointManager.replaceBreakpoints(args.source.path, args.breakpoints);
         //sort the breakpoints
         let sortedAndFilteredBreakpoints = orderBy(sanitizedBreakpoints, [x => x.line, x => x.column]);
@@ -729,6 +730,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         };
         this.sendResponse(response);
 
+        this.logger.debug('[setBreakpointsRequest] syncBreakpoints()', args);
         await this.rokuAdapter?.syncBreakpoints();
     }
 
