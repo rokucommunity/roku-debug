@@ -14,7 +14,6 @@ import * as semver from 'semver';
 import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
 import type { BreakpointManager } from '../managers/BreakpointManager';
 import type { ProjectManager } from '../managers/ProjectManager';
-import { ActionQueue } from '../managers/ActionQueue';
 import type { BreakpointsVerifiedEvent, ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
@@ -358,7 +357,7 @@ export class DebugProtocolAdapter {
             });
             this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
             this.compileClient.connect(this.options.brightScriptConsolePort, this.options.host, () => {
-                this.logger.log(`Connected via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
+                this.logger.log(`CONNECTED via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
             });
 
             this.logger.debug('Waiting for the compile client to settle');

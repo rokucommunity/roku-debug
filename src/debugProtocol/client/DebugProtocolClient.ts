@@ -1093,44 +1093,44 @@ export class DebugProtocolClient {
 
             //sometimes the server shuts down before we had a chance to connect, so recover more gracefully
             try {
-            this.ioSocket.connect({
-                port: update.data.port,
-                host: this.options.host
-            }, () => {
-                // If there is no error, the server has accepted the request
-                this.logger.log('TCP connection established with the IO Port.');
-                this.connectedToIoPort = true;
+                this.ioSocket.connect({
+                    port: update.data.port,
+                    host: this.options.host
+                }, () => {
+                    // If there is no error, the server has accepted the request
+                    this.logger.log('TCP connection established with the IO Port.');
+                    this.connectedToIoPort = true;
 
-                let lastPartialLine = '';
-                this.ioSocket.on('data', (buffer) => {
-                    this.writeToBufferLog('io', buffer);
-                    let responseText = buffer.toString();
-                    if (!responseText.endsWith('\n')) {
-                        // buffer was split, save the partial line
-                        lastPartialLine += responseText;
-                    } else {
-                        if (lastPartialLine) {
-                            // there was leftover lines, join the partial lines back together
-                            responseText = lastPartialLine + responseText;
-                            lastPartialLine = '';
+                    let lastPartialLine = '';
+                    this.ioSocket.on('data', (buffer) => {
+                        this.writeToBufferLog('io', buffer);
+                        let responseText = buffer.toString();
+                        if (!responseText.endsWith('\n')) {
+                            // buffer was split, save the partial line
+                            lastPartialLine += responseText;
+                        } else {
+                            if (lastPartialLine) {
+                                // there was leftover lines, join the partial lines back together
+                                responseText = lastPartialLine + responseText;
+                                lastPartialLine = '';
+                            }
+                            // Emit the completed io string.
+                            this.emit('io-output', responseText.trim());
                         }
-                        // Emit the completed io string.
-                        this.emit('io-output', responseText.trim());
-                    }
-                });
+                    });
 
-                this.ioSocket.on('close', () => {
-                    this.logger.log('IO socket closed');
-                    this.ioSocketClosed.tryResolve();
-                });
+                    this.ioSocket.on('close', () => {
+                        this.logger.log('IO socket closed');
+                        this.ioSocketClosed.tryResolve();
+                    });
 
-                // Don't forget to catch error, for your own sake.
-                this.ioSocket.once('error', (err) => {
-                    this.ioSocket.end();
-                    this.logger.error(err);
+                    // Don't forget to catch error, for your own sake.
+                    this.ioSocket.once('error', (err) => {
+                        this.ioSocket.end();
+                        this.logger.error(err);
+                    });
                 });
-            });
-            return true;
+                return true;
             } catch (e) {
                 this.logger.error(`Failed to connect to IO socket at ${this.options.host}:${update.data.port}`, e);
                 void this.shutdown('app-exit');

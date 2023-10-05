@@ -49,7 +49,7 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
-import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '../logging';
+import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
 import type { DeviceInfo } from '../DeviceInfo';
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
@@ -1456,18 +1456,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.showPopupMessage(errorMessage, 'error');
             }
 
-            if (this.enableDebugProtocol || this.launchConfiguration.stopDebuggerOnAppExit !== false) {
-                this.logger.log('Destroy rokuAdapter');
-                await this.rokuAdapter?.destroy?.();
-                //press the home button to return to the home screen
-                try {
-                    this.logger.log('Press home button');
-                    await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-                } catch (e) {
-                    console.error(e);
-                    this.logger.error(e);
-                }
+            this.logger.log('Destroy rokuAdapter');
+            await this.rokuAdapter?.destroy?.();
+            //press the home button to return to the home screen
+            try {
+                this.logger.log('Press home button');
+                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            } catch (e) {
+                this.logger.error(e);
             }
+
 
             this.logger.log('Send terminated event');
             this.sendEvent(new TerminatedEvent());
