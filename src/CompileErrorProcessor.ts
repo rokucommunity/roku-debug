@@ -35,45 +35,40 @@ export class CompileErrorProcessor {
     }
 
     public processUnhandledLines(responseText: string) {
-        if (this.status === CompileStatus.running) {
-            return;
-        }
-
-        let newLines = responseText.split(/\r?\n/g);
-        switch (this.status) {
-            case CompileStatus.compiling:
-            case CompileStatus.compileError:
-                this.endCompilingLine = this.getEndCompilingLine(newLines);
-                if (this.endCompilingLine !== -1) {
-                    this.logger.debug('[processUnhandledLines] entering state CompileStatus.running');
-                    this.status = CompileStatus.running;
-                    this.resetCompileErrorTimer(false);
-                } else {
-                    this.compilingLines = this.compilingLines.concat(newLines);
-                    if (this.status === CompileStatus.compiling) {
-                        //check to see if we've entered an error scenario
-                        let hasError = /\berror\b/gi.test(responseText);
-                        if (hasError) {
-                            this.logger.debug('[processUnhandledLines] entering state CompileStatus.compileError');
-                            this.status = CompileStatus.compileError;
+        let lines = responseText.split(/\r?\n/g);
+        for (const line of lines) {
+            switch (this.status) {
+                case CompileStatus.compiling:
+                case CompileStatus.compileError:
+                    if (this.isEndCompilingLine(line)) {
+                        this.logger.debug('[processUnhandledLines] entering state CompileStatus.running');
+                        this.status = CompileStatus.running;
+                        this.resetCompileErrorTimer(false);
+                    } else {
+                        this.compilingLines.push(line);
+                        if (this.status === CompileStatus.compiling) {
+                            //check to see if we've entered an error scenario
+                            let hasError = /\berror\b/gi.test(line);
+                            if (hasError) {
+                                this.logger.debug('[processUnhandledLines] entering state CompileStatus.compileError');
+                                this.status = CompileStatus.compileError;
+                            }
+                        }
+                        if (this.status === CompileStatus.compileError) {
+                            //every input line while in error status will reset the stale timer, so we can wait for more errors to roll in.
+                            this.resetCompileErrorTimer(true);
                         }
                     }
-                    if (this.status === CompileStatus.compileError) {
-                        //every input line while in error status will reset the stale timer, so we can wait for more errors to roll in.
+                    break;
+                case CompileStatus.none:
+                case CompileStatus.running:
+                    if (this.isStartingCompilingLine(line)) {
+                        this.logger.debug('[processUnhandledLines] entering state CompileStatus.compiling');
+                        this.status = CompileStatus.compiling;
                         this.resetCompileErrorTimer(true);
                     }
-                }
-                break;
-            case CompileStatus.none:
-                this.startCompilingLine = this.getStartingCompilingLine(newLines);
-                this.compilingLines = this.compilingLines.concat(newLines);
-                if (this.startCompilingLine !== -1) {
-                    this.logger.debug('[processUnhandledLines] entering state CompileStatus.compiling');
-                    newLines.splice(0, this.startCompilingLine);
-                    this.status = CompileStatus.compiling;
-                    this.resetCompileErrorTimer(true);
-                }
-                break;
+                    break;
+            }
         }
     }
 
@@ -309,7 +304,7 @@ export class CompileErrorProcessor {
 
     public resetCompileErrorTimer(isRunning): any {
         if (this.compileErrorTimer) {
-            clearInterval(this.compileErrorTimer);
+            clearTimeout(this.compileErrorTimer);
             this.compileErrorTimer = undefined;
         }
 
@@ -328,29 +323,16 @@ export class CompileErrorProcessor {
         this.reportErrors();
     }
 
-    private getStartingCompilingLine(lines: string[]): number {
-        let lastIndex = -1;
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            //if this line looks like the compiling line
-            if (/------\s+compiling.*------/i.exec(line)) {
-                lastIndex = i;
-            }
-        }
-        return lastIndex;
+    private isStartingCompilingLine(line: string): boolean {
+        //https://regex101.com/r/8W2wuZ/1
+        // We need to start scanning for compile errors earlier than the ---compiling--- message, so look for the [scrpt.cmpl] message.
+        // keep the ---compiling--- as well, since it doesn't hurt to remain in compile mode
+        return /(------\s+compiling.*------)|(\[scrpt.cmpl]\s+compiling\s+'.*?'\s*,\s*id\s*'.*?')/i.test(line);
     }
 
-    private getEndCompilingLine(lines: string[]): number {
-        let lastIndex = -1;
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            // if this line looks like the compiling line
-            if (/------\s+Running.*------/i.exec(line)) {
-                lastIndex = i;
-            }
-        }
-        return lastIndex;
-
+    private isEndCompilingLine(line: string): boolean {
+        // if this line looks like the compiling line
+        return /------\s+Running.*------/i.test(line);
     }
 
     /**

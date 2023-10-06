@@ -6,7 +6,6 @@ import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     DebugSession as BaseDebugSession,
-    ErrorDestination,
     Handles,
     InitializedEvent,
     InvalidatedEvent,
@@ -266,6 +265,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         };
 
         this.logger.log('[launchRequest] begin');
+        trySendResponse();
         this.launchConfiguration = config;
 
         //set the logLevel provided by the launch config
