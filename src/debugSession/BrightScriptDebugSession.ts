@@ -922,6 +922,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {
         //if we have a compile error, we should shut down
         if (this.compileError) {
+            this.sendResponse(response);
             await this.shutdown();
             return;
         }
@@ -936,6 +937,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //if we have a compile error, we should shut down
         if (this.compileError) {
+            this.sendResponse(response);
             await this.shutdown();
             return;
         }
@@ -959,6 +961,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //if we have a compile error, we should shut down
         if (this.compileError) {
+            this.sendResponse(response);
             await this.shutdown();
             return;
         }
@@ -973,16 +976,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
-        //if we have a compile error, we should shut down
-        if (this.compileError) {
-            await this.shutdown();
-            return;
-        }
-
         this.logger.log('[stepInRequest]');
 
         //if we have a compile error, we should shut down
         if (this.compileError) {
+            this.sendResponse(response);
             await this.shutdown();
             return;
         }
@@ -993,13 +991,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments) {
+        this.logger.log('[stepOutRequest] begin');
+
         //if we have a compile error, we should shut down
         if (this.compileError) {
+            this.sendResponse(response);
             await this.shutdown();
             return;
         }
 
-        this.logger.log('[stepOutRequest] begin');
         await this.rokuAdapter.stepOut(args.threadId);
         this.sendResponse(response);
         this.logger.info('[stepOutRequest] end');
