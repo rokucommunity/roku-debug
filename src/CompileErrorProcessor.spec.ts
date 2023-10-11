@@ -763,7 +763,8 @@ describe('CompileErrorProcessor', () => {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: 'No manifest. Invalid package',
                     path: 'pkg:/manifest',
-                    severity: DiagnosticSeverity.Error
+                    severity: DiagnosticSeverity.Error,
+                    code: undefined
                 }
             ]);
         });

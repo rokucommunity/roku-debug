@@ -719,7 +719,8 @@ describe('BrightScriptDebugSession', () => {
                     message: 'Crash',
                     path: s`${stagingDir}/.roku-deploy-staging/components/SomeComponent.xml`,
                     range: bscUtil.createRange(1, 2, 1, 4),
-                    severity: DiagnosticSeverity.Warning
+                    severity: DiagnosticSeverity.Warning,
+                    source: 'roku-debug'
                 }]
             });
         });
