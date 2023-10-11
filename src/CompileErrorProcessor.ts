@@ -3,8 +3,6 @@ import type { Diagnostic } from 'vscode-languageserver-protocol/node';
 import { logger } from './logging';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 
-const diagnosticSource = 'roku-debug';
-
 export class CompileErrorProcessor {
 
     private logger = logger.createLogger(`[${CompileErrorProcessor.name}]`);
@@ -140,7 +138,6 @@ export class CompileErrorProcessor {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: this.buildMessage(message),
                     code: undefined,
-                    source: diagnosticSource,
                     severity: DiagnosticSeverity.Error
                 }))
                 .filter(x => !!x);
@@ -170,7 +167,6 @@ export class CompileErrorProcessor {
                 message: this.buildMessage(message, context),
                 range: this.getRange(lineNumber), //lineNumber is 1-based
                 code: code,
-                source: diagnosticSource,
                 severity: DiagnosticSeverity.Error
             }];
         }
@@ -208,7 +204,6 @@ export class CompileErrorProcessor {
                         range: this.getRange(lineNumber), //lineNumber is 1-based
                         message: this.buildMessage(message),
                         code: undefined,
-                        source: diagnosticSource,
                         severity: DiagnosticSeverity.Error
                     });
                 } else {
@@ -244,7 +239,6 @@ export class CompileErrorProcessor {
                 path: this.sanitizeCompilePath(filePath),
                 range: this.getRange(),
                 code: undefined,
-                source: diagnosticSource,
                 severity: DiagnosticSeverity.Error
             }];
         }
@@ -269,7 +263,6 @@ export class CompileErrorProcessor {
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: this.buildMessage(message),
                 code: undefined,
-                source: diagnosticSource,
                 severity: DiagnosticSeverity.Error
             }];
         }

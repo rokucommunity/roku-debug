@@ -54,6 +54,8 @@ import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
 
+const diagnosticSource = 'roku-debug';
+
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
         super();
@@ -486,6 +488,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private async handleDiagnostics(diagnostics: BSDebugDiagnostic[]) {
         // Roku device and sourcemap work with 1-based line numbers, VSCode expects 0-based lines.
         for (let diagnostic of diagnostics) {
+            diagnostic.source = diagnosticSource;
             let sourceLocation = await this.projectManager.getSourceLocation(diagnostic.path, diagnostic.range.start.line + 1);
             if (sourceLocation) {
                 diagnostic.path = sourceLocation.filePath;
