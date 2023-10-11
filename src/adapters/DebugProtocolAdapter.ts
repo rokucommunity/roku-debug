@@ -780,6 +780,7 @@ export class DebugProtocolAdapter {
 
     private syncBreakpointsPromise = Promise.resolve();
     public async syncBreakpoints() {
+        this.logger.log('syncBreakpoints()');
         //wait for the previous sync to finish
         this.syncBreakpointsPromise = this.syncBreakpointsPromise
             //ignore any errors
@@ -800,6 +801,7 @@ export class DebugProtocolAdapter {
 
         //compute breakpoint changes since last sync
         const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
+        this.logger.log('Syncing breakpoints', diff);
 
         // REMOVE breakpoints (delete these breakpoints from the device)
         if (diff.removed.length > 0) {

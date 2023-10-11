@@ -772,7 +772,7 @@ export class DebugProtocolClient {
 
         this.activeRequests.set(request.data.requestId, request);
 
-        return new Promise<T>((resolve) => {
+        return new Promise<T>((resolve, reject) => {
             let unsubscribe = this.on('response', (response) => {
                 if (response.data.requestId === request.data.requestId) {
                     unsubscribe();
@@ -791,7 +791,9 @@ export class DebugProtocolClient {
                     request: request
                 });
             } else {
-                throw new Error(`Control socket was closed - Command: ${Command[request.data.command]}`);
+                reject(
+                    new Error(`Control socket was closed - Command: ${Command[request.data.command]}`)
+                );
             }
         });
     }
