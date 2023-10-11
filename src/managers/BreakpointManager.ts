@@ -9,7 +9,6 @@ import { standardizePath as s } from 'roku-deploy';
 import type { SourceMapManager } from './SourceMapManager';
 import type { LocationManager } from './LocationManager';
 import { util } from '../util';
-import { nextTick } from 'process';
 import { EventEmitter } from 'eventemitter3';
 
 export class BreakpointManager {
@@ -217,6 +216,8 @@ export class BreakpointManager {
         });
     }
 
+    private deviceIdByDestHash = new Map<string, { srcHash: string; deviceId: number }>();
+
     /**
       * Find a breakpoint by its deviceId
       * @returns the breakpoint, or undefined if not found
@@ -227,8 +228,6 @@ export class BreakpointManager {
         });
         return this.getBreakpoint(bpRef?.srcHash);
     }
-
-    private deviceIdByDestHash = new Map<string, { srcHash: string; deviceId: number }>();
 
     /**
      * Set the deviceId of a breakpoint

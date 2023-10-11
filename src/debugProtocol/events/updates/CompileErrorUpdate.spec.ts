@@ -20,13 +20,14 @@ describe('CompileErrorUpdate', () => {
             errorMessage: 'crashed',
             filePath: 'pkg:/source/main.brs',
             libraryName: 'complib1',
-            lineNumber: 3
+            lineNumber: 3,
+            flags: undefined
         });
 
         expect(
             CompileErrorUpdate.fromBuffer(command.toBuffer()).data
         ).to.eql({
-            packetLength: 58, // 4 bytes
+            packetLength: 62, // 4 bytes
             requestId: 0, // 4 bytes
             errorCode: ErrorCode.OK, // 4 bytes
             updateType: UpdateType.CompileError, // 4 bytes
@@ -34,7 +35,8 @@ describe('CompileErrorUpdate', () => {
             errorMessage: 'crashed', // 8 bytes
             filePath: 'pkg:/source/main.brs', // 21 bytes
             libraryName: 'complib1', // 9 bytes
-            lineNumber: 3 // 4 bytes
+            lineNumber: 3, // 4 bytes
+            flags: 0 // 4 bytes
         });
     });
 });

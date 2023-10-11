@@ -66,6 +66,7 @@ export interface DeviceInfo {
     'trc-channel-version'?: string;
     'davinci-version'?: string;
     'av-sync-calibration-enabled'?: number;
+    'brightscript-debugger-version'?: string;
     // Anything new they might add that we do not know about
     [key: string]: any;
 }

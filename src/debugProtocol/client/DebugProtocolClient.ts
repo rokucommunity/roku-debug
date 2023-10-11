@@ -173,6 +173,7 @@ export class DebugProtocolClient {
         });
     }
 
+    public on(eventName: 'compile-error', handler: (event: CompileErrorUpdate) => void);
     public on(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'start', handler: () => void);
     public on(eventName: 'breakpoints-verified', handler: (event: BreakpointsVerifiedEvent) => void);
     public on(eventName: 'response', handler: (response: ProtocolResponse) => void);
@@ -194,6 +195,7 @@ export class DebugProtocolClient {
         };
     }
 
+    private emit(eventName: 'compile-error', response: CompileErrorUpdate);
     private emit(eventName: 'response', response: ProtocolResponse);
     private emit(eventName: 'update', update: ProtocolUpdate);
     private emit(eventName: 'data', update: Buffer);
@@ -208,23 +210,34 @@ export class DebugProtocolClient {
         }, 0);
     }
 
+    /**
+     * A function that can be used to cancel the repeating interval that's running to try and establish a connection to the control socket.
+     */
+    private cancelControlConnectInterval: () => void;
+
+    /**
+     * A collection of sockets created when trying to connect to the debug protocol's control socket. We keep these around for quicker tear-down
+     * whenever there is an early-terminated debug session
+     */
+    private pendingControlConnectionSockets: Set<Net.Socket>;
+
     private async establishControlConnection() {
-        const pendingSockets = new Set<Net.Socket>();
+        this.pendingControlConnectionSockets = new Set<Net.Socket>();
         const connection = await new Promise<Net.Socket>((resolve) => {
-            util.setInterval((cancelInterval) => {
+            this.cancelControlConnectInterval = util.setInterval((cancelInterval) => {
                 const socket = new Net.Socket({
                     allowHalfOpen: false
                 });
-                pendingSockets.add(socket);
+                this.pendingControlConnectionSockets.add(socket);
                 socket.on('error', (error) => {
                     console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
                 });
                 socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
                     cancelInterval();
 
-                    this.logger.debug(`Connected to debug protocol control port. Socket ${[...pendingSockets].indexOf(socket)} of ${pendingSockets.size} was the winner`);
+                    this.logger.debug(`Connected to debug protocol control port. Socket ${[...this.pendingControlConnectionSockets].indexOf(socket)} of ${this.pendingControlConnectionSockets.size} was the winner`);
                     //clean up all remaining pending sockets
-                    for (const pendingSocket of pendingSockets) {
+                    for (const pendingSocket of this.pendingControlConnectionSockets) {
                         pendingSocket.removeAllListeners();
                         //cleanup and destroy all other sockets
                         if (pendingSocket !== socket) {
@@ -232,7 +245,7 @@ export class DebugProtocolClient {
                             pendingSocket?.destroy();
                         }
                     }
-                    pendingSockets.clear();
+                    this.pendingControlConnectionSockets.clear();
                     resolve(socket);
                 });
             }, this.options.controlConnectInterval ?? 250);
@@ -316,11 +329,15 @@ export class DebugProtocolClient {
      * can be extracted and processed through the DebugProtocolClientReplaySession
      */
     private writeToBufferLog(type: 'server-to-client' | 'client-to-server' | 'io', buffer: Buffer) {
-        this.logger.log('[[bufferLog]]:', JSON.stringify({
+        let obj = {
             type: type,
             timestamp: new Date().toISOString(),
             buffer: buffer.toJSON()
-        }));
+        };
+        if (type === 'io') {
+            (obj as any).text = buffer.toString();
+        }
+        this.logger.log('[[bufferLog]]:', JSON.stringify(obj));
     }
 
     public continue() {
@@ -961,7 +978,11 @@ export class DebugProtocolClient {
                 //we do nothing with breakpoint errors at this time.
                 return BreakpointErrorUpdate.fromBuffer(buffer);
             case UpdateType.CompileError:
-                return CompileErrorUpdate.fromBuffer(buffer);
+                let compileErrorUpdate = CompileErrorUpdate.fromBuffer(buffer);
+                if (compileErrorUpdate?.data?.errorMessage !== '') {
+                    this.emit('compile-error', compileErrorUpdate);
+                }
+                return compileErrorUpdate;
             case UpdateType.BreakpointVerified:
                 let response = BreakpointVerifiedUpdate.fromBuffer(buffer);
                 if (response?.data?.breakpoints?.length > 0) {
@@ -1071,44 +1092,51 @@ export class DebugProtocolClient {
             });
             // Send a connection request to the server.
             this.logger.log(`Connect to IO Port ${this.options.host}:${update.data.port}`);
-            this.ioSocket.connect({
-                port: update.data.port,
-                host: this.options.host
-            }, () => {
-                // If there is no error, the server has accepted the request
-                this.logger.log('TCP connection established with the IO Port.');
-                this.connectedToIoPort = true;
 
-                let lastPartialLine = '';
-                this.ioSocket.on('data', (buffer) => {
-                    this.writeToBufferLog('io', buffer);
-                    let responseText = buffer.toString();
-                    if (!responseText.endsWith('\n')) {
-                        // buffer was split, save the partial line
-                        lastPartialLine += responseText;
-                    } else {
-                        if (lastPartialLine) {
-                            // there was leftover lines, join the partial lines back together
-                            responseText = lastPartialLine + responseText;
-                            lastPartialLine = '';
+            //sometimes the server shuts down before we had a chance to connect, so recover more gracefully
+            try {
+                this.ioSocket.connect({
+                    port: update.data.port,
+                    host: this.options.host
+                }, () => {
+                    // If there is no error, the server has accepted the request
+                    this.logger.log('TCP connection established with the IO Port.');
+                    this.connectedToIoPort = true;
+
+                    let lastPartialLine = '';
+                    this.ioSocket.on('data', (buffer) => {
+                        this.writeToBufferLog('io', buffer);
+                        let responseText = buffer.toString();
+                        if (!responseText.endsWith('\n')) {
+                            // buffer was split, save the partial line
+                            lastPartialLine += responseText;
+                        } else {
+                            if (lastPartialLine) {
+                                // there was leftover lines, join the partial lines back together
+                                responseText = lastPartialLine + responseText;
+                                lastPartialLine = '';
+                            }
+                            // Emit the completed io string.
+                            this.emit('io-output', responseText.trim());
                         }
-                        // Emit the completed io string.
-                        this.emit('io-output', responseText.trim());
-                    }
-                });
+                    });
 
-                this.ioSocket.on('close', () => {
-                    this.logger.log('IO socket closed');
-                    this.ioSocketClosed.tryResolve();
-                });
+                    this.ioSocket.on('close', () => {
+                        this.logger.log('IO socket closed');
+                        this.ioSocketClosed.tryResolve();
+                    });
 
-                // Don't forget to catch error, for your own sake.
-                this.ioSocket.once('error', (err) => {
-                    this.ioSocket.end();
-                    this.logger.error(err);
+                    // Don't forget to catch error, for your own sake.
+                    this.ioSocket.once('error', (err) => {
+                        this.ioSocket.end();
+                        this.logger.error(err);
+                    });
                 });
-            });
-            return true;
+                return true;
+            } catch (e) {
+                this.logger.error(`Failed to connect to IO socket at ${this.options.host}:${update.data.port}`, e);
+                void this.shutdown('app-exit');
+            }
         }
         return false;
     }
@@ -1123,6 +1151,17 @@ export class DebugProtocolClient {
 
     private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
         this.logger.log('Shutting down!');
+
+        this.cancelControlConnectInterval?.();
+        for (const pendingSocket of this.pendingControlConnectionSockets) {
+            pendingSocket.removeAllListeners();
+            //cleanup and destroy all other sockets
+            if (pendingSocket !== this.controlSocket) {
+                pendingSocket.end();
+                pendingSocket?.destroy();
+            }
+        }
+
         let exitChannelTimeout = this.options?.exitChannelTimeout ?? 30_000;
         let shutdownTimeMax = this.options?.shutdownTimeout ?? 10_000;
         //if immediate is true, this is an instant shutdown force. don't wait for anything

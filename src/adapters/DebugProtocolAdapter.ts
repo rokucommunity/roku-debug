@@ -1,24 +1,25 @@
 import * as EventEmitter from 'events';
 import { Socket } from 'net';
+import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
-import { ErrorCode, PROTOCOL_ERROR_CODES } from '../debugProtocol/Constants';
+import { ErrorCode, PROTOCOL_ERROR_CODES, UpdateType } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import * as semver from 'semver';
 import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
 import type { BreakpointManager } from '../managers/BreakpointManager';
 import type { ProjectManager } from '../managers/ProjectManager';
-import { ActionQueue } from '../managers/ActionQueue';
 import type { BreakpointsVerifiedEvent, ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { TelnetAdapter } from './TelnetAdapter';
+import type { DeviceInfo } from '../DeviceInfo';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -28,7 +29,8 @@ export class DebugProtocolAdapter {
         private options: AdapterOptions & ConstructorOptions,
         private projectManager: ProjectManager,
         private breakpointManager: BreakpointManager,
-        private rendezvousTracker: RendezvousTracker
+        private rendezvousTracker: RendezvousTracker,
+        private deviceInfo: DeviceInfo
     ) {
         util.normalizeAdapterOptions(this.options);
         this.emitter = new EventEmitter();
@@ -119,11 +121,9 @@ export class DebugProtocolAdapter {
     public on(eventName: 'start', handler: () => void);
     public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
     public on(eventName: string, handler: (payload: any) => void) {
-        this.emitter.on(eventName, handler);
+        this.emitter?.on(eventName, handler);
         return () => {
-            if (this.emitter !== undefined) {
-                this.emitter.removeListener(eventName, handler);
-            }
+            this.emitter?.removeListener(eventName, handler);
         };
     }
 
@@ -301,6 +301,18 @@ export class DebugProtocolAdapter {
                 this.compileClient = undefined;
             }
 
+            this.socketDebugger.on('compile-error', (update) => {
+                let diagnostics: BSDebugDiagnostic[] = [];
+                diagnostics.push({
+                    path: update.data.filePath,
+                    range: bscUtil.createRange(update.data.lineNumber - 1, 0, update.data.lineNumber - 1, 999),
+                    message: update.data.errorMessage,
+                    severity: DiagnosticSeverity.Error,
+                    code: undefined
+                });
+                this.emit('diagnostics', diagnostics);
+            });
+
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
             this.emit('connected', this.connected);
 
@@ -319,8 +331,19 @@ export class DebugProtocolAdapter {
         }, 200);
     }
 
+    /**
+     * Determines if the current version of the debug protocol supports emitting compile error updates.
+     */
+    public get supportsCompileErrorReporting() {
+        return semver.satisfies(this.deviceInfo['brightscript-debugger-version'], '>=3.1.0');
+    }
+
     public async watchCompileOutput() {
         let deferred = defer();
+        //If the debugProtocol supports compile error updates, don't scrape telnet logs for compile errors
+        if (this.supportsCompileErrorReporting) {
+            return deferred.resolve();
+        }
         try {
             this.compileClient = new Socket();
             this.compileErrorProcessor.on('diagnostics', (errors) => {
@@ -334,7 +357,7 @@ export class DebugProtocolAdapter {
             });
             this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
             this.compileClient.connect(this.options.brightScriptConsolePort, this.options.host, () => {
-                this.logger.log(`Connected via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
+                this.logger.log(`CONNECTED via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
             });
 
             this.logger.debug('Waiting for the compile client to settle');
@@ -708,12 +731,23 @@ export class DebugProtocolAdapter {
     }
 
     /**
+     * Indicates whether this class had `.destroy()` called at least once. Mostly used for checking externally to see if
+     * the whole debug session has been terminated or is in a bad state.
+     */
+    public isDestroyed = false;
+    /**
      * Disconnect from the telnet session and unset all objects
      */
     public async destroy() {
+        this.isDestroyed = true;
+
         // destroy the debug client if it's defined
         if (this.socketDebugger) {
-            await this.socketDebugger.destroy();
+            try {
+                await this.socketDebugger.destroy();
+            } catch (e) {
+                this.logger.error(e);
+            }
         }
 
         this.cache = undefined;

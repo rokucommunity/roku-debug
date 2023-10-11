@@ -13,7 +13,7 @@ import { defer } from '../util';
 import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
-import { util as bscUtil, standardizePath as s } from 'brighterscript';
+import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brighterscript';
 import { DefaultFiles } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
@@ -711,13 +711,16 @@ describe('BrightScriptDebugSession', () => {
             await session['handleDiagnostics']([{
                 message: 'Crash',
                 path: 'SomeComponent.xml',
-                range: bscUtil.createRange(1, 2, 3, 4)
+                range: bscUtil.createRange(1, 2, 3, 4),
+                severity: DiagnosticSeverity.Warning
             }]);
             expect(stub.getCall(0).args[0]?.body).to.eql({
                 diagnostics: [{
                     message: 'Crash',
                     path: s`${stagingDir}/.roku-deploy-staging/components/SomeComponent.xml`,
-                    range: bscUtil.createRange(1, 2, 1, 4)
+                    range: bscUtil.createRange(1, 2, 1, 4),
+                    severity: DiagnosticSeverity.Warning,
+                    source: 'roku-debug'
                 }]
             });
         });
