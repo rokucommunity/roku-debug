@@ -256,18 +256,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public deviceInfo: DeviceInfo;
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-        let didSendResponse = false;
-
-        const trySendResponse = () => {
-            //we need to send the response for the debugger to be in a stable state...but only send if we haven't sent yet
-            if (!didSendResponse) {
-                didSendResponse = true;
-                this.sendResponse(response);
-            }
-        };
 
         this.logger.log('[launchRequest] begin');
-        trySendResponse();
+        //send the response right away so the UI immediately shows the debugger toolbar
+        this.sendResponse(response);
+
         this.launchConfiguration = config;
 
         //set the logLevel provided by the launch config
@@ -396,13 +389,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 if (this.rokuAdapter.connected) {
                     this.logger.info('Host connection was established before the main public process was completed');
                     this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
-                    trySendResponse();
                 } else {
                     this.logger.info('Main public process was completed but we are still waiting for a connection to the host');
                     this.rokuAdapter.on('connected', (status) => {
                         if (status) {
                             this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
-                            trySendResponse();
                         }
                     });
                 }
@@ -411,10 +402,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
-            if (e instanceof CompileError) {
-                trySendResponse();
-                //this.sendEvent(new StoppedEvent(StoppedEventReason.exception, 0, 'Compile ERROR'));
-            } else {
+            if (!(e instanceof CompileError)) {
                 util.log('Encountered an issue during the publish process');
                 util.log((e as Error)?.stack);
                 this.sendErrorResponse(response, -1, (e as Error)?.stack);
