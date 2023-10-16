@@ -53,6 +53,10 @@ describe('ProjectManager', () => {
         });
     });
 
+    afterEach(() => {
+        sinon.restore();
+    });
+
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
         it('accounts for the entry breakpoint', () => {
@@ -303,6 +307,10 @@ describe('Project', () => {
             stagingFolderPath: stagingFolderPath,
             raleTrackerTaskFileLocation: 'z'
         });
+    });
+
+    afterEach(() => {
+        sinon.restore();
     });
 
     it('copies the necessary properties onto the instance', () => {

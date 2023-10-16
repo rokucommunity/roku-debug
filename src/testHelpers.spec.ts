@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import dedent = require('dedent');
+import { SmartBuffer } from 'smart-buffer';
 
 /**
  * Forces all line endings to \n
@@ -61,4 +62,44 @@ export function expectPickEquals(subjects: any[], patterns: any[]) {
     ).to.eql(
         patterns
     );
+}
+
+/**
+ * Build a buffer of `byteCount` size and fill it with random data
+ */
+export function getRandomBuffer(byteCount: number) {
+    const result = new SmartBuffer();
+    for (let i = 0; i < byteCount; i++) {
+        result.writeUInt8(i);
+    }
+    return result.toBuffer();
+}
+
+export function expectThrows(callback: () => any, expectedMessage = undefined, failedTestMessage = 'Expected to throw but did not') {
+    let wasExceptionThrown = false;
+    try {
+        callback();
+    } catch (e) {
+        wasExceptionThrown = true;
+        if (expectedMessage) {
+            expect(e.message).to.eql(expectedMessage);
+        }
+    }
+    if (wasExceptionThrown === false) {
+        throw new Error(failedTestMessage);
+    }
+}
+export async function expectThrowsAsync(callback: () => any, expectedMessage = undefined, failedTestMessage = 'Expected to throw but did not') {
+    let wasExceptionThrown = false;
+    try {
+        await Promise.resolve(callback());
+    } catch (e) {
+        wasExceptionThrown = true;
+        if (expectedMessage) {
+            expect(e.message).to.eql(expectedMessage);
+        }
+    }
+    if (wasExceptionThrown === false) {
+        throw new Error(failedTestMessage);
+    }
 }

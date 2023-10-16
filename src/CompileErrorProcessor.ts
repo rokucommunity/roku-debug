@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import type { Diagnostic } from 'vscode-languageserver-protocol/node';
 import { logger } from './logging';
-import { util as bscUtil } from 'brighterscript';
+import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 
 export class CompileErrorProcessor {
 
@@ -28,52 +28,45 @@ export class CompileErrorProcessor {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            if (this.emitter) {
-                this.emitter.emit(eventName, data);
-            }
+            this.emitter?.emit?.(eventName, data);
         }, 0);
     }
 
     public processUnhandledLines(responseText: string) {
-        if (this.status === CompileStatus.running) {
-            return;
-        }
-
-        let newLines = responseText.split(/\r?\n/g);
-        switch (this.status) {
-            case CompileStatus.compiling:
-            case CompileStatus.compileError:
-                this.endCompilingLine = this.getEndCompilingLine(newLines);
-                if (this.endCompilingLine !== -1) {
-                    this.logger.debug('[processUnhandledLines] entering state CompileStatus.running');
-                    this.status = CompileStatus.running;
-                    this.resetCompileErrorTimer(false);
-                } else {
-                    this.compilingLines = this.compilingLines.concat(newLines);
-                    if (this.status === CompileStatus.compiling) {
-                        //check to see if we've entered an error scenario
-                        let hasError = /\berror\b/gi.test(responseText);
-                        if (hasError) {
-                            this.logger.debug('[processUnhandledLines] entering state CompileStatus.compileError');
-                            this.status = CompileStatus.compileError;
+        let lines = responseText.split(/\r?\n/g);
+        for (const line of lines) {
+            switch (this.status) {
+                case CompileStatus.compiling:
+                case CompileStatus.compileError:
+                    if (this.isEndCompilingLine(line)) {
+                        this.logger.debug('[processUnhandledLines] entering state CompileStatus.running');
+                        this.status = CompileStatus.running;
+                        this.resetCompileErrorTimer(false);
+                    } else {
+                        this.compilingLines.push(line);
+                        if (this.status === CompileStatus.compiling) {
+                            //check to see if we've entered an error scenario
+                            let hasError = /\berror\b/gi.test(line);
+                            if (hasError) {
+                                this.logger.debug('[processUnhandledLines] entering state CompileStatus.compileError');
+                                this.status = CompileStatus.compileError;
+                            }
+                        }
+                        if (this.status === CompileStatus.compileError) {
+                            //every input line while in error status will reset the stale timer, so we can wait for more errors to roll in.
+                            this.resetCompileErrorTimer(true);
                         }
                     }
-                    if (this.status === CompileStatus.compileError) {
-                        //every input line while in error status will reset the stale timer, so we can wait for more errors to roll in.
+                    break;
+                case CompileStatus.none:
+                case CompileStatus.running:
+                    if (this.isStartingCompilingLine(line)) {
+                        this.logger.debug('[processUnhandledLines] entering state CompileStatus.compiling');
+                        this.status = CompileStatus.compiling;
                         this.resetCompileErrorTimer(true);
                     }
-                }
-                break;
-            case CompileStatus.none:
-                this.startCompilingLine = this.getStartingCompilingLine(newLines);
-                this.compilingLines = this.compilingLines.concat(newLines);
-                if (this.startCompilingLine !== -1) {
-                    this.logger.debug('[processUnhandledLines] entering state CompileStatus.compiling');
-                    newLines.splice(0, this.startCompilingLine);
-                    this.status = CompileStatus.compiling;
-                    this.resetCompileErrorTimer(true);
-                }
-                break;
+                    break;
+            }
         }
     }
 
@@ -88,7 +81,7 @@ export class CompileErrorProcessor {
     }
 
     public getErrors(lines: string[]) {
-        const result: BSDebugDiagnostic[] = [];
+        let diagnostics: BSDebugDiagnostic[] = [];
         //clone the lines so the parsers can manipulate them
         lines = [...lines];
         while (lines.length > 0) {
@@ -96,7 +89,7 @@ export class CompileErrorProcessor {
             const line = lines[0];
 
             if (line) {
-                result.push(
+                diagnostics.push(
                     ...[
                         this.processMultiLineErrors(lines),
                         this.parseComponentDefinedInFileError(lines),
@@ -111,10 +104,17 @@ export class CompileErrorProcessor {
                 lines.shift();
             }
         }
-        return result.filter(x => {
-            //throw out $livecompile errors (those are generated by REPL/eval code)
+        //throw out $livecompile errors (those are generated by REPL/eval code)
+        const result = diagnostics.filter(x => {
             return x.path && !x.path.toLowerCase().includes('$livecompile');
-        });
+
+            //dedupe compile errors that have the same information
+        }).reduce((map, d) => {
+            map.set(`${d.path}:${d.range?.start.line}:${d.range?.start.character}-${d.message}-${d.severity}-${d.source}`, d);
+            return map;
+        }, new Map<string, BSDebugDiagnostic>());
+
+        return [...result].map(x => x[1]);
     }
 
     /**
@@ -137,7 +137,8 @@ export class CompileErrorProcessor {
                     path: this.sanitizeCompilePath(filePath),
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: this.buildMessage(message),
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }))
                 .filter(x => !!x);
         }
@@ -165,7 +166,8 @@ export class CompileErrorProcessor {
                 path: this.sanitizeCompilePath(filePath),
                 message: this.buildMessage(message, context),
                 range: this.getRange(lineNumber), //lineNumber is 1-based
-                code: code
+                code: code,
+                severity: DiagnosticSeverity.Error
             }];
         }
     }
@@ -201,7 +203,8 @@ export class CompileErrorProcessor {
                         path: filePath,
                         range: this.getRange(lineNumber), //lineNumber is 1-based
                         message: this.buildMessage(message),
-                        code: undefined
+                        code: undefined,
+                        severity: DiagnosticSeverity.Error
                     });
                 } else {
                     //assume there are no more errors for this file
@@ -235,7 +238,8 @@ export class CompileErrorProcessor {
                 message: this.buildMessage(message),
                 path: this.sanitizeCompilePath(filePath),
                 range: this.getRange(),
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }];
         }
     }
@@ -257,7 +261,9 @@ export class CompileErrorProcessor {
             return [{
                 path: 'pkg:/manifest',
                 range: bscUtil.createRange(0, 0, 0, 999),
-                message: this.buildMessage(message)
+                message: this.buildMessage(message),
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }];
         }
     }
@@ -304,7 +310,7 @@ export class CompileErrorProcessor {
 
     public resetCompileErrorTimer(isRunning): any {
         if (this.compileErrorTimer) {
-            clearInterval(this.compileErrorTimer);
+            clearTimeout(this.compileErrorTimer);
             this.compileErrorTimer = undefined;
         }
 
@@ -323,29 +329,16 @@ export class CompileErrorProcessor {
         this.reportErrors();
     }
 
-    private getStartingCompilingLine(lines: string[]): number {
-        let lastIndex = -1;
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            //if this line looks like the compiling line
-            if (/------\s+compiling.*------/i.exec(line)) {
-                lastIndex = i;
-            }
-        }
-        return lastIndex;
+    private isStartingCompilingLine(line: string): boolean {
+        //https://regex101.com/r/8W2wuZ/1
+        // We need to start scanning for compile errors earlier than the ---compiling--- message, so look for the [scrpt.cmpl] message.
+        // keep the ---compiling--- as well, since it doesn't hurt to remain in compile mode
+        return /(------\s+compiling.*------)|(\[scrpt.cmpl]\s+compiling\s+'.*?'\s*,\s*id\s*'.*?')/i.test(line);
     }
 
-    private getEndCompilingLine(lines: string[]): number {
-        let lastIndex = -1;
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            // if this line looks like the compiling line
-            if (/------\s+Running.*------/i.exec(line)) {
-                lastIndex = i;
-            }
-        }
-        return lastIndex;
-
+    private isEndCompilingLine(line: string): boolean {
+        // if this line looks like the compiling line
+        return /------\s+Running.*------/i.test(line);
     }
 
     /**
@@ -377,6 +370,10 @@ export interface BSDebugDiagnostic extends Diagnostic {
      * main app.
      */
     componentLibraryName?: string;
+    /**
+     * The diagnostic's severity.
+     */
+    severity: DiagnosticSeverity;
 }
 
 export enum CompileStatus {

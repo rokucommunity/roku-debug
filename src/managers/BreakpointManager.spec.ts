@@ -72,6 +72,76 @@ describe('BreakpointManager', () => {
         fsExtra.removeSync(tmpDir);
     });
 
+    describe('pending breakpoints', () => {
+        it('marks existing breakpoints as pending', () => {
+            const breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 },
+                { line: 3 },
+                { line: 4 }
+            ]);
+            bpManager.setPending(srcPath, breakpoints, false);
+            expect(breakpoints.map(x => bpManager.isPending(x.srcHash))).to.eql([false, false, false, false]);
+
+            bpManager.setPending(srcPath, [{ line: 1 }, { line: 3 }], true);
+
+            expect(breakpoints.map(x => bpManager.isPending(x.srcHash))).to.eql([true, false, true, false]);
+        });
+
+        it('marks existing breakpoints as not pending', () => {
+            const breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 },
+                { line: 3 },
+                { line: 4 }
+            ]);
+            bpManager.setPending(srcPath, breakpoints, true);
+            expect(breakpoints.map(x => bpManager.isPending(x.srcHash))).to.eql([true, true, true, true]);
+
+            bpManager.setPending(srcPath, [{ line: 1 }, { line: 3 }], false);
+
+            expect(breakpoints.map(x => bpManager.isPending(x.srcHash))).to.eql([false, true, false, true]);
+        });
+
+        it('ignores not-found breakpoints', () => {
+            const breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 },
+                { line: 2 },
+                { line: 3 },
+                { line: 4 }
+            ]);
+            bpManager.setPending(srcPath, breakpoints, true);
+            expect(breakpoints.map(x => bpManager.isPending(x.srcHash))).to.eql([true, true, true, true]);
+
+            bpManager.setPending(srcPath, [{ line: 5 }], false);
+
+            expect(breakpoints.map(x => bpManager.isPending(x.srcHash))).to.eql([true, true, true, true]);
+        });
+
+        it('remembers a breakpoint pending status through delete and add', () => {
+            let breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 }
+            ]);
+            //mark the breakpoint as pending
+            bpManager.setPending(srcPath, breakpoints, true);
+            expect(bpManager.isPending(srcPath, breakpoints[0])).to.be.true;
+
+            //delete the breakpoint
+            bpManager.deleteBreakpoint(srcPath, { line: 1 });
+
+            //mark the breakpoint as pending (even though it's not there anymore)
+            bpManager.setPending(srcPath, [{ line: 5 }], true);
+
+            //add the breakpoint again
+            breakpoints = bpManager.replaceBreakpoints(srcPath, [
+                { line: 1 }
+            ]);
+
+            //the breakpoint should be pending even though this is a new instance of the breakpoint
+            expect(bpManager.isPending(srcPath, breakpoints[0])).to.be.true;
+        });
+    });
+
     describe('sanitizeSourceFilePath', () => {
         it('returns the original string when no key was found', () => {
             expect(bpManager.sanitizeSourceFilePath('a/b/c')).to.equal(s`a/b/c`);
@@ -773,7 +843,7 @@ describe('BreakpointManager', () => {
             }, {
                 line: 6,
                 logMessage: 'hello world'
-            }]).map(x => x.hash).sort()
+            }]).map(x => x.srcHash).sort()
         ).to.eql([
             s`${rootDir}/source/main.brs:2:0-standard`,
             s`${rootDir}/source/main.brs:3:0-condition=true`,
@@ -792,7 +862,7 @@ describe('BreakpointManager', () => {
             line: 2
         });
         expect(
-            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.hash)
+            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.srcHash)
         ).to.eql([
             s`${pkgPath}:2:0-standard`
         ]);
@@ -805,7 +875,7 @@ describe('BreakpointManager', () => {
             line: 2
         });
         expect(
-            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.hash)
+            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.srcHash)
         ).to.eql([
             s`${pkgPath}:2:0-standard`
         ]);
@@ -815,7 +885,7 @@ describe('BreakpointManager', () => {
             condition: 'true'
         });
         expect(
-            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.hash)
+            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.srcHash)
         ).to.eql([
             s`${pkgPath}:2:0-condition=true`
         ]);
@@ -825,7 +895,7 @@ describe('BreakpointManager', () => {
             hitCondition: '4'
         });
         expect(
-            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.hash)
+            bpManager['getBreakpointsForFile'](pkgPath).map(x => x.srcHash)
         ).to.eql([
             s`${pkgPath}:2:0-hitCondition=4`
         ]);
@@ -1041,5 +1111,19 @@ describe('BreakpointManager', () => {
             });
         });
 
+        it('includes the deviceId in all breakpoints when possible', async () => {
+            const bp = bpManager.setBreakpoint(srcPath, { line: 1 });
+
+            let diff = await bpManager.getDiff(projectManager.getAllProjects());
+            expect(diff.added[0].deviceId).not.to.exist;
+
+            bpManager.setBreakpointDeviceId(bp.srcHash, diff.added[0].destHash, 3);
+
+            bpManager.deleteBreakpoint(srcPath, bp);
+
+            diff = await bpManager.getDiff(projectManager.getAllProjects());
+
+            expect(diff.removed[0].deviceId).to.eql(3);
+        });
     });
 });

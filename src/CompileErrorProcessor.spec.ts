@@ -3,7 +3,8 @@ import { CompileErrorProcessor, CompileStatus } from './CompileErrorProcessor';
 import { expect } from 'chai';
 import type { SinonFakeTimers } from 'sinon';
 import { createSandbox } from 'sinon';
-import { util as bscUtil } from 'brighterscript';
+import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
+import dedent = require('dedent');
 const sinon = createSandbox();
 
 describe('CompileErrorProcessor', () => {
@@ -73,7 +74,26 @@ describe('CompileErrorProcessor', () => {
 
         describe('sendErrors', () => {
             it('emits the errors', async () => {
-                compiler.processUnhandledLines(`-------> Error parsing XML component SimpleButton.xml`);
+                compiler.processUnhandledLines(dedent`
+                    10-05 18:03:33.677 [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)
+                    10-05 18:03:33.679 [scrpt.cmpl] Compiling 'app', id 'dev'
+                    10-05 18:03:33.681 [scrpt.load.mkup] Loading markup dev 'app'
+                    10-05 18:03:33.681 [scrpt.unload.mkup] Unloading markup dev 'app'
+                    10-05 18:03:33.683 [scrpt.parse.mkup.time] Parsed markup dev 'app' in 1 milliseconds
+
+                    ------ Compiling dev 'app' ------
+
+                    =================================================================
+                    Found 1 compile error
+                    --- Syntax Error. (compile error &h02) in pkg:/components/MainScene.brs(3)
+                    *** ERROR compiling MainScene:
+
+
+                    =================================================================
+                    An error occurred while attempting to compile the application's components:
+                    -------> Compilation Failed.
+                    MainScene
+                `);
                 let callCount = 0;
                 compiler.on('diagnostics', () => {
                     callCount++;
@@ -113,7 +133,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'SimpleButton.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -124,7 +145,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'pkg:/components/SimpleButton.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
     });
@@ -140,7 +162,8 @@ describe('CompileErrorProcessor', () => {
             range: bscUtil.createRange(0, 0, 0, 999),
             message: 'Error in XML component RedButton',
             path: 'pkg:/components/RedButton.xml',
-            code: undefined
+            code: undefined,
+            severity: DiagnosticSeverity.Error
         }]);
     });
 
@@ -152,7 +175,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'Parsers.brs',
                 range: bscUtil.createRange(18, 0, 18, 999),
                 message: `Invalid #If/#ElseIf expression (<CONST-NAME> not defined) 'BAD_BS_CONST'`,
-                code: '&h92'
+                code: '&h92',
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -163,7 +187,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'Parsers.brs',
                 range: bscUtil.createRange(18, 0, 18, 999),
                 message: `Invalid #If/#ElseIf expression (<CONST-NAME> not defined) 'BAD_BS_CONST'`,
-                code: '&h92'
+                code: '&h92',
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -174,7 +199,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'Parsers.brs',
                 range: bscUtil.createRange(18, 0, 18, 999),
                 message: `Invalid #If/#ElseIf expression (<CONST-NAME> not defined)`,
-                code: '&h92'
+                code: '&h92',
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -185,7 +211,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'Parsers.brs',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Invalid #If/#ElseIf expression (<CONST-NAME> not defined) 'BAD_BS_CONST'`,
-                code: '&h92'
+                code: '&h92',
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -196,7 +223,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'Parsers.brs',
                 range: bscUtil.createRange(18, 0, 18, 999),
                 message: `Invalid #If/#ElseIf expression (<CONST-NAME> not defined) 'BAD_BS_CONST'`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
     });
@@ -209,7 +237,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'SimpleEntitlements.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -220,12 +249,14 @@ describe('CompileErrorProcessor', () => {
                 path: 'SimpleEntitlements.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }, {
                 path: 'Otherfile.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -236,7 +267,8 @@ describe('CompileErrorProcessor', () => {
                 path: 'pkg:/components/SimpleEntitlements.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -247,12 +279,14 @@ describe('CompileErrorProcessor', () => {
                 path: 'pkg:/components/SimpleEntitlements.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }, {
                 path: 'pkg:/components/Otherfile.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -268,12 +302,14 @@ describe('CompileErrorProcessor', () => {
                 path: 'SimpleEntitlements.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }, {
                 path: 'Otherfile.xml',
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: `Error parsing XML component`,
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
     });
@@ -292,12 +328,13 @@ describe('CompileErrorProcessor', () => {
             range: bscUtil.createRange(0, 0, 0, 999),
             message: 'Error loading file',
             path: 'pkg:/components/Scene/MainScene.GetConfigurationw.brs',
-            code: '&hb9'
+            code: '&hb9',
+            severity: DiagnosticSeverity.Error
         }]);
     });
 
     describe('processUnhandledLines', () => {
-        async function runTest(lines: string[], expectedStatus: CompileStatus, expectedErrors?: BSDebugDiagnostic[]) {
+        async function runTest(lines: string | string[], expectedStatus: CompileStatus, expectedErrors?: BSDebugDiagnostic[]) {
             let compileErrors: BSDebugDiagnostic[];
             let promise: Promise<any>;
             if (expectedErrors) {
@@ -309,9 +346,13 @@ describe('CompileErrorProcessor', () => {
                 });
             }
 
-            lines.forEach((line) => {
-                compiler.processUnhandledLines(line);
-            });
+            if (typeof lines === 'string') {
+                compiler.processUnhandledLines(lines);
+            } else {
+                for (const line of lines) {
+                    compiler.processUnhandledLines(line);
+                }
+            }
 
             if (expectedErrors) {
                 //wait for the compiler-errors event
@@ -320,6 +361,94 @@ describe('CompileErrorProcessor', () => {
             }
             expect(compiler.status).to.eql(expectedStatus);
         }
+
+        it('handles the data in large chunks', async () => {
+            await runTest(dedent`
+                10-05 18:03:33.677 [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)
+                10-05 18:03:33.679 [scrpt.cmpl] Compiling 'app', id 'dev'
+                10-05 18:03:33.681 [scrpt.load.mkup] Loading markup dev 'app'
+                10-05 18:03:33.681 [scrpt.unload.mkup] Unloading markup dev 'app'
+                10-05 18:03:33.683 [scrpt.parse.mkup.time] Parsed markup dev 'app' in 1 milliseconds
+
+                ------ Compiling dev 'app' ------
+
+                =================================================================
+                Found 1 compile error
+                --- Syntax Error. (compile error &h02) in pkg:/components/MainScene.brs(3)
+                *** ERROR compiling MainScene:
+
+
+                =================================================================
+                An error occurred while attempting to compile the application's components:
+                -------> Compilation Failed.
+                MainScene
+            `, CompileStatus.compileError, [{
+                range: bscUtil.createRange(2, 0, 2, 999),
+                message: 'Syntax Error',
+                path: 'pkg:/components/MainScene.brs',
+                code: '&h02',
+                severity: DiagnosticSeverity.Error
+            }]);
+        });
+
+        it('emits component library errors after initial compile is complete', async () => {
+            await runTest(dedent`
+                10-06 19:37:12.462 [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
+                10-06 19:37:12.463 [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)
+                10-06 19:37:12.465 [scrpt.cmpl] Compiling 'app', id 'dev'
+                10-06 19:37:12.466 [scrpt.load.mkup] Loading markup dev 'app'
+                10-06 19:37:12.467 [scrpt.unload.mkup] Unloading markup dev 'app'
+                10-06 19:37:12.468 [scrpt.parse.mkup.time] Parsed markup dev 'app' in 1 milliseconds
+
+                ------ Compiling dev 'app' ------
+                10-06 19:37:12.471 [scrpt.ctx.cmpl.time] Compiled 'app', id 'dev' in 2 milliseconds (BCVer:0)
+                10-06 19:37:12.471 [scrpt.proc.mkup.time] Processed markup dev 'app' in 0 milliseconds
+                10-06 19:37:12.481 [beacon.signal] |AppCompileComplete --------> Duration(18 ms)
+                10-06 19:37:12.498 [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
+                10-06 19:37:12.508 [beacon.signal] |AppSplashInitiate ---------> TimeBase(9 ms)
+                10-06 19:37:13.198 [beacon.signal] |AppSplashComplete ---------> Duration(690 ms)
+                10-06 19:37:13.370 [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
+                10-06 19:37:13.384 [scrpt.cmpl] Compiling 'app', id 'dev'
+                10-06 19:37:13.391 [scrpt.load.mkup] Loading markup dev 'app'
+                10-06 19:37:13.392 [scrpt.unload.mkup] Unloading markup dev 'app'
+                10-06 19:37:13.394 [scrpt.parse.mkup.time] Parsed markup dev 'app' in 2 milliseconds
+
+                ------ Compiling dev 'app' ------
+                10-06 19:37:13.399 [scrpt.ctx.cmpl.time] Compiled 'app', id 'dev' in 4 milliseconds (BCVer:0)
+                10-06 19:37:13.399 [scrpt.proc.mkup.time] Processed markup dev 'app' in 0 milliseconds
+                10-06 19:37:13.400 [beacon.signal] |AppCompileComplete --------> Duration(28 ms)
+
+                ------ Running dev 'app' main ------
+                10-06 19:37:14.005 [scrpt.ctx.run.enter] UI: Entering 'app', id 'dev'
+                Complib loadStatus:             loading
+                10-06 19:37:14.212 [scrpt.cmpl] Compiling '', id 'RSG_BAAAAAJlSIgm'
+                10-06 19:37:14.214 [scrpt.load.mkup] Loading markup RSG_BAAAAAJlSIgm ''
+                10-06 19:37:14.215 [scrpt.unload.mkup] Unloading markup RSG_BAAAAAJlSIgm ''
+                10-06 19:37:14.218 [scrpt.parse.mkup.time] Parsed markup RSG_BAAAAAJlSIgm '' in 4 milliseconds
+
+                =================================================================
+                Found 1 compile error
+                contained in ComponentLibrary package with uri
+                http://192.168.1.22:8080/complib.zip
+                --- Syntax Error. (compile error &h02) in pkg:/components/RedditViewer__lib0.brs(4)
+                *** ERROR compiling RedditViewer:
+                10-06 19:37:14.505 [bs.ndk.proc.exit] plugin=dev pid=8755 status=signal retval=11 user requested=0 process name='SdkLauncher' exit code=EXIT_SYSTEM_KILL
+                10-06 19:37:14.512 [beacon.signal] |AppExitInitiate -----------> TimeBase(2014 ms)
+                10-06 19:37:14.514 [beacon.header] __________________________________________
+                10-06 19:37:14.514 [beacon.report] |AppLaunchInitiate ---------> TimeBase(0 ms), InstantOn
+                10-06 19:37:14.515 [beacon.report] |AppSplashInitiate ---------> TimeBase(9 ms)
+                10-06 19:37:14.515 [beacon.report] |AppSplashComplete ---------> Duration(690 ms)
+                10-06 19:37:14.515 [beacon.report] |AppExitInitiate -----------> TimeBase(2014 ms)
+                10-06 19:37:14.515 [beacon.report] |AppExitComplete -----------> Duration(2 ms)
+                10-06 19:37:14.515 [beacon.footer] __________________________________________
+            `, CompileStatus.compileError, [{
+                range: bscUtil.createRange(3, 0, 3, 999),
+                message: 'Syntax Error',
+                path: 'pkg:/components/RedditViewer__lib0.brs',
+                code: '&h02',
+                severity: DiagnosticSeverity.Error
+            }]);
+        });
 
         it('detects No errors', async () => {
             let lines = [
@@ -368,7 +497,8 @@ describe('CompileErrorProcessor', () => {
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: 'Error loading file',
                 path: 'pkg:/components/Scene/MainScene.GetConfigurationw.brs',
-                code: '&hb9'
+                code: '&hb9',
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -398,22 +528,26 @@ describe('CompileErrorProcessor', () => {
                 range: bscUtil.createRange(1, 0, 1, 999),
                 message: 'Unexpected data found inside a <component> element (first 10 characters are "aaa")',
                 path: 'Foo.xml',
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }, {
                 range: bscUtil.createRange(2, 0, 2, 999),
                 message: 'Some unique error message',
                 path: 'Foo.xml',
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }, {
                 range: bscUtil.createRange(4, 0, 4, 999),
                 message: 'message with Line 4 inside it',
                 path: 'Foo.xml',
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }, {
                 range: bscUtil.createRange(0, 0, 0, 999),
                 message: 'Error parsing XML component',
                 path: 'Foo.xml',
-                code: undefined
+                code: undefined,
+                severity: DiagnosticSeverity.Error
             }]);
         });
 
@@ -445,12 +579,14 @@ describe('CompileErrorProcessor', () => {
                     range: bscUtil.createRange(2, 0, 2, 999),
                     message: 'XML syntax error found ---> not well-formed (invalid token)',
                     path: 'SampleScreen.xml',
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: 'Error parsing XML component',
                     path: 'SampleScreen.xml',
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }
             ]);
         });
@@ -479,27 +615,32 @@ describe('CompileErrorProcessor', () => {
                     range: bscUtil.createRange(595 - 1, 0, 595 - 1, 999),
                     code: '&h02',
                     message: 'Syntax Error',
-                    path: 'pkg:/components/Services/Network/Parsers.brs'
+                    path: 'pkg:/components/Services/Network/Parsers.brs',
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(598 - 1, 0, 598 - 1, 999),
                     code: '&h02',
                     message: 'Syntax Error',
-                    path: 'pkg:/components/Services/Network/Parsers.brs'
+                    path: 'pkg:/components/Services/Network/Parsers.brs',
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(732 - 1, 0, 732 - 1, 999),
                     code: '&h02',
                     message: 'Syntax Error',
-                    path: 'pkg:/components/Services/Network/Parsers.brs'
+                    path: 'pkg:/components/Services/Network/Parsers.brs',
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(733 - 1, 0, 733 - 1, 999),
                     code: '&h02',
                     message: 'Syntax Error',
-                    path: 'pkg:/components/Services/Network/Parsers.brs'
+                    path: 'pkg:/components/Services/Network/Parsers.brs',
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(734 - 1, 0, 734 - 1, 999),
                     code: '&h02',
                     message: 'Syntax Error',
-                    path: 'pkg:/components/Services/Network/Parsers.brs'
+                    path: 'pkg:/components/Services/Network/Parsers.brs',
+                    severity: DiagnosticSeverity.Error
                 }
             ]);
         });
@@ -539,32 +680,38 @@ describe('CompileErrorProcessor', () => {
                     range: bscUtil.createRange(2, 0, 2, 999),
                     message: 'XML syntax error found ---> not well-formed (invalid token)',
                     path: 'SampleScreen.xml',
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: 'Extends type does not exist: "ColoredButton"',
                     path: 'pkg:/components/RedButton.xml',
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(8, 0, 8, 999),
                     message: 'XML syntax error found ---> not well-formed (invalid token)',
                     path: 'ChannelItemComponent.xml',
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: 'Error parsing XML component',
                     path: 'SampleScreen.xml',
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: 'Error parsing XML component',
                     path: 'ChannelItemComponent.xml',
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }, {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: 'Error parsing XML component',
                     path: 'RedButton.xml',
-                    code: undefined
+                    code: undefined,
+                    severity: DiagnosticSeverity.Error
                 }
             ]);
         });
@@ -590,7 +737,8 @@ describe('CompileErrorProcessor', () => {
                     code: '&h92',
                     range: bscUtil.createRange(19 - 1, 0, 19 - 1, 999),
                     message: `Invalid #If/#ElseIf expression (<CONST-NAME> not defined) 'BAD_BS_CONST'`,
-                    path: 'Parsers.brs'
+                    path: 'Parsers.brs',
+                    severity: DiagnosticSeverity.Error
                 }
             ]);
         });
@@ -614,7 +762,9 @@ describe('CompileErrorProcessor', () => {
                 {
                     range: bscUtil.createRange(0, 0, 0, 999),
                     message: 'No manifest. Invalid package',
-                    path: 'pkg:/manifest'
+                    path: 'pkg:/manifest',
+                    severity: DiagnosticSeverity.Error,
+                    code: undefined
                 }
             ]);
         });

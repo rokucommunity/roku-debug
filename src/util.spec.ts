@@ -17,6 +17,27 @@ beforeEach(() => {
 
 describe('Util', () => {
 
+    describe('hasNonNullishProperty', () => {
+        it('detects objects with only nullish props or no props at all', () => {
+            expect(util.hasNonNullishProperty({})).to.be.false;
+            expect(util.hasNonNullishProperty([])).to.be.false;
+            expect(util.hasNonNullishProperty(null)).to.be.false;
+            expect(util.hasNonNullishProperty(undefined)).to.be.false;
+            expect(util.hasNonNullishProperty(1 as any)).to.be.false;
+            expect(util.hasNonNullishProperty(true as any)).to.be.false;
+            expect(util.hasNonNullishProperty(/asdf/)).to.be.false;
+            expect(util.hasNonNullishProperty({ nullish: null })).to.be.false;
+            expect(util.hasNonNullishProperty({ nullish: undefined })).to.be.false;
+        });
+
+        it('detects objects with defined props', () => {
+            expect(util.hasNonNullishProperty({ val: true })).to.be.true;
+            expect(util.hasNonNullishProperty({ val: true, nullish: undefined })).to.be.true;
+            expect(util.hasNonNullishProperty({ val: false })).to.be.true;
+            expect(util.hasNonNullishProperty({ val: false, nullish: false })).to.be.true;
+        });
+    });
+
     describe('isAssignableExpression', () => {
         it('works', () => {
             expect(util.isAssignableExpression('function test(): endFunction')).to.be.false;
@@ -324,7 +345,7 @@ describe('Util', () => {
                     1*   pkg:/components/MainScene.brs(6)        STOP
                     *selected
 
-                    Brightscript Debugger>  
+                    Brightscript Debugger>
                 `))
             ).to.eql(dedent`
                 ID    Location                                Source Code
@@ -332,7 +353,7 @@ describe('Util', () => {
                 1*   pkg:/components/MainScene.brs(6)        STOP
                 *selected
 
-                Brightscript Debugger>  
+                Brightscript Debugger>
             `);
         });
 
@@ -343,7 +364,7 @@ describe('Util', () => {
                 1*   pkg:/components/MainScene.brs(6)        STOP
                 *selected
 
-                Brightscript Debugger> 
+                Brightscript Debugger>
             `;
             expect(
                 util.removeThreadAttachedText(text)
@@ -353,7 +374,7 @@ describe('Util', () => {
         it('matches truncated file paths', () => {
             const text = `
                 Thread attached: ...Modules/MainMenu/MainMenu.brs(309)   renderTracking = m.top.renderTracking
-                
+
                 Brightscript Debugger>
             `;
             expect(

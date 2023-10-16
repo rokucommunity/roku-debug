@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as net from 'net';
 import * as url from 'url';
-import type { SmartBuffer } from 'smart-buffer';
+import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
@@ -122,27 +122,6 @@ class Util {
                 }).close())
                 .listen(port);
         });
-    }
-
-    /**
-     * Tries to read a string from the buffer and will throw an error if there is no null terminator.
-     * @param {SmartBuffer} bufferReader
-     */
-    public readStringNT(bufferReader: SmartBuffer): string {
-        // Find next null character (if one is not found, throw)
-        let buffer = bufferReader.toBuffer();
-        let foundNullTerminator = false;
-        for (let i = bufferReader.readOffset; i < buffer.length; i++) {
-            if (buffer[i] === 0x00) {
-                foundNullTerminator = true;
-                break;
-            }
-        }
-
-        if (!foundNullTerminator) {
-            throw new Error('Could not read buffer string as there is no null terminator.');
-        }
-        return bufferReader.readStringNT();
     }
 
     /**
@@ -456,6 +435,35 @@ class Util {
             });
         });
     }
+
+    /**
+     * Does the supplied value have at least one defined property with a non-nullish value?
+     */
+    public hasNonNullishProperty(value: Record<string, any>) {
+        return Object.values(
+            value ?? {}
+        ).some(x => !this.isNullish(x));
+    }
+
+    private minPort = 1;
+
+    public async getPort() {
+        let port: number;
+        try {
+            port = await portfinder.getPortPromise({
+                //startPort
+                port: this.minPort
+            });
+        } catch {
+            this.minPort = 1;
+            port = await portfinder.getPortPromise({
+                //startPort
+                port: this.minPort
+            });
+        }
+        this.minPort = port + 1;
+        return port;
+    }
 }
 
 export function defer<T>() {
@@ -467,6 +475,11 @@ export function defer<T>() {
     });
     return {
         promise: promise,
+        tryResolve: function tryResolve(value?: PromiseLike<T> | T) {
+            if (!this.isCompleted) {
+                this.resolve(value);
+            }
+        },
         resolve: function resolve(value?: PromiseLike<T> | T) {
             if (!this.isResolved) {
                 this.isResolved = true;
@@ -477,6 +490,11 @@ export function defer<T>() {
                     `Attempted to resolve a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +
                     `New value: ${JSON.stringify(value)}`
                 );
+            }
+        },
+        tryReject: function tryReject(reason?: any) {
+            if (!this.isCompleted) {
+                this.reject(reason);
             }
         },
         reject: function reject(reason?: any) {
