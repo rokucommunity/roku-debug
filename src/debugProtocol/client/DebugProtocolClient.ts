@@ -202,12 +202,11 @@ export class DebugProtocolClient {
     private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'suspend' | 'runtime-error', data: AllThreadsStoppedUpdate | ThreadAttachedUpdate);
     private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
-    private emit(eventName: string, data?) {
+    private async emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
-        setTimeout(() => {
-            //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            this.emitter.emit(eventName, data);
-        }, 0);
+        await util.sleep(0);
+        //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
+        this.emitter.emit(eventName, data);
     }
 
     /**
@@ -288,6 +287,9 @@ export class DebugProtocolClient {
         this.controlSocket.on('close', () => {
             this.logger.log('Control socket closed');
             this.controlSocketClosed.tryResolve();
+            //destroy the control socket since it just closed on us...
+            this.controlSocket?.destroy?.();
+            this.controlSocket = undefined;
             void this.shutdown('app-exit');
         });
 
@@ -295,7 +297,9 @@ export class DebugProtocolClient {
         this.controlSocket.once('error', (error) => {
             //the Roku closed the connection for some unknown reason...
             this.logger.error(`error on control port`, error);
+            //destroy the control socket since it errored
             this.controlSocket?.destroy?.();
+            this.controlSocket = undefined;
             void this.shutdown('close');
         });
 
@@ -1149,9 +1153,19 @@ export class DebugProtocolClient {
         await this.shutdown('close', immediate);
     }
 
+    private shutdownPromise: Promise<void>;
     private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
-        this.logger.log('Shutting down!');
+        await this.emit(eventName);
+        if (this.shutdownPromise === undefined) {
+            this.logger.log('[shutdown] shutting down');
+            this.shutdownPromise = this._shutdown(immediate);
+        } else {
+            this.logger.log(`[shutdown] Tried to call .shutdown() again. Returning the same promise`);
+        }
+        return this.shutdownPromise;
+    }
 
+    private async _shutdown(immediate = false) {
         this.cancelControlConnectInterval?.();
         for (const pendingSocket of this.pendingControlConnectionSockets) {
             pendingSocket.removeAllListeners();
@@ -1170,26 +1184,26 @@ export class DebugProtocolClient {
             shutdownTimeMax = 0;
         }
 
-        //tell the device to exit the channel
-        try {
-            //ask the device to terminate the debug session. We have to wait for this to come back.
-            //The device might be running unstoppable code, so this might take a while. Wait for the device to send back
-            //the response before we continue with the teardown process
-            await Promise.race([
-                immediate
-                    ? Promise.resolve(null)
-                    : this.exitChannel().finally(() => this.logger.log('exit channel completed')),
-                //if the exit channel request took this long to finish, something's terribly wrong
-                util.sleep(exitChannelTimeout)
-            ]);
-        } finally { }
-
+        //tell the device to exit the channel (only if the device is still listening...)
+        if (this.controlSocket) {
+            try {
+                //ask the device to terminate the debug session. We have to wait for this to come back.
+                //The device might be running unstoppable code, so this might take a while. Wait for the device to send back
+                //the response before we continue with the teardown process
+                await Promise.race([
+                    immediate
+                        ? Promise.resolve(null)
+                        : this.exitChannel().finally(() => this.logger.log('exit channel completed')),
+                    //if the exit channel request took this long to finish, something's terribly wrong
+                    util.sleep(exitChannelTimeout)
+                ]);
+            } finally { }
+        }
 
         await Promise.all([
             this.destroyControlSocket(shutdownTimeMax),
             this.destroyIOSocket(shutdownTimeMax, immediate)
         ]);
-        this.emit(eventName);
         this.emitter?.removeAllListeners();
         this.buffer = Buffer.alloc(0);
         this.bufferQueue.destroy();
