@@ -184,6 +184,7 @@ export class DebugProtocolClient {
     public on(eventName: 'data', handler: (data: Buffer) => void);
     public on<T = AllThreadsStoppedUpdate | ThreadAttachedUpdate>(eventName: 'runtime-error' | 'suspend', handler: (data: T) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
+    public on(eventName: 'io-socket-closed', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
     public on(eventName: 'handshake-verified', handler: (data: HandshakeResponse) => void);
     // public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
@@ -195,19 +196,17 @@ export class DebugProtocolClient {
         };
     }
 
-    private emit(eventName: 'compile-error', response: CompileErrorUpdate);
-    private emit(eventName: 'response', response: ProtocolResponse);
-    private emit(eventName: 'update', update: ProtocolUpdate);
-    private emit(eventName: 'data', update: Buffer);
-    private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
-    private emit(eventName: 'suspend' | 'runtime-error', data: AllThreadsStoppedUpdate | ThreadAttachedUpdate);
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
-    private emit(eventName: string, data?) {
+    private async emit(eventName: 'compile-error', response: CompileErrorUpdate);
+    private async emit(eventName: 'response', response: ProtocolResponse);
+    private async emit(eventName: 'update', update: ProtocolUpdate);
+    private async emit(eventName: 'data', update: Buffer);
+    private async emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
+    private async emit(eventName: 'suspend' | 'runtime-error', data: AllThreadsStoppedUpdate | ThreadAttachedUpdate);
+    private async emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'io-socket-closed' | 'protocol-version' | 'start', data?);
+    private async emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
-        setTimeout(() => {
-            //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            this.emitter.emit(eventName, data);
-        }, 0);
+        await util.sleep(0);
+        this.emitter?.emit(eventName, data);
     }
 
     /**
@@ -248,7 +247,7 @@ export class DebugProtocolClient {
                     this.pendingControlConnectionSockets.clear();
                     resolve(socket);
                 });
-            }, this.options.controlConnectInterval ?? 250);
+            }, this.options.controlConnectInterval ?? 2000);
         });
         await this.plugins.emit('onServerConnected', {
             client: this,
@@ -1114,7 +1113,9 @@ export class DebugProtocolClient {
 
                 this.ioSocket.on('close', () => {
                     this.logger.log('IO socket closed');
+                    console.log('debug proto client io socket closed emit');
                     this.ioSocketClosed.tryResolve();
+                    //TODO emit this up the chain to the extension server
                 });
 
                 // Don't forget to catch error, for your own sake.
@@ -1122,6 +1123,8 @@ export class DebugProtocolClient {
                     this.ioSocket.end();
                     this.logger.error(err);
                 });
+
+                //TODO emit this to Adapter, then to Debug session, then to extension server
             });
             return true;
         }
@@ -1138,6 +1141,9 @@ export class DebugProtocolClient {
 
     private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
         this.logger.log('Shutting down!');
+        //TODO test if this kills the debug session without hte await
+        //await this.emit('io-socket-closed');
+        this.emit('io-socket-closed');
 
         this.cancelControlConnectInterval?.();
         for (const pendingSocket of this.pendingControlConnectionSockets) {

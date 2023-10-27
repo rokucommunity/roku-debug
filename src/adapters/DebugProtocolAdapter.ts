@@ -93,6 +93,7 @@ export class DebugProtocolAdapter {
     public once(eventName: 'runtime-error'): Promise<BrightScriptRuntimeError>;
     public once(eventName: 'suspend'): Promise<void>;
     public once(eventName: 'start'): Promise<void>;
+    public once(eventName: 'io-socket-closed'): Promise<void>;
     public once(eventname: 'unhandled-console-output'): Promise<string>;
     public once(eventName: string) {
         return new Promise((resolve) => {
@@ -112,6 +113,7 @@ export class DebugProtocolAdapter {
     public on(eventName: 'cannot-continue', handler: () => void);
     public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
+    public on(eventName: 'io-socket-closed', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
     public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
@@ -128,18 +130,14 @@ export class DebugProtocolAdapter {
         };
     }
 
-    private emit(eventName: 'suspend');
-    private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
-    private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
-    private emit(eventName: string, data?) {
+    private async emit(eventName: 'suspend');
+    private async emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
+    private async emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
+    private async emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output' | 'io-socket-closed', data?);
+    private async emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
-        setTimeout(() => {
-            //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            if (this.emitter) {
-                this.emitter.emit(eventName, data);
-            }
-        }, 0);
+        await util.sleep(0);
+        this.emitter?.emit(eventName, data);
     }
 
     /**
@@ -317,6 +315,10 @@ export class DebugProtocolAdapter {
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
             this.emit('connected', this.connected);
 
+            this.socketDebugger.on('io-socket-closed', () => {
+                console.log('debug protocal adapter handle io socket closed');
+                this.emit('io-socket-closed');
+            });
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();
         } catch (e) {
@@ -343,7 +345,7 @@ export class DebugProtocolAdapter {
         let deferred = defer();
         //If the debugProtocol supports compile error updates, don't scrape telnet logs for compile errors
         if (this.supportsCompileErrorReporting) {
-            return deferred.resolve();
+            //return deferred.resolve();
         }
         try {
             this.compileClient = new Socket();

@@ -6,6 +6,7 @@ import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     DebugSession as BaseDebugSession,
+    DebugSession,
     ErrorDestination,
     Handles,
     InitializedEvent,
@@ -53,7 +54,9 @@ import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '
 import type { DeviceInfo } from '../DeviceInfo';
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
-import { DiagnosticSeverity } from 'brighterscript';
+import { DiagnosticSeverity, SourceLiteralExpression } from 'brighterscript';
+import * as Socket from '../JsonSocketClient';
+import { resolve } from 'path';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -144,6 +147,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * A magic number to represent a fake thread that will be used for showing compile errors in the UI as if they were runtime crashes
      */
     private COMPILE_ERROR_THREAD_ID = 7_777;
+
+    private extensionSocket: Socket.JsonMessengerClient;
 
     private get enableDebugProtocol() {
         return this.launchConfiguration.enableDebugProtocol;
@@ -255,8 +260,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public deviceInfo: DeviceInfo;
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-        let didSendResponse = false;
+        this.extensionSocket = new Socket.JsonMessengerClient();
+        this.extensionSocket.connect('0.0.0.0', 9001);
 
+        let didSendResponse = false;
         const trySendResponse = () => {
             //we need to send the response for the debugger to be in a stable state...but only send if we haven't sent yet
             if (!didSendResponse) {
@@ -416,7 +423,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //if the message is anything other than compile errors, we want to display the error
             if (e instanceof CompileError) {
                 trySendResponse();
-                //this.sendEvent(new StoppedEvent(StoppedEventReason.exception, 0, 'Compile ERROR'));
             } else {
                 util.log('Encountered an issue during the publish process');
                 util.log((e as Error)?.stack);
@@ -424,8 +430,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 //send any compile errors to the client
                 await this.rokuAdapter?.sendErrors();
-
-                this.logger.error('Error. Shutting down.', e);
             }
         }
 
@@ -533,6 +537,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } as any as RokuDeployOptions);
         }
 
+        //check if the device is availabe for publishing
+        let ioState = await this.extensionSocket.sendRequest('get-state', { 'io-socket-status': false, 'host': this.deviceInfo.host });
+        while (ioState) {
+            console.log('have to get state again\n\n');
+            ioState = await this.extensionSocket.sendRequest('get-state', { 'io-socket-status': false, 'host': this.deviceInfo.host });
+        }
+        let response = await this.extensionSocket.sendRequest('set-state', { 'io-socket-status': true, 'host': this.deviceInfo.host });
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
             ...this.launchConfiguration,
@@ -541,15 +552,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             packageIsPublished = true;
         });
 
-        await publishPromise;
-
         this.logger.log(`Uploading zip took ${Date.now() - start}ms`);
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
             connectPromise,
-            util.sleep(10000)
+            util.sleep(60000)
         ]);
         this.logger.log('Finished racing promises');
         //if the adapter is still not connected, then it will probably never connect. Abort.
@@ -1237,6 +1246,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             void this.shutdown();
         });
 
+        this.rokuAdapter.on('io-socket-closed', () => {
+            this.extensionSocket.sendRequest('set-state', { 'io-socket-status': false, 'host': this.deviceInfo.host }).catch((error) => {
+                console.error(error);
+            });
+        });
         //make the connection
         await this.rokuAdapter.connect();
         this.rokuAdapterDeferred.resolve(this.rokuAdapter);

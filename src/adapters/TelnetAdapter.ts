@@ -81,6 +81,7 @@ export class TelnetAdapter {
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
+    public on(eventName: 'io-socket-closed', handler: () => void);
     public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
@@ -105,6 +106,7 @@ export class TelnetAdapter {
             'runtime-error' |
             'start' |
             'suspend' |
+            'io-socket-closed' |
             'unhandled-console-output',
         /* eslint-enable @typescript-eslint/indent */
         data?);

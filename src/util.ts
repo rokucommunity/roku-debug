@@ -15,7 +15,7 @@ import type { Response } from 'request';
 import type * as requestType from 'request';
 const request = r as typeof requestType;
 
-class Util {
+export class Util {
     /**
      * If the path does not have a trailing slash, one is appended to it
      * @param dirPath
