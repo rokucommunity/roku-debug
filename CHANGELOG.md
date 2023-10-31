@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.8](https://github.com/rokucommunity/roku-debug/compare/v0.20.7...v0.20.8) - 2023-10-31
+### Fixed
+ - Clean up control socket when it's closed ([#166](https://github.com/rokucommunity/roku-debug/pull/166))
+
+
+
 ## [0.20.7](https://github.com/rokucommunity/roku-debug/compare/v0.20.6...v0.20.7) - 2023-10-16
 ### Changed
  - Debug Protocol Enhancements ([#107](https://github.com/rokucommunity/roku-debug/pull/107))
