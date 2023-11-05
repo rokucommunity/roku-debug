@@ -19,7 +19,7 @@ import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient
 import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { TelnetAdapter } from './TelnetAdapter';
-import type { DeviceInfo } from '../DeviceInfo';
+import type { DeviceInfo } from 'roku-deploy';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -335,7 +335,7 @@ export class DebugProtocolAdapter {
      * Determines if the current version of the debug protocol supports emitting compile error updates.
      */
     public get supportsCompileErrorReporting() {
-        return semver.satisfies(this.deviceInfo['brightscript-debugger-version'], '>=3.1.0');
+        return semver.satisfies(this.deviceInfo.brightscriptDebuggerVersion, '>=3.1.0');
     }
 
     public async watchCompileOutput() {
