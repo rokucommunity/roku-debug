@@ -4,6 +4,7 @@ import { assert, expect } from 'chai';
 import type { RendezvousHistory } from './RendezvousTracker';
 import { RendezvousTracker } from './RendezvousTracker';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
+import type { LaunchConfiguration } from './LaunchConfiguration';
 
 describe('BrightScriptFileUtils ', () => {
     let rendezvousTracker: RendezvousTracker;
@@ -12,12 +13,14 @@ describe('BrightScriptFileUtils ', () => {
     let expectedHistory: RendezvousHistory;
 
     beforeEach(() => {
-        let deviceInfo = {
-            'software-version': '11.5.0',
+        let launchConfig = {
             'host': '192.168.1.5',
             'remotePort': 8060
         };
-        rendezvousTracker = new RendezvousTracker(deviceInfo);
+        let deviceInfo = {
+            softwareVersion: '11.5.0'
+        };
+        rendezvousTracker = new RendezvousTracker(deviceInfo, launchConfig as any);
         rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
             //remove preceding pkg:
             if (debuggerPath.toLowerCase().startsWith('pkg:')) {
@@ -279,13 +282,13 @@ describe('BrightScriptFileUtils ', () => {
 
     describe('isEcpRendezvousTrackingSupported ', () => {
         it('works', () => {
-            rendezvousTracker['deviceInfo']['software-version'] = '11.0.0';
+            rendezvousTracker['deviceInfo'].softwareVersion = '11.0.0';
             expect(rendezvousTracker.doesHostSupportEcpRendezvousTracking).to.be.false;
 
-            rendezvousTracker['deviceInfo']['software-version'] = '11.5.0';
+            rendezvousTracker['deviceInfo'].softwareVersion = '11.5.0';
             expect(rendezvousTracker.doesHostSupportEcpRendezvousTracking).to.be.true;
 
-            rendezvousTracker['deviceInfo']['software-version'] = '12.0.1';
+            rendezvousTracker['deviceInfo'].softwareVersion = '12.0.1';
             expect(rendezvousTracker.doesHostSupportEcpRendezvousTracking).to.be.true;
         });
     });

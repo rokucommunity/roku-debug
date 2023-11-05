@@ -445,7 +445,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async _initRendezvousTracking() {
-        this.rendezvousTracker = new RendezvousTracker(this.launchConfiguration, this.deviceInfo);
+        this.rendezvousTracker = new RendezvousTracker(this.deviceInfo, this.launchConfiguration);
 
         //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
         this.rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {

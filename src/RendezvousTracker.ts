@@ -12,8 +12,8 @@ import type { LaunchConfiguration } from './LaunchConfiguration';
 
 export class RendezvousTracker {
     constructor(
-        private launchConfiguration: LaunchConfiguration,
-        private deviceInfo: DeviceInfo
+        private deviceInfo: DeviceInfo,
+        private launchConfiguration: LaunchConfiguration
     ) {
         this.clientPathsMap = {};
         this.emitter = new EventEmitter();
