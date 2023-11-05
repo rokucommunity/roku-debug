@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.9](https://github.com/rokucommunity/roku-debug/compare/v0.20.8...v0.20.9) - 2023-11-05
+### Changed
+ - Upgrade to enhanced deviceInfo api from roku-deploy ([#167](https://github.com/rokucommunity/roku-debug/pull/167))
+ - upgrade to [roku-deploy@3.10.4](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3104---2023-11-03). Notable changes since 3.10.3:
+     - Enhance getDeviceInfo() method ([roku-deploy#120](https://github.com/rokucommunity/roku-deploy/pull/120))
+
+
+
 ## [0.20.8](https://github.com/rokucommunity/roku-debug/compare/v0.20.7...v0.20.8) - 2023-10-31
 ### Fixed
  - Clean up control socket when it's closed ([#166](https://github.com/rokucommunity/roku-debug/pull/166))
