@@ -5,15 +5,15 @@ import type { SourceLocation } from './managers/LocationManager';
 import { logger } from './logging';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
 import * as xml2js from 'xml2js';
-import * as request from 'request';
 import { util } from './util';
 import * as semver from 'semver';
-
-const telnetRendezvousString = 'on\n';
+import type { DeviceInfo } from 'roku-deploy';
+import type { LaunchConfiguration } from './LaunchConfiguration';
 
 export class RendezvousTracker {
     constructor(
-        private deviceInfo
+        private deviceInfo: DeviceInfo,
+        private launchConfiguration: LaunchConfiguration
     ) {
         this.clientPathsMap = {};
         this.emitter = new EventEmitter();
@@ -38,7 +38,7 @@ export class RendezvousTracker {
      * Determine if the current Roku device supports the ECP rendezvous tracking feature
      */
     public get doesHostSupportEcpRendezvousTracking() {
-        return semver.gte(this.deviceInfo['software-version'] as string, '11.5.0');
+        return semver.gte(this.deviceInfo.softwareVersion, '11.5.0');
     }
 
     public logger = logger.createLogger(`[${RendezvousTracker.name}]`);
@@ -140,7 +140,7 @@ export class RendezvousTracker {
      * Run a SceneGraph logendezvous 8080 command and get the text output
      */
     private async runSGLogrendezvousCommand(command: 'status' | 'on' | 'off'): Promise<string> {
-        let sgDebugCommandController = new SceneGraphDebugCommandController(this.deviceInfo.host as string);
+        let sgDebugCommandController = new SceneGraphDebugCommandController(this.launchConfiguration.host);
         try {
             this.logger.info(`port 8080 command: logrendezvous ${command}`);
             return (await sgDebugCommandController.logrendezvous(command)).result.rawResponse;
@@ -197,7 +197,7 @@ export class RendezvousTracker {
      * Get the response from an ECP sgrendezvous request from the Roku
      */
     public async getEcpRendezvous(): Promise<EcpRendezvousData> {
-        const url = `http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/query/sgrendezvous`;
+        const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/sgrendezvous`;
         this.logger.info(`Sending ECP rendezvous request:`, url);
         // Send rendezvous query to ECP
         const rendezvousQuery = await util.httpGet(url);
@@ -241,7 +241,7 @@ export class RendezvousTracker {
         try {
             this.logger.log(`Sending ecp sgrendezvous request: ${toggle}`);
             const response = await util.httpPost(
-                `http://${this.deviceInfo.host}:${this.deviceInfo.remotePort}/sgrendezvous/${toggle}`,
+                `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/sgrendezvous/${toggle}`,
                 //not sure if we need this, but it works...so probably better to just leave it here
                 { body: '' }
             );

@@ -47,12 +47,14 @@ describe('DebugProtocolAdapter', function() {
     let plugin: DebugProtocolServerTestPlugin;
     let breakpointManager: BreakpointManager;
     let projectManager: ProjectManager;
-    let deviceInfo = {
-        'software-version': '11.5.0',
-        'host': '192.168.1.5',
-        'remotePort': 8060
+    let launchConfig = {
+        host: '192.168.1.5',
+        remotePort: 8060
     };
-    let rendezvousTracker = new RendezvousTracker(deviceInfo);
+    let deviceInfo = {
+        softwareVersion: '11.5.0'
+    };
+    let rendezvousTracker = new RendezvousTracker(deviceInfo, launchConfig as any);
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
@@ -62,7 +64,7 @@ describe('DebugProtocolAdapter', function() {
         };
         const sourcemapManager = new SourceMapManager();
         const locationManager = new LocationManager(sourcemapManager);
-        const rendezvousTracker = new RendezvousTracker({});
+        const rendezvousTracker = new RendezvousTracker({}, {} as any);
         breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
         projectManager = new ProjectManager(breakpointManager, locationManager);
         projectManager.mainProject = new Project({

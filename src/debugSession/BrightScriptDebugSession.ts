@@ -2,7 +2,7 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import { rokuDeploy, CompileError } from 'roku-deploy';
-import type { RokuDeploy, RokuDeployOptions } from 'roku-deploy';
+import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     DebugSession as BaseDebugSession,
@@ -49,7 +49,6 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
-import type { DeviceInfo } from '../DeviceInfo';
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
@@ -277,12 +276,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         // fetches the device info and parses the xml data to JSON object
         try {
-            this.deviceInfo = await this.fetchDeviceInfo(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true });
         } catch (e) {
             return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
         }
 
-        if (!this.deviceInfo['developer-enabled']) {
+        if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
 
@@ -309,7 +308,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.initRendezvousTracking();
 
-            this.createRokuAdapter(this.launchConfiguration.host, this.rendezvousTracker);
+            this.createRokuAdapter(this.rendezvousTracker);
             if (!this.enableDebugProtocol) {
                 //connect to the roku debug via telnet
                 if (!this.rokuAdapter.connected) {
@@ -446,7 +445,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async _initRendezvousTracking() {
-        this.rendezvousTracker = new RendezvousTracker(this.deviceInfo);
+        this.rendezvousTracker = new RendezvousTracker(this.deviceInfo, this.launchConfiguration);
 
         //pass the debug functions used to locate the client files and lines thought the adapter to the RendezvousTracker
         this.rendezvousTracker.registerSourceLocator(async (debuggerPath: string, lineNumber: number) => {
@@ -1216,7 +1215,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         await this.shutdown();
     }
 
-    private createRokuAdapter(host: string, rendezvousTracker: RendezvousTracker) {
+    private createRokuAdapter(rendezvousTracker: RendezvousTracker) {
         if (this.enableDebugProtocol) {
             this.rokuAdapter = new DebugProtocolAdapter(this.launchConfiguration, this.projectManager, this.breakpointManager, rendezvousTracker, this.deviceInfo);
         } else {
