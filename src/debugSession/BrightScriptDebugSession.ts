@@ -510,10 +510,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let packageIsPublished = false;
 
         //delete any currently installed dev channel (if enabled to do so)
-        if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
-            await this.rokuDeploy.deleteInstalledChannel({
-                ...this.launchConfiguration
-            } as any as RokuDeployOptions);
+        try {
+            if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
+                await this.rokuDeploy.deleteInstalledChannel({
+                    ...this.launchConfiguration
+                } as any as RokuDeployOptions);
+            }
+        } catch (e) {
+            this.logger.warn('Failed to delete the dev channel...probably not a big deal', e);
         }
 
         //publish the package to the target Roku
