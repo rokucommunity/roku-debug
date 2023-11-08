@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.10](https://github.com/rokucommunity/roku-debug/compare/v0.20.9...v0.20.10) - 2023-11-08
+### Changed
+ - upgrade to [brighterscript@0.65.9](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0659---2023-11-06). Notable changes since 0.65.8:
+     - Fix issue with unary expression parsing ([brighterscript#938](https://github.com/rokucommunity/brighterscript/pull/938))
+     - ci: Don't run `test-related-projects` on release since it already ran on build ([#brighterscript157fc2e](https://github.com/rokucommunity/brighterscript/commit/157fc2e))
+### Fixed
+ - Fix sideload crash related to failed dev app deletion ([#168](https://github.com/rokucommunity/roku-debug/pull/168))
+
+
+
 ## [0.20.9](https://github.com/rokucommunity/roku-debug/compare/v0.20.8...v0.20.9) - 2023-11-05
 ### Changed
  - Upgrade to enhanced deviceInfo api from roku-deploy ([#167](https://github.com/rokucommunity/roku-debug/pull/167))
