@@ -1062,7 +1062,7 @@ export class DebugProtocolClient {
             } else if (semver.gtr(this.protocolVersion, this.supportedVersionRange)) {
                 this.logger.log('roku-debug has not been tested against protocol version', this.protocolVersion);
                 this.emit('protocol-version', {
-                    message: `Protocol Version ${this.protocolVersion} has not been tested and my not work as intended.\nPlease open any issues you have with this version to https://github.com/rokucommunity/roku-debug/issues`,
+                    message: `Protocol Version ${this.protocolVersion} has not been tested and may not work as intended.\nPlease open any issues you have with this version to https://github.com/rokucommunity/roku-debug/issues`,
                     errorCode: PROTOCOL_ERROR_CODES.NOT_TESTED
                 });
             } else {
