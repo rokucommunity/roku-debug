@@ -55,8 +55,9 @@ import type { DeviceInfo } from '../DeviceInfo';
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity, SourceLiteralExpression } from 'brighterscript';
-import * as Socket from '../JsonSocketClient';
+import { JsonMessengerClient } from '../JsonSocketClient';
 import { resolve } from 'path';
+import { rejects } from 'assert';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
     public constructor() {
@@ -148,7 +149,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     private COMPILE_ERROR_THREAD_ID = 7_777;
 
-    private extensionSocket: Socket.JsonMessengerClient;
+    private extensionSocket: JsonMessengerClient;
 
     private get enableDebugProtocol() {
         return this.launchConfiguration.enableDebugProtocol;
@@ -260,7 +261,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public deviceInfo: DeviceInfo;
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-        this.extensionSocket = new Socket.JsonMessengerClient();
+        this.extensionSocket = new JsonMessengerClient();
         this.extensionSocket.connect('0.0.0.0', 9001);
 
         let didSendResponse = false;
@@ -519,6 +520,30 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new DiagnosticsEvent(diagnostics));
     }
 
+    private clearToLaunchCanRun = false;
+    private async isClearToLaunch() {
+        //check if the device is availabe for publishing
+        let ioState = await this.extensionSocket.sendRequest('get-state', { 'key': this.deviceInfo.host });
+        while (!this.isIOSocketOccupied(ioState as Record<string, unknown>)) {
+            if (!this.clearToLaunchCanRun) {
+                return Promise.reject(new Error('Timeout occurred proceeding with launch'));
+            }
+            console.log('have to get state again\n\n');
+            ioState = await this.extensionSocket.sendRequest('get-state', { key: this.deviceInfo.host });
+            await util.sleep(500);
+        }
+    }
+
+    private isIOSocketOccupied(ioState: Record<string, unknown>) {
+        let value = true;
+        for (const key of Object.keys(ioState)) {
+            if (ioState[key]['io-port-occupied']) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private async connectAndPublish() {
         let connectPromise: Promise<any>;
         //connect to the roku debug via sockets
@@ -536,15 +561,21 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 ...this.launchConfiguration
             } as any as RokuDeployOptions);
         }
+        this.clearToLaunchCanRun = true;
+        let launchRequirementsSatisfied = false;
+        const clearToLaunchPromise = this.isClearToLaunch().then(() => {
+            launchRequirementsSatisfied = true;
+            this.clearToLaunchCanRun = false;
+        });
 
-        //check if the device is availabe for publishing
-        let ioState = await this.extensionSocket.sendRequest('get-state', { 'io-socket-status': false, 'host': this.deviceInfo.host });
-        while (ioState) {
-            console.log('have to get state again\n\n');
-            ioState = await this.extensionSocket.sendRequest('get-state', { 'io-socket-status': false, 'host': this.deviceInfo.host });
-        }
-        let response = await this.extensionSocket.sendRequest('set-state', { 'io-socket-status': true, 'host': this.deviceInfo.host });
-        //publish the package to the target Roku
+        await Promise.race([
+            clearToLaunchPromise,
+            util.sleep(8000).then(() => {
+                this.clearToLaunchCanRun = false;
+            })
+        ]);
+        //set the io-port-occupied state before occupying the port to prevent someone else for locking it before this does
+        await this.extensionSocket.sendRequest('set-state', { key: this.deviceInfo.host, state: { 'io-port-occupied': true } });
         const publishPromise = this.rokuDeploy.publish({
             ...this.launchConfiguration,
             failOnCompileError: true
@@ -564,6 +595,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //if the adapter is still not connected, then it will probably never connect. Abort.
         if (packageIsPublished && !this.rokuAdapter.connected) {
             return this.shutdown('Debug session cancelled: failed to connect to debug protocol control port.');
+        }
+
+        //The launch request was not granted, but we tried anyways and successfully launch
+        //clear the existing state and reset the state
+        if (!launchRequirementsSatisfied) {
+            await this.extensionSocket.sendRequest('clear-all', { key: this.deviceInfo.host, state: { } });
+            await this.extensionSocket.sendRequest('set-state', { key: this.deviceInfo.host, state: { 'io-port-occupied': true } });
+
         }
     }
 
@@ -1247,7 +1286,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         });
 
         this.rokuAdapter.on('io-socket-closed', () => {
-            this.extensionSocket.sendRequest('set-state', { 'io-socket-status': false, 'host': this.deviceInfo.host }).catch((error) => {
+            console.log('debug session io socket closed');
+            this.extensionSocket.sendRequest('set-state', { key: this.deviceInfo.host, state: { } }).catch((error) => {
                 console.error(error);
             });
         });
@@ -1431,6 +1471,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * the same promise on subsequent calls
      */
     public async shutdown(errorMessage?: string): Promise<void> {
+        console.log('Shutdown called');
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
             this.shutdownPromise = this._shutdown(errorMessage);

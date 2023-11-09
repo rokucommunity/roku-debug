@@ -15,3 +15,4 @@ export * from './SceneGraphDebugCommandController';
 export * from './adapters/TelnetAdapter';
 export * from './managers/LocationManager';
 export * from './util';
+export * from './JsonSocketClient';

@@ -1,22 +1,24 @@
 import { NetConnectOpts, Server, Socket } from 'net';
-import { defer, util as rokuDebugUtil } from '../../roku-debug';
+import { defer, util as rokuDebugUtil } from './util';
 import { EventEmitter } from 'eventemitter3';
-import { rejects } from 'assert';
 
 export class JsonMessengerServer {
     private server: Server;
 
     private clients: JsonMessengerClient[] = [];
 
+    private clientIdSequence = 1;
+
     public connect(host: string, port: number) {
         const deferred = defer();
         this.server = new Server({});
 
         //whenever a client makes a connection
-        // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.server.on('connection', (socket: Socket) => {
             const client = new JsonMessengerClient();
             client.setSocket(socket);
+            // eslint-disable-next-line @typescript-eslint/dot-notation
+            client['setId'](0);
             this.clients.push(client);
             client.on('request', (event) => {
                 this.emit('request', client, event);
@@ -24,6 +26,13 @@ export class JsonMessengerServer {
             client.on('response', (event) => {
                 this.emit('response', client, event);
             });
+            const json = JSON.stringify({
+                clientId: this.clientIdSequence++,
+                type: 'set-id'
+            });
+
+            console.log('setting client id');
+            socket.write(json + '\r\n');
         });
 
         //handle connection errors
@@ -83,9 +92,9 @@ export class JsonMessengerServer {
         };
     }
 
-    private async emit<T>(eventName: 'request', client: JsonMessengerClient, data: T);
-    private async emit<T>(eventName: 'response', client: JsonMessengerClient, data: T);
-    private async emit(eventName: string, client: JsonMessengerClient, data?: any) {
+    private emit<T>(eventName: 'request', client: JsonMessengerClient, data: T);
+    private emit<T>(eventName: 'response', client: JsonMessengerClient, data: T);
+    private emit(eventName: string, client: JsonMessengerClient, data?: any) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         process.nextTick(() => {
             this.emitter?.emit(eventName, client, data);
@@ -125,6 +134,7 @@ export class JsonMessengerClient {
         this.clientDeferred.resolve(this.client);
         this.client = socket;
         this.client.on('data', (data) => {
+            console.log('received more data ' + data.toString());
             this.unhandledText += data.toString();
             this.processUnhandledText();
         });
@@ -132,14 +142,22 @@ export class JsonMessengerClient {
 
     private processUnhandledText() {
         let data: Buffer | undefined;
-        const lines = this.unhandledText.split('\r\n');
-        for (const line of lines) {
-            if (!line) {
-                continue;
+        let match: RegExpExecArray;
+        while ((match = /^(.*?)\r\n/.exec(this.unhandledText))) {
+            this.unhandledText = this.unhandledText.substring(match[0].length);
+            const event = JSON.parse(match[1]) as JsonEvent;
+            if (event.type !== 'set-id') {
+                this.emit(event.type as 'request', event);
+            } else {
+                this.setId(event.clientId);
             }
-            const event = JSON.parse(line);
-            this.emit(event.type, event);
         }
+    }
+
+    private id: number;
+
+    private setId(id: number) {
+        this.id = id;
     }
 
     private emitter = new EventEmitter();
@@ -155,9 +173,9 @@ export class JsonMessengerClient {
         };
     }
 
-    private async emit<T>(eventName: 'request', data: T);
-    private async emit<T>(eventName: 'response', data: T);
-    private async emit(eventName: string, data?: any) {
+    private emit<T>(eventName: 'request', data: T);
+    private emit<T>(eventName: 'response', data: T);
+    private emit(eventName: string, data?: any) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         process.nextTick(() => {
             this.emitter?.emit(eventName, data);
@@ -171,6 +189,7 @@ export class JsonMessengerClient {
             const eventId = this.requestIdSequence++;
             const json = JSON.stringify({
                 id: eventId,
+                clientId: this.id,
                 type: 'request',
                 name: requestName,
                 data: data
@@ -183,9 +202,10 @@ export class JsonMessengerClient {
             this.on('response', (event) => {
                 if (event.id === eventId) {
                     clearTimeout(timeout);
-                    resolve(event.data);
+                    resolve(event.data as R);
                 }
             });
+            console.log(`Sending json request: ${json}`);
             this.client.write(json + '\r\n');
         });
     }
@@ -193,17 +213,20 @@ export class JsonMessengerClient {
     public sendResponse<T = any>(request: JsonEvent, responseData?: T) {
         const json = JSON.stringify({
             id: request.id,
+            clientId: this.id,
             type: 'response',
             name: request.name,
             data: responseData
         });
+        console.log(`Sending json response: ${json}`);
         this.client.write(json + '\r\n');
     }
 }
 
 interface JsonEvent<T = any> {
     id: number;
-    type: 'request' | 'response' | 'update';
-    name: 'get-state' | 'set-state';
+    clientId: number;
+    type: 'set-id' | 'request' | 'response' | 'update';
+    name: 'get-state' | 'set-state' | 'clear-all';
     data: T;
 }

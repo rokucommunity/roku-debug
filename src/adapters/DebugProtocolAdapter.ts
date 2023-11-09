@@ -139,6 +139,9 @@ export class DebugProtocolAdapter {
         await util.sleep(0);
         this.emitter?.emit(eventName, data);
     }
+    private emitImmediate(eventName: 'io-socket-closed', data?) {
+        this.emitter?.emit(eventName, data);
+    }
 
     /**
      * The debugger needs to tell us when to be active (i.e. when the package was deployed)
@@ -316,8 +319,8 @@ export class DebugProtocolAdapter {
             this.emit('connected', this.connected);
 
             this.socketDebugger.on('io-socket-closed', () => {
-                console.log('debug protocal adapter handle io socket closed');
-                this.emit('io-socket-closed');
+                console.log('debug protocal adapter emit io socket closed');
+                this.emitImmediate('io-socket-closed');
             });
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();

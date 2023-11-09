@@ -209,6 +209,10 @@ export class DebugProtocolClient {
         this.emitter?.emit(eventName, data);
     }
 
+    private emitImmediate(eventName: 'io-socket-closed', data?) {
+        this.emitter?.emit(eventName, data);
+    }
+
     /**
      * A function that can be used to cancel the repeating interval that's running to try and establish a connection to the control socket.
      */
@@ -1141,9 +1145,11 @@ export class DebugProtocolClient {
 
     private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
         this.logger.log('Shutting down!');
-        //TODO test if this kills the debug session without hte await
-        //await this.emit('io-socket-closed');
-        this.emit('io-socket-closed');
+        console.log('debug protocal client emit io socket closed');
+        this.emitImmediate('io-socket-closed');
+        // this.logger.log('Shutting down! pre sleep');
+        // await util.sleep(10000);
+        // this.logger.log('Shutting down! post');
 
         this.cancelControlConnectInterval?.();
         for (const pendingSocket of this.pendingControlConnectionSockets) {
