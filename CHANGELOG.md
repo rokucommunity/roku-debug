@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.11](https://github.com/rokucommunity/roku-debug/compare/v0.20.10...v0.20.11) - 2023-11-11
+### Changed
+ - Update DebugProtocolClient supported version range ([#170](https://github.com/rokucommunity/roku-debug/pull/170))
+ - fix small typo in debug potocol message ([#169](https://github.com/rokucommunity/roku-debug/pull/169))
+
+
+
 ## [0.20.10](https://github.com/rokucommunity/roku-debug/compare/v0.20.9...v0.20.10) - 2023-11-08
 ### Changed
  - upgrade to [brighterscript@0.65.9](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0659---2023-11-06). Notable changes since 0.65.8:
