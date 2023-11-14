@@ -1,4 +1,4 @@
-name: create-vsix
+name: create-package
 on:
   pull_request:
     types: [labeled, unlabeled, synchronize]
