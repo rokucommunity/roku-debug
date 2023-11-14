@@ -34,7 +34,7 @@ jobs:
       - run: npm pack
 
       - run: |
-          ARTIFACT_NAME=$(ECHO "${{ github.repository }}-${{ env.BUILD_VERSION }}.tgz" | TR '/' '-')
+          ARTIFACT_NAME=$(echo "${{ github.repository }}-${{ env.BUILD_VERSION }}.tgz" | tr '/' '-')
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v3
         with:
