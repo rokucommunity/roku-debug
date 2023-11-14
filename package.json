@@ -5,7 +5,6 @@
     "main": "dist/index.js",
     "scripts": {
         "build": "rimraf dist && tsc",
-        "preversion": "npm run build && npm run lint && npm run test",
         "lint": "eslint \"src/**\"",
         "watch": "tsc --watch",
         "test": "nyc mocha \"src/**/*spec.ts\" --exclude \"src/**/*.device.spec.ts\"",
