@@ -32,8 +32,7 @@ jobs:
 
           NPM_PACKAGE_NAME=$(grep -o '\"name\": *\"[^\"]*\"' package.json | awk -F'\"' '{print $4}')
 
-          ARTIFACT_NAME=$(echo "$NPM_PACKAGE_NAME-${{ env.BUILD_VERSION }}.tgz" | tr '/' '-')
-          ARTIFACT_NAME="$ARTIFACT_NAME-$BUILD_VERSION"
+          ARTIFACT_NAME=$(echo "$NPM_PACKAGE_NAME-$BUILD_VERSION.tgz" | tr '/' '-')
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_NAME"
