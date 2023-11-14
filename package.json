@@ -18,6 +18,9 @@
         "type": "git",
         "url": "https://github.com/rokucommunity/roku-debug"
     },
+    "bin": {
+        "roku-debug": "dist/cli.js"
+    },
     "author": "RokuCommunity",
     "license": "MIT",
     "mocha": {
