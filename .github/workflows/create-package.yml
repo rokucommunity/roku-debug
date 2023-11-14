@@ -45,7 +45,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: ${{ ARTIFACT_NAME }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: "*.tgz"
 
       - name: Add comment to  PR
