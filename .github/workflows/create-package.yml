@@ -33,9 +33,12 @@ jobs:
         run: npm version "$BUILD_VERSION" --no-git-tag-version
       - run: npm pack
 
+      - run: |
+          ARTIFACT_NAME=$(ECHO "${{ github.repository }}-${{ env.BUILD_VERSION }}.tgz" | TR '/' '-')
+          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.repository }}-${{ env.BUILD_VERSION }}.tgz
+          name: ${{ env.ARTIFACT_NAME }}
           path: "*.tgz"
 
       - name: Add comment to  PR
@@ -43,7 +46,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const ARTIFACT_URL=`${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${{ steps.upload-artifact.outputs.artifact_name }}`;
+            const ARTIFACT_URL=`${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${{ env.ARTIFACT_NAME }}`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
