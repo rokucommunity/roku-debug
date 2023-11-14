@@ -52,5 +52,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${{ process.env.ARTIFACT_URL }}) or install it by running the following command: \n```bash\nnpm install ${{ process.env.ARTIFACT_URL }})\n```"
+              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${ARTIFACT_URL}) or install it by running the following command: \n```bash\nnpm install ${ARTIFACT_URL})\n```"
             })
