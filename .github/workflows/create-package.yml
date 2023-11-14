@@ -19,7 +19,7 @@ jobs:
       #   run: echo "TOKEN=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
 
       # # build an npm package
-      # - uses: actions/checkout@master
+      - uses: actions/checkout@master
       # - uses: actions/setup-node@master
       #   with:
       #     node-version: "14.19.0"
