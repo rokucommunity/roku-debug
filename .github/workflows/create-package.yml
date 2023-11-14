@@ -24,13 +24,13 @@ jobs:
         with:
           node-version: "14.19.0"
       - run: npm ci
-      - run: npm run build
       - name: Compute pre-release version
         run: |
           CURRENT_VERSION=$(grep -o '\"version\": *\"[^\"]*\"' package.json | awk -F'\"' '{print $4}')
           BUILD_VERSION="$CURRENT_VERSION-alpha.$(date +%Y%m%d)"
           echo "BUILD_VERSION=$BUILD_VERSION" >> $GITHUB_ENV
-      - run: npm version "$BUILD_VERSION" --no-git-tag-version
+      - name: Update version and run pre-release scripts
+        run: npm version "$BUILD_VERSION" --no-git-tag-version
       - run: npm pack
 
       # upload the .tgz as a build artifact
@@ -44,10 +44,11 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            artifactURL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts/${{ steps.upload-artifact.outputs.artifact_name }}"
+            ARTIFACT_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts/${{ steps.upload-artifact.outputs.artifact_name }}"
+            echo "ARTIFACT_URL=$ARTIFACT_URL" >> $GITHUB_ENV
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${artifactURL}) or install it by running the following command: \n```\nnpm install ${artifactURL})\n```"
+              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${{ ARTIFACT_URL }}) or install it by running the following command: \n```\nnpm install ${{ ARTIFACT_URL }})\n```"
             })
