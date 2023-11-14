@@ -32,8 +32,7 @@ jobs:
 
           NPM_PACKAGE_NAME=$(grep -o '\"name\": *\"[^\"]*\"' package.json | awk -F'\"' '{print $4}')
 
-          ARTIFACT_NAME=$(echo "$NPM_PACKAGE_NAME-${{ env.BUILD_VERSION }}.tgz" | tr '/' '-')
-          ARTIFACT_NAME="$ARTIFACT_NAME-$BUILD-VERSION"
+          ARTIFACT_NAME="$(echo "$NPM_PACKAGE_NAME-${{ env.BUILD_VERSION }}.tgz" | tr '/' '-')-$BUILD-VERSION"
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_NAME"
@@ -58,5 +57,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${{ env.ARTIFACT_URL }}) or install it by running the following command: \n```bash\nnpm install ${{ env.ARTIFACT_URL }}\n```";
+              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${{ env.ARTIFACT_URL }}) or install it by running the following command: \n```bash\nnpm install ${{ env.ARTIFACT_URL }}\n```"
             });
