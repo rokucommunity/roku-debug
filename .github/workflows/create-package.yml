@@ -33,8 +33,7 @@ jobs:
       #   run: npm version "$BUILD_VERSION" --no-git-tag-version
       # - run: npm pack
 
-      - name: Upload .tgz as a build artifact
-        uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v3
         with:
           # path: "*.tgz"
           path: "package.json"
