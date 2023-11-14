@@ -33,22 +33,24 @@ jobs:
         run: npm version "$BUILD_VERSION" --no-git-tag-version
       - run: npm pack
 
-      # upload the .tgz as a build artifact
-      - uses: actions/upload-artifact@v3
+      - name: Upload .tgz as a build artifact
+        uses: actions/upload-artifact@v3
         with:
           path: "*.tgz"
 
-      # add a comment on the PR
+      - name: Compute the artifact URL
+        run: |
+            ARTIFACT_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts/${{ steps.upload-artifact.outputs.artifact_name }}"
+            echo "ARTIFACT_URL=$ARTIFACT_URL" >> $GITHUB_ENV
+
       - name: Add comment to PR
         uses: actions/github-script@v5
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            ARTIFACT_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts/${{ steps.upload-artifact.outputs.artifact_name }}"
-            echo "ARTIFACT_URL=$ARTIFACT_URL" >> $GITHUB_ENV
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${{ ARTIFACT_URL }}) or install it by running the following command: \n```\nnpm install ${{ ARTIFACT_URL }})\n```"
+              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${{ ARTIFACT_URL }}) or install it by running the following command: \n```bash\nnpm install ${{ ARTIFACT_URL }})\n```"
             })
