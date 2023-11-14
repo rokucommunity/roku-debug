@@ -46,7 +46,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: ${{ env.NPM_PACKAGE_NAME }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: "*.tgz"
 
       - name: Add comment to  PR
@@ -54,10 +54,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const ARTIFACT_URL="${{ env.ARTIFACT_URL }}";
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${ARTIFACT_URL}) or install it by running the following command: \n\`\`\`bash\nnpm install ${ARTIFACT_URL}\n\`\`\``
+              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can download it [here](${{ env.ARTIFACT_URL }}) or install it by running the following command: \n```bash\nnpm install ${{ env.ARTIFACT_URL }}\n```";
             });
