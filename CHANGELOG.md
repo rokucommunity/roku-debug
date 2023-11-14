@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.12](https://github.com/rokucommunity/roku-debug/compare/v0.20.11...v0.20.12) - 2023-11-14
+### Changed
+ - Add timeout for deviceinfo query so we don't wait too long ([#171](https://github.com/rokucommunity/roku-debug/pull/171))
+ - upgrade to [brighterscript@0.65.10](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06510---2023-11-14). Notable changes since 0.65.9:
+ - upgrade to [roku-deploy@3.10.5](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3105---2023-11-14). Notable changes since 3.10.4:
+     - better error detection when sideload fails ([roku-deploy#127](https://github.com/rokucommunity/roku-deploy/pull/127))
+
+
+
 ## [0.20.11](https://github.com/rokucommunity/roku-debug/compare/v0.20.10...v0.20.11) - 2023-11-11
 ### Changed
  - Update DebugProtocolClient supported version range ([#170](https://github.com/rokucommunity/roku-debug/pull/170))
