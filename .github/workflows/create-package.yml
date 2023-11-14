@@ -38,7 +38,7 @@ jobs:
           name: ${{ $GITHUB_REPOSITORY}}-${{ env.BUILD_VERSION }}.tgz
           path: "*.tgz"
 
-      - name: Add comment to PR
+      - name: Add comment to  PR
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
