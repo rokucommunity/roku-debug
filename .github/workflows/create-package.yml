@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: ${{ $GITHUB_REPOSITORY}}-${{ env.BUILD_VERSION }}.tgz
+          name: ${{ github.repository }}-${{ env.BUILD_VERSION }}.tgz
           path: "*.tgz"
 
       - name: Add comment to  PR
