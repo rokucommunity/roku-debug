@@ -33,6 +33,7 @@ jobs:
           NPM_PACKAGE_NAME=$(grep -o '\"name\": *\"[^\"]*\"' package.json | awk -F'\"' '{print $4}')
 
           ARTIFACT_NAME=$(echo "$NPM_PACKAGE_NAME-${{ env.BUILD_VERSION }}.tgz" | tr '/' '-')
+          ARTIFACT_NAME="$ARTIFACT_NAME-$BUILD-VERSION"
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
           ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_NAME"
@@ -45,7 +46,7 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: ${{ env.ARTIFACT_NAME }}
+          name: ${{ env.NPM_PACKAGE_NAME }}
           path: "*.tgz"
 
       - name: Add comment to  PR
