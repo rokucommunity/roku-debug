@@ -1,0 +1,52 @@
+name: create-vsix
+on:
+  pull_request:
+    types: [labeled, unlabeled, synchronize]
+jobs:
+  create-vsix:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'create-package')
+    steps:
+
+      # Get a bot token so the bot's name shows up on all our actions
+      - name: Get Token From roku-ci-token Application
+        uses: tibdex/github-app-token@v1
+        id: generate-token
+        with:
+          app_id: ${{ secrets.BOT_APP_ID }}
+          private_key: ${{ secrets.BOT_PRIVATE_KEY }}
+      - name: Set New GitHub Token
+        run: echo "TOKEN=${{ steps.generate-token.outputs.token }}" >> $GITHUB_ENV
+
+      # build an npm package
+      - uses: actions/checkout@master
+      - uses: actions/setup-node@master
+        with:
+          node-version: "14.19.0"
+      - run: npm ci
+      - run: npm run build
+      - run: |
+          CURRENT_VERSION=$(grep -o '\"version\": *\"[^\"]*\"' package.json | awk -F'\"' '{print $4}')
+          BUILD_VERSION="$CURRENT_VERSION-alpha.$(date +%Y%m%d)"
+          echo "BUILD_VERSION=$BUILD_VERSION" >> $GITHUB_ENV
+          npm version "BUILD_VERSION"
+      - run: npm pack
+
+      # upload the .tgz as a build artifact
+      - uses: actions/upload-artifact@v3
+        with:
+          path: "*.tgz"
+
+      # add a comment on the PR
+      - name: Add comment to PR
+        uses: actions/github-script@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            artifactURL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts/${{ steps.upload-artifact.outputs.artifact_name }}"
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "Hey there! I just built a new temporary npm package based on ${{ github.event.pull_request.head.sha }}. You can install this version by running: \n```npm install ${artifactURL})\n```"
+            })
