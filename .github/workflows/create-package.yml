@@ -56,7 +56,7 @@ jobs:
             github.rest.actions.listWorkflowRunArtifacts({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              job_id: 18687088626,
+              run_id: 6871028938,
             })
             .then((response) => {
               const artifacts = response.data.artifacts;
