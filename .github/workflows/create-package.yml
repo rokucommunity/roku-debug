@@ -6,6 +6,8 @@ jobs:
   create-package:
     runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'create-package')
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@master
       - uses: actions/setup-node@master
@@ -38,16 +40,11 @@ jobs:
       - run: npm version "$BUILD_VERSION" --no-git-tag-version
       - run: npm pack
 
-      - uses: actions/upload-artifact@v3
-        with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: "*.tgz"
-
       # create the release if not exist
       - run: gh release create v0.0.0-packages --notes "catchall release for temp packages" -R ${{ github.repository }}
         continue-on-error: true
 
-      # upload this artifact to the github release
+      # upload this artifact to the "packages" github release
       - run: gh release upload v0.0.0-packages *.tgz -R rokucommunity/roku-debug
 
       - name: Fetch build artifact
