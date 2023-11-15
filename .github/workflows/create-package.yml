@@ -53,7 +53,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            octokit.actions.listWorkflowJobArtifacts({
+            github.rest.actions.listWorkflowJobArtifacts({
               owner: context.repo.owner,
               repo: context.repo.repo,
               job_id: 18687088626,
