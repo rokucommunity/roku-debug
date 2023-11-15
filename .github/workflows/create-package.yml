@@ -60,8 +60,9 @@ jobs:
             })
             .then((response) => {
               const artifacts = response.data.artifacts;
+              console.log(artifacts);
 
-              github.rest.issues.createComment({
+              return github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
