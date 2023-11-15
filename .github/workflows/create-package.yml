@@ -35,7 +35,7 @@ jobs:
           ARTIFACT_NAME=$(echo "$NPM_PACKAGE_NAME-$BUILD_VERSION.tgz" | tr '/' '-')
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
-          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_NAME"
+          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           echo "ARTIFACT_URL=$ARTIFACT_URL" >> $GITHUB_ENV
 
       - name: Update version and run pre-release scripts
