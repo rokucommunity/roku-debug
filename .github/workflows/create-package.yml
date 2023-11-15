@@ -44,7 +44,7 @@ jobs:
         continue-on-error: true
 
       # upload this artifact to the "packages" github release
-      - run: gh release upload v0.0.0-packages *.tgz -R rokucommunity/roku-debug
+      - run: gh release upload v0.0.0-packages *.tgz -R ${{ github.repository }}
 
       - name: Fetch build artifact
         uses: actions/github-script@v7
