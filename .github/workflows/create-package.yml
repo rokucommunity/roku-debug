@@ -40,7 +40,7 @@ jobs:
       - run: npm pack
 
       # create the release if not exist
-      - run: gh release create v0.0.0-packages --notes "catchall release for temp packages" -R ${{ github.repository }}
+      - run: gh release create v0.0.0-packages --latest=false --prerelease --notes "catchall release for temp packages" -R ${{ github.repository }}
         continue-on-error: true
 
       # upload this artifact to the "packages" github release
