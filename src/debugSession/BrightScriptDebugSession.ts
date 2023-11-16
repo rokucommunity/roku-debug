@@ -60,8 +60,13 @@ import { resolve } from 'path';
 import { rejects } from 'assert';
 
 export class BrightScriptDebugSession extends BaseDebugSession {
+
+    private idTag = 0;
+    static idTagSeq = 0;
     public constructor() {
         super();
+
+        this.idTag = BrightScriptDebugSession.idTagSeq++;
 
         // this debugger uses one-based lines and columns
         this.setDebuggerLinesStartAt1(true);
@@ -152,7 +157,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private extensionSocket: JsonMessengerClient;
 
     private get enableDebugProtocol() {
-        return this.launchConfiguration.enableDebugProtocol;
+        return true;
+        //return this.launchConfiguration.enableDebugProtocol;
     }
 
     private getRokuAdapter() {
@@ -180,7 +186,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         response.body.supportsConfigurationDoneRequest = true;
 
         // The debug adapter supports the 'restart' request. In this case a client should not implement 'restart' by terminating and relaunching the adapter but by calling the RestartRequest.
-        response.body.supportsRestartRequest = true;
+        //TODO test this with false
+        response.body.supportsRestartRequest = false;
 
         // make VS Code to use 'evaluate' when hovering over source
         response.body.supportsEvaluateForHovers = true;
@@ -285,6 +292,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
         } catch (e) {
+            this.logger.log('SEARCHKEY:BLACK shutdown cannot dns lookup\n');
             return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
         }
 
@@ -292,10 +300,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             this.deviceInfo = await this.fetchDeviceInfo(this.launchConfiguration.host, this.launchConfiguration.remotePort);
         } catch (e) {
+            this.logger.log('SEARCHKEY:BLACK shutdown cannot fetch device info\n');
             return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
         }
 
         if (!this.deviceInfo['developer-enabled']) {
+            this.logger.log('SEARCHKEY:BLACK shutdown dev mode not enabled\n');
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
 
@@ -312,6 +322,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             const start = Date.now();
             //build the main project and all component libraries at the same time
+            this.logger.log('before prepare main promise and prepare and host');
             await Promise.all([
                 this.prepareMainProject(),
                 this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
@@ -379,6 +390,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     this.logger.log('on app-exit', message);
                     this.sendEvent(new LogOutputEvent(message));
+                    this.logger.log('SEARCHKEY:BLACK shutdown on app exit\n');
                     await this.shutdown();
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
@@ -392,6 +404,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // Set the remote debug flag on the args to be passed to roku deploy so the socket debugger can be started if needed.
             (this.launchConfiguration as any).remoteDebug = this.enableDebugProtocol;
 
+            console.log('connect and publish pre call\n\n');
             await this.connectAndPublish();
 
             this.sendEvent(new ChannelPublishedEvent(
@@ -568,12 +581,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.clearToLaunchCanRun = false;
         });
 
+        console.log('checking for launch access\n\n');
         await Promise.race([
             clearToLaunchPromise,
             util.sleep(8000).then(() => {
                 this.clearToLaunchCanRun = false;
             })
         ]);
+        console.log('attempting launch\n\n');
         //set the io-port-occupied state before occupying the port to prevent someone else for locking it before this does
         await this.extensionSocket.sendRequest('set-state', { key: this.deviceInfo.host, state: { 'io-port-occupied': true } });
         const publishPromise = this.rokuDeploy.publish({
@@ -582,6 +597,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } as any as RokuDeployOptions).then(() => {
             packageIsPublished = true;
         });
+        console.log('done with launch\n\n');
 
         this.logger.log(`Uploading zip took ${Date.now() - start}ms`);
 
@@ -594,6 +610,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('Finished racing promises');
         //if the adapter is still not connected, then it will probably never connect. Abort.
         if (packageIsPublished && !this.rokuAdapter.connected) {
+            console.log('FAILED LAUNCH\n\n');
+            this.logger.log('SEARCHKEY:BLACK shutdown on failed launch\n');
             return this.shutdown('Debug session cancelled: failed to connect to debug protocol control port.');
         }
 
@@ -602,7 +620,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (!launchRequirementsSatisfied) {
             await this.extensionSocket.sendRequest('clear-all', { key: this.deviceInfo.host, state: { } });
             await this.extensionSocket.sendRequest('set-state', { key: this.deviceInfo.host, state: { 'io-port-occupied': true } });
-
         }
     }
 
@@ -673,6 +690,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Stage, insert breakpoints, and package the main project
      */
     public async prepareMainProject() {
+        this.logger.log('SEARCHKEY:BLACK prepare main project 1');
         //add the main project
         this.projectManager.mainProject = new Project({
             rootDir: this.launchConfiguration.rootDir,
@@ -689,22 +707,28 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         util.log('Moving selected files to staging area');
         await this.projectManager.mainProject.stage();
+        this.logger.log('SEARCHKEY:BLACK prepare main project 2');
 
         //add the entry breakpoint if stopOnEntry is true
         await this.handleEntryBreakpoint();
+        this.logger.log('SEARCHKEY:BLACK prepare main project 3');
 
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
+        this.logger.log('SEARCHKEY:BLACK prepare main project 4');
 
         //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
         if (!this.enableDebugProtocol) {
+            this.logger.log('SEARCHKEY:BLACK prepare main project 5');
 
             await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
         }
 
+        this.logger.log('SEARCHKEY:BLACK prepare main project 6');
         //create zip package from staging folder
         util.log('Creating zip archive from project sources');
         await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
+        this.logger.log('SEARCHKEY:BLACK prepare main project 7');
     }
 
     /**
@@ -725,12 +749,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Stores the path to the staging folder for each component library
      */
     protected async prepareAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
+        this.logger.log('SEARCHKEY:BLACK prepare and host comp libs 1');
         if (componentLibraries && componentLibraries.length > 0) {
+            this.logger.log('SEARCHKEY:BLACK prepare and host comp libs 2');
             let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
             //make sure this folder exists (and is empty)
             await fsExtra.ensureDir(componentLibrariesOutDir);
             await fsExtra.emptyDir(componentLibrariesOutDir);
+            this.logger.log('SEARCHKEY:BLACK prepare and host comp libs 3');
 
+            this.projectManager.componentLibraryProjects = [];
             //create a ComponentLibraryProject for each component library
             for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
                 let componentLibrary = componentLibraries[libraryIndex];
@@ -751,9 +779,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //prepare all of the libraries in parallel
+            this.logger.log('SEARCHKEY:BLACK prepare and host comp libs 4');
             let compLibPromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+                this.logger.log('SEARCHKEY:BLACK comblib promise 1');
 
                 await compLibProject.stage();
+                this.logger.log('SEARCHKEY:BLACK comblib promise 2');
 
                 // Add breakpoint lines to the staging files and before publishing
                 util.log('Adding stop statements for active breakpoints in Component Libraries');
@@ -762,12 +793,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 if (!this.enableDebugProtocol) {
                     await this.breakpointManager.writeBreakpointsForProject(compLibProject);
                 }
+                this.logger.log('SEARCHKEY:BLACK comblib promise 3');
 
                 await compLibProject.postfixFiles();
+                this.logger.log('SEARCHKEY:BLACK comblib promise 4');
 
                 await compLibProject.zipPackage({ retainStagingFolder: true });
+                this.logger.log('SEARCHKEY:BLACK comblib promise 5');
             });
 
+            this.logger.log('SEARCHKEY:BLACK prepare and host comp libs 5');
             let hostingPromise: Promise<any>;
             if (compLibPromises) {
                 // prepare static file hosting
@@ -777,10 +812,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //wait for all component libaries to finish building, and the file hosting to start up
+            this.logger.log('SEARCHKEY:BLACK prepare and host comp libs 6');
             await Promise.all([
                 ...compLibPromises,
                 hostingPromise
             ]);
+            this.logger.log('SEARCHKEY:BLACK prepare and host comp libs 7');
         }
     }
 
@@ -1227,6 +1264,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
         }
         this.sendResponse(response);
+        this.logger.log('SEARCHKEY:BLACK shutdown on disconnect request\n');
+        this.logger.log(response);
+        this.logger.log(args);
+        this.logger.log(request);
         await this.shutdown();
     }
 
@@ -1247,6 +1288,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.rokuAdapter.destroy();
             this.rokuAdapterDeferred = defer();
         }
+        await util.sleep(1000);
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }
 
@@ -1268,12 +1310,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //when the debugger suspends (pauses for debugger input)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('suspend', async () => {
+            this.logger.log('SEARCHKEY:black suspend\n');
             await this.onSuspend();
         });
 
         //anytime the adapter encounters an exception on the roku,
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('runtime-error', async (exception) => {
+            this.logger.log('SEARCHKEY:black runtime error\n');
             let rokuAdapter = await this.getRokuAdapter();
             let threads = await rokuAdapter.getThreads();
             let threadId = threads[0]?.threadId;
@@ -1282,6 +1326,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         // If the roku says it can't continue, we are no longer able to debug, so kill the debug session
         this.rokuAdapter.on('cannot-continue', () => {
+            this.logger.log('SEARCHKEY:BLACK shutdown on cannot continue\n');
             void this.shutdown();
         });
 
@@ -1291,8 +1336,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 console.error(error);
             });
         });
+
+        this.rokuAdapter.on('control-socket-closed', () => {
+            console.log('debug session control socket closed');
+            this.extensionSocket.sendRequest('set-state', { key: this.deviceInfo.host, state: { } }).catch((error) => {
+                console.error(error);
+            });
+        });
+
         //make the connection
+        this.logger.log('SEARCHKEY:BLACK before connect roku adapter get state call\n');
+        let hostState = await this.extensionSocket.sendRequest('get-state', { 'key': this.deviceInfo.host });
+        this.logger.log('SEARCHKEY:BLACK after connect roku adapter get state call\n');
         await this.rokuAdapter.connect();
+        this.logger.log('SEARCHKEY:BLACK before connect roku adapter set state call\n');
+        await this.extensionSocket.sendRequest('set-state', { key: this.deviceInfo.host, state: { 'control-port-occupied': true } });
+        this.logger.log('SEARCHKEY:BLACK after connect roku adapter set state call\n');
         this.rokuAdapterDeferred.resolve(this.rokuAdapter);
         return this.rokuAdapter;
     }
@@ -1471,6 +1530,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * the same promise on subsequent calls
      */
     public async shutdown(errorMessage?: string): Promise<void> {
+        this.logger.trace('SEARCHKEY:BLACK shutdown called\n');
         console.log('Shutdown called');
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
@@ -1483,12 +1543,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string): Promise<void> {
         try {
+            this.logger.log('SEARCHKEY:BLACK shutdown step 1\n');
             this.componentLibraryServer?.stop();
 
             this.rendezvousTracker?.destroy?.();
+            this.logger.log('SEARCHKEY:BLACK shutdown step 2\n');
 
             //if configured, delete the staging directory
-            if (!this.launchConfiguration.retainStagingFolder) {
+            if (!this.launchConfiguration?.retainStagingFolder) {
+                this.logger.log('SEARCHKEY:BLACK shutdown step 3\n');
                 const stagingFolders = this.projectManager?.getStagingFolderPaths() ?? [];
                 this.logger.info('deleting staging folders', stagingFolders);
                 for (let stagingFolderPath of stagingFolders) {
@@ -1503,12 +1566,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //if there was an error message, display it to the user
             if (errorMessage) {
+                this.logger.log('SEARCHKEY:BLACK shutdown step 4\n');
                 this.logger.error(errorMessage);
                 this.showPopupMessage(errorMessage, 'error');
             }
 
             if (this.enableDebugProtocol || this.launchConfiguration.stopDebuggerOnAppExit !== false) {
+                this.logger.log('SEARCHKEY:BLACK shutdown step 5\n');
                 this.logger.log('Destroy rokuAdapter');
+                //THIS IS TRIGGERING ANOTHER SHUTDOWN, maybe in a separate debug session?????
                 await this.rokuAdapter?.destroy?.();
                 //press the home button to return to the home screen
                 try {
@@ -1523,6 +1589,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.log('Send terminated event');
             this.sendEvent(new TerminatedEvent());
 
+            this.logger.log('SEARCHKEY:BLACK shutdown step 6\n');
+            this.extensionSocket.destroy();
+
             //shut down the process
             this.logger.log('super.shutdown()');
             super.shutdown();
@@ -1530,6 +1599,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } catch (e) {
             this.logger.error(e);
         }
+        this.logger.log('SEARCHKEY:BLACK end shutdown promise\n');
     }
 }
 

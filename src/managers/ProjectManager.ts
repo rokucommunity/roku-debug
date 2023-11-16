@@ -614,6 +614,8 @@ export class ComponentLibraryProject extends Project {
             let postfixedPath = fileUtils.postfixFilePath(relativePath, this.postfix, ['.brs']);
             if (postfixedPath !== relativePath) {
                 // Rename the brs files to include the postfix namespacing tag
+                console.log(fileMapping.dest);
+                console.log(path.join(this.stagingFolderPath, postfixedPath));
                 await fsExtra.move(fileMapping.dest, path.join(this.stagingFolderPath, postfixedPath));
                 // Add to the map of original paths and the new paths
                 pathDetails[postfixedPath] = relativePath;

@@ -94,6 +94,7 @@ export class DebugProtocolAdapter {
     public once(eventName: 'suspend'): Promise<void>;
     public once(eventName: 'start'): Promise<void>;
     public once(eventName: 'io-socket-closed'): Promise<void>;
+    public once(eventName: 'control-socket-closed'): Promise<void>;
     public once(eventname: 'unhandled-console-output'): Promise<string>;
     public once(eventName: string) {
         return new Promise((resolve) => {
@@ -114,6 +115,7 @@ export class DebugProtocolAdapter {
     public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'io-socket-closed', handler: () => void);
+    public on(eventName: 'control-socket-closed', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
     public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
@@ -133,7 +135,7 @@ export class DebugProtocolAdapter {
     private async emit(eventName: 'suspend');
     private async emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private async emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
-    private async emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output' | 'io-socket-closed', data?);
+    private async emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output' | 'control-socket-closed' | 'io-socket-closed', data?);
     private async emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         await util.sleep(0);
@@ -320,7 +322,12 @@ export class DebugProtocolAdapter {
 
             this.socketDebugger.on('io-socket-closed', () => {
                 console.log('debug protocal adapter emit io socket closed');
-                this.emitImmediate('io-socket-closed');
+                this.emit('io-socket-closed');
+            });
+
+            this.socketDebugger.on('control-socket-closed', () => {
+                console.log('debug protocal adapter emit control socket closed');
+                this.emit('control-socket-closed');
             });
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();

@@ -197,7 +197,7 @@ export class JsonMessengerClient {
 
             const timeout = setTimeout(() => {
                 reject(new Error('Timeout getting a response'));
-            }, 10_000);
+            }, 10_000_000);
 
             this.on('response', (event) => {
                 if (event.id === eventId) {

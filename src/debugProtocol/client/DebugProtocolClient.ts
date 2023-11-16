@@ -185,6 +185,7 @@ export class DebugProtocolClient {
     public on<T = AllThreadsStoppedUpdate | ThreadAttachedUpdate>(eventName: 'runtime-error' | 'suspend', handler: (data: T) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'io-socket-closed', handler: (output: string) => void);
+    public on(eventName: 'control-socket-closed', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
     public on(eventName: 'handshake-verified', handler: (data: HandshakeResponse) => void);
     // public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
@@ -202,7 +203,7 @@ export class DebugProtocolClient {
     private async emit(eventName: 'data', update: Buffer);
     private async emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private async emit(eventName: 'suspend' | 'runtime-error', data: AllThreadsStoppedUpdate | ThreadAttachedUpdate);
-    private async emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'io-socket-closed' | 'protocol-version' | 'start', data?);
+    private async emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'control-socket-closed' | 'handshake-verified' | 'io-output' | 'io-socket-closed' | 'protocol-version' | 'start', data?);
     private async emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         await util.sleep(0);
@@ -606,7 +607,6 @@ export class DebugProtocolClient {
                         return simulatedResponse;
                     }
                 }
-                console.log('Bronley');
                 //prop in the middle is missing, tried reading a prop on it
                 // ex: variablePathEntries = ["there", "thereButSetToInvalid", "definitelyNotThere"]
                 throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex + 1]}'${parentVarType ? ` on type '${parentVarTypeText}'` : ''}`);
@@ -1146,7 +1146,7 @@ export class DebugProtocolClient {
     private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
         this.logger.log('Shutting down!');
         console.log('debug protocal client emit io socket closed');
-        this.emitImmediate('io-socket-closed');
+        //await this.emit('io-socket-closed');
         // this.logger.log('Shutting down! pre sleep');
         // await util.sleep(10000);
         // this.logger.log('Shutting down! post');
@@ -1174,6 +1174,7 @@ export class DebugProtocolClient {
             //ask the device to terminate the debug session. We have to wait for this to come back.
             //The device might be running unstoppable code, so this might take a while. Wait for the device to send back
             //the response before we continue with the teardown process
+            console.log('set break here');
             await Promise.race([
                 immediate
                     ? Promise.resolve(null)
@@ -1213,6 +1214,7 @@ export class DebugProtocolClient {
             this.controlSocket.destroy();
             this.controlSocket = undefined;
             this.isDestroyingControlSocket = false;
+            this.emit('control-socket-closed');
         }
     }
 
@@ -1249,6 +1251,7 @@ export class DebugProtocolClient {
             this.ioSocket?.destroy?.();
             this.ioSocket = undefined;
             this.isDestroyingIOSocket = false;
+            this.emit('io-socket-closed');
         }
     }
 }

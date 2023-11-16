@@ -3,19 +3,31 @@ import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 import * as url from 'url';
+import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from './logging';
 
 import { util } from './util';
 
 export class ComponentLibraryServer {
 
+    public logger = logger.createLogger(`[session]`);
+
     public componentLibrariesOutDir: string;
 
     private server: http.Server;
 
+    private isRunning = false;
+
     public async startStaticFileHosting(componentLibrariesOutDir: string, port: number, sendDebugLogLine) {
+        this.logger.log('SEARCHKEY:BLACK comp lib server start static file hosting 1');
+        if (this.isRunning) {
+            this.logger.log('SEARCHKEY:BLACK comp lib server start static file hosting 2');
+            return;
+        }
+        this.isRunning = true;
 
         // Make sure the requested port is not already being used by another service
         if (await util.isPortInUse(port)) {
+            this.logger.log('SEARCHKEY:BLACK comp lib server start static file hosting 3');
             throw new Error(`Could not host component library files.\nPort ${port} is currently occupied.`);
         }
 
@@ -41,6 +53,7 @@ export class ComponentLibraryServer {
             '.zip': 'application/zip'
         } as Record<string, string>;
 
+        this.logger.log('SEARCHKEY:BLACK comp lib server start static file hosting 4');
         this.server = http.createServer((req, res) => {
             sendDebugLogLine(`${req.method} ${req.url}`);
 
@@ -84,6 +97,7 @@ export class ComponentLibraryServer {
 
         }).listen(port);
 
+        this.logger.log('SEARCHKEY:BLACK comp lib server start static file hosting 5');
         sendDebugLogLine(`Server listening on port ${port}`);
 
         // print possible IP addresses that may be the users local ip
@@ -98,12 +112,14 @@ export class ComponentLibraryServer {
                 sendDebugLogLine(`Potential target ip for component libraries: ${iface.address}`);
             }
         }
+        this.logger.log('SEARCHKEY:BLACK comp lib server start static file hosting 6');
     }
 
     /**
      * Stop the server (if it's running)
      */
     public stop() {
+        this.isRunning = false;
         if (this.server) {
             this.server.close();
         }
