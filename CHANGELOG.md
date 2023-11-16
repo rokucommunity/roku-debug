@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.13](https://github.com/rokucommunity/roku-debug/compare/v0.20.12...v0.20.13) - 2023-11-16
+### Fixed
+ - Fix bug with compile error reporting ([#174](https://github.com/rokucommunity/roku-debug/pull/174))
+
+
+
 ## [0.20.12](https://github.com/rokucommunity/roku-debug/compare/v0.20.11...v0.20.12) - 2023-11-14
 ### Changed
  - Add timeout for deviceinfo query so we don't wait too long ([#171](https://github.com/rokucommunity/roku-debug/pull/171))
