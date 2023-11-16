@@ -215,43 +215,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return this.launchConfiguration?.cwd ?? process.cwd();
     }
 
-    public async fetchDeviceInfo(host: string, remotePort: number) {
-
-        this.logger.info('Fetching Roku Device Info');
-        const url = `http://${host}:${remotePort}/query/device-info`;
-        try {
-            // concatenates the url string using template literals
-            const ressponse = await util.httpGet(url);
-            const xml = ressponse.body;
-
-            // parses the xml data to JSON object
-            const result = (await xml2js.parseStringPromise(xml))['device-info'];
-
-            // converts any true or false string values to boolean
-            for (let key in result) {
-                result[key] = result[key][0];
-                if (result[key] === 'true') {
-                    result[key] = true;
-                } else if (result[key] === 'false') {
-                    result[key] = false;
-                }
-            }
-
-            result.host = this.launchConfiguration.host;
-            result.remotePort = this.launchConfiguration.remotePort;
-
-            // parses string value to int for the following fields
-            result['software-build'] = parseInt(result['software-build'] as string);
-            result.uptime = parseInt(result.uptime as string);
-            result['trc-version'] = parseInt(result['trc-version'] as string);
-            result['av-sync-calibration-enabled'] = parseInt(result['av-sync-calibration-enabled'] as string);
-            result['time-zone-offset'] = parseInt(result['time-zone-offset'] as string);
-            return result;
-        } catch (e) {
-            throw new Error(`Unable to fetch device-info from '${url}'`);
-        }
-    }
-
     public deviceInfo: DeviceInfo;
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
@@ -770,8 +733,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     protected async threadsRequest(response: DebugProtocol.ThreadsResponse) {
         this.logger.log('threadsRequest');
-        //wait for the roku adapter to load
-        await this.getRokuAdapter();
 
         let threads = [];
 
@@ -779,6 +740,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (this.compileError) {
             threads.push(new Thread(this.COMPILE_ERROR_THREAD_ID, 'Compile Error'));
         } else {
+            //wait for the roku adapter to load
+            await this.getRokuAdapter();
+
             //only send the threads request if we are at the debugger prompt
             if (this.rokuAdapter.isAtDebuggerPrompt) {
                 let rokuThreads = await this.rokuAdapter.getThreads();
