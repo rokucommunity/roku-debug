@@ -340,10 +340,6 @@ export class DebugProtocolAdapter {
 
     public async watchCompileOutput() {
         let deferred = defer();
-        //If the debugProtocol supports compile error updates, don't scrape telnet logs for compile errors
-        if (this.supportsCompileErrorReporting) {
-            return deferred.resolve();
-        }
         try {
             this.compileClient = new Socket();
             this.compileErrorProcessor.on('diagnostics', (errors) => {
