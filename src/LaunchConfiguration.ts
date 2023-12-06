@@ -266,6 +266,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default false
      */
     deleteDevChannelBeforeInstall: boolean;
+
+    /**
+     * sceneGraphDebugCommandsPort
+     */
+    sceneGraphDebugCommandsPort: number;
 }
 
 export interface ComponentLibraryConfiguration {
