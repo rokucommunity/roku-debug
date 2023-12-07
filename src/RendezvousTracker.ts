@@ -201,7 +201,7 @@ export class RendezvousTracker {
         this.logger.info(`Sending ECP rendezvous request:`, url);
         // Send rendezvous query to ECP
         const rendezvousQuery = await util.httpGet(url);
-        let rendezvousQueryData = rendezvousQuery.body;
+        let rendezvousQueryData = rendezvousQuery.body as string;
         let ecpData: EcpRendezvousData = {
             trackingEnabled: false,
             items: []
