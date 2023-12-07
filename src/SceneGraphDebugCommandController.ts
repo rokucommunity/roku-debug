@@ -5,7 +5,7 @@ const Telnet = require('telnet-client');
 
 export class SceneGraphDebugCommandController {
     constructor(public host: string, port?: number) {
-        this.port = port ?? 8080; 
+        this.port = port ?? 8080;
     }
 
     private connection: typeof Telnet;
