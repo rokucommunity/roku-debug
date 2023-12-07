@@ -4,7 +4,8 @@ import { logger } from './logging';
 const Telnet = require('telnet-client');
 
 export class SceneGraphDebugCommandController {
-    constructor(public host: string) {
+    constructor(public host: string, port?: number) {
+        this.port = port ?? 8080;
     }
 
     private connection: typeof Telnet;
@@ -13,7 +14,7 @@ export class SceneGraphDebugCommandController {
     private echoLines = 0;
     public timeout = 5000;
     public execTimeout = 2000;
-    private port = 8080;
+    private port;
     private maxBufferLength = 5242880;
 
     private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);

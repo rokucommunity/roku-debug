@@ -533,7 +533,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
         if (commands) {
-            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.host);
+            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.host, this.launchConfiguration.sceneGraphDebugCommandsPort);
 
             try {
                 await connection.connect();

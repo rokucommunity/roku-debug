@@ -266,6 +266,12 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default false
      */
     deleteDevChannelBeforeInstall: boolean;
+
+    /**
+     * sceneGraphDebugCommandsPort
+     * The port that should be used to send SceneGraph debug commands. Defaults to 8080.
+     */
+    sceneGraphDebugCommandsPort: number;
 }
 
 export interface ComponentLibraryConfiguration {
