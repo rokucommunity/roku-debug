@@ -269,6 +269,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
 
     /**
      * sceneGraphDebugCommandsPort
+     * The port that should be used to send SceneGraph debug utilities. Defaults to 8080.
      */
     sceneGraphDebugCommandsPort: number;
 }
