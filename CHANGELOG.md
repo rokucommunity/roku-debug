@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.14](https://github.com/rokucommunity/roku-debug/compare/v0.20.13...v0.20.14) - 2023-12-07
+### Changed
+ - make the connection port for SceneGraphDebugCommandController configurable ([#177](https://github.com/rokucommunity/roku-debug/pull/177))
+ - upgrade to [brighterscript@0.65.12](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06512---2023-12-07)
+ - upgrade to [roku-deploy@3.11.1](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3111---2023-11-30). Notable changes since 3.10.5:
+     - wait for file stream to close before resolving promise ([roku-deploy#133](https://github.com/rokucommunity/roku-deploy/pull/133))
+     - add public function to normalize device-info field values ([roku-deploy#129](https://github.com/rokucommunity/roku-deploy/pull/129))
+
+
+
 ## [0.20.13](https://github.com/rokucommunity/roku-debug/compare/v0.20.12...v0.20.13) - 2023-11-16
 ### Fixed
  - Fix bug with compile error reporting ([#174](https://github.com/rokucommunity/roku-debug/pull/174))
