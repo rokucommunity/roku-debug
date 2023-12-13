@@ -204,9 +204,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('initializeRequest finished');
     }
 
-    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info') {
-        this.logger.trace('[showPopupMessage]', severity, message);
-        this.sendEvent(new PopupMessageEvent(message, severity));
+    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
+        this.logger.trace('[showPopupMessage]', severity, message, ' modal: ',);
+        this.sendEvent(new PopupMessageEvent(message, severity, modal));
     }
     /**
       * Get the cwd from the launchConfiguration, or default to process.cwd()
@@ -496,7 +496,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             failOnCompileError: true
         }).then(() => {
             packageIsPublished = true;
-        }).catch((e) => {
+        }).catch(async (e) => {
+            const statusCode = e?.results?.response?.statusCode;
+            const message = e.message as string;
+            if (statusCode !== 200) {
+                this.showPopupMessage(message, 'error', true);
+                if (connectPromise !== undefined) {
+                    await this.shutdown(message);
+                }
+
+                throw new Error(message);
+            }
             this.logger.error(e);
         });
 
