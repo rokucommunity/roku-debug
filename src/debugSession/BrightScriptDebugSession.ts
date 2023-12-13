@@ -505,7 +505,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     await this.shutdown(message);
                 }
 
-                throw new Error(message);
+                throw e;
             }
             this.logger.error(e);
         });
