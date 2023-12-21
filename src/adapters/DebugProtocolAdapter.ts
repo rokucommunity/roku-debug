@@ -44,6 +44,12 @@ export class DebugProtocolAdapter {
         });
     }
 
+    private connectionDeferred = defer<void>();
+
+    public deferredConnectionPromise(): Promise<void> {
+        return this.connectionDeferred.promise;
+    }
+
     private logger = logger.createLogger(`[padapter]`);
 
     /**
@@ -210,6 +216,9 @@ export class DebugProtocolAdapter {
      * Connect to the telnet session. This should be called before the channel is launched.
      */
     public async connect() {
+        //Start processing telnet output to look for compile errors or the debugger prompt
+        //await this.processTelnetOutput();
+
         let deferred = defer();
         this.socketDebugger = new DebugProtocolClient(this.options);
         try {
@@ -292,15 +301,6 @@ export class DebugProtocolAdapter {
                 this.emit('breakpoints-verified', event);
             });
 
-            this.connected = await this.socketDebugger.connect();
-
-            this.logger.log(`Closing telnet connection used for compile errors`);
-            if (this.compileClient) {
-                this.compileClient.removeAllListeners();
-                this.compileClient.destroy();
-                this.compileClient = undefined;
-            }
-
             this.socketDebugger.on('compile-error', (update) => {
                 let diagnostics: BSDebugDiagnostic[] = [];
                 diagnostics.push({
@@ -313,7 +313,19 @@ export class DebugProtocolAdapter {
                 this.emit('diagnostics', diagnostics);
             });
 
+            this.socketDebugger.on('control-connected', () => {
+                this.connectionDeferred.resolve();
+
+                this.logger.log(`Closing telnet connection used for compile errors`);
+                if (this.compileClient) {
+                    this.compileClient.removeAllListeners();
+                    this.compileClient.destroy();
+                    this.compileClient = undefined;
+                }
+            });
+
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
+            this.connected = true;
             this.emit('connected', this.connected);
 
             //the adapter is connected and running smoothly. resolve the promise
@@ -337,8 +349,7 @@ export class DebugProtocolAdapter {
     public get supportsCompileErrorReporting() {
         return semver.satisfies(this.deviceInfo.brightscriptDebuggerVersion, '>=3.1.0');
     }
-
-    public async watchCompileOutput() {
+    public async processTelnetOutput() {
         let deferred = defer();
         try {
             this.compileClient = new Socket();
@@ -376,6 +387,9 @@ export class DebugProtocolAdapter {
                         lastPartialLine = '';
                     }
                     // Emit the completed io string.
+                    this.processUnhandedOutputForDebugPrompt(responseText.trim()).catch((e) => {
+                        console.log(`Error processing telnet output for debug prompt`);
+                    });
                     this.compileErrorProcessor.processUnhandledLines(responseText.trim());
                     this.emit('unhandled-console-output', responseText.trim());
                 }
@@ -387,6 +401,15 @@ export class DebugProtocolAdapter {
             deferred.reject(e);
         }
         return deferred.promise;
+    }
+
+    private async processUnhandedOutputForDebugPrompt(responseText: string) {
+        let lines = responseText.split(/\r?\n/g);
+        for (const line of lines) {
+            if (/Waiting for debugger on \d+\.\d+\.\d+\.\d+:8081/g.exec(line)) {
+                await this.socketDebugger.connect();
+            }
+        }
     }
 
     /**

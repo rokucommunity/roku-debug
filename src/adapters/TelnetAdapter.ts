@@ -42,6 +42,12 @@ export class TelnetAdapter {
         });
     }
 
+    private connectionDeferred = defer<void>();
+
+    public deferredConnectionPromise(): Promise<void> {
+        return this.connectionDeferred.promise;
+    }
+
     public logger = logger.createLogger(`[tadapter]`);
     /**
      * Indicates whether the adapter has successfully established a connection with the device
@@ -239,6 +245,7 @@ export class TelnetAdapter {
             client.connect(this.options.brightScriptConsolePort, this.options.host, () => {
                 this.logger.log(`Telnet connection established to ${this.options.host}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
+                this.connectionDeferred.resolve();
                 this.emit('connected', this.connected);
             });
 
