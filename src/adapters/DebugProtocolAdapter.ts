@@ -217,7 +217,7 @@ export class DebugProtocolAdapter {
      */
     public async connect() {
         //Start processing telnet output to look for compile errors or the debugger prompt
-        //await this.processTelnetOutput();
+        await this.processTelnetOutput();
 
         let deferred = defer();
         this.socketDebugger = new DebugProtocolClient(this.options);
@@ -407,9 +407,13 @@ export class DebugProtocolAdapter {
         let lines = responseText.split(/\r?\n/g);
         for (const line of lines) {
             if (/Waiting for debugger on \d+\.\d+\.\d+\.\d+:8081/g.exec(line)) {
-                await this.socketDebugger.connect();
+                await this.connectSocketDebugger();
             }
         }
+    }
+
+    private async connectSocketDebugger() {
+        await this.socketDebugger.connect();
     }
 
     /**

@@ -273,7 +273,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();
-            await (this.rokuAdapter as DebugProtocolAdapter).processTelnetOutput();
 
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
