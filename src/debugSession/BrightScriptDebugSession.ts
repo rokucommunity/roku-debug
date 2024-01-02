@@ -494,7 +494,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
-            this.rokuAdapter.deferredConnectionPromise(),
+            this.rokuAdapter.isConnected(),
             util.sleep(10000)
         ]);
         this.logger.log('Finished racing promises');
