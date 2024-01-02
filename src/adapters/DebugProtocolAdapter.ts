@@ -46,7 +46,7 @@ export class DebugProtocolAdapter {
 
     private connectionDeferred = defer<void>();
 
-    public deferredConnectionPromise(): Promise<void> {
+    public isConnected(): Promise<void> {
         return this.connectionDeferred.promise;
     }
 
