@@ -204,9 +204,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('initializeRequest finished');
     }
 
-    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info') {
+    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
         this.logger.trace('[showPopupMessage]', severity, message);
-        this.sendEvent(new PopupMessageEvent(message, severity));
+        this.sendEvent(new PopupMessageEvent(message, severity, modal));
     }
     /**
       * Get the cwd from the launchConfiguration, or default to process.cwd()
@@ -480,6 +480,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } as any as RokuDeployOptions);
             }
         } catch (e) {
+            const statusCode = e?.results?.response?.statusCode;
+            const message = e.message as string;
+            if (statusCode === 401) {
+                this.showPopupMessage(message, 'error', true);
+                await this.shutdown(message);
+                throw e;
+            }
             this.logger.warn('Failed to delete the dev channel...probably not a big deal', e);
         }
 
@@ -496,7 +503,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             failOnCompileError: true
         }).then(() => {
             packageIsPublished = true;
-        }).catch((e) => {
+        }).catch(async (e) => {
+            const statusCode = e?.results?.response?.statusCode;
+            const message = e.message as string;
+            if (statusCode && statusCode !== 200) {
+                this.showPopupMessage(message, 'error', true);
+                await this.shutdown(message);
+                throw e;
+            }
             this.logger.error(e);
         });
 
