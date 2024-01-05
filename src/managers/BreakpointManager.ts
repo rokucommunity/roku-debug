@@ -811,6 +811,10 @@ export class BreakpointManager {
      */
     private isGetDiffRunning = false;
     private lastState = new Map<string, BreakpointWorkItem>();
+
+    public clearBreakpointLastState() {
+        this.lastState.clear();
+    }
 }
 
 export interface Diff {

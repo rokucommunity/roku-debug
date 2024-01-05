@@ -315,8 +315,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // close disconnect if required when the app is exited
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.rokuAdapter.on('app-exit', async () => {
-                if (this.launchConfiguration.stopDebuggerOnAppExit || !this.rokuAdapter.supportsMultipleRuns) {
-                    let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchConfiguration.stopDebuggerOnAppExit is true' : ''}`;
+                if (this.launchConfiguration.stopDebuggerOnAppExit) {
+                    let message = `App exit event detected and launchConfiguration.stopDebuggerOnAppExit is true`;
                     message += ' - shutting down debug session';
 
                     this.logger.log('on app-exit', message);
@@ -326,6 +326,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
                     this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
+                    if (this.enableDebugProtocol) {
+                        this.entryBreakpointWasHandled = false;
+                        await this.rokuAdapter.connect();
+                    }
                 }
             });
 

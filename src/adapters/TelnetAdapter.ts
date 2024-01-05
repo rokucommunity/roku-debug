@@ -65,8 +65,6 @@ export class TelnetAdapter {
 
     private cache = {};
 
-    public readonly supportsMultipleRuns = true;
-
     /**
      * Does this adapter support the `execute` command (known as `eval` in telnet)
      */

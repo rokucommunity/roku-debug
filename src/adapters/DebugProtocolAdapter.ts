@@ -80,8 +80,6 @@ export class DebugProtocolAdapter {
         return this.socketDebugger?.protocolVersion;
     }
 
-    public readonly supportsMultipleRuns = false;
-
     /**
      * Subscribe to an event exactly once
      * @param eventName
@@ -219,6 +217,7 @@ export class DebugProtocolAdapter {
         //Start processing telnet output to look for compile errors or the debugger prompt
         await this.processTelnetOutput();
 
+        this.connectionDeferred = defer<void>();
         let deferred = defer();
         this.socketDebugger = new DebugProtocolClient(this.options);
         try {
@@ -262,6 +261,7 @@ export class DebugProtocolAdapter {
 
             // Listen for the app exit event
             this.socketDebugger.on('app-exit', () => {
+                this.breakpointManager.clearBreakpointLastState();
                 this.emit('app-exit');
             });
 
@@ -315,13 +315,6 @@ export class DebugProtocolAdapter {
 
             this.socketDebugger.on('control-connected', () => {
                 this.connectionDeferred.resolve();
-
-                this.logger.log(`Closing telnet connection used for compile errors`);
-                if (this.compileClient) {
-                    this.compileClient.removeAllListeners();
-                    this.compileClient.destroy();
-                    this.compileClient = undefined;
-                }
             });
 
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
@@ -349,7 +342,14 @@ export class DebugProtocolAdapter {
     public get supportsCompileErrorReporting() {
         return semver.satisfies(this.deviceInfo.brightscriptDebuggerVersion, '>=3.1.0');
     }
+
+    private processingTelnetOutput = false;
     public async processTelnetOutput() {
+        if (this.processingTelnetOutput) {
+            return;
+        }
+        this.processingTelnetOutput = true;
+
         let deferred = defer();
         try {
             this.compileClient = new Socket();
@@ -776,6 +776,12 @@ export class DebugProtocolAdapter {
         this.cache = undefined;
         this.removeAllListeners();
         this.emitter = undefined;
+
+        if (this.compileClient) {
+            this.compileClient.removeAllListeners();
+            this.compileClient.destroy();
+            this.compileClient = undefined;
+        }
     }
 
     /**
