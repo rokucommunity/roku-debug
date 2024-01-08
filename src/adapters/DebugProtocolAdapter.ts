@@ -44,12 +44,6 @@ export class DebugProtocolAdapter {
         });
     }
 
-    private connectionDeferred = defer<void>();
-
-    public isConnected(): Promise<void> {
-        return this.connectionDeferred.promise;
-    }
-
     private logger = logger.createLogger(`[padapter]`);
 
     /**
@@ -88,6 +82,7 @@ export class DebugProtocolAdapter {
     public once(eventname: 'chanperf'): Promise<ChanperfData>;
     public once(eventName: 'close'): Promise<void>;
     public once(eventName: 'app-exit'): Promise<void>;
+    public once(eventName: 'app-ready'): Promise<void>;
     public once(eventName: 'diagnostics'): Promise<BSDebugDiagnostic>;
     public once(eventName: 'connected'): Promise<boolean>;
     public once(eventname: 'console-output'): Promise<string>; // TODO: might be able to remove this at some point
@@ -123,6 +118,7 @@ export class DebugProtocolAdapter {
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
+    public on(eventName: 'waiting-for-debugger', handler: () => void);
     public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter?.on(eventName, handler);
@@ -134,7 +130,7 @@ export class DebugProtocolAdapter {
     private emit(eventName: 'suspend');
     private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
+    private emit(eventName: 'app-exit' | 'app-ready' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output' | 'waiting-for-debugger', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
@@ -217,9 +213,15 @@ export class DebugProtocolAdapter {
         //Start processing telnet output to look for compile errors or the debugger prompt
         await this.processTelnetOutput();
 
-        this.connectionDeferred = defer<void>();
+        this.on('waiting-for-debugger', () => {
+            void this.createDebugProtocolClient();
+        });
+    }
+
+    public async createDebugProtocolClient() {
         let deferred = defer();
         this.socketDebugger = new DebugProtocolClient(this.options);
+        await this.socketDebugger.connect();
         try {
             // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -314,7 +316,7 @@ export class DebugProtocolAdapter {
             });
 
             this.socketDebugger.on('control-connected', () => {
-                this.connectionDeferred.resolve();
+                this.emit('app-ready');
             });
 
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
@@ -413,7 +415,7 @@ export class DebugProtocolAdapter {
     }
 
     private async connectSocketDebugger() {
-        await this.socketDebugger.connect();
+        await this.emit('waiting-for-debugger');
     }
 
     /**

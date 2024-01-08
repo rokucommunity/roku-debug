@@ -315,6 +315,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // close disconnect if required when the app is exited
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.rokuAdapter.on('app-exit', async () => {
+                this.entryBreakpointWasHandled = false;
+
                 if (this.launchConfiguration.stopDebuggerOnAppExit) {
                     let message = `App exit event detected and launchConfiguration.stopDebuggerOnAppExit is true`;
                     message += ' - shutting down debug session';
@@ -326,10 +328,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
                     this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
-                    if (this.enableDebugProtocol) {
-                        this.entryBreakpointWasHandled = false;
-                        await this.rokuAdapter.connect();
-                    }
                 }
             });
 
@@ -481,6 +479,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.warn('Failed to delete the dev channel...probably not a big deal', e);
         }
 
+        const isConnected = this.rokuAdapter.once('app-ready');
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
             ...this.launchConfiguration,
@@ -512,7 +511,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
-            this.rokuAdapter.isConnected(),
+            isConnected,
             util.sleep(10000)
         ]);
         this.logger.log('Finished racing promises');
