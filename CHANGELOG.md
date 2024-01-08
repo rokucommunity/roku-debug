@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.20.15](https://github.com/rokucommunity/roku-debug/compare/v0.20.14...v0.20.15) - 2024-01-08
+### Changed
+ - Display a modal message when the we fail to upload a package to the device ([#178](https://github.com/rokucommunity/roku-debug/pull/178))
+ - upgrade to [brighterscript@0.65.16](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06516---2024-01-08)
+ - upgrade to [roku-deploy@3.11.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3112---2023-12-20). Notable changes since 3.11.1:
+     - Update wrong host password error message ([roku-deploy#134](https://github.com/rokucommunity/roku-deploy/pull/134))
+
+
+
 ## [0.20.14](https://github.com/rokucommunity/roku-debug/compare/v0.20.13...v0.20.14) - 2023-12-07
 ### Changed
  - make the connection port for SceneGraphDebugCommandController configurable ([#177](https://github.com/rokucommunity/roku-debug/pull/177))
