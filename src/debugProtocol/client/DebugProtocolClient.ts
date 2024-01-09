@@ -254,7 +254,7 @@ export class DebugProtocolClient {
             client: this,
             server: connection
         });
-        await this.emit('control-connected');
+        await this.emit('control-socket-connected');
         return connection;
     }
 
