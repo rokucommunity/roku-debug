@@ -97,7 +97,8 @@ describe('DebugProtocolAdapter', function() {
         sinon.stub(adapter, 'processTelnetOutput').callsFake(async () => {});
 
         await adapter.connect();
-        await adapter['connectSocketDebugger']();
+        await adapter['createDebugProtocolClient']();
+
         client = adapter['socketDebugger'];
         client['options'].shutdownTimeout = 100;
         client['options'].exitChannelTimeout = 100;
