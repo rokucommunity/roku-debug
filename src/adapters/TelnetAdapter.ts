@@ -306,6 +306,7 @@ export class TelnetAdapter {
                     return;
                 }
 
+                //emitting this signal so the BrightScriptDebugSession will successfully complete it's publish method.
                 if (/\[beacon.signal\] \|AppCompileComplete/i.exec(responseText.trim())) {
                     this.emit('app-ready');
                 }
