@@ -70,6 +70,16 @@ export class TelnetAdapter {
      */
     public supportsExecute = true;
 
+    public once(eventName: 'app-ready'): Promise<void>;
+    public once(eventName: string) {
+        return new Promise((resolve) => {
+            const disconnect = this.on(eventName as Parameters<DebugProtocolAdapter['on']>[0], (...args) => {
+                disconnect();
+                resolve(...args);
+            });
+        });
+    }
+
     /**
      * Subscribe to various events
      * @param eventName
@@ -100,6 +110,7 @@ export class TelnetAdapter {
         /* eslint-disable @typescript-eslint/indent */
         eventName:
             'app-exit' |
+            'app-ready' |
             'cannot-continue' |
             'chanperf' |
             'close' |
@@ -293,6 +304,10 @@ export class TelnetAdapter {
                     this.logger.log('is at cannot continue');
                     this.isAtDebuggerPrompt = true;
                     return;
+                }
+
+                if (/\[beacon.signal\] \|AppCompileComplete/i.exec(responseText.trim())) {
+                    this.emit('app-ready');
                 }
 
                 if (this.isActivated) {
