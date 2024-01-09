@@ -316,6 +316,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.rokuAdapter.on('app-exit', async () => {
                 this.entryBreakpointWasHandled = false;
+                this.breakpointManager.clearBreakpointLastState();
 
                 if (this.launchConfiguration.stopDebuggerOnAppExit) {
                     let message = `App exit event detected and launchConfiguration.stopDebuggerOnAppExit is true`;

@@ -263,7 +263,6 @@ export class DebugProtocolAdapter {
 
             // Listen for the app exit event
             this.socketDebugger.on('app-exit', () => {
-                this.breakpointManager.clearBreakpointLastState();
                 this.emit('app-exit');
             });
 
@@ -315,7 +314,7 @@ export class DebugProtocolAdapter {
                 this.emit('diagnostics', diagnostics);
             });
 
-            this.socketDebugger.on('control-connected', () => {
+            this.socketDebugger.on('control-socket-connected', () => {
                 this.emit('app-ready');
             });
 
@@ -389,9 +388,7 @@ export class DebugProtocolAdapter {
                         lastPartialLine = '';
                     }
                     // Emit the completed io string.
-                    this.processUnhandedOutputForDebugPrompt(responseText.trim()).catch((e) => {
-                        console.log(`Error processing telnet output for debug prompt`);
-                    });
+                    this.findWaitForDebuggerPrompt(responseText.trim());
                     this.compileErrorProcessor.processUnhandledLines(responseText.trim());
                     this.emit('unhandled-console-output', responseText.trim());
                 }
@@ -405,17 +402,13 @@ export class DebugProtocolAdapter {
         return deferred.promise;
     }
 
-    private async findWaitForDebuggerPrompt(responseText: string) {
+    private findWaitForDebuggerPrompt(responseText: string) {
         let lines = responseText.split(/\r?\n/g);
         for (const line of lines) {
             if (/Waiting for debugger on \d+\.\d+\.\d+\.\d+:8081/g.exec(line)) {
-                await this.connectSocketDebugger();
+                this.emit('waiting-for-debugger');
             }
         }
-    }
-
-    private async connectSocketDebugger() {
-        await this.emit('waiting-for-debugger');
     }
 
     /**
