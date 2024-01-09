@@ -405,7 +405,7 @@ export class DebugProtocolAdapter {
         return deferred.promise;
     }
 
-    private async processUnhandedOutputForDebugPrompt(responseText: string) {
+    private async findWaitForDebuggerPrompt(responseText: string) {
         let lines = responseText.split(/\r?\n/g);
         for (const line of lines) {
             if (/Waiting for debugger on \d+\.\d+\.\d+\.\d+:8081/g.exec(line)) {
