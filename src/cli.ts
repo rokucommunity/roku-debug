@@ -6,7 +6,7 @@ let options = yargs
     .usage('$0', 'BrighterScript, a superset of Roku\'s BrightScript language')
     .help('help', 'View help information about this tool.')
     .option('dap', { type: 'boolean', defaultDescription: 'false', description: 'Run roku-debug as a standalone debug-adapter-protocol process, communicating over STDIO' })
-    .argv;
+    .parseSync();
 
 (function main() {
     if (options.dap) {
