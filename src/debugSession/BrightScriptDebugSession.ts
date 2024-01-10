@@ -204,9 +204,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('initializeRequest finished');
     }
 
-    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info') {
+    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
         this.logger.trace('[showPopupMessage]', severity, message);
-        this.sendEvent(new PopupMessageEvent(message, severity));
+        this.sendEvent(new PopupMessageEvent(message, severity, modal));
     }
     /**
       * Get the cwd from the launchConfiguration, or default to process.cwd()
@@ -217,13 +217,28 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public deviceInfo: DeviceInfo;
 
+    /**
+     * Set defaults and standardize values for all of the LaunchConfiguration values
+     * @param config
+     * @returns
+     */
+    private normalizeLaunchConfig(config: LaunchConfiguration) {
+        config.componentLibrariesPort ??= 8080;
+        config.packagePort ??= 80;
+        config.remotePort ??= 8060;
+        config.sceneGraphDebugCommandsPort ??= 8080;
+        config.controlPort ??= 8081;
+        config.brightScriptConsolePort ??= 8085;
+        return config;
+    }
+
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
 
         this.logger.log('[launchRequest] begin');
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
 
-        this.launchConfiguration = config;
+        this.launchConfiguration = this.normalizeLaunchConfig(config);
 
         //set the logLevel provided by the launch config
         if (this.launchConfiguration.logLevel) {
@@ -267,7 +282,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             ]);
             this.logger.log(`Packaging projects took: ${(util.formatTime(Date.now() - start))}`);
 
-            util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
+            if (this.enableDebugProtocol) {
+                util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.launchConfiguration.host}:${this.launchConfiguration.controlPort}`);
+            } else {
+                util.log(`Connecting to Roku via telnet at ${this.launchConfiguration.host}:${this.launchConfiguration.brightScriptConsolePort}`);
+            }
 
             await this.initRendezvousTracking();
 
@@ -480,6 +499,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } as any as RokuDeployOptions);
             }
         } catch (e) {
+            const statusCode = e?.results?.response?.statusCode;
+            const message = e.message as string;
+            if (statusCode === 401) {
+                this.showPopupMessage(message, 'error', true);
+                await this.shutdown(message);
+                throw e;
+            }
             this.logger.warn('Failed to delete the dev channel...probably not a big deal', e);
         }
 
@@ -496,7 +522,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             failOnCompileError: true
         }).then(() => {
             packageIsPublished = true;
-        }).catch((e) => {
+        }).catch(async (e) => {
+            const statusCode = e?.results?.response?.statusCode;
+            const message = e.message as string;
+            if (statusCode && statusCode !== 200) {
+                this.showPopupMessage(message, 'error', true);
+                await this.shutdown(message);
+                throw e;
+            }
             this.logger.error(e);
         });
 
@@ -533,7 +566,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
         if (commands) {
-            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.host);
+            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.host, this.launchConfiguration.sceneGraphDebugCommandsPort);
 
             try {
                 await connection.connect();

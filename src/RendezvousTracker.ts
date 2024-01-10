@@ -140,7 +140,7 @@ export class RendezvousTracker {
      * Run a SceneGraph logendezvous 8080 command and get the text output
      */
     private async runSGLogrendezvousCommand(command: 'status' | 'on' | 'off'): Promise<string> {
-        let sgDebugCommandController = new SceneGraphDebugCommandController(this.launchConfiguration.host);
+        let sgDebugCommandController = new SceneGraphDebugCommandController(this.launchConfiguration.host, this.launchConfiguration.sceneGraphDebugCommandsPort);
         try {
             this.logger.info(`port 8080 command: logrendezvous ${command}`);
             return (await sgDebugCommandController.logrendezvous(command)).result.rawResponse;
@@ -201,7 +201,7 @@ export class RendezvousTracker {
         this.logger.info(`Sending ECP rendezvous request:`, url);
         // Send rendezvous query to ECP
         const rendezvousQuery = await util.httpGet(url);
-        let rendezvousQueryData = rendezvousQuery.body;
+        let rendezvousQueryData = rendezvousQuery.body as string;
         let ecpData: EcpRendezvousData = {
             trackingEnabled: false,
             items: []
