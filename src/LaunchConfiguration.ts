@@ -47,7 +47,9 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     bsConst?: Record<string, boolean>;
 
     /**
-     * Port to access component libraries.
+     * Port used to use when spinning up a web server to host component libraries. This runs on the developer machine and does not correspond to a port on the Roku device.
+     * Defaults to 8080
+     * @default 8080
      */
     componentLibrariesPort: number;
 
@@ -236,25 +238,24 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     remotePort?: number;
 
     /**
-     * The brightscript console port. In telnet mode this is the port used for the telnet connection. In debug protocol mode, this is used to obtain compile errors from the device.
-     * @default 8085
-     */
-    brightScriptConsolePort?: number;
-
-    /**
-     * sceneGraphDebugCommandsPort
      * The port that should be used to send SceneGraph debug commands. Defaults to 8080.
      * @default 8080
      */
     sceneGraphDebugCommandsPort: number;
 
     /**
-     * Port used to connect to and control a debug protocol session. Defaults to 8081.
+     * Port used to connect to and control a debug protocol session.
      * This is mainly useful for things like emulators that use alternate ports,
-     * or when connecting to the debug protocol through some type of port forwarding.
+     * or when connecting to the debug protocol through some type of port forwarding. Defaults to 8081.
      * @default 8081
      */
     controlPort: number;
+
+    /**
+     * The brightscript console port. In telnet mode this is the port used for the primary telnet connection. In debug protocol mode, this is used to obtain compile errors from the device. Defaults to 8085.
+     * @default 8085
+     */
+    brightScriptConsolePort?: number;
 
     /**
      * The path used for the staging folder of roku-deploy
