@@ -223,6 +223,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * The port that should be used when installing the package. Defaults to 80.
      * This is mainly useful for things like emulators that use alternate ports,
      * or when publishing through some type of port forwarding configuration.
+     * @default 80
      */
     packagePort?: number;
 
@@ -230,13 +231,30 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * The port used to send remote control commands (like home press, back, etc.). Defaults to 8060.
      * This is mainly useful for things like emulators that use alternate ports,
      * or when sending commands through some type of port forwarding.
+     * @default 8060
      */
     remotePort?: number;
 
     /**
      * The brightscript console port. In telnet mode this is the port used for the telnet connection. In debug protocol mode, this is used to obtain compile errors from the device.
+     * @default 8085
      */
     brightScriptConsolePort?: number;
+
+    /**
+     * sceneGraphDebugCommandsPort
+     * The port that should be used to send SceneGraph debug commands. Defaults to 8080.
+     * @default 8080
+     */
+    sceneGraphDebugCommandsPort: number;
+
+    /**
+     * Port used to connect to and control a debug protocol session. Defaults to 8081.
+     * This is mainly useful for things like emulators that use alternate ports,
+     * or when connecting to the debug protocol through some type of port forwarding.
+     * @default 8081
+     */
+    controlPort: number;
 
     /**
      * The path used for the staging folder of roku-deploy
@@ -266,12 +284,6 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default false
      */
     deleteDevChannelBeforeInstall: boolean;
-
-    /**
-     * sceneGraphDebugCommandsPort
-     * The port that should be used to send SceneGraph debug commands. Defaults to 8080.
-     */
-    sceneGraphDebugCommandsPort: number;
 }
 
 export interface ComponentLibraryConfiguration {
