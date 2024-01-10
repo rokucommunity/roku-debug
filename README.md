@@ -8,6 +8,20 @@ A [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/) 
 [![license](https://img.shields.io/github/license/rokucommunity/roku-debug.svg)](LICENSE)
 [![Slack](https://img.shields.io/badge/Slack-RokuCommunity-4A154B?logo=slack)](https://join.slack.com/t/rokudevelopers/shared_invite/zt-4vw7rg6v-NH46oY7hTktpRIBM_zGvwA)
 
+## Usage
+This project can be integrated with any IDE that supports the debug-adapter-protocol. 
+
+**Known integrations:**
+- [BrightScript Language extension for VSCode](https://github.com/rokucommunity/vscode-brightscript-language)
+- [nvim-dap extension for Neovim](https://github.com/mfussenegger/nvim-dap/wiki/Debug-Adapter-installation#brightscript)
+
+## DAP instructions
+To run the language server standalone, you simply need to:
+- install nodejs and make sure npx is on your path
+- install this project (`npm install roku-debug`)
+- run the project in dap mode (`npx roku-debug --dap`)
+
+
 ## Contributors
 [![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/0)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/0)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/1)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/1)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/2)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/2)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/3)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/3)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/4)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/4)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/5)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/5)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/6)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/6)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/7)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/7)
 
