@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.0](https://github.com/rokucommunity/roku-debug/compare/v0.20.15...v0.21.0) - 2024-01-10
+### Added
+ - Add cli flag to run dap as standalone process ([#173](https://github.com/rokucommunity/roku-debug/pull/173))
+ - Expose `controlPort` launch option for overriding the debug protocol port ([#182](https://github.com/rokucommunity/roku-debug/pull/182))
+
+
+
 ## [0.20.15](https://github.com/rokucommunity/roku-debug/compare/v0.20.14...v0.20.15) - 2024-01-08
 ### Changed
  - Display a modal message when the we fail to upload a package to the device ([#178](https://github.com/rokucommunity/roku-debug/pull/178))
