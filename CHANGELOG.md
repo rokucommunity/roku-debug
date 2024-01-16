@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.1](https://github.com/rokucommunity/roku-debug/compare/v0.21.0...v0.21.1) - 2024-01-16
+### Changed
+ - upgrade to [brighterscript@0.65.17](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06517---2024-01-16). Notable changes since 0.65.16:
+     - adds support for libpkg prefix ([brighterscript#1017](https://github.com/rokucommunity/brighterscript/pull/1017))
+     - Assign .program to the builder BEFORE calling afterProgram ([brighterscript#1011](https://github.com/rokucommunity/brighterscript/pull/1011))
+
+
+
 ## [0.21.0](https://github.com/rokucommunity/roku-debug/compare/v0.20.15...v0.21.0) - 2024-01-10
 ### Added
  - Add cli flag to run dap as standalone process ([#173](https://github.com/rokucommunity/roku-debug/pull/173))
