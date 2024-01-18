@@ -37,6 +37,7 @@ export class ProjectManager {
     public launchConfiguration: {
         enableSourceMaps?: boolean;
         enableDebugProtocol?: boolean;
+        packagePath: string;
     };
 
     public logger = logger.createLogger('[ProjectManager]');
@@ -227,6 +228,7 @@ export interface AddProjectParams {
     rdbFilesBasePath?: string;
     bsConst?: Record<string, boolean>;
     stagingFolderPath?: string;
+    packagePath?: string;
 }
 
 export class Project {

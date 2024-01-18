@@ -271,8 +271,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             logger.logLevel = this.launchConfiguration.logLevel;
         }
 
-        await this.sendCustomRequest('executeTask', { task: config.packageTask });
-
         //do a DNS lookup for the host to fix issues with roku rejecting ECP
         try {
             this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
@@ -537,9 +535,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.warn('Failed to delete the dev channel...probably not a big deal', e);
         }
 
+
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.publish({
             ...this.launchConfiguration,
+            //supply the outDir and outFile based on `packagePath` if provided, otherwise use the defaults
+            outDir: this.launchConfiguration.packagePath ? path.dirname(this.launchConfiguration.packagePath) : this.launchConfiguration.outDir,
+            outFile: this.launchConfiguration.packagePath ? path.basename(this.launchConfiguration.packagePath) : undefined,
             //typing fix
             logLevel: LogLevelPriority[this.logger.logLevel],
             // enable the debug protocol if true
@@ -656,7 +658,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation,
             injectRdbOnDeviceComponent: this.launchConfiguration.injectRdbOnDeviceComponent,
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
-            stagingFolderPath: this.launchConfiguration.stagingFolderPath
+            stagingFolderPath: this.launchConfiguration.stagingFolderPath,
+            packagePath: this.launchConfiguration.packagePath
         });
 
         util.log('Moving selected files to staging area');
@@ -674,9 +677,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
         }
 
-        //create zip package from staging folder
-        util.log('Creating zip archive from project sources');
-        await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
+        if (this.launchConfiguration.packageTask) {
+            util.log(`Executing task '${this.launchConfiguration.packageTask}' to build the zip for us`);
+            await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
+        } else {
+            //create zip package from staging folder
+            util.log('Creating zip archive from project sources');
+            await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
+        }
     }
 
     /**
