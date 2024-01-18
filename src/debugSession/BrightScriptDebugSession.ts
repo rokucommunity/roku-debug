@@ -39,7 +39,9 @@ import {
     ChanperfEvent,
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
-    PopupMessageEvent
+    PopupMessageEvent,
+    CustomRequestEvent,
+    ClientToServerCustomEventName
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -208,6 +210,31 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.trace('[showPopupMessage]', severity, message);
         this.sendEvent(new PopupMessageEvent(message, severity, modal));
     }
+
+    private static requestIdSequence = 0;
+
+    private async sendCustomRequest<T = any>(name: string, data: T) {
+        const requestId = BrightScriptDebugSession.requestIdSequence++;
+        const responsePromise = new Promise<any>((resolve, reject) => {
+            this.on(ClientToServerCustomEventName.customRequestEventResponse, (response) => {
+                if (response.requestId === requestId) {
+                    if (response.error) {
+                        throw response.error;
+                    } else {
+                        resolve(response);
+                    }
+                }
+            });
+        });
+        this.sendEvent(
+            new CustomRequestEvent({
+                requestId: requestId,
+                name: name,
+                ...data ?? {}
+            }));
+        await responsePromise;
+    }
+
     /**
       * Get the cwd from the launchConfiguration, or default to process.cwd()
       */
@@ -233,7 +260,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-
         this.logger.log('[launchRequest] begin');
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
@@ -244,6 +270,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (this.launchConfiguration.logLevel) {
             logger.logLevel = this.launchConfiguration.logLevel;
         }
+
+        await this.sendCustomRequest('executeTask', { task: config.packageTask });
 
         //do a DNS lookup for the host to fix issues with roku rejecting ECP
         try {
@@ -655,14 +683,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Accepts custom events and requests from the extension
      * @param command name of the command to execute
      */
-    protected customRequest(command: string) {
+    protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
-        }
 
-        if (command === 'chanperf.clearHistory') {
+        } else if (command === 'chanperf.clearHistory') {
             this.rokuAdapter.clearChanperfHistory();
+
+        } else if (command === 'customRequestEventResponse') {
+            this.emit('customRequestEventResponse', args);
         }
+        this.sendResponse(response);
     }
 
     /**

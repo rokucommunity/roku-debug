@@ -158,6 +158,30 @@ export function isChannelPublishedEvent(event: any): event is ChannelPublishedEv
     return !!event && event.event === ChannelPublishedEvent.name;
 }
 
+/**
+ * Event that asks the client to execute a command.
+ */
+export class CustomRequestEvent<T = any, R = T & { name: string; requestId: number }> extends CustomEvent<R> {
+    constructor(body: R) {
+        super(body);
+    }
+}
+
+/**
+ * Is the object a `CustomRequestEvent`
+ */
+export function isCustomRequestEvent(event: any): event is CustomRequestEvent {
+    return !!event && event.event === CustomRequestEvent.name;
+}
+
+export function isExecuteTaskCustomRequest(event: any): event is CustomRequestEvent<{ task: string }> {
+    return !!event && event.event === CustomRequestEvent.name && event.body.name === 'executeTask';
+}
+
+export enum ClientToServerCustomEventName {
+    customRequestEventResponse = 'customRequestEventResponse'
+}
+
 export enum StoppedEventReason {
     step = 'step',
     breakpoint = 'breakpoint',
