@@ -668,8 +668,8 @@ describe('Project', () => {
         });
 
         it('uses "packagePath" when specified', async () => {
-            fsExtra.outputFileSync(`${project.stagingFolderPath}/manifest`, '#stuff');
-            fsExtra.outputFileSync(`${project.stagingFolderPath}/source/main.brs`, 'sub main() : end sub');
+            fsExtra.outputFileSync(`${project.stagingDir}/manifest`, '#stuff');
+            fsExtra.outputFileSync(`${project.stagingDir}/source/main.brs`, 'sub main() : end sub');
             project.packagePath = s`${tempPath}/package/path.zip`;
             await project.zipPackage({ retainStagingFolder: true });
 
