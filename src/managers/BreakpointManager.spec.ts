@@ -388,7 +388,7 @@ describe('BreakpointManager', () => {
             await bpManager.writeBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
-                stagingFolderPath: stagingDir
+                stagingDir: stagingDir
             }));
 
             //it wrote the breakpoint in the correct location
@@ -429,7 +429,7 @@ describe('BreakpointManager', () => {
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1],
-                    stagingFolderPath: stagingDir
+                    stagingDir: stagingDir
                 })
             );
 
@@ -467,7 +467,7 @@ describe('BreakpointManager', () => {
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
-                    stagingFolderPath: stagingDir
+                    stagingDir: stagingDir
                 })
             );
 
@@ -510,7 +510,7 @@ describe('BreakpointManager', () => {
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
-                    stagingFolderPath: stagingDir
+                    stagingDir: stagingDir
                 })
             );
 
@@ -552,7 +552,7 @@ describe('BreakpointManager', () => {
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
-                    stagingFolderPath: stagingDir
+                    stagingDir: stagingDir
                 })
             );
 
@@ -609,7 +609,7 @@ describe('BreakpointManager', () => {
                 ],
                 rootDir: s`${tmpDir}/dist`,
                 outDir: s`${tmpDir}/out`,
-                stagingFolderPath: stagingDir
+                stagingDir: stagingDir
             }));
 
             //the breakpoints should be placed in the proper locations
@@ -714,7 +714,7 @@ describe('BreakpointManager', () => {
                 files: [
                     'source/main.brs'
                 ],
-                stagingFolderPath: stagingDir,
+                stagingDir: stagingDir,
                 outDir: outDir,
                 rootDir: rootDir
             }));
@@ -726,7 +726,7 @@ describe('BreakpointManager', () => {
                 lineNumber: 2,
                 fileMappings: [],
                 rootDir: rootDir,
-                stagingFolderPath: stagingDir,
+                stagingDir: stagingDir,
                 enableSourceMaps: true
             });
 
@@ -775,7 +775,7 @@ describe('BreakpointManager', () => {
                 files: [
                     'source/main.brs'
                 ],
-                stagingFolderPath: stagingDir,
+                stagingDir: stagingDir,
                 outDir: outDir,
                 rootDir: rootDir
             }));
@@ -813,7 +813,7 @@ describe('BreakpointManager', () => {
                     dest: ''
                 }
             ],
-            stagingFolderPath: stagingDir,
+            stagingDir: stagingDir,
             outDir: outDir,
             rootDir: rootDir
         });

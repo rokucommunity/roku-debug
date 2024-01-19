@@ -229,6 +229,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.sceneGraphDebugCommandsPort ??= 8080;
         config.controlPort ??= 8081;
         config.brightScriptConsolePort ??= 8085;
+        config.stagingDir ??= config.stagingFolderPath;
         return config;
     }
 
@@ -628,7 +629,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation,
             injectRdbOnDeviceComponent: this.launchConfiguration.injectRdbOnDeviceComponent,
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
-            stagingFolderPath: this.launchConfiguration.stagingFolderPath
+            stagingDir: this.launchConfiguration.stagingDir
         });
 
         util.log('Moving selected files to staging area');
@@ -1439,7 +1440,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (!this.enableDebugProtocol) {
             this.entryBreakpointWasHandled = true;
             if (this.launchConfiguration.stopOnEntry || this.launchConfiguration.deepLinkUrl) {
-                await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
+                await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingDir);
             }
         }
     }
@@ -1468,14 +1469,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
-                const stagingFolders = this.projectManager?.getStagingFolderPaths() ?? [];
-                this.logger.info('deleting staging folders', stagingFolders);
-                for (let stagingFolderPath of stagingFolders) {
+                const stagingDirs = this.projectManager?.getStagingDirs() ?? [];
+                this.logger.info('deleting staging folders', stagingDirs);
+                for (let stagingDir of stagingDirs) {
                     try {
-                        fsExtra.removeSync(stagingFolderPath);
+                        fsExtra.removeSync(stagingDir);
                     } catch (e) {
                         this.logger.error(e);
-                        util.log(`Error removing staging directory '${stagingFolderPath}': ${JSON.stringify(e)}`);
+                        util.log(`Error removing staging directory '${stagingDir}': ${JSON.stringify(e)}`);
                     }
                 }
             }
