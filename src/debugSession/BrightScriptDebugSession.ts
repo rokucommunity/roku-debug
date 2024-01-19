@@ -250,6 +250,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @returns
      */
     private normalizeLaunchConfig(config: LaunchConfiguration) {
+        config.cwd ??= process.cwd();
+        config.outDir ??= s`${config.cwd}/out`;
+        config.stagingDir ??= s`${config.outDir}/.roku-deploy-staging`;
         config.componentLibrariesPort ??= 8080;
         config.packagePort ??= 80;
         config.remotePort ??= 8060;
