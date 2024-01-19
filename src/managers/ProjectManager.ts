@@ -220,6 +220,7 @@ export class ProjectManager {
 export interface AddProjectParams {
     rootDir: string;
     outDir: string;
+    packagePath?: string;
     sourceDirs?: string[];
     files: Array<FileEntry>;
     injectRaleTrackerTask?: boolean;
@@ -228,7 +229,6 @@ export interface AddProjectParams {
     rdbFilesBasePath?: string;
     bsConst?: Record<string, boolean>;
     stagingFolderPath?: string;
-    packagePath?: string;
 }
 
 export class Project {
@@ -239,7 +239,7 @@ export class Project {
         assert(params?.outDir, 'outDir is required');
         this.outDir = fileUtils.standardizePath(params.outDir);
 
-        this.stagingFolderPath = params.stagingFolderPath ?? rokuDeploy.getOptions(this).stagingFolderPath;
+        this.stagingFolderPath = params.stagingDir ?? rokuDeploy.getOptions(this).stagingFolderPath;
         this.bsConst = params.bsConst;
         this.sourceDirs = (params.sourceDirs ?? [])
             //standardize every sourcedir
@@ -249,9 +249,11 @@ export class Project {
         this.injectRdbOnDeviceComponent = params.injectRdbOnDeviceComponent ?? false;
         this.rdbFilesBasePath = params.rdbFilesBasePath;
         this.files = params.files ?? [];
+        this.packagePath = params.packagePath;
     }
     public rootDir: string;
     public outDir: string;
+    public packagePath: string;
     public sourceDirs: string[];
     public files: Array<FileEntry>;
     public stagingFolderPath: string;
@@ -474,16 +476,19 @@ export class Project {
      *
      * @param stagingPath
      */
-    public async zipPackage(params: { retainStagingFolder: true }) {
+    public async zipPackage(params: { retainStagingFolder: boolean }) {
         const options = rokuDeploy.getOptions({
             ...this,
             ...params
         });
 
-        //make sure the output folder exists
-        await fsExtra.ensureDir(options.outDir);
+        let packagePath = this.packagePath;
+        if (!this.packagePath) {
+            //make sure the output folder exists
+            await fsExtra.ensureDir(options.outDir);
 
-        let zipFilePath = rokuDeploy.getOutputZipFilePath(options);
+            packagePath = rokuDeploy.getOutputZipFilePath(options);
+        }
 
         //ensure the manifest file exists in the staging folder
         if (!await rokuDeployUtil.fileExistsCaseInsensitive(`${options.stagingDir}/manifest`)) {
@@ -491,7 +496,7 @@ export class Project {
         }
 
         // create a zip of the staging folder
-        await rokuDeploy.zipFolder(options.stagingDir, zipFilePath, undefined, [
+        await rokuDeploy.zipFolder(options.stagingDir, packagePath, undefined, [
             '**/*',
             //exclude sourcemap files (they're large and can't be parsed on-device anyway...)
             '!**/*.map'
