@@ -553,7 +553,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //necessary for capturing compile errors from the protocol (has no effect on telnet)
             remoteDebugConnectEarly: false,
             //we don't want to fail if there were compile errors...we'll let our compile error processor handle that
-            failOnCompileError: true
+            failOnCompileError: true,
+            //pass any upload form overrides the client may have configured
+            packageUploadOverrides: this.launchConfiguration.packageUploadOverrides
         }).then(() => {
             packageIsPublished = true;
         }).catch(async (e) => {

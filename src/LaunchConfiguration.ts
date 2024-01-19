@@ -306,7 +306,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     /**
      * Overrides for values used during the roku-deploy zip upload process, like the route and various form data. You probably don't need to change these..
      */
-    packageUploadOverrides: {
+    packageUploadOverrides?: {
         /**
          * The route to use for uploading to the Roku device. Defaults to 'plugin_install'
          * @default 'plugin_install'
