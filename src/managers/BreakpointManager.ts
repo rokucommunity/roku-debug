@@ -368,7 +368,7 @@ export class BreakpointManager {
                         ...project?.sourceDirs ?? [],
                         project.rootDir
                     ],
-                    project.stagingFolderPath,
+                    project.stagingDir,
                     project.fileMappings
                 );
 
@@ -376,7 +376,7 @@ export class BreakpointManager {
                     let relativeStagingPath = fileUtils.replaceCaseInsensitive(
                         stagingLocation.filePath,
                         fileUtils.standardizePath(
-                            fileUtils.removeTrailingSlash(project.stagingFolderPath) + '/'
+                            fileUtils.removeTrailingSlash(project.stagingDir) + '/'
                         ),
                         ''
                     );
@@ -384,7 +384,7 @@ export class BreakpointManager {
                         //replace staging folder path with nothing (so we can build a pkg path)
                         .replaceCaseInsensitive(
                             s`${stagingLocation.filePath}`,
-                            s`${project.stagingFolderPath}`,
+                            s`${project.stagingDir}`,
                             ''
                         )
                         //force to unix path separators
