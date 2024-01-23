@@ -539,13 +539,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.warn('Failed to delete the dev channel...probably not a big deal', e);
         }
 
-
-        //publish the package to the target Roku
-        const publishPromise = this.rokuDeploy.publish({
+        const options: RokuDeployOptions = {
             ...this.launchConfiguration,
-            //supply the outDir and outFile based on `packagePath` if provided, otherwise use the defaults
-            outDir: this.launchConfiguration.packagePath ? path.dirname(this.launchConfiguration.packagePath) : this.launchConfiguration.outDir,
-            outFile: this.launchConfiguration.packagePath ? path.basename(this.launchConfiguration.packagePath) : undefined,
             //typing fix
             logLevel: LogLevelPriority[this.logger.logLevel],
             // enable the debug protocol if true
@@ -556,7 +551,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             failOnCompileError: true,
             //pass any upload form overrides the client may have configured
             packageUploadOverrides: this.launchConfiguration.packageUploadOverrides
-        }).then(() => {
+        };
+        //if packagePath is specified, use that info instead of outDir and outFile
+        if (this.launchConfiguration.packagePath) {
+            options.outDir = path.dirname(this.launchConfiguration.packagePath);
+            options.outFile = path.basename(this.launchConfiguration.packagePath);
+        }
+
+        //publish the package to the target Roku
+        const publishPromise = this.rokuDeploy.publish(options).then(() => {
             packageIsPublished = true;
         }).catch(async (e) => {
             const statusCode = e?.results?.response?.statusCode;
