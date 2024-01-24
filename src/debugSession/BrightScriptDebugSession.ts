@@ -217,13 +217,29 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public deviceInfo: DeviceInfo;
 
+    /**
+     * Set defaults and standardize values for all of the LaunchConfiguration values
+     * @param config
+     * @returns
+     */
+    private normalizeLaunchConfig(config: LaunchConfiguration) {
+        config.componentLibrariesPort ??= 8080;
+        config.packagePort ??= 80;
+        config.remotePort ??= 8060;
+        config.sceneGraphDebugCommandsPort ??= 8080;
+        config.controlPort ??= 8081;
+        config.brightScriptConsolePort ??= 8085;
+        config.stagingDir ??= config.stagingFolderPath;
+        return config;
+    }
+
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
 
         this.logger.log('[launchRequest] begin');
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
 
-        this.launchConfiguration = config;
+        this.launchConfiguration = this.normalizeLaunchConfig(config);
 
         //set the logLevel provided by the launch config
         if (this.launchConfiguration.logLevel) {
@@ -267,7 +283,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             ]);
             this.logger.log(`Packaging projects took: ${(util.formatTime(Date.now() - start))}`);
 
-            util.log(`Connecting to Roku via ${this.enableDebugProtocol ? 'the BrightScript debug protocol' : 'telnet'} at ${this.launchConfiguration.host}`);
+            if (this.enableDebugProtocol) {
+                util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.launchConfiguration.host}:${this.launchConfiguration.controlPort}`);
+            } else {
+                util.log(`Connecting to Roku via telnet at ${this.launchConfiguration.host}:${this.launchConfiguration.brightScriptConsolePort}`);
+            }
 
             await this.initRendezvousTracking();
 
@@ -600,7 +620,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation,
             injectRdbOnDeviceComponent: this.launchConfiguration.injectRdbOnDeviceComponent,
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
-            stagingFolderPath: this.launchConfiguration.stagingFolderPath
+            stagingDir: this.launchConfiguration.stagingDir
         });
 
         util.log('Moving selected files to staging area');
@@ -1411,7 +1431,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (!this.enableDebugProtocol) {
             this.entryBreakpointWasHandled = true;
             if (this.launchConfiguration.stopOnEntry || this.launchConfiguration.deepLinkUrl) {
-                await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingFolderPath);
+                await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingDir);
             }
         }
     }
@@ -1440,14 +1460,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
-                const stagingFolders = this.projectManager?.getStagingFolderPaths() ?? [];
-                this.logger.info('deleting staging folders', stagingFolders);
-                for (let stagingFolderPath of stagingFolders) {
+                const stagingDirs = this.projectManager?.getStagingDirs() ?? [];
+                this.logger.info('deleting staging folders', stagingDirs);
+                for (let stagingDir of stagingDirs) {
                     try {
-                        fsExtra.removeSync(stagingFolderPath);
+                        fsExtra.removeSync(stagingDir);
                     } catch (e) {
                         this.logger.error(e);
-                        util.log(`Error removing staging directory '${stagingFolderPath}': ${JSON.stringify(e)}`);
+                        util.log(`Error removing staging directory '${stagingDir}': ${JSON.stringify(e)}`);
                     }
                 }
             }

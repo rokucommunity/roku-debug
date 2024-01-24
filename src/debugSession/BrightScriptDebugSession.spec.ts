@@ -64,7 +64,7 @@ describe('BrightScriptDebugSession', () => {
         launchConfiguration = {
             rootDir: rootDir,
             outDir: outDir,
-            stagingFolderPath: stagingDir,
+            stagingDir: stagingDir,
             files: DefaultFiles
         } as any;
         session['launchConfiguration'] = launchConfiguration;
@@ -658,7 +658,7 @@ describe('BrightScriptDebugSession', () => {
         it('registers the entry breakpoint when stopOnEntry is enabled', async () => {
             (session as any).launchConfiguration = { stopOnEntry: true };
             session.projectManager.mainProject = <any>{
-                stagingFolderPath: stagingDir
+                stagingDir: stagingDir
             };
             let stub = sinon.stub(session.projectManager, 'registerEntryBreakpoint').returns(Promise.resolve());
             await session.handleEntryBreakpoint();
@@ -677,10 +677,10 @@ describe('BrightScriptDebugSession', () => {
         it('erases all staging folders when configured to do so', async () => {
             let stub = sinon.stub(fsExtra, 'removeSync').returns(null);
             session.projectManager.mainProject = <any>{
-                stagingFolderPath: 'stagingPathA'
+                stagingDir: 'stagingPathA'
             };
             session.projectManager.componentLibraryProjects.push(<any>{
-                stagingFolderPath: 'stagingPathB'
+                stagingDir: 'stagingPathB'
             });
             (session as any).launchConfiguration = {
                 retainStagingFolder: false
@@ -830,7 +830,7 @@ describe('BrightScriptDebugSession', () => {
                 session.projectManager.componentLibraryProjects.push(
                     new ComponentLibraryProject({
                         rootDir: complib1Dir,
-                        stagingFolderPath: stagingDir,
+                        stagingDir: stagingDir,
                         outDir: outDir,
                         libraryIndex: 1
                     } as Partial<ComponentLibraryConstructorParams> as any)
