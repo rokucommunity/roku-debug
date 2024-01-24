@@ -211,44 +211,20 @@ export class DebugProtocolClient {
     }
 
     /**
-     * A function that can be used to cancel the repeating interval that's running to try and establish a connection to the control socket.
-     */
-    private cancelControlConnectInterval: () => void;
-
-    /**
      * A collection of sockets created when trying to connect to the debug protocol's control socket. We keep these around for quicker tear-down
      * whenever there is an early-terminated debug session
      */
-    private pendingControlConnectionSockets: Set<Net.Socket>;
-
     private async establishControlConnection() {
-        this.pendingControlConnectionSockets = new Set<Net.Socket>();
         const connection = await new Promise<Net.Socket>((resolve) => {
-            this.cancelControlConnectInterval = util.setInterval((cancelInterval) => {
-                const socket = new Net.Socket({
-                    allowHalfOpen: false
-                });
-                this.pendingControlConnectionSockets.add(socket);
-                socket.on('error', (error) => {
-                    console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
-                });
-                socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
-                    cancelInterval();
-
-                    this.logger.debug(`Connected to debug protocol control port. Socket ${[...this.pendingControlConnectionSockets].indexOf(socket)} of ${this.pendingControlConnectionSockets.size} was the winner`);
-                    //clean up all remaining pending sockets
-                    for (const pendingSocket of this.pendingControlConnectionSockets) {
-                        pendingSocket.removeAllListeners();
-                        //cleanup and destroy all other sockets
-                        if (pendingSocket !== socket) {
-                            pendingSocket.end();
-                            pendingSocket?.destroy();
-                        }
-                    }
-                    this.pendingControlConnectionSockets.clear();
-                    resolve(socket);
-                });
-            }, this.options.controlConnectInterval ?? 250);
+            const socket = new Net.Socket({
+                allowHalfOpen: false
+            });
+            socket.on('error', (error) => {
+                console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
+            });
+            socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
+                resolve(socket);
+            });
         });
         await this.plugins.emit('onServerConnected', {
             client: this,
@@ -1167,16 +1143,6 @@ export class DebugProtocolClient {
     }
 
     private async _shutdown(immediate = false) {
-        this.cancelControlConnectInterval?.();
-        for (const pendingSocket of this.pendingControlConnectionSockets) {
-            pendingSocket.removeAllListeners();
-            //cleanup and destroy all other sockets
-            if (pendingSocket !== this.controlSocket) {
-                pendingSocket.end();
-                pendingSocket?.destroy();
-            }
-        }
-
         let exitChannelTimeout = this.options?.exitChannelTimeout ?? 30_000;
         let shutdownTimeMax = this.options?.shutdownTimeout ?? 10_000;
         //if immediate is true, this is an instant shutdown force. don't wait for anything
