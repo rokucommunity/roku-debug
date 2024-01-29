@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.2](https://github.com/rokucommunity/roku-debug/compare/v0.21.1...v0.21.2) - 2024-01-25
+### Changed
+ - Use `stagingDir` instead of stagingFolderPath ([#185](https://github.com/rokucommunity/roku-debug/pull/185))
+ - upgrade to [brighterscript@0.65.18](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06518---2024-01-25). Notable changes since 0.65.17:
+     - Refactor bsconfig documentation ([brighterscript#1024](https://github.com/rokucommunity/brighterscript/pull/1024))
+     - Prevent overwriting the Program._manifest if already set on startup ([brighterscript#1027](https://github.com/rokucommunity/brighterscript/pull/1027))
+     - Improving null safety: Add FinalizedBsConfig and tweak plugin events ([brighterscript#1000](https://github.com/rokucommunity/brighterscript/pull/1000))
+
+
+
 ## [0.21.1](https://github.com/rokucommunity/roku-debug/compare/v0.21.0...v0.21.1) - 2024-01-16
 ### Changed
  - upgrade to [brighterscript@0.65.17](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06517---2024-01-16). Notable changes since 0.65.16:
