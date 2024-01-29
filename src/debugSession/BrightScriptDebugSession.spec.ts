@@ -219,13 +219,11 @@ describe('BrightScriptDebugSession', () => {
             }
         } as Partial<LaunchConfiguration> as LaunchConfiguration);
 
-        expect(publishStub.getCall(0).args[0]).to.include({
-            packageUploadOverrides: {
-                route: '1234',
-                formData: {
-                    one: 'two',
-                    three: null
-                }
+        expect(publishStub.getCall(0).args[0].packageUploadOverrides).to.eql({
+            route: '1234',
+            formData: {
+                one: 'two',
+                three: null
             }
         });
     });

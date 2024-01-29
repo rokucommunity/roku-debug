@@ -68,7 +68,7 @@ class Util {
      * @param filePath
      */
     public getFileScheme(filePath: string): string | null {
-        return url.parse(filePath).protocol;
+        return /^([\w_-]+:)/.exec(filePath)?.[1]?.toLowerCase();
     }
 
     /**

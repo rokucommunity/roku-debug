@@ -121,6 +121,10 @@ describe('Util', () => {
             assert.equal(util.getFileScheme('/images/channel-poster_hd.png'), null);
             assert.equal(util.getFileScheme('ages/channel-poster_hd.png'), null);
         });
+
+        it('should support file schemes with underscores', () => {
+            assert.equal(util.getFileScheme('thing_with_underscores:/source/lib.brs'), 'thing_with_underscores:');
+        });
     });
 
     describe('convertManifestToObject', () => {
