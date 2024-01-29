@@ -268,7 +268,7 @@ export class DebugProtocolClient {
             //destroy the control socket since it just closed on us...
             this.controlSocket?.destroy?.();
             this.controlSocket = undefined;
-            void this.shutdown('app-exit');
+            this.emit('app-exit');
         });
 
         // Don't forget to catch error, for your own sake.
@@ -278,7 +278,7 @@ export class DebugProtocolClient {
             //destroy the control socket since it errored
             this.controlSocket?.destroy?.();
             this.controlSocket = undefined;
-            void this.shutdown('close');
+            this.emit('close');
         });
 
         if (sendHandshake) {
@@ -1048,7 +1048,7 @@ export class DebugProtocolClient {
                     message: `Protocol Version ${this.protocolVersion} is not supported.\nIf you believe this is an error please open an issue at https://github.com/rokucommunity/roku-debug/issues`,
                     errorCode: PROTOCOL_ERROR_CODES.NOT_SUPPORTED
                 });
-                await this.shutdown('close');
+                await this.emit('close');
                 handshakeVerified = false;
             }
 
@@ -1057,7 +1057,7 @@ export class DebugProtocolClient {
         } else {
             this.logger.log('Closing connection due to bad debugger magic', response.data.magic);
             this.emit('handshake-verified', false);
-            await this.shutdown('close');
+            await this.emit('close');
             return false;
         }
     }
@@ -1116,7 +1116,7 @@ export class DebugProtocolClient {
                 return true;
             } catch (e) {
                 this.logger.error(`Failed to connect to IO socket at ${this.options.host}:${update.data.port}`, e);
-                void this.shutdown('app-exit');
+                this.emit('app-exit');
             }
         }
         return false;
@@ -1127,12 +1127,11 @@ export class DebugProtocolClient {
      * @param immediate if true, all sockets are immediately closed and do not gracefully shut down
      */
     public async destroy(immediate = false) {
-        await this.shutdown('close', immediate);
+        await this.shutdown(immediate);
     }
 
     private shutdownPromise: Promise<void>;
-    private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
-        await this.emit(eventName);
+    private async shutdown(immediate = false) {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] shutting down');
             this.shutdownPromise = this._shutdown(immediate);

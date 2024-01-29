@@ -259,11 +259,13 @@ export class DebugProtocolAdapter {
             this.socketDebugger.on('close', () => {
                 this.emit('close');
                 this.beginAppExit();
+                void this.socketDebugger.destroy();
             });
 
             // Listen for the app exit event
             this.socketDebugger.on('app-exit', () => {
                 this.emit('app-exit');
+                void this.socketDebugger.destroy();
             });
 
             this.socketDebugger.on('suspend', (data) => {
