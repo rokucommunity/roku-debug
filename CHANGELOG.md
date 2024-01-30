@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.3](https://github.com/rokucommunity/roku-debug/compare/v0.21.2...v0.21.3) - 2024-01-30
+### Changed
+ - upgrade to [brighterscript@0.65.19](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06519---2024-01-30). Notable changes since 0.65.18:
+     - Backport v1 syntax changes ([brighterscript#1034](https://github.com/rokucommunity/brighterscript/pull/1034))
+
+
+
 ## [0.21.2](https://github.com/rokucommunity/roku-debug/compare/v0.21.1...v0.21.2) - 2024-01-25
 ### Changed
  - Use `stagingDir` instead of stagingFolderPath ([#185](https://github.com/rokucommunity/roku-debug/pull/185))

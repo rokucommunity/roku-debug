@@ -98,7 +98,7 @@
     "dependencies": {
         "@rokucommunity/logger": "^0.3.3",
         "@types/request": "^2.48.8",
-        "brighterscript": "^0.65.18",
+        "brighterscript": "^0.65.19",
         "dateformat": "^4.6.3",
         "debounce": "^1.2.1",
         "eol": "^0.9.1",
