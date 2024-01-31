@@ -99,7 +99,7 @@ describe('DebugProtocolAdapter', function() {
         await adapter.connect();
         await adapter['createDebugProtocolClient']();
 
-        client = adapter['socketDebugger'];
+        client = adapter['client'];
         client['options'].shutdownTimeout = 100;
         client['options'].exitChannelTimeout = 100;
         //disable logging for tests because they clutter the test output
