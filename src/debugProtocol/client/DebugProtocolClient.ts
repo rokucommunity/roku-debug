@@ -185,6 +185,7 @@ export class DebugProtocolClient {
     public on<T = AllThreadsStoppedUpdate | ThreadAttachedUpdate>(eventName: 'runtime-error' | 'suspend', handler: (data: T) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
+    public on(eventName: 'control-socket-connected', handler: () => void);
     public on(eventName: 'handshake-verified', handler: (data: HandshakeResponse) => void);
     // public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
@@ -201,7 +202,7 @@ export class DebugProtocolClient {
     private emit(eventName: 'data', update: Buffer);
     private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'suspend' | 'runtime-error', data: AllThreadsStoppedUpdate | ThreadAttachedUpdate);
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'control-socket-connected' | 'start', data?);
     private async emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         await util.sleep(0);
@@ -210,49 +211,26 @@ export class DebugProtocolClient {
     }
 
     /**
-     * A function that can be used to cancel the repeating interval that's running to try and establish a connection to the control socket.
-     */
-    private cancelControlConnectInterval: () => void;
-
-    /**
      * A collection of sockets created when trying to connect to the debug protocol's control socket. We keep these around for quicker tear-down
      * whenever there is an early-terminated debug session
      */
-    private pendingControlConnectionSockets: Set<Net.Socket>;
-
     private async establishControlConnection() {
-        this.pendingControlConnectionSockets = new Set<Net.Socket>();
         const connection = await new Promise<Net.Socket>((resolve) => {
-            this.cancelControlConnectInterval = util.setInterval((cancelInterval) => {
-                const socket = new Net.Socket({
-                    allowHalfOpen: false
-                });
-                this.pendingControlConnectionSockets.add(socket);
-                socket.on('error', (error) => {
-                    console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
-                });
-                socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
-                    cancelInterval();
-
-                    this.logger.debug(`Connected to debug protocol control port. Socket ${[...this.pendingControlConnectionSockets].indexOf(socket)} of ${this.pendingControlConnectionSockets.size} was the winner`);
-                    //clean up all remaining pending sockets
-                    for (const pendingSocket of this.pendingControlConnectionSockets) {
-                        pendingSocket.removeAllListeners();
-                        //cleanup and destroy all other sockets
-                        if (pendingSocket !== socket) {
-                            pendingSocket.end();
-                            pendingSocket?.destroy();
-                        }
-                    }
-                    this.pendingControlConnectionSockets.clear();
-                    resolve(socket);
-                });
-            }, this.options.controlConnectInterval ?? 250);
+            const socket = new Net.Socket({
+                allowHalfOpen: false
+            });
+            socket.on('error', (error) => {
+                console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket.', error);
+            });
+            socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
+                resolve(socket);
+            });
         });
         await this.plugins.emit('onServerConnected', {
             client: this,
             server: connection
         });
+        await this.emit('control-socket-connected');
         return connection;
     }
 
@@ -290,7 +268,7 @@ export class DebugProtocolClient {
             //destroy the control socket since it just closed on us...
             this.controlSocket?.destroy?.();
             this.controlSocket = undefined;
-            void this.shutdown('app-exit');
+            this.emit('app-exit');
         });
 
         // Don't forget to catch error, for your own sake.
@@ -300,7 +278,7 @@ export class DebugProtocolClient {
             //destroy the control socket since it errored
             this.controlSocket?.destroy?.();
             this.controlSocket = undefined;
-            void this.shutdown('close');
+            this.emit('close');
         });
 
         if (sendHandshake) {
@@ -611,7 +589,6 @@ export class DebugProtocolClient {
                         return simulatedResponse;
                     }
                 }
-                console.log('Bronley');
                 //prop in the middle is missing, tried reading a prop on it
                 // ex: variablePathEntries = ["there", "thereButSetToInvalid", "definitelyNotThere"]
                 throw new Error(`Cannot read '${variablePathEntries[invalidPathIndex + 1]}'${parentVarType ? ` on type '${parentVarTypeText}'` : ''}`);
@@ -1071,7 +1048,7 @@ export class DebugProtocolClient {
                     message: `Protocol Version ${this.protocolVersion} is not supported.\nIf you believe this is an error please open an issue at https://github.com/rokucommunity/roku-debug/issues`,
                     errorCode: PROTOCOL_ERROR_CODES.NOT_SUPPORTED
                 });
-                await this.shutdown('close');
+                await this.emit('close');
                 handshakeVerified = false;
             }
 
@@ -1080,7 +1057,7 @@ export class DebugProtocolClient {
         } else {
             this.logger.log('Closing connection due to bad debugger magic', response.data.magic);
             this.emit('handshake-verified', false);
-            await this.shutdown('close');
+            await this.emit('close');
             return false;
         }
     }
@@ -1139,7 +1116,7 @@ export class DebugProtocolClient {
                 return true;
             } catch (e) {
                 this.logger.error(`Failed to connect to IO socket at ${this.options.host}:${update.data.port}`, e);
-                void this.shutdown('app-exit');
+                this.emit('app-exit');
             }
         }
         return false;
@@ -1150,12 +1127,11 @@ export class DebugProtocolClient {
      * @param immediate if true, all sockets are immediately closed and do not gracefully shut down
      */
     public async destroy(immediate = false) {
-        await this.shutdown('close', immediate);
+        await this.shutdown(immediate);
     }
 
     private shutdownPromise: Promise<void>;
-    private async shutdown(eventName: 'app-exit' | 'close', immediate = false) {
-        await this.emit(eventName);
+    private async shutdown(immediate = false) {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] shutting down');
             this.shutdownPromise = this._shutdown(immediate);
@@ -1166,16 +1142,6 @@ export class DebugProtocolClient {
     }
 
     private async _shutdown(immediate = false) {
-        this.cancelControlConnectInterval?.();
-        for (const pendingSocket of this.pendingControlConnectionSockets) {
-            pendingSocket.removeAllListeners();
-            //cleanup and destroy all other sockets
-            if (pendingSocket !== this.controlSocket) {
-                pendingSocket.end();
-                pendingSocket?.destroy();
-            }
-        }
-
         let exitChannelTimeout = this.options?.exitChannelTimeout ?? 30_000;
         let shutdownTimeMax = this.options?.shutdownTimeout ?? 10_000;
         //if immediate is true, this is an instant shutdown force. don't wait for anything
