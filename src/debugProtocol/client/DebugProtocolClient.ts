@@ -220,7 +220,7 @@ export class DebugProtocolClient {
                 allowHalfOpen: false
             });
             socket.on('error', (error) => {
-                console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket. Ignoring and will try again soon', error);
+                console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket.', error);
             });
             socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
                 resolve(socket);
