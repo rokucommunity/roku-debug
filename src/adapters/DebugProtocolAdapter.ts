@@ -718,6 +718,9 @@ export class DebugProtocolAdapter {
         return this.resolve('threads', async () => {
             let threads: Thread[] = [];
             let threadsResponse: ThreadsResponse;
+            // sometimes roku threads are stubborn and haven't stopped yet, causing our ThreadsRequest to fail with "not stopped". 
+            // A nice simple fix for this is to just send a "pause" request again, which seems to fix the issue. 
+            // we'll do this a few times just to make sure we've tried our best to get the list of threads.
             for (let i = 0; i < 3; i++) {
                 threadsResponse = await this.client.threads();
                 if (threadsResponse.data.errorCode === ErrorCode.NOT_STOPPED) {
