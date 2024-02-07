@@ -733,7 +733,7 @@ export class DebugProtocolAdapter {
                 }
             }
             if (!threadsResponse) {
-                throw new Error('Failed to get threads data');
+                return [];
             }
 
             for (let i = 0; i < threadsResponse.data?.threads?.length ?? 0; i++) {
