@@ -321,14 +321,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.initRendezvousTracking();
 
             this.createRokuAdapter(this.rendezvousTracker);
-            if (!this.enableDebugProtocol) {
-                //connect to the roku debug via telnet
-                if (!this.rokuAdapter.connected) {
-                    await this.connectRokuAdapter();
-                }
-            } else {
-                await (this.rokuAdapter as DebugProtocolAdapter).watchCompileOutput();
-            }
+            await this.connectRokuAdapter();
 
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
@@ -371,8 +364,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // close disconnect if required when the app is exited
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.rokuAdapter.on('app-exit', async () => {
-                if (this.launchConfiguration.stopDebuggerOnAppExit || !this.rokuAdapter.supportsMultipleRuns) {
-                    let message = `App exit event detected${this.rokuAdapter.supportsMultipleRuns ? ' and launchConfiguration.stopDebuggerOnAppExit is true' : ''}`;
+                this.entryBreakpointWasHandled = false;
+                this.breakpointManager.clearBreakpointLastState();
+
+                if (this.launchConfiguration.stopDebuggerOnAppExit) {
+                    let message = `App exit event detected and launchConfiguration.stopDebuggerOnAppExit is true`;
                     message += ' - shutting down debug session';
 
                     this.logger.log('on app-exit', message);
@@ -385,7 +381,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             });
 
-            await this.connectAndPublish();
+            await this.publish();
 
             this.sendEvent(new ChannelPublishedEvent(
                 this.launchConfiguration
@@ -510,13 +506,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new DiagnosticsEvent(diagnostics));
     }
 
-    private async connectAndPublish() {
-        let connectPromise: Promise<any>;
-        //connect to the roku debug via sockets
-        if (this.enableDebugProtocol) {
-            connectPromise = this.connectRokuAdapter().catch(e => this.logger.error(e));
-        }
-
+    private async publish() {
         this.logger.log('Uploading zip');
         const start = Date.now();
         let packageIsPublished = false;
@@ -539,6 +529,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.warn('Failed to delete the dev channel...probably not a big deal', e);
         }
 
+        const isConnected = this.rokuAdapter.once('app-ready');
         const options: RokuDeployOptions = {
             ...this.launchConfiguration,
             //typing fix
@@ -579,7 +570,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
-            connectPromise,
+            isConnected,
             util.sleep(10000)
         ]);
         this.logger.log('Finished racing promises');

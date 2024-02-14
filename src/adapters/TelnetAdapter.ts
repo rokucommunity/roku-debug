@@ -42,6 +42,12 @@ export class TelnetAdapter {
         });
     }
 
+    private connectionDeferred = defer<void>();
+
+    public isConnected(): Promise<void> {
+        return this.connectionDeferred.promise;
+    }
+
     public logger = logger.createLogger(`[tadapter]`);
     /**
      * Indicates whether the adapter has successfully established a connection with the device
@@ -59,12 +65,20 @@ export class TelnetAdapter {
 
     private cache = {};
 
-    public readonly supportsMultipleRuns = true;
-
     /**
      * Does this adapter support the `execute` command (known as `eval` in telnet)
      */
     public supportsExecute = true;
+
+    public once(eventName: 'app-ready'): Promise<void>;
+    public once(eventName: string) {
+        return new Promise((resolve) => {
+            const disconnect = this.on(eventName as Parameters<DebugProtocolAdapter['on']>[0], (...args) => {
+                disconnect();
+                resolve(...args);
+            });
+        });
+    }
 
     /**
      * Subscribe to various events
@@ -96,6 +110,7 @@ export class TelnetAdapter {
         /* eslint-disable @typescript-eslint/indent */
         eventName:
             'app-exit' |
+            'app-ready' |
             'cannot-continue' |
             'chanperf' |
             'close' |
@@ -239,6 +254,7 @@ export class TelnetAdapter {
             client.connect(this.options.brightScriptConsolePort, this.options.host, () => {
                 this.logger.log(`Telnet connection established to ${this.options.host}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
+                this.connectionDeferred.resolve();
                 this.emit('connected', this.connected);
             });
 
@@ -288,6 +304,11 @@ export class TelnetAdapter {
                     this.logger.log('is at cannot continue');
                     this.isAtDebuggerPrompt = true;
                     return;
+                }
+
+                //emitting this signal so the BrightScriptDebugSession will successfully complete it's publish method.
+                if (/\[beacon.signal\] \|AppCompileComplete/i.exec(responseText.trim())) {
+                    this.emit('app-ready');
                 }
 
                 if (this.isActivated) {

@@ -94,8 +94,12 @@ describe('DebugProtocolAdapter', function() {
      * Handles the initial connection and the "stop at first byte code" flow
      */
     async function initialize() {
+        sinon.stub(adapter, 'processTelnetOutput').callsFake(async () => {});
+
         await adapter.connect();
-        client = adapter['socketDebugger'];
+        await adapter['createDebugProtocolClient']();
+
+        client = adapter['client'];
         client['options'].shutdownTimeout = 100;
         client['options'].exitChannelTimeout = 100;
         //disable logging for tests because they clutter the test output

@@ -61,7 +61,7 @@ export class DebugProtocolAdapter {
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
     private chanperfTracker: ChanperfTracker;
-    private socketDebugger: DebugProtocolClient;
+    private client: DebugProtocolClient;
     private nextFrameId = 1;
 
     private stackFramesCache: Record<number, StackFrame> = {};
@@ -71,10 +71,8 @@ export class DebugProtocolAdapter {
      * Get the version of the protocol for the Roku device we're currently connected to.
      */
     public get activeProtocolVersion() {
-        return this.socketDebugger?.protocolVersion;
+        return this.client?.protocolVersion;
     }
-
-    public readonly supportsMultipleRuns = false;
 
     /**
      * Subscribe to an event exactly once
@@ -84,6 +82,7 @@ export class DebugProtocolAdapter {
     public once(eventname: 'chanperf'): Promise<ChanperfData>;
     public once(eventName: 'close'): Promise<void>;
     public once(eventName: 'app-exit'): Promise<void>;
+    public once(eventName: 'app-ready'): Promise<void>;
     public once(eventName: 'diagnostics'): Promise<BSDebugDiagnostic>;
     public once(eventName: 'connected'): Promise<boolean>;
     public once(eventname: 'console-output'): Promise<string>; // TODO: might be able to remove this at some point
@@ -119,6 +118,7 @@ export class DebugProtocolAdapter {
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
+    public on(eventName: 'waiting-for-debugger', handler: () => void);
     public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter?.on(eventName, handler);
@@ -130,7 +130,7 @@ export class DebugProtocolAdapter {
     private emit(eventName: 'suspend');
     private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output', data?);
+    private emit(eventName: 'app-exit' | 'app-ready' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output' | 'waiting-for-debugger', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
@@ -203,19 +203,36 @@ export class DebugProtocolAdapter {
     }
 
     public get isAtDebuggerPrompt() {
-        return this.socketDebugger?.isStopped ?? false;
+        return this.client?.isStopped ?? false;
     }
 
     /**
      * Connect to the telnet session. This should be called before the channel is launched.
      */
     public async connect() {
+        //Start processing telnet output to look for compile errors or the debugger prompt
+        await this.processTelnetOutput();
+
+        this.on('waiting-for-debugger', () => {
+            void this.createDebugProtocolClient();
+        });
+    }
+
+    public async createDebugProtocolClient() {
         let deferred = defer();
-        this.socketDebugger = new DebugProtocolClient(this.options);
+        if (this.client) {
+            await Promise.race([
+                util.sleep(2000),
+                await this.client.destroy()
+            ]);
+            this.client = undefined;
+        }
+        this.client = new DebugProtocolClient(this.options);
+        await this.client.connect();
         try {
             // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
-            this.socketDebugger.on('io-output', async (responseText) => {
+            this.client.on('io-output', async (responseText) => {
                 if (typeof responseText === 'string') {
                     responseText = this.chanperfTracker.processLog(responseText);
                     responseText = await this.rendezvousTracker.processLog(responseText);
@@ -225,7 +242,7 @@ export class DebugProtocolAdapter {
             });
 
             // Emit IO from the debugger.
-            this.socketDebugger.on('protocol-version', (data: ProtocolVersionDetails) => {
+            this.client.on('protocol-version', (data: ProtocolVersionDetails) => {
                 if (data.errorCode === PROTOCOL_ERROR_CODES.SUPPORTED) {
                     this.emit('console-output', data.message);
                 } else if (data.errorCode === PROTOCOL_ERROR_CODES.NOT_TESTED) {
@@ -246,22 +263,26 @@ export class DebugProtocolAdapter {
             });
 
             // Listen for the close event
-            this.socketDebugger.on('close', () => {
+            this.client.on('close', () => {
                 this.emit('close');
                 this.beginAppExit();
+                void this.client.destroy();
+                this.client = undefined;
             });
 
             // Listen for the app exit event
-            this.socketDebugger.on('app-exit', () => {
+            this.client.on('app-exit', () => {
                 this.emit('app-exit');
+                void this.client.destroy();
+                this.client = undefined;
             });
 
-            this.socketDebugger.on('suspend', (data) => {
+            this.client.on('suspend', (data) => {
                 this.clearCache();
                 this.emit('suspend');
             });
 
-            this.socketDebugger.on('runtime-error', (data) => {
+            this.client.on('runtime-error', (data) => {
                 console.debug('hasRuntimeError!!', data);
                 this.emit('runtime-error', <BrightScriptRuntimeError>{
                     message: data.data.stopReasonDetail,
@@ -269,12 +290,12 @@ export class DebugProtocolAdapter {
                 });
             });
 
-            this.socketDebugger.on('cannot-continue', () => {
+            this.client.on('cannot-continue', () => {
                 this.emit('cannot-continue');
             });
 
             //handle when the device verifies breakpoints
-            this.socketDebugger.on('breakpoints-verified', (event) => {
+            this.client.on('breakpoints-verified', (event) => {
                 let unverifiableDeviceIds = [] as number[];
 
                 //mark the breakpoints as verified
@@ -287,21 +308,12 @@ export class DebugProtocolAdapter {
                 //if there were any unsuccessful breakpoint verifications, we need to ask the device to delete those breakpoints as they've gone missing on our side
                 if (unverifiableDeviceIds.length > 0) {
                     this.logger.warn('Could not find breakpoints to verify. Removing from device:', { deviceBreakpointIds: unverifiableDeviceIds });
-                    void this.socketDebugger.removeBreakpoints(unverifiableDeviceIds);
+                    void this.client.removeBreakpoints(unverifiableDeviceIds);
                 }
                 this.emit('breakpoints-verified', event);
             });
 
-            this.connected = await this.socketDebugger.connect();
-
-            this.logger.log(`Closing telnet connection used for compile errors`);
-            if (this.compileClient) {
-                this.compileClient.removeAllListeners();
-                this.compileClient.destroy();
-                this.compileClient = undefined;
-            }
-
-            this.socketDebugger.on('compile-error', (update) => {
+            this.client.on('compile-error', (update) => {
                 let diagnostics: BSDebugDiagnostic[] = [];
                 diagnostics.push({
                     path: update.data.filePath,
@@ -313,7 +325,12 @@ export class DebugProtocolAdapter {
                 this.emit('diagnostics', diagnostics);
             });
 
+            this.client.on('control-socket-connected', () => {
+                this.emit('app-ready');
+            });
+
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
+            this.connected = true;
             this.emit('connected', this.connected);
 
             //the adapter is connected and running smoothly. resolve the promise
@@ -338,7 +355,13 @@ export class DebugProtocolAdapter {
         return semver.satisfies(this.deviceInfo.brightscriptDebuggerVersion, '>=3.1.0');
     }
 
-    public async watchCompileOutput() {
+    private processingTelnetOutput = false;
+    public async processTelnetOutput() {
+        if (this.processingTelnetOutput) {
+            return;
+        }
+        this.processingTelnetOutput = true;
+
         let deferred = defer();
         try {
             this.compileClient = new Socket();
@@ -376,6 +399,7 @@ export class DebugProtocolAdapter {
                         lastPartialLine = '';
                     }
                     // Emit the completed io string.
+                    this.findWaitForDebuggerPrompt(responseText.trim());
                     this.compileErrorProcessor.processUnhandledLines(responseText.trim());
                     this.emit('unhandled-console-output', responseText.trim());
                 }
@@ -389,22 +413,31 @@ export class DebugProtocolAdapter {
         return deferred.promise;
     }
 
+    private findWaitForDebuggerPrompt(responseText: string) {
+        let lines = responseText.split(/\r?\n/g);
+        for (const line of lines) {
+            if (/Waiting for debugger on \d+\.\d+\.\d+\.\d+:8081/g.exec(line)) {
+                this.emit('waiting-for-debugger');
+            }
+        }
+    }
+
     /**
      * Send command to step over
      */
     public async stepOver(threadId: number) {
         this.clearCache();
-        return this.socketDebugger.stepOver(threadId);
+        return this.client.stepOver(threadId);
     }
 
     public async stepInto(threadId: number) {
         this.clearCache();
-        return this.socketDebugger.stepIn(threadId);
+        return this.client.stepIn(threadId);
     }
 
     public async stepOut(threadId: number) {
         this.clearCache();
-        return this.socketDebugger.stepOut(threadId);
+        return this.client.stepOut(threadId);
     }
 
     /**
@@ -412,7 +445,7 @@ export class DebugProtocolAdapter {
      */
     public async continue() {
         this.clearCache();
-        return this.socketDebugger.continue();
+        return this.client.continue();
     }
 
     /**
@@ -421,7 +454,7 @@ export class DebugProtocolAdapter {
     public async pause() {
         this.clearCache();
         //send the kill signal, which breaks into debugger mode
-        return this.socketDebugger.pause();
+        return this.client.pause();
     }
 
     /**
@@ -437,7 +470,7 @@ export class DebugProtocolAdapter {
      * @param command
      * @returns the output of the command (if possible)
      */
-    public async evaluate(command: string, frameId: number = this.socketDebugger.primaryThread): Promise<RokuAdapterEvaluateResponse> {
+    public async evaluate(command: string, frameId: number = this.client.primaryThread): Promise<RokuAdapterEvaluateResponse> {
         if (this.supportsExecuteCommand) {
             if (!this.isAtDebuggerPrompt) {
                 throw new Error('Cannot run evaluate: debugger is not paused');
@@ -449,7 +482,7 @@ export class DebugProtocolAdapter {
             }
             this.logger.log('evaluate ', { command, frameId });
 
-            const response = await this.socketDebugger.executeCommand(command, stackFrame.frameIndex, stackFrame.threadIndex);
+            const response = await this.client.executeCommand(command, stackFrame.frameIndex, stackFrame.threadIndex);
             this.logger.info('evaluate response', { command, response });
             if (response.data.executeSuccess) {
                 return {
@@ -475,14 +508,14 @@ export class DebugProtocolAdapter {
         }
     }
 
-    public async getStackTrace(threadIndex: number = this.socketDebugger.primaryThread) {
+    public async getStackTrace(threadIndex: number = this.client.primaryThread) {
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot get stack trace: debugger is not paused');
         }
         return this.resolve(`stack trace for thread ${threadIndex}`, async () => {
             let thread = await this.getThreadByThreadId(threadIndex);
             let frames: StackFrame[] = [];
-            let stackTraceData = await this.socketDebugger.getStackTrace(threadIndex);
+            let stackTraceData = await this.client.getStackTrace(threadIndex);
             for (let i = 0; i < stackTraceData?.data?.entries?.length ?? 0; i++) {
                 let frameData = stackTraceData.data.entries[i];
                 let stackFrame: StackFrame = {
@@ -541,13 +574,13 @@ export class DebugProtocolAdapter {
             variablePath[0] = variablePath[0].toLowerCase();
         }
 
-        let response = await this.socketDebugger.getVariables(variablePath, frame.frameIndex, frame.threadIndex);
+        let response = await this.client.getVariables(variablePath, frame.frameIndex, frame.threadIndex);
 
         if (this.enableVariablesLowerCaseRetry && response.data.errorCode !== ErrorCode.OK) {
             // Temporary workaround related to casing issues over the protocol
             logger.log(`Retrying expression as lower case:`, expression);
             variablePath = expression === '' ? [] : util.getVariablePath(expression?.toLowerCase());
-            response = await this.socketDebugger.getVariables(variablePath, frame.frameIndex, frame.threadIndex);
+            response = await this.client.getVariables(variablePath, frame.frameIndex, frame.threadIndex);
         }
         return response;
     }
@@ -685,14 +718,14 @@ export class DebugProtocolAdapter {
         }
         return this.resolve('threads', async () => {
             let threads: Thread[] = [];
-            let threadsResponse = await this.socketDebugger.threads();
+            let threadsResponse = await this.client.threads();
 
             for (let i = 0; i < threadsResponse.data?.threads?.length ?? 0; i++) {
                 let threadInfo = threadsResponse.data.threads[i];
                 let thread = <Thread>{
                     // NOTE: On THREAD_ATTACHED events the threads request is marking the wrong thread as primary.
                     // NOTE: Rely on the thead index from the threads update event.
-                    isSelected: this.socketDebugger.primaryThread === i,
+                    isSelected: this.client.primaryThread === i,
                     // isSelected: threadInfo.isPrimary,
                     filePath: threadInfo.filePath,
                     functionName: threadInfo.functionName,
@@ -738,9 +771,9 @@ export class DebugProtocolAdapter {
         this.isDestroyed = true;
 
         // destroy the debug client if it's defined
-        if (this.socketDebugger) {
+        if (this.client) {
             try {
-                await this.socketDebugger.destroy();
+                await this.client.destroy();
             } catch (e) {
                 this.logger.error(e);
             }
@@ -749,6 +782,12 @@ export class DebugProtocolAdapter {
         this.cache = undefined;
         this.removeAllListeners();
         this.emitter = undefined;
+
+        if (this.compileClient) {
+            this.compileClient.removeAllListeners();
+            this.compileClient.destroy();
+            this.compileClient = undefined;
+        }
     }
 
     /**
@@ -791,7 +830,7 @@ export class DebugProtocolAdapter {
     public async _syncBreakpoints() {
         //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
         //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
-        if (!this.socketDebugger?.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
+        if (!this.client?.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
             return;
         }
 
@@ -801,7 +840,7 @@ export class DebugProtocolAdapter {
 
         // REMOVE breakpoints (delete these breakpoints from the device)
         if (diff.removed.length > 0) {
-            const response = await this.socketDebugger.removeBreakpoints(
+            const response = await this.client.removeBreakpoints(
                 //TODO handle retrying to remove breakpoints that don't have deviceIds yet but might get one in the future
                 diff.removed.map(x => x.deviceId).filter(x => typeof x === 'number')
             );
@@ -837,7 +876,7 @@ export class DebugProtocolAdapter {
                 }
             }
             for (const breakpoints of [standardBreakpoints, conditionalBreakpoints]) {
-                const response = await this.socketDebugger.addBreakpoints(breakpoints);
+                const response = await this.client.addBreakpoints(breakpoints);
 
                 //if the response was successful, and we have the correct number of breakpoints in the response
                 if (response.data.errorCode === ErrorCode.OK && response?.data?.breakpoints?.length === breakpoints.length) {
