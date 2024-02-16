@@ -1127,6 +1127,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let deferred = defer<void>();
         if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
             this.clearState();
+            this.rokuAdapter.clearCache();
             const expression = args.expression.replace(/^\s*>\s*/, '');
             this.logger.log('Sending raw telnet command...I sure hope you know what you\'re doing', { expression });
             (this.rokuAdapter as TelnetAdapter).requestPipeline.client.write(`${expression}\r\n`);
