@@ -507,6 +507,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async publish() {
+        if (this.launchConfiguration.publishTask) {
+            util.log(`Executing task '${this.launchConfiguration.publishTask}' to upload the zip instead of having roku-deploy do it`);
+            await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.publishTask });
+            return;
+        }
+
         this.logger.log('Uploading zip');
         const start = Date.now();
         let packageIsPublished = false;
