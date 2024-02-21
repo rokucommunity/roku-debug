@@ -265,6 +265,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         this.logger.log('[launchRequest] begin');
+
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
 
@@ -318,15 +319,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 util.log(`Connecting to Roku via telnet at ${this.launchConfiguration.host}:${this.launchConfiguration.brightScriptConsolePort}`);
             }
 
-            await this.initRendezvousTracking();
+            // await this.initRendezvousTracking();
 
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();
 
-            await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
+            // await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
 
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
@@ -381,7 +382,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             });
 
-            await this.publish();
+            this.logger.log('[launchRequest]', 'DISABLING PUBLISH');
+            // await this.publish();
 
             this.sendEvent(new ChannelPublishedEvent(
                 this.launchConfiguration
@@ -426,7 +428,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //if we are at a breakpoint, continue
             await this.rokuAdapter.continue();
             //kill the app on the roku
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
             //convert a hostname to an ip address
             const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
             //send the deep link http request
@@ -507,23 +509,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async publish() {
-        if (this.launchConfiguration.publishTask) {
-            util.log(`Executing task '${this.launchConfiguration.publishTask}' to upload the zip instead of having roku-deploy do it`);
-            await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.publishTask });
-            return;
-        }
-
         this.logger.log('Uploading zip');
         const start = Date.now();
         let packageIsPublished = false;
 
         //delete any currently installed dev channel (if enabled to do so)
         try {
-            if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
-                await this.rokuDeploy.deleteInstalledChannel({
-                    ...this.launchConfiguration
-                } as any as RokuDeployOptions);
-            }
+            // if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
+            //     await this.rokuDeploy.deleteInstalledChannel({
+            //         ...this.launchConfiguration
+            //     } as any as RokuDeployOptions);
+            // }
         } catch (e) {
             const statusCode = e?.results?.response?.statusCode;
             const message = e.message as string;
@@ -1256,7 +1252,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
         //return to the home screen
         if (!this.enableDebugProtocol) {
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
         }
         this.sendResponse(response);
         await this.shutdown();
@@ -1537,7 +1533,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //press the home button to return to the home screen
             try {
                 this.logger.log('Press home button');
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
             } catch (e) {
                 this.logger.error(e);
             }
