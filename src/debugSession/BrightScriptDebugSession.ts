@@ -682,6 +682,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (this.launchConfiguration.packageTask) {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
             await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
+
+            const options = {
+                ...this.launchConfiguration
+            } as any as RokuDeployOptions;
+            //if packagePath is specified, use that info instead of outDir and outFile
+            if (this.launchConfiguration.packagePath) {
+                options.outDir = path.dirname(this.launchConfiguration.packagePath);
+                options.outFile = path.basename(this.launchConfiguration.packagePath);
+            }
+            const packagePath = this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipFilePath(options);
+
+            if (!fsExtra.pathExistsSync(packagePath)) {
+                return this.shutdown(`Cancelling debug session. Package does not exist at '${packagePath}'`);
+            }
         } else {
             //create zip package from staging folder
             util.log('Creating zip archive from project sources');
