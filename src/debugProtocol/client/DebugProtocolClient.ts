@@ -185,7 +185,6 @@ export class DebugProtocolClient {
     public on<T = AllThreadsStoppedUpdate | ThreadAttachedUpdate>(eventName: 'runtime-error' | 'suspend', handler: (data: T) => void);
     public on(eventName: 'io-output', handler: (output: string) => void);
     public on(eventName: 'protocol-version', handler: (data: ProtocolVersionDetails) => void);
-    public on(eventName: 'control-socket-connected', handler: () => void);
     public on(eventName: 'handshake-verified', handler: (data: HandshakeResponse) => void);
     // public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     // public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
@@ -202,7 +201,7 @@ export class DebugProtocolClient {
     private emit(eventName: 'data', update: Buffer);
     private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'suspend' | 'runtime-error', data: AllThreadsStoppedUpdate | ThreadAttachedUpdate);
-    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'control-socket-connected' | 'start', data?);
+    private emit(eventName: 'app-exit' | 'cannot-continue' | 'close' | 'handshake-verified' | 'io-output' | 'protocol-version' | 'start', data?);
     private async emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         await util.sleep(0);
@@ -230,7 +229,6 @@ export class DebugProtocolClient {
             client: this,
             server: connection
         });
-        await this.emit('control-socket-connected');
         return connection;
     }
 
@@ -337,16 +335,17 @@ export class DebugProtocolClient {
         }
     }
 
-    public pause() {
+    public pause(force = false) {
         return this.processStopRequest(
             StopRequest.fromJson({
                 requestId: this.requestIdSequence++
-            })
+            }),
+            force
         );
     }
 
-    private async processStopRequest(request: StopRequest) {
-        if (this.isStopped === false) {
+    private async processStopRequest(request: StopRequest, force = false) {
+        if (this.isStopped === false || force) {
             return this.sendRequest<GenericResponse>(request);
         }
     }

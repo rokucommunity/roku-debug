@@ -20,6 +20,7 @@ import type { Variable } from '../debugProtocol/events/responses/VariablesRespon
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
+import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -228,7 +229,6 @@ export class DebugProtocolAdapter {
             this.client = undefined;
         }
         this.client = new DebugProtocolClient(this.options);
-        await this.client.connect();
         try {
             // Emit IO from the debugger.
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
@@ -266,14 +266,14 @@ export class DebugProtocolAdapter {
             this.client.on('close', () => {
                 this.emit('close');
                 this.beginAppExit();
-                void this.client.destroy();
+                void this.client?.destroy();
                 this.client = undefined;
             });
 
             // Listen for the app exit event
             this.client.on('app-exit', () => {
                 this.emit('app-exit');
-                void this.client.destroy();
+                void this.client?.destroy();
                 this.client = undefined;
             });
 
@@ -325,13 +325,12 @@ export class DebugProtocolAdapter {
                 this.emit('diagnostics', diagnostics);
             });
 
-            this.client.on('control-socket-connected', () => {
-                this.emit('app-ready');
-            });
+            await this.client.connect();
 
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
             this.connected = true;
             this.emit('connected', this.connected);
+            this.emit('app-ready');
 
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();
@@ -718,7 +717,24 @@ export class DebugProtocolAdapter {
         }
         return this.resolve('threads', async () => {
             let threads: Thread[] = [];
-            let threadsResponse = await this.client.threads();
+            let threadsResponse: ThreadsResponse;
+            // sometimes roku threads are stubborn and haven't stopped yet, causing our ThreadsRequest to fail with "not stopped".
+            // A nice simple fix for this is to just send a "pause" request again, which seems to fix the issue.
+            // we'll do this a few times just to make sure we've tried our best to get the list of threads.
+            for (let i = 0; i < 3; i++) {
+                threadsResponse = await this.client.threads();
+                if (threadsResponse.data.errorCode === ErrorCode.NOT_STOPPED) {
+                    this.logger.log(`Threads request retrying... ${i}:\n`, threadsResponse);
+                    threadsResponse = undefined;
+                    const pauseResponse = await this.client.pause(true);
+                    await util.sleep(100);
+                } else {
+                    break;
+                }
+            }
+            if (!threadsResponse) {
+                return [];
+            }
 
             for (let i = 0; i < threadsResponse.data?.threads?.length ?? 0; i++) {
                 let threadInfo = threadsResponse.data.threads[i];
