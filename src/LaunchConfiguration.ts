@@ -299,11 +299,6 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     packageTask: string;
 
     /**
-    * Task to run to upload the package instead of having roku-deploy do it
-    */
-    publishTask: string;
-
-    /**
      * Path to the .zip that will be uploaded to the Roku
      */
     packagePath: string;

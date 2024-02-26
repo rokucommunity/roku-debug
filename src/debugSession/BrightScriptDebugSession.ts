@@ -324,10 +324,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();
 
-            // await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
+            await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
-            // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
 
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
@@ -383,7 +383,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             });
 
             this.logger.log('[launchRequest]', 'DISABLING PUBLISH');
-            // await this.publish();
+            await this.publish();
 
             this.sendEvent(new ChannelPublishedEvent(
                 this.launchConfiguration
@@ -515,11 +515,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //delete any currently installed dev channel (if enabled to do so)
         try {
-            // if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
-            //     await this.rokuDeploy.deleteInstalledChannel({
-            //         ...this.launchConfiguration
-            //     } as any as RokuDeployOptions);
-            // }
+            if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
+                await this.rokuDeploy.deleteInstalledChannel({
+                    ...this.launchConfiguration
+                } as any as RokuDeployOptions);
+            }
         } catch (e) {
             const statusCode = e?.results?.response?.statusCode;
             const message = e.message as string;
@@ -680,7 +680,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         if (this.launchConfiguration.packageTask) {
-            util.log(`Executing task '${this.launchConfiguration.packageTask}' to build the zip for us`);
+            util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
             await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
         } else {
             //create zip package from staging folder
@@ -1252,7 +1252,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
         //return to the home screen
         if (!this.enableDebugProtocol) {
-            // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
         }
         this.sendResponse(response);
         await this.shutdown();
@@ -1533,7 +1533,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //press the home button to return to the home screen
             try {
                 this.logger.log('Press home button');
-                // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
             } catch (e) {
                 this.logger.error(e);
             }
