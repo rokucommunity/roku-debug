@@ -319,7 +319,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 util.log(`Connecting to Roku via telnet at ${this.launchConfiguration.host}:${this.launchConfiguration.brightScriptConsolePort}`);
             }
 
-            // await this.initRendezvousTracking();
+            await this.initRendezvousTracking();
 
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();
