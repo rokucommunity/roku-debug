@@ -260,6 +260,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.controlPort ??= 8081;
         config.brightScriptConsolePort ??= 8085;
         config.stagingDir ??= config.stagingFolderPath;
+        config.emitChannelPublishedEvent ??= true;
         return config;
     }
 
@@ -382,12 +383,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             });
 
-            this.logger.log('[launchRequest]', 'DISABLING PUBLISH');
             await this.publish();
 
-            this.sendEvent(new ChannelPublishedEvent(
-                this.launchConfiguration
-            ));
+            //hack for certain roku devices that lock up when this event is emitted (no idea why!).
+            if (this.launchConfiguration.emitChannelPublishedEvent) {
+                this.sendEvent(new ChannelPublishedEvent(
+                    this.launchConfiguration
+                ));
+            }
 
             //tell the adapter adapter that the channel has been launched.
             await this.rokuAdapter.activate();

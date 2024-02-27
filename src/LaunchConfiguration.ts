@@ -318,6 +318,13 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
          */
         formData: Record<string, any>;
     };
+
+    /**
+     * Should the ChannelPublishedEvent be emitted. This is a hack for when certain roku devices become locked up as a result of this event
+     * being emitted. You probably don't need to set this
+     * @default true
+     */
+    emitChannelPublishedEvent?: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
