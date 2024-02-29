@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.4](https://github.com/rokucommunity/roku-debug/compare/v0.21.3...v0.21.4) - 2024-02-29
+### Changed
+ - upgrade to [brighterscript@0.65.23](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06523---2024-02-29). Notable changes since 0.65.19:
+     - Fix sourcemap comment and add `file` prop to map ([brighterscript#1064](https://github.com/rokucommunity/brighterscript/pull/1064))
+     - Move `coveralls-next` to a devDependency since it's not needed at runtime ([brighterscript#1051](https://github.com/rokucommunity/brighterscript/pull/1051))
+     - Fix parsing issues with multi-index IndexedSet and IndexedGet ([brighterscript#1050](https://github.com/rokucommunity/brighterscript/pull/1050))
+ - upgrade to [roku-deploy@3.11.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3113---2024-02-29). Notable changes since 3.11.2:
+     - Retry the convertToSquahsfs request given the HPE_INVALID_CONSTANT error ([roku-deploy#145](https://github.com/rokucommunity/roku-deploy/pull/145))
+### Fixed
+ - DebugProtocol fixes ([#186](https://github.com/rokucommunity/roku-debug/pull/186))
+ - Support relaunch debug protocol ([#181](https://github.com/rokucommunity/roku-debug/pull/181))
+
+
+
 ## [0.21.3](https://github.com/rokucommunity/roku-debug/compare/v0.21.2...v0.21.3) - 2024-01-30
 ### Changed
  - upgrade to [brighterscript@0.65.19](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06519---2024-01-30). Notable changes since 0.65.18:
