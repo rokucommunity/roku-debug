@@ -7,17 +7,19 @@ import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { DebugSession } from 'vscode-debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
-import type { EvaluateContainer, StackFrame, TelnetAdapter } from '../adapters/TelnetAdapter';
-import { PrimativeType } from '../adapters/TelnetAdapter';
-import { defer } from '../util';
+import type { EvaluateContainer, StackFrame } from '../adapters/TelnetAdapter';
+import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';
+import { defer, util } from '../util';
 import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brighterscript';
-import { DefaultFiles } from 'roku-deploy';
+import { DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
+import { ClientToServerCustomEventName, isCustomRequestEvent } from './Events';
+import { EventEmitter } from 'eventemitter3';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -99,10 +101,10 @@ describe('BrightScriptDebugSession', () => {
             }
         };
         rokuAdapter = {
-            on: () => {
-                return () => {
-                };
-            },
+            emitter: new EventEmitter(),
+            on: TelnetAdapter.prototype.on,
+            once: TelnetAdapter.prototype.once,
+            emit: TelnetAdapter.prototype['emit'],
             activate: () => Promise.resolve(),
             registerSourceLocator: (a, b) => { },
             setConsoleOutput: (a) => { },
@@ -146,6 +148,93 @@ describe('BrightScriptDebugSession', () => {
         fsExtra.emptydirSync(tempDir);
         fsExtra.removeSync(outDir);
         sinon.restore();
+    });
+
+    it('supports external zipping process', async () => {
+        //write some project files
+        fsExtra.outputFileSync(`${rootDir}/source/main.brs`, `
+            sub main()
+                print "hello"
+            end sub
+        `);
+        fsExtra.outputFileSync(`${rootDir}/manifest`, '');
+
+        const packagePath = s`${tempDir}/custom/app.zip`;
+
+        //init the session
+        session.initializeRequest({} as any, {} as any);
+
+        //set a breakpoint in main
+        await session.setBreakPointsRequest({} as any, {
+            source: {
+                path: s`${rootDir}/source/main.brs`
+            },
+            breakpoints: [{
+                line: 2
+            }]
+        });
+
+        sinon.stub(rokuDeploy, 'getDeviceInfo').returns(Promise.resolve({
+            developerEnabled: true
+        }));
+        sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+
+        let sendEvent = session.sendEvent.bind(session);
+        sinon.stub(session, 'sendEvent').callsFake((event) => {
+            if (isCustomRequestEvent(event)) {
+                void rokuDeploy.zipFolder(session['launchConfiguration'].stagingDir, packagePath).then(() => {
+                    //pretend we are the client and send a response back
+                    session.emit(ClientToServerCustomEventName.customRequestEventResponse, {
+                        requestId: event.body.requestId
+                    });
+                });
+            } else {
+                //call through
+                return sendEvent(event);
+            }
+        });
+        sinon.stub(session as any, 'connectRokuAdapter').callsFake(() => {
+            sinon.stub(session['rokuAdapter'], 'connect').returns(Promise.resolve());
+            session['rokuAdapter'].connected = true;
+            return Promise.resolve(session['rokuAdapter']);
+        });
+
+        const publishStub = sinon.stub(session.rokuDeploy, 'publish').callsFake(() => {
+            //emit the app-ready event
+            (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
+
+            return Promise.resolve({
+                message: 'success',
+                results: []
+            });
+        });
+
+        await session.launchRequest({} as any, {
+            cwd: tempDir,
+            //where the source files reside
+            rootDir: rootDir,
+            //where roku-debug should put the staged files (and inject breakpoints)
+            stagingDir: `${stagingDir}/staging`,
+            //the name of the task that should be run to create the zip (doesn't matter for this test...we're going to intercept it anyway)
+            packageTask: 'custom-build',
+            //where the packageTask will be placing the compiled zip
+            packagePath: packagePath,
+            packageUploadOverrides: {
+                route: '1234',
+                formData: {
+                    one: 'two',
+                    three: null
+                }
+            }
+        } as Partial<LaunchConfiguration> as LaunchConfiguration);
+
+        expect(publishStub.getCall(0).args[0].packageUploadOverrides).to.eql({
+            route: '1234',
+            formData: {
+                one: 'two',
+                three: null
+            }
+        });
     });
 
     describe('evaluateRequest', () => {

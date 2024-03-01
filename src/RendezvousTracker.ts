@@ -38,7 +38,11 @@ export class RendezvousTracker {
      * Determine if the current Roku device supports the ECP rendezvous tracking feature
      */
     public get doesHostSupportEcpRendezvousTracking() {
-        return semver.gte(this.deviceInfo.softwareVersion, '11.5.0');
+        let softwareVersion = this.deviceInfo?.softwareVersion;
+        if (!semver.valid(softwareVersion)) {
+            softwareVersion = '0.0.0';
+        }
+        return semver.gte(softwareVersion, '11.5.0');
     }
 
     public logger = logger.createLogger(`[${RendezvousTracker.name}]`);

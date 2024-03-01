@@ -39,7 +39,9 @@ import {
     ChanperfEvent,
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
-    PopupMessageEvent
+    PopupMessageEvent,
+    CustomRequestEvent,
+    ClientToServerCustomEventName
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -208,6 +210,31 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.trace('[showPopupMessage]', severity, message);
         this.sendEvent(new PopupMessageEvent(message, severity, modal));
     }
+
+    private static requestIdSequence = 0;
+
+    private async sendCustomRequest<T = any>(name: string, data: T) {
+        const requestId = BrightScriptDebugSession.requestIdSequence++;
+        const responsePromise = new Promise<any>((resolve, reject) => {
+            this.on(ClientToServerCustomEventName.customRequestEventResponse, (response) => {
+                if (response.requestId === requestId) {
+                    if (response.error) {
+                        throw response.error;
+                    } else {
+                        resolve(response);
+                    }
+                }
+            });
+        });
+        this.sendEvent(
+            new CustomRequestEvent({
+                requestId: requestId,
+                name: name,
+                ...data ?? {}
+            }));
+        await responsePromise;
+    }
+
     /**
       * Get the cwd from the launchConfiguration, or default to process.cwd()
       */
@@ -223,6 +250,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @returns
      */
     private normalizeLaunchConfig(config: LaunchConfiguration) {
+        config.cwd ??= process.cwd();
+        config.outDir ??= s`${config.cwd}/out`;
+        config.stagingDir ??= s`${config.outDir}/.roku-deploy-staging`;
         config.componentLibrariesPort ??= 8080;
         config.packagePort ??= 80;
         config.remotePort ??= 8060;
@@ -230,12 +260,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.controlPort ??= 8081;
         config.brightScriptConsolePort ??= 8085;
         config.stagingDir ??= config.stagingFolderPath;
+        config.emitChannelPublishedEvent ??= true;
         return config;
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-
         this.logger.log('[launchRequest] begin');
+
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
 
@@ -354,9 +385,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.publish();
 
-            this.sendEvent(new ChannelPublishedEvent(
-                this.launchConfiguration
-            ));
+            //hack for certain roku devices that lock up when this event is emitted (no idea why!).
+            if (this.launchConfiguration.emitChannelPublishedEvent) {
+                this.sendEvent(new ChannelPublishedEvent(
+                    this.launchConfiguration
+                ));
+            }
 
             //tell the adapter adapter that the channel has been launched.
             await this.rokuAdapter.activate();
@@ -397,7 +431,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //if we are at a breakpoint, continue
             await this.rokuAdapter.continue();
             //kill the app on the roku
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
             //convert a hostname to an ip address
             const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
             //send the deep link http request
@@ -501,8 +535,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         const isConnected = this.rokuAdapter.once('app-ready');
-        //publish the package to the target Roku
-        const publishPromise = this.rokuDeploy.publish({
+        const options: RokuDeployOptions = {
             ...this.launchConfiguration,
             //typing fix
             logLevel: LogLevelPriority[this.logger.logLevel],
@@ -511,8 +544,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //necessary for capturing compile errors from the protocol (has no effect on telnet)
             remoteDebugConnectEarly: false,
             //we don't want to fail if there were compile errors...we'll let our compile error processor handle that
-            failOnCompileError: true
-        }).then(() => {
+            failOnCompileError: true,
+            //pass any upload form overrides the client may have configured
+            packageUploadOverrides: this.launchConfiguration.packageUploadOverrides
+        };
+        //if packagePath is specified, use that info instead of outDir and outFile
+        if (this.launchConfiguration.packagePath) {
+            options.outDir = path.dirname(this.launchConfiguration.packagePath);
+            options.outFile = path.basename(this.launchConfiguration.packagePath);
+        }
+
+        //publish the package to the target Roku
+        const publishPromise = this.rokuDeploy.publish(options).then(() => {
             packageIsPublished = true;
         }).catch(async (e) => {
             const statusCode = e?.results?.response?.statusCode;
@@ -533,7 +576,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
             isConnected,
-            util.sleep(10000)
+            util.sleep(10_000)
         ]);
         this.logger.log('Finished racing promises');
         //if the adapter is still not connected, then it will probably never connect. Abort.
@@ -620,7 +663,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             raleTrackerTaskFileLocation: this.launchConfiguration.raleTrackerTaskFileLocation,
             injectRdbOnDeviceComponent: this.launchConfiguration.injectRdbOnDeviceComponent,
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
-            stagingDir: this.launchConfiguration.stagingDir
+            stagingDir: this.launchConfiguration.stagingDir,
+            packagePath: this.launchConfiguration.packagePath
         });
 
         util.log('Moving selected files to staging area');
@@ -638,23 +682,45 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
         }
 
-        //create zip package from staging folder
-        util.log('Creating zip archive from project sources');
-        await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
+        if (this.launchConfiguration.packageTask) {
+            util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
+            await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
+
+            const options = {
+                ...this.launchConfiguration
+            } as any as RokuDeployOptions;
+            //if packagePath is specified, use that info instead of outDir and outFile
+            if (this.launchConfiguration.packagePath) {
+                options.outDir = path.dirname(this.launchConfiguration.packagePath);
+                options.outFile = path.basename(this.launchConfiguration.packagePath);
+            }
+            const packagePath = this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipFilePath(options);
+
+            if (!fsExtra.pathExistsSync(packagePath)) {
+                return this.shutdown(`Cancelling debug session. Package does not exist at '${packagePath}'`);
+            }
+        } else {
+            //create zip package from staging folder
+            util.log('Creating zip archive from project sources');
+            await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
+        }
     }
 
     /**
      * Accepts custom events and requests from the extension
      * @param command name of the command to execute
      */
-    protected customRequest(command: string) {
+    protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
-        }
 
-        if (command === 'chanperf.clearHistory') {
+        } else if (command === 'chanperf.clearHistory') {
             this.rokuAdapter.clearChanperfHistory();
+
+        } else if (command === 'customRequestEventResponse') {
+            this.emit('customRequestEventResponse', args);
         }
+        this.sendResponse(response);
     }
 
     /**
@@ -1098,6 +1164,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let deferred = defer<void>();
         if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
             this.clearState();
+            this.rokuAdapter.clearCache();
             const expression = args.expression.replace(/^\s*>\s*/, '');
             this.logger.log('Sending raw telnet command...I sure hope you know what you\'re doing', { expression });
             (this.rokuAdapter as TelnetAdapter).requestPipeline.client.write(`${expression}\r\n`);

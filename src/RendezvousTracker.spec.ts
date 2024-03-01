@@ -291,6 +291,20 @@ describe('BrightScriptFileUtils ', () => {
             rendezvousTracker['deviceInfo'].softwareVersion = '12.0.1';
             expect(rendezvousTracker.doesHostSupportEcpRendezvousTracking).to.be.true;
         });
+
+        it('does not crash when softwareVersion is corrupt or missing', () => {
+            rendezvousTracker['deviceInfo'].softwareVersion = '';
+            expect(rendezvousTracker.doesHostSupportEcpRendezvousTracking).to.be.false;
+
+            rendezvousTracker['deviceInfo'].softwareVersion = 'notAVersion';
+            expect(rendezvousTracker.doesHostSupportEcpRendezvousTracking).to.be.false;
+
+            rendezvousTracker['deviceInfo'].softwareVersion = undefined;
+            expect(rendezvousTracker.doesHostSupportEcpRendezvousTracking).to.be.false;
+
+            rendezvousTracker['deviceInfo'] = undefined;
+            expect(rendezvousTracker.doesHostSupportEcpRendezvousTracking).to.be.false;
+        });
     });
 
     describe('on', () => {

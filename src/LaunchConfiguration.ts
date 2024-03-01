@@ -292,6 +292,39 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default false
      */
     deleteDevChannelBeforeInstall: boolean;
+
+    /**
+     * Task to run instead of roku-deploy to produce the .zip file that will be uploaded to the Roku.
+     */
+    packageTask: string;
+
+    /**
+     * Path to the .zip that will be uploaded to the Roku
+     */
+    packagePath: string;
+
+    /**
+     * Overrides for values used during the roku-deploy zip upload process, like the route and various form data. You probably don't need to change these..
+     */
+    packageUploadOverrides?: {
+        /**
+         * The route to use for uploading to the Roku device. Defaults to 'plugin_install'
+         * @default 'plugin_install'
+         */
+        route: string;
+
+        /**
+         * A dictionary of form fields to be included in the package upload request. Set a value to null to delete from the form
+         */
+        formData: Record<string, any>;
+    };
+
+    /**
+     * Should the ChannelPublishedEvent be emitted. This is a hack for when certain roku devices become locked up as a result of this event
+     * being emitted. You probably don't need to set this
+     * @default true
+     */
+    emitChannelPublishedEvent?: boolean;
 }
 
 export interface ComponentLibraryConfiguration {

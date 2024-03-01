@@ -666,6 +666,17 @@ describe('Project', () => {
             expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs`)).to.be.true;
             expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs.map`)).to.be.false;
         });
+
+        it('uses "packagePath" when specified', async () => {
+            fsExtra.outputFileSync(`${project.stagingDir}/manifest`, '#stuff');
+            fsExtra.outputFileSync(`${project.stagingDir}/source/main.brs`, 'sub main() : end sub');
+            project.packagePath = s`${tempPath}/package/path.zip`;
+            await project.zipPackage({ retainStagingFolder: true });
+
+            await decompress(project.packagePath, `${tempPath}/extracted`);
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/manifest`)).to.be.true;
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs`)).to.be.true;
+        });
     });
 
 });
