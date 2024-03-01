@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.5](https://github.com/rokucommunity/roku-debug/compare/v0.21.4...v0.21.5) - 2024-03-01
+### Changed
+ - Add some enhanced launch settings to support more diverse projects ([#184](https://github.com/rokucommunity/roku-debug/pull/184))
+ - upgrade to [roku-deploy@3.12.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3120---2024-03-01). Notable changes since 3.11.3:
+     - Support overriding various package upload form data ([roku-deploy#136](https://github.com/rokucommunity/roku-deploy/pull/136))
+
+
+
 ## [0.21.4](https://github.com/rokucommunity/roku-debug/compare/v0.21.3...v0.21.4) - 2024-02-29
 ### Changed
  - upgrade to [brighterscript@0.65.23](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06523---2024-02-29). Notable changes since 0.65.19:
