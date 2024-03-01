@@ -843,6 +843,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         new Thread(thread.threadId, `Thread ${thread.threadId}`)
                     );
                 }
+
+                if (threads.length === 0) {
+                    threads = [{
+                        id: 1001,
+                        name: 'unable to retrieve threads: not stopped',
+                        isFake: true
+                    }];
+                }
+
             } else {
                 this.logger.log('Skipped getting threads because the RokuAdapter is not accepting input at this time.');
             }
@@ -859,7 +868,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
         try {
             this.logger.log('stackTraceRequest');
-            let frames = [];
+            let frames: DebugProtocol.StackFrame[] = [];
 
             //this is a bit of a hack. If there's a compile error, send a full stack frame so we can show the compile error like a runtime crash
             if (this.compileError) {
@@ -871,6 +880,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     this.compileError.range.start.line + 1,
                     this.compileError.range.start.character + 1
                 ));
+            } else if (args.threadId === 1001) {
+                frames.push(new StackFrame(
+                    0,
+                    'ERROR: threads would not stop',
+                    new Source('main.brs', s`${this.launchConfiguration.stagingDir}/manifest`),
+                    1,
+                    1
+                ));
+                this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn');
             } else {
                 if (this.rokuAdapter.isAtDebuggerPrompt) {
                     let stackTrace = await this.rokuAdapter.getStackTrace(args.threadId);
