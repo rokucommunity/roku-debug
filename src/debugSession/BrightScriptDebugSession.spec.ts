@@ -7,8 +7,8 @@ import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { DebugSession } from 'vscode-debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
-import type { EvaluateContainer, StackFrame, TelnetAdapter } from '../adapters/TelnetAdapter';
-import { PrimativeType } from '../adapters/TelnetAdapter';
+import type { EvaluateContainer, StackFrame } from '../adapters/TelnetAdapter';
+import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { defer, util } from '../util';
 import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
@@ -19,6 +19,7 @@ import type { AddProjectParams, ComponentLibraryConstructorParams } from '../man
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
 import { ClientToServerCustomEventName, isCustomRequestEvent } from './Events';
+import { EventEmitter } from 'eventemitter3';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -100,10 +101,10 @@ describe('BrightScriptDebugSession', () => {
             }
         };
         rokuAdapter = {
-            on: () => {
-                return () => {
-                };
-            },
+            emitter: new EventEmitter(),
+            on: TelnetAdapter.prototype.on,
+            once: TelnetAdapter.prototype.once,
+            emit: TelnetAdapter.prototype['emit'],
             activate: () => Promise.resolve(),
             registerSourceLocator: (a, b) => { },
             setConsoleOutput: (a) => { },
@@ -198,7 +199,15 @@ describe('BrightScriptDebugSession', () => {
             return Promise.resolve(session['rokuAdapter']);
         });
 
-        const publishStub = sinon.stub(session.rokuDeploy, 'publish').returns(Promise.resolve() as any);
+        const publishStub = sinon.stub(session.rokuDeploy, 'publish').callsFake(() => {
+            //emit the app-ready event
+            (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
+
+            return Promise.resolve({
+                message: 'success',
+                results: []
+            });
+        });
 
         await session.launchRequest({} as any, {
             cwd: tempDir,

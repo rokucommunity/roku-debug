@@ -576,7 +576,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //if it hasn't connected after 5 seconds, it probably will never connect.
         await Promise.race([
             isConnected,
-            util.sleep(10000)
+            util.sleep(10_000)
         ]);
         this.logger.log('Finished racing promises');
         //if the adapter is still not connected, then it will probably never connect. Abort.
