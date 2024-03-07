@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.6](https://github.com/rokucommunity/roku-debug/compare/v0.21.5...v0.21.6) - 2024-03-07
+### Changed
+ - upgrade to [brighterscript@0.65.25](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06525---2024-03-07). Notable changes since 0.65.23:
+     - Support when tokens have null ranges ([brighterscript#1072](https://github.com/rokucommunity/brighterscript/pull/1072))
+     - Support whitespace in conditional compile keywords ([brighterscript#1090](https://github.com/rokucommunity/brighterscript/pull/1090))
+
+
+
 ## [0.21.5](https://github.com/rokucommunity/roku-debug/compare/v0.21.4...v0.21.5) - 2024-03-01
 ### Changed
  - Add some enhanced launch settings to support more diverse projects ([#184](https://github.com/rokucommunity/roku-debug/pull/184))
