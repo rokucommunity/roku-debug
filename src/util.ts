@@ -296,9 +296,15 @@ class Util {
                 parts.unshift(value.name.text);
                 return parts;
             } else if (isDottedGetExpression(value)) {
+                if (value.dot.text.includes('?')) {
+                    return;
+                }
                 parts.unshift(value.name.text);
                 value = value.obj;
             } else if (isIndexedGetExpression(value)) {
+                if (value.questionDotToken?.text.includes('?') || value.openingSquare?.text.includes('?')) {
+                    return;
+                }
                 if (isLiteralExpression(value.index)) {
                     parts.unshift(
                         value.index.token.text

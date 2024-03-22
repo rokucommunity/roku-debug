@@ -283,6 +283,9 @@ describe('Util', () => {
             expect(util.getVariablePath('m.global.initialInputEvent.0[123]')).undefined;
             expect(util.getVariablePath('m.global.initialInputEvent.0[123]["this \"-that.thing"]')).undefined;
             expect(util.getVariablePath('m.global["something with a quote"]initialInputEvent.0[123]["this \"-that.thing"]')).undefined;
+            expect(util.getVariablePath('m.top.gridState?.leftEdgeTime')).undefined;
+            expect(util.getVariablePath('m.top.gridState?["leftEdgeTime"]')).undefined;
+            expect(util.getVariablePath('m.top.gridState?.["leftEdgeTime"]')).undefined;
         });
     });
 
