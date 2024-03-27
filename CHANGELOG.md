@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.7](https://github.com/rokucommunity/roku-debug/compare/v0.21.6...v0.21.7) - 2024-03-27
+### Changed
+ - upgrade to [brighterscript@0.65.27](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06527---2024-03-27). Notable changes since 0.65.25:
+     - Upgade LSP packages ([brighterscript#1117](https://github.com/rokucommunity/brighterscript/pull/1117))
+     - Increase max param count to 63 ([brighterscript#1112](https://github.com/rokucommunity/brighterscript/pull/1112))
+     - Prevent unused variable warnings on ternary and null coalescence expressions ([brighterscript#1101](https://github.com/rokucommunity/brighterscript/pull/1101))
+### Fixed
+ - Optional Chainging Operator errors in debug console ([#187](https://github.com/rokucommunity/roku-debug/pull/187))
+
+
+
 ## [0.21.6](https://github.com/rokucommunity/roku-debug/compare/v0.21.5...v0.21.6) - 2024-03-07
 ### Changed
  - upgrade to [brighterscript@0.65.25](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06525---2024-03-07). Notable changes since 0.65.23:
