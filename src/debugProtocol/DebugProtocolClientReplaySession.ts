@@ -124,7 +124,7 @@ export class DebugProtocolClientReplaySession {
 
         //stuff to run when the session is disposed
         this.disposables.push(() => {
-            return this.client.destroy();
+            void this.client.destroy();
         });
     }
 
@@ -222,7 +222,7 @@ export class DebugProtocolClientReplaySession {
                 server.close();
             });
             this.disposables.push(() => {
-                this.client?.destroy();
+                void this.client?.destroy();
             });
         });
     }

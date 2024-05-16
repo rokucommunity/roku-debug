@@ -313,7 +313,7 @@ export class DebugProtocolServer {
     public on<T = { response: Response }>(eventName: 'before-send-response', callback: (event: T) => void);
     public on<T = { response: Response }>(eventName: 'after-send-response', callback: (event: T) => void);
     public on<T = { client: Net.Socket }>(eventName: 'client-connected', callback: (event: T) => void);
-    public on<T = any>(eventName: string, callback: (data: T) => void)
+    public on<T = any>(eventName: string, callback: (data: T) => void);
     public on<T = any>(eventName: string, callback: (data: T) => void) {
         this.emitter.on(eventName, callback);
         return () => {

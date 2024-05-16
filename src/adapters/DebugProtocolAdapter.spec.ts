@@ -84,7 +84,7 @@ describe('DebugProtocolAdapter', function() {
 
     afterEach(async () => {
         sinon.restore();
-        client?.destroy(true);
+        await client?.destroy(true);
         //shut down and destroy the server after each test
         await server?.stop();
         await util.sleep(10);

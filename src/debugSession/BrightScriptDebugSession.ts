@@ -1541,7 +1541,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             this.componentLibraryServer?.stop();
 
-            this.rendezvousTracker?.destroy?.();
+            void this.rendezvousTracker?.destroy?.();
 
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
