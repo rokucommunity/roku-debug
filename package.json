@@ -96,9 +96,9 @@
         "typescript": "^4.4.4"
     },
     "dependencies": {
-        "@rokucommunity/logger": "^0.3.3",
+        "@rokucommunity/logger": "^0.3.9",
         "@types/request": "^2.48.8",
-        "brighterscript": "^0.65.27",
+        "brighterscript": "^0.67.1",
         "dateformat": "^4.6.3",
         "debounce": "^1.2.1",
         "eol": "^0.9.1",

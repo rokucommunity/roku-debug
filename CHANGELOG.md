@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.8](https://github.com/rokucommunity/roku-debug/compare/v0.21.7...v0.21.8) - 2024-05-16
+### Changed
+ - upgrade to [brighterscript@0.67.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0671---2024-05-16). Notable changes since 0.65.27:
+     - Fix crash when diagnostic is missing range ([brighterscript#1174](https://github.com/rokucommunity/brighterscript/pull/1174))
+     - Upgrade to @rokucommunity/logger ([brighterscript#1137](https://github.com/rokucommunity/brighterscript/pull/1137))
+ - upgrade to [@rokucommunity/logger@0.3.9](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#039---2024-05-09)
+### Fixed
+ - node14 CI bugs ([#188](https://github.com/rokucommunity/roku-debug/pull/188))
+
+
+
 ## [0.21.7](https://github.com/rokucommunity/roku-debug/compare/v0.21.6...v0.21.7) - 2024-03-27
 ### Changed
  - upgrade to [brighterscript@0.65.27](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06527---2024-03-27). Notable changes since 0.65.25:
