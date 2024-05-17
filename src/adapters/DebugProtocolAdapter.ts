@@ -847,6 +847,7 @@ export class DebugProtocolAdapter {
         //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
         //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
         if (!this.client?.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
+            this.logger.info('Cannot sync breakpoints because the debugger', this.client.supportsBreakpointRegistrationWhileRunning ? 'does not support sending breakpoints while running' : 'is not paused');
             return;
         }
 

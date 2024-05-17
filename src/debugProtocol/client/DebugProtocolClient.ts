@@ -46,7 +46,7 @@ import type { AddConditionalBreakpointsResponse } from '../events/responses/AddC
 
 export class DebugProtocolClient {
 
-    public logger = logger.createLogger(`[client]`);
+    public logger = logger.createLogger(`[dpclient]`);
 
     // The highest tested version of the protocol we support.
     public supportedVersionRange = '<=3.2.0';
