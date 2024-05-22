@@ -855,6 +855,11 @@ export class DebugProtocolAdapter {
         const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
         this.logger.log('Syncing breakpoints', diff);
 
+        if (diff.added.length === 0 && diff.removed.length === 0) {
+            this.logger.debug('No breakpoints to sync');
+            return;
+        }
+
         // REMOVE breakpoints (delete these breakpoints from the device)
         if (diff.removed.length > 0) {
             const response = await this.client.removeBreakpoints(
@@ -920,7 +925,6 @@ export class DebugProtocolAdapter {
                         breakpoints.map(x => x.srcHash)
                     );
                 }
-
             }
         }
     }

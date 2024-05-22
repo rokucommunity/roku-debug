@@ -86,17 +86,22 @@ export class BreakpointManager {
 
         srcPath = this.sanitizeSourceFilePath(srcPath);
 
+        this.logger.debug('[setBreakpoint] sanitized srcPath', srcPath);
+
         //if a breakpoint gets set in rootDir, and we have sourceDirs, convert the rootDir path to sourceDirs path
         //so the breakpoint gets moved into the source file instead of the output file
-        if (this.launchConfiguration?.sourceDirs && this.launchConfiguration.sourceDirs.length > 0) {
-            let lastWorkingPath = '';
+        if (this.launchConfiguration?.sourceDirs?.length > 0) {
+            let lastWorkingPath: string;
             for (const sourceDir of this.launchConfiguration.sourceDirs) {
                 srcPath = srcPath.replace(this.launchConfiguration.rootDir, sourceDir);
                 if (fsExtra.pathExistsSync(srcPath)) {
                     lastWorkingPath = srcPath;
                 }
             }
-            srcPath = this.sanitizeSourceFilePath(lastWorkingPath);
+            //replace srcPath with the highest sourceDir path that exists
+            if (lastWorkingPath) {
+                srcPath = this.sanitizeSourceFilePath(lastWorkingPath);
+            }
         }
 
         //get the breakpoints array (and optionally initialize it if not set)
@@ -245,6 +250,7 @@ export class BreakpointManager {
      * Set the deviceId of a breakpoint
      */
     public setBreakpointDeviceId(srcHash: string, destHast: string, deviceId: number) {
+        this.logger.debug('setBreakpointDeviceId', { srcHash, destHast, deviceId });
         this.deviceIdByDestHash.set(destHast, { srcHash: srcHash, deviceId: deviceId });
     }
 
@@ -757,12 +763,6 @@ export class BreakpointManager {
 
             this.logger.debug('lastState:', this.lastState);
             this.logger.debug('currentState:', currentState);
-
-            this.logger.debug('[bpmanager] getDiff before processing:', {
-                added: [...added.entries()],
-                removed: [...removed.entries()],
-                unchanged: [...unchanged.entries()]
-            });
 
             for (const key of [...currentState.keys(), ...this.lastState.keys()]) {
                 const inCurrent = currentState.has(key);
