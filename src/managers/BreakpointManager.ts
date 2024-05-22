@@ -10,6 +10,7 @@ import type { SourceMapManager } from './SourceMapManager';
 import type { LocationManager } from './LocationManager';
 import { util } from '../util';
 import { EventEmitter } from 'eventemitter3';
+import { logger, Logger } from '../logging';
 
 export class BreakpointManager {
 
@@ -19,6 +20,8 @@ export class BreakpointManager {
     ) {
 
     }
+
+    private logger = logger.createLogger('[bpManager]');
 
     public launchConfiguration: {
         sourceDirs: string[];
@@ -79,19 +82,26 @@ export class BreakpointManager {
      * breakpoint lines are 1-based, and columns are zero-based
      */
     public setBreakpoint(srcPath: string, breakpoint: AugmentedSourceBreakpoint | DebugProtocol.SourceBreakpoint) {
+        this.logger.debug('setBreakpoint', { srcPath, breakpoint });
+
         srcPath = this.sanitizeSourceFilePath(srcPath);
+
+        this.logger.debug('[setBreakpoint] sanitized srcPath', srcPath);
 
         //if a breakpoint gets set in rootDir, and we have sourceDirs, convert the rootDir path to sourceDirs path
         //so the breakpoint gets moved into the source file instead of the output file
-        if (this.launchConfiguration?.sourceDirs && this.launchConfiguration.sourceDirs.length > 0) {
-            let lastWorkingPath = '';
+        if (this.launchConfiguration?.sourceDirs?.length > 0) {
+            let lastWorkingPath: string;
             for (const sourceDir of this.launchConfiguration.sourceDirs) {
                 srcPath = srcPath.replace(this.launchConfiguration.rootDir, sourceDir);
                 if (fsExtra.pathExistsSync(srcPath)) {
                     lastWorkingPath = srcPath;
                 }
             }
-            srcPath = this.sanitizeSourceFilePath(lastWorkingPath);
+            //replace srcPath with the highest sourceDir path that exists
+            if (lastWorkingPath) {
+                srcPath = this.sanitizeSourceFilePath(lastWorkingPath);
+            }
         }
 
         //get the breakpoints array (and optionally initialize it if not set)
@@ -99,6 +109,8 @@ export class BreakpointManager {
 
         //only a single breakpoint can be defined per line. So, if we find one on this line, we'll augment that breakpoint rather than builiding a new one
         const existingBreakpoint = breakpointsArray.find(x => x.line === breakpoint.line);
+
+        this.logger.debug('existingBreakpoint', existingBreakpoint);
 
         let bp = Object.assign(existingBreakpoint ?? {}, {
             //remove common attributes from any existing breakpoint so we don't end up with more info than we need
@@ -136,6 +148,9 @@ export class BreakpointManager {
             this.setBreakpointDeviceId(bp.srcHash, bp.srcHash, bp.id);
             this.verifyBreakpoint(bp.id, true);
         }
+
+        this.logger.debug('setBreakpoint done', bp);
+
         return bp;
     }
 
@@ -155,6 +170,8 @@ export class BreakpointManager {
      * Delete a set of breakpoints
      */
     public deleteBreakpoints(args: BreakpointRef[]) {
+        this.logger.debug('deleteBreakpoints', args);
+
         for (const breakpoint of this.getBreakpoints(args)) {
             const actualBreakpoint = this.getBreakpoint(breakpoint);
             if (actualBreakpoint) {
@@ -233,6 +250,7 @@ export class BreakpointManager {
      * Set the deviceId of a breakpoint
      */
     public setBreakpointDeviceId(srcHash: string, destHast: string, deviceId: number) {
+        this.logger.debug('setBreakpointDeviceId', { srcHash, destHast, deviceId });
         this.deviceIdByDestHash.set(destHast, { srcHash: srcHash, deviceId: deviceId });
     }
 
@@ -697,8 +715,11 @@ export class BreakpointManager {
      * All projects should be passed in every time.
      */
     public async getDiff(projects: Project[]): Promise<Diff> {
+        this.logger.debug('getDiff');
+
         //if the diff is currently running, return an empty "nothing has changed" diff
         if (this.isGetDiffRunning) {
+            this.logger.debug('another diff is already running, exiting early');
             return {
                 added: [],
                 removed: [],
@@ -713,6 +734,9 @@ export class BreakpointManager {
                 projects.map(async (project) => {
                     //get breakpoint data for every project
                     const work = await this.getBreakpointWork(project);
+
+                    this.logger.debug('[bpmanager] getDiff breakpointWork', work);
+
                     for (const filePath in work) {
                         const fileWork = work[filePath];
                         for (const bp of fileWork) {
@@ -736,6 +760,10 @@ export class BreakpointManager {
             const added = new Map<string, BreakpointWorkItem>();
             const removed = new Map<string, BreakpointWorkItem>();
             const unchanged = new Map<string, BreakpointWorkItem>();
+
+            this.logger.debug('lastState:', this.lastState);
+            this.logger.debug('currentState:', currentState);
+
             for (const key of [...currentState.keys(), ...this.lastState.keys()]) {
                 const inCurrent = currentState.has(key);
                 const inLast = this.lastState.has(key);

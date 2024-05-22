@@ -10,6 +10,8 @@ import type { SourceLocation } from '../managers/LocationManager';
 import { LocationManager } from '../managers/LocationManager';
 import { SourceMapManager } from './SourceMapManager';
 import { expectPickEquals, pickArray } from '../testHelpers.spec';
+import { createSandbox } from 'sinon';
+const sinon = createSandbox();
 
 describe('BreakpointManager', () => {
     let cwd = fileUtils.standardizePath(process.cwd());
@@ -32,6 +34,7 @@ describe('BreakpointManager', () => {
     let projectManager: ProjectManager;
 
     beforeEach(() => {
+        sinon.restore();
         fsExtra.emptyDirSync(tmpDir);
         fsExtra.ensureDirSync(`${rootDir}/source`);
         fsExtra.ensureDirSync(`${stagingDir}/source`);
@@ -69,6 +72,7 @@ describe('BreakpointManager', () => {
     });
 
     afterEach(() => {
+        sinon.restore();
         fsExtra.removeSync(tmpDir);
     });
 
@@ -947,6 +951,8 @@ describe('BreakpointManager', () => {
             };
 
             expect(actual).to.eql(expected);
+
+            return diff;
         }
 
         it('returns empty diff when no projects are present', async () => {
@@ -956,6 +962,71 @@ describe('BreakpointManager', () => {
         it('returns empty diff when no breakpoints are registered', async () => {
             await testDiffEquals({ added: [], removed: [], unchanged: [] });
         });
+
+        it('recovers from invalid sourceDirs', async () => {
+            bpManager.launchConfiguration = {
+                ...(bpManager?.launchConfiguration ?? {} as any),
+                sourceDirs: ['source/**/*', 'components/**/*']
+            };
+
+            bpManager.replaceBreakpoints(`${rootDir}/components/tasks/baseTask.brs`, [{ line: 2 }]);
+            bpManager.replaceBreakpoints(`${rootDir}/source/main.brs`, [{ line: 2 }]);
+            let diff = await testDiffEquals({
+                added: [{
+                    pkgPath: 'pkg:/components/tasks/baseTask.brs',
+                    line: 2
+                }, {
+                    pkgPath: 'pkg:/source/main.brs',
+                    line: 2
+                }]
+            });
+
+            //set the deviceId for the breakpoints
+            bpManager.setBreakpointDeviceId(diff.added[0].srcHash, diff.added[0].destHash, 1);
+            bpManager.setBreakpointDeviceId(diff.added[1].srcHash, diff.added[1].destHash, 2);
+
+            //mark the breakpoints as verified
+            bpManager.verifyBreakpoint(1, true);
+            bpManager.verifyBreakpoint(2, true);
+
+            //call the getDiff a few more times
+            await testDiffEquals({
+                unchanged: [{
+                    pkgPath: 'pkg:/components/tasks/baseTask.brs',
+                    line: 2
+                }, {
+                    pkgPath: 'pkg:/source/main.brs',
+                    line: 2
+                }]
+            });
+            await testDiffEquals({
+                unchanged: [{
+                    pkgPath: 'pkg:/components/tasks/baseTask.brs',
+                    line: 2
+                }, {
+                    pkgPath: 'pkg:/source/main.brs',
+                    line: 2
+                }]
+            });
+
+            //add another breakpoint to the list
+            bpManager.replaceBreakpoints(`${rootDir}/source/main.brs`, [{ line: 2 }, { line: 7 }]);
+
+            await testDiffEquals({
+                added: [{
+                    pkgPath: 'pkg:/source/main.brs',
+                    line: 7
+                }],
+                unchanged: [{
+                    pkgPath: 'pkg:/components/tasks/baseTask.brs',
+                    line: 2
+                }, {
+                    pkgPath: 'pkg:/source/main.brs',
+                    line: 2
+                }]
+            });
+        });
+
 
         it('handles breakpoint flow', async () => {
             bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{

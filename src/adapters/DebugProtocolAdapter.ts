@@ -847,12 +847,18 @@ export class DebugProtocolAdapter {
         //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
         //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
         if (!this.client?.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
+            this.logger.info('Cannot sync breakpoints because the debugger', this.client.supportsBreakpointRegistrationWhileRunning ? 'does not support sending breakpoints while running' : 'is not paused');
             return;
         }
 
         //compute breakpoint changes since last sync
         const diff = await this.breakpointManager.getDiff(this.projectManager.getAllProjects());
         this.logger.log('Syncing breakpoints', diff);
+
+        if (diff.added.length === 0 && diff.removed.length === 0) {
+            this.logger.debug('No breakpoints to sync');
+            return;
+        }
 
         // REMOVE breakpoints (delete these breakpoints from the device)
         if (diff.removed.length > 0) {
@@ -919,7 +925,6 @@ export class DebugProtocolAdapter {
                         breakpoints.map(x => x.srcHash)
                     );
                 }
-
             }
         }
     }
