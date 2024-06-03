@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.9](https://github.com/rokucommunity/roku-debug/compare/v0.21.8...v0.21.9) - 2024-06-03
+### Changed
+ - upgrade to [brighterscript@0.67.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0672---2024-06-03)
+### Fixed
+ - Prevent corrupted breakpoints due to invalid sourceDirs, add more logging ([#189](https://github.com/rokucommunity/roku-debug/pull/189))
+
+
+
 ## [0.21.8](https://github.com/rokucommunity/roku-debug/compare/v0.21.7...v0.21.8) - 2024-05-16
 ### Changed
  - upgrade to [brighterscript@0.67.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0671---2024-05-16). Notable changes since 0.65.27:
