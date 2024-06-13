@@ -1265,8 +1265,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         deferred.resolve();
     }
 
-    private async evaluateTemporaryVariables(args: DebugProtocol.EvaluateArguments, variablePath: string[]): Promise<{evalArgs: DebugProtocol.EvaluateArguments, variablePath: string[]}> {
-        let returnVal = {evalArgs: args, variablePath};
+    private async evaluateTemporaryVariables(args: DebugProtocol.EvaluateArguments, variablePath: string[]): Promise< { evalArgs: DebugProtocol.EvaluateArguments; variablePath: string[] } > {
+        let returnVal = { evalArgs: args, variablePath };
         if (!variablePath && util.isAssignableExpression(args.expression)) {
             let varIndex = this.getNextVarIndex(args.frameId);
             let arrayVarName = this.tempVarPrefix + 'eval';
