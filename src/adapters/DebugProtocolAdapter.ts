@@ -598,6 +598,18 @@ export class DebugProtocolAdapter {
                 //this is the top-level container, so there are no parent keys to this entry
                 undefined
             );
+            if (container?.value?.startsWith('roSGNode')) {
+                let nodeChildren = <EvaluateContainer>{
+                    name: '[[children]]',
+                    type: 'roArray',
+                    highLevelType: 'array',
+                    keyType: KeyType.integer,
+                    presentationHint: 'virtual',
+                    evaluateName: `${expression}.getChildren(-1, 0)`,
+                    children: []
+                };
+                container.children.push(nodeChildren);
+            }
             return container;
         }
     }

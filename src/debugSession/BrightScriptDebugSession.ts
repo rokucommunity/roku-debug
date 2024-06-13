@@ -1099,7 +1099,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables();
 
                     for (const varName of vars) {
-                        let result = await this.rokuAdapter.getVariable(varName, -1);
+                        let {evalArgs} = await this.evaluateTemporaryVariables({expression: varName, frameId: -1}, util.getVariablePath(varName));
+                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, -1);
                         let tempVar = this.getVariableFromResult(result, -1);
                         childVariables.push(tempVar);
                     }
@@ -1117,7 +1118,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 logger.log('variable', v);
                 //query for child vars if we haven't done it yet.
                 if (v.childVariables.length === 0) {
-                    let result = await this.rokuAdapter.getVariable(v.evaluateName, v.frameId);
+                    let {evalArgs} = await this.evaluateTemporaryVariables({expression: v.evaluateName, frameId: v.frameId}, util.getVariablePath(v.evaluateName));
+                    let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
                     let tempVar = this.getVariableFromResult(result, v.frameId);
                     tempVar.frameId = v.frameId;
                     v.childVariables = tempVar.childVariables;
@@ -1195,41 +1197,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 //is at debugger prompt
             } else {
-                let variablePath = util.getVariablePath(args.expression);
-                if (!variablePath && util.isAssignableExpression(args.expression)) {
-                    let varIndex = this.getNextVarIndex(args.frameId);
-                    let arrayVarName = this.tempVarPrefix + 'eval';
-                    if (varIndex === 0) {
-                        const response = await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
-                        console.log(response);
-                    }
-                    let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
-                    args.expression = `${arrayVarName}[${varIndex}]`;
-                    let commandResults = await this.rokuAdapter.evaluate(statement, args.frameId);
-                    if (commandResults.type === 'error') {
-                        throw new Error(commandResults.message);
-                    }
-                    variablePath = [arrayVarName, varIndex.toString()];
-                }
+                let {evalArgs, variablePath} = await this.evaluateTemporaryVariables(args, util.getVariablePath(args.expression));
 
                 //if we found a variable path (e.g. ['a', 'b', 'c']) then do a variable lookup because it's faster and more widely supported than `evaluate`
                 if (variablePath) {
-                    let refId = this.getEvaluateRefId(args.expression, args.frameId);
+                    let refId = this.getEvaluateRefId(evalArgs.expression, evalArgs.frameId);
                     let v: AugmentedVariable;
                     //if we already looked this item up, return it
                     if (this.variables[refId]) {
                         v = this.variables[refId];
                     } else {
-                        let result = await this.rokuAdapter.getVariable(args.expression, args.frameId);
+                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, evalArgs.frameId);
                         if (!result) {
                             throw new Error('Error: unable to evaluate expression');
                         }
 
-                        v = this.getVariableFromResult(result, args.frameId);
+                        v = this.getVariableFromResult(result, evalArgs.frameId);
                         //TODO - testing something, remove later
                         // eslint-disable-next-line camelcase
                         v.request_seq = response.request_seq;
-                        v.frameId = args.frameId;
+                        v.frameId = evalArgs.frameId;
                     }
                     response.body = {
                         result: v.value,
@@ -1241,13 +1228,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     //run an `evaluate` call
                 } else {
-                    let commandResults = await this.rokuAdapter.evaluate(args.expression, args.frameId);
+                    let commandResults = await this.rokuAdapter.evaluate(evalArgs.expression, evalArgs.frameId);
 
                     commandResults.message = util.trimDebugPrompt(commandResults.message);
                     if (args.context !== 'watch') {
                         //clear variable cache since this action could have side-effects
                         this.clearState();
-                        this.sendInvalidatedEvent(null, args.frameId);
+                        this.sendInvalidatedEvent(null, evalArgs.frameId);
                     }
                     //if the adapter captured output (probably only telnet), print it to the vscode debug console
                     if (typeof commandResults.message === 'string') {
@@ -1276,6 +1263,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.sendResponse(response);
         } catch { }
         deferred.resolve();
+    }
+
+    private async evaluateTemporaryVariables(args: DebugProtocol.EvaluateArguments, variablePath: string[]): Promise<{evalArgs: DebugProtocol.EvaluateArguments, variablePath: string[]}> {
+        let returnVal = {evalArgs: args, variablePath};
+        if (!variablePath && util.isAssignableExpression(args.expression)) {
+            let varIndex = this.getNextVarIndex(args.frameId);
+            let arrayVarName = this.tempVarPrefix + 'eval';
+            if (varIndex === 0) {
+                const response = await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
+                console.log(response);
+            }
+            let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
+            returnVal.evalArgs.expression = `${arrayVarName}[${varIndex}]`;
+            let commandResults = await this.rokuAdapter.evaluate(statement, args.frameId);
+            if (commandResults.type === 'error') {
+                throw new Error(commandResults.message);
+            }
+            returnVal.variablePath = [arrayVarName, varIndex.toString()];
+        }
+        return returnVal;
     }
 
     /**
