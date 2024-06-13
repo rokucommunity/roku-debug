@@ -1099,7 +1099,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables();
 
                     for (const varName of vars) {
-                        let {evalArgs} = await this.evaluateTemporaryVariables({expression: varName, frameId: -1}, util.getVariablePath(varName));
+                        let { evalArgs } = await this.evaluateTemporaryVariables({ expression: varName, frameId: -1 }, util.getVariablePath(varName));
                         let result = await this.rokuAdapter.getVariable(evalArgs.expression, -1);
                         let tempVar = this.getVariableFromResult(result, -1);
                         childVariables.push(tempVar);
@@ -1118,7 +1118,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 logger.log('variable', v);
                 //query for child vars if we haven't done it yet.
                 if (v.childVariables.length === 0) {
-                    let {evalArgs} = await this.evaluateTemporaryVariables({expression: v.evaluateName, frameId: v.frameId}, util.getVariablePath(v.evaluateName));
+                    let { evalArgs } = await this.evaluateTemporaryVariables({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
                     let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
                     let tempVar = this.getVariableFromResult(result, v.frameId);
                     tempVar.frameId = v.frameId;
@@ -1197,7 +1197,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 //is at debugger prompt
             } else {
-                let {evalArgs, variablePath} = await this.evaluateTemporaryVariables(args, util.getVariablePath(args.expression));
+                let { evalArgs, variablePath } = await this.evaluateTemporaryVariables(args, util.getVariablePath(args.expression));
 
                 //if we found a variable path (e.g. ['a', 'b', 'c']) then do a variable lookup because it's faster and more widely supported than `evaluate`
                 if (variablePath) {
