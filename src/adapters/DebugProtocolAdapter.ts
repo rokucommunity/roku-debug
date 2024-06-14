@@ -610,6 +610,20 @@ export class DebugProtocolAdapter {
                 };
                 container.children.push(nodeChildren);
             }
+            if (container.elementCount > 0) {
+                let nodeCount = <EvaluateContainer>{
+                    name: '[[count]]',
+                    evaluateName: 'todo',
+                    type: 'Float',
+                    highLevelType: undefined,
+                    keyType: undefined,
+                    value: container.elementCount.toString(),
+                    elementCount: undefined,
+                    children: []
+                };
+                container.children.push(nodeCount);
+            }
+
             return container;
         }
     }
