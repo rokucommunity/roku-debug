@@ -542,7 +542,8 @@ describe('DebugProtocolAdapter', function() {
                 container?.children.map(x => x.evaluateName)
             ).to.eql([
                 'person["name"]',
-                'person["age"]'
+                'person["age"]',
+                '2'
             ]);
             //the top level object should be an AA
             expect(container.type).to.eql(VariableType.AssociativeArray);

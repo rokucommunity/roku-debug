@@ -613,7 +613,7 @@ export class DebugProtocolAdapter {
             if (container.elementCount > 0) {
                 let nodeCount = <EvaluateContainer>{
                     name: '[[count]]',
-                    evaluateName: 'todo',
+                    evaluateName: container.elementCount.toString(),
                     type: 'Float',
                     highLevelType: undefined,
                     keyType: undefined,
