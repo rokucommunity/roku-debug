@@ -614,9 +614,10 @@ export class DebugProtocolAdapter {
                 let nodeCount = <EvaluateContainer>{
                     name: '[[count]]',
                     evaluateName: container.elementCount.toString(),
-                    type: 'Float',
+                    type: 'number',
                     highLevelType: undefined,
                     keyType: undefined,
+                    presentationHint: 'virtual',
                     value: container.elementCount.toString(),
                     elementCount: undefined,
                     children: []
