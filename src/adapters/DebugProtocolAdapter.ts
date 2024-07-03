@@ -610,7 +610,7 @@ export class DebugProtocolAdapter {
                 };
                 container.children.push(nodeChildren);
             }
-            if (container.elementCount > 0) {
+            if (container.elementCount > 0 || container.type === 'Array') {
                 let nodeCount = <EvaluateContainer>{
                     name: '[[count]]',
                     evaluateName: container.elementCount.toString(),
