@@ -16,8 +16,8 @@ export class FileManager {
     private cache = {} as Record<string, CodeFile>;
 
     public getCodeFile(filePath: string) {
-        let lowerFilePath = filePath.toLowerCase();
-        if (!this.cache[lowerFilePath]) {
+        let lowerFilePath = filePath?.toLowerCase();
+        if (lowerFilePath && !this.cache[lowerFilePath]) {
             let fileInfo = {
                 lines: [],
                 functionNameMap: {}
@@ -108,8 +108,7 @@ export class FileManager {
         let result = {};
 
         //create a cache of all function names in this file
-        // eslint-disable-next-line no-cond-assign
-        while (match = regexp.exec(fileContents)) {
+        while ((match = regexp.exec(fileContents))) {
             let correctFunctionName = match[1];
             result[correctFunctionName.toLowerCase()] = correctFunctionName;
         }
@@ -127,7 +126,7 @@ export class FileManager {
      */
     public getCorrectFunctionNameCase(sourceFilePath: string, functionName: string) {
         let fileInfo = this.getCodeFile(sourceFilePath);
-        return fileInfo.functionNameMap[functionName.toLowerCase()] ?? functionName;
+        return fileInfo?.functionNameMap[functionName?.toLowerCase()] ?? functionName;
     }
 
     /**

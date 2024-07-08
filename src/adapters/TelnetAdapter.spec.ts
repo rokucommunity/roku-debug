@@ -3,14 +3,27 @@ import type { EvaluateContainer } from './TelnetAdapter';
 import { TelnetAdapter } from './TelnetAdapter';
 import * as dedent from 'dedent';
 import { HighLevelType } from '../interfaces';
+import { RendezvousTracker } from '../RendezvousTracker';
+import type { LaunchConfiguration } from '../LaunchConfiguration';
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
+    let launchConfig = {
+        'host': '192.168.1.5',
+        'remotePort': 8060
+    };
+    let deviceInfo = {
+        softwareVersion: '11.5.0'
+    };
+    let rendezvousTracker = new RendezvousTracker(deviceInfo, launchConfig as any);
 
     beforeEach(() => {
-        adapter = new TelnetAdapter({
-            host: '127.0.0.1'
-        });
+        adapter = new TelnetAdapter(
+            {
+                host: '127.0.0.1'
+            },
+            rendezvousTracker
+        );
     });
 
     describe('getHighLevelTypeDetails', () => {
@@ -28,9 +41,9 @@ describe('TelnetAdapter ', () => {
                 vscode_is_string:falsetrue
                 vscode_is_string:falsefalse
                 vscode_is_string:truecat
-                vscode_is_string:truecat 
+                vscode_is_string:truecat
                 vscode_is_string:true
-                vscode_is_string:true 
+                vscode_is_string:true
             `).length).to.equal(6);
         });
         it('handles basic arrays', () => {

@@ -1,11 +1,11 @@
 import { orderBy } from 'natural-orderby';
 import * as EventEmitter from 'eventemitter3';
 import { Socket } from 'net';
-import * as rokuDeploy from 'roku-deploy';
+import { rokuDeploy } from 'roku-deploy';
 import { PrintedObjectParser } from '../PrintedObjectParser';
+import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
-import type { RendezvousHistory } from '../RendezvousTracker';
-import { RendezvousTracker } from '../RendezvousTracker';
+import type { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
 import type { SourceLocation } from '../managers/LocationManager';
@@ -14,6 +14,7 @@ import { logger } from '../logging';
 import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces';
 import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
+import type { DebugProtocolAdapter } from './DebugProtocolAdapter';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -22,7 +23,8 @@ export class TelnetAdapter {
     constructor(
         private options: AdapterOptions & {
             enableDebuggerAutoRecovery?: boolean;
-        }
+        },
+        private rendezvousTracker: RendezvousTracker
     ) {
         util.normalizeAdapterOptions(this.options);
         this.options.enableDebuggerAutoRecovery ??= false;
@@ -32,22 +34,24 @@ export class TelnetAdapter {
         this.debugStartRegex = /BrightScript Micro Debugger\./ig;
         this.debugEndRegex = /Brightscript Debugger>/ig;
         this.chanperfTracker = new ChanperfTracker();
-        this.rendezvousTracker = new RendezvousTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
-
 
         // watch for chanperf events
         this.chanperfTracker.on('chanperf', (output) => {
             this.emit('chanperf', output);
         });
-
-        // watch for rendezvous events
-        this.rendezvousTracker.on('rendezvous', (output) => {
-            this.emit('rendezvous', output);
-        });
     }
 
-    public logger = logger.createLogger(`[${TelnetAdapter.name}]`);
+    private connectionDeferred = defer<void>();
+
+    public isConnected(): Promise<void> {
+        return this.connectionDeferred.promise;
+    }
+
+    public logger = logger.createLogger(`[tadapter]`);
+    /**
+     * Indicates whether the adapter has successfully established a connection with the device
+     */
     public connected: boolean;
 
     private compileErrorProcessor: CompileErrorProcessor;
@@ -58,16 +62,23 @@ export class TelnetAdapter {
     private debugStartRegex: RegExp;
     private debugEndRegex: RegExp;
     private chanperfTracker: ChanperfTracker;
-    private rendezvousTracker: RendezvousTracker;
 
     private cache = {};
-
-    public readonly supportsMultipleRuns = true;
 
     /**
      * Does this adapter support the `execute` command (known as `eval` in telnet)
      */
     public supportsExecute = true;
+
+    public once(eventName: 'app-ready'): Promise<void>;
+    public once(eventName: string) {
+        return new Promise((resolve) => {
+            const disconnect = this.on(eventName as Parameters<DebugProtocolAdapter['on']>[0], (...args) => {
+                disconnect();
+                resolve(...args);
+            });
+        });
+    }
 
     /**
      * Subscribe to various events
@@ -78,10 +89,9 @@ export class TelnetAdapter {
     public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
     public on(eventName: 'close', handler: () => void);
     public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'compile-errors', handler: (params: { path: string; lineNumber: number }[]) => void);
+    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
     public on(eventName: 'connected', handler: (params: boolean) => void);
     public on(eventname: 'console-output', handler: (output: string) => void);
-    public on(eventname: 'rendezvous', handler: (output: RendezvousHistory) => void);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
@@ -95,14 +105,15 @@ export class TelnetAdapter {
         };
     }
 
+    private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
     private emit(
         /* eslint-disable @typescript-eslint/indent */
         eventName:
             'app-exit' |
+            'app-ready' |
             'cannot-continue' |
             'chanperf' |
             'close' |
-            'compile-errors' |
             'connected' |
             'console-output' |
             'rendezvous' |
@@ -111,8 +122,8 @@ export class TelnetAdapter {
             'suspend' |
             'unhandled-console-output',
         /* eslint-enable @typescript-eslint/indent */
-        data?
-    ) {
+        data?);
+    private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
@@ -243,6 +254,7 @@ export class TelnetAdapter {
             client.connect(this.options.brightScriptConsolePort, this.options.host, () => {
                 this.logger.log(`Telnet connection established to ${this.options.host}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
+                this.connectionDeferred.resolve();
                 this.emit('connected', this.connected);
             });
 
@@ -261,8 +273,8 @@ export class TelnetAdapter {
             });
 
             //listen for any compile errors
-            this.compileErrorProcessor.on('compile-errors', (errors) => {
-                this.emit('compile-errors', errors);
+            this.compileErrorProcessor.on('diagnostics', (errors) => {
+                this.emit('diagnostics', errors);
             });
 
             //listen for any console output that was not handled by other methods in the adapter
@@ -294,9 +306,13 @@ export class TelnetAdapter {
                     return;
                 }
 
+                //emitting this signal so the BrightScriptDebugSession will successfully complete it's publish method.
+                if (/\[beacon.signal\] \|AppCompileComplete/i.exec(responseText.trim())) {
+                    this.emit('app-ready');
+                }
+
                 if (this.isActivated) {
                     //watch for the start of the program
-                    // eslint-disable-next-line no-cond-assign
                     if (/\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
                         this.isAppRunning = true;
                         this.logger.log('Running beacon detected', { responseText });
@@ -304,7 +320,6 @@ export class TelnetAdapter {
                     }
 
                     //watch for the end of the program
-                    // eslint-disable-next-line no-cond-assign
                     if (/\[beacon.report\] \|AppExitComplete/i.exec(responseText.trim())) {
                         this.beginAppExit();
                     }
@@ -471,8 +486,7 @@ export class TelnetAdapter {
             let regexp = /#(\d+)\s+(?:function|sub)\s+([\$\w\d]+).*\s+file\/line:\s+(.*)\((\d+)\)/ig;
             let matches: RegExpExecArray;
             let frames: StackFrame[] = [];
-            // eslint-disable-next-line no-cond-assign
-            while (matches = regexp.exec(responseText)) {
+            while ((matches = regexp.exec(responseText))) {
                 //the first index is the whole string
                 //then the matches should be in pairs
                 for (let i = 1; i < matches.length; i += 4) {
@@ -518,10 +532,9 @@ export class TelnetAdapter {
 
     /**
      * Gets a string array of all the local variables using the var command
-     * @param scope
      */
-    public async getScopeVariables(scope?: string) {
-        this.logger.log('getScopeVariables', { scope });
+    public async getScopeVariables() {
+        this.logger.log('getScopeVariables');
         if (!this.isAtDebuggerPrompt) {
             throw new Error('Cannot resolve variable: debugger is not paused');
         }
@@ -875,7 +888,6 @@ export class TelnetAdapter {
                         type: '<ERROR>',
                         highLevelType: HighLevelType.uninitialized,
                         evaluateName: undefined,
-                        variablePath: [],
                         elementCount: -1,
                         value: '<ERROR>',
                         keyType: KeyType.legacy,
@@ -1017,9 +1029,16 @@ export class TelnetAdapter {
     }
 
     /**
+     * Indicates whether this class has had `.destroy()` called at least once. Mostly used for checking externally to see if
+     * the whole debug session has been terminated or is in a bad state.
+     */
+    public isDestroyed = false;
+    /**
      * Disconnect from the telnet session and unset all objects
      */
     public destroy() {
+        this.isDestroyed = true;
+
         if (this.requestPipeline) {
             this.requestPipeline.destroy();
         }
@@ -1032,14 +1051,6 @@ export class TelnetAdapter {
         this.emitter = undefined;
         //needs to be async to match the DebugProtocolAdapter implementation
         return Promise.resolve();
-    }
-
-    // #region Rendezvous Tracker pass though functions
-    /**
-     * Passes the debug functions used to locate the client files and lines to the RendezvousTracker
-     */
-    public registerSourceLocator(sourceLocator: (debuggerPath: string, lineNumber: number) => Promise<SourceLocation>) {
-        this.rendezvousTracker.registerSourceLocator(sourceLocator);
     }
 
     /**
@@ -1064,7 +1075,10 @@ export class TelnetAdapter {
     public clearChanperfHistory() {
         this.chanperfTracker.clearHistory();
     }
-    // #endregion
+
+    public async syncBreakpoints() {
+        //we can't send dynamic breakpoints to the server...so just do nothing
+    }
 }
 
 export interface StackFrame {
@@ -1081,7 +1095,6 @@ export enum EventName {
 export interface EvaluateContainer {
     name: string;
     evaluateName: string;
-    variablePath: string[];
     type: string;
     value: string;
     keyType: KeyType;
@@ -1098,10 +1111,25 @@ export enum KeyType {
 }
 
 export interface Thread {
+    /**
+     * Is this thread selected
+     */
     isSelected: boolean;
+    /**
+     * The 1-based line number
+     */
     lineNumber: number;
+    /**
+     * The pkgPath to the file on-device
+     */
     filePath: string;
+    /**
+     * The contents of the line (i.e. the code for the line)
+     */
     lineContents: string;
+    /**
+     * The id of this thread
+     */
     threadId: number;
 }
 
@@ -1116,4 +1144,8 @@ export enum PrimativeType {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
+}
+
+export function isTelnetAdapterAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is TelnetAdapter {
+    return adapter?.constructor.name === TelnetAdapter.name;
 }

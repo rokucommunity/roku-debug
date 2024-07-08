@@ -97,11 +97,12 @@ export class FileUtils {
     }
 
     /**
-     * The Roku telnet debugger truncates file paths, so this removes that truncation piece.
+     * The Roku telnet debugger truncates file paths, so this removes that leading truncation piece.
+     * This removes 0 or more leading dots, followed by 0 or more leading slashes
      * @param filePath
      */
     public removeFileTruncation(filePath: string) {
-        return filePath.startsWith('...') ? filePath.substring(3) : filePath;
+        return filePath.replace(/^\.*[\/\\]*/, '');
     }
 
     /**
@@ -168,6 +169,33 @@ export class FileUtils {
             }
         }
         return result;
+    }
+
+    /**
+     * Append a postfix to the filename BEFORE its file extension
+     */
+    public postfixFilePath(filePath: string, postfix: string, fileExtensions: string[]) {
+        let parsedPath = path.parse(filePath);
+
+        if (fileExtensions.includes(parsedPath.ext)) {
+            const regexp = new RegExp(parsedPath.ext + '$', 'i');
+            return filePath.replace(regexp, postfix + parsedPath.ext);
+        } else {
+            return filePath;
+        }
+    }
+
+    /**
+     * Given a file path, return a new path with the component library postfix removed
+     */
+    public unPostfixFilePath(filePath: string, postfix: string) {
+        let parts = path.parse(filePath);
+        const search = `${postfix}${parts.ext}`;
+        if (filePath.toLowerCase().endsWith(search.toLowerCase())) {
+            return fileUtils.replaceCaseInsensitive(filePath, search, parts.ext);
+        } else {
+            return filePath;
+        }
     }
 
     /**

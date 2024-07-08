@@ -1,6 +1,6 @@
 {
     "name": "roku-debug",
-    "version": "0.11.0",
+    "version": "0.21.9",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
@@ -8,14 +8,18 @@
         "preversion": "npm run build && npm run lint && npm run test",
         "lint": "eslint \"src/**\"",
         "watch": "tsc --watch",
-        "test": "nyc mocha \"src/**/*spec.ts\"",
-        "test:nocover": "mocha \"src/**/*.spec.ts\"",
+        "test": "nyc mocha \"src/**/*spec.ts\" --exclude \"src/**/*.device.spec.ts\"",
+        "device-test": "mocha --spec \"src/**/*.device.spec.ts\"",
+        "test:nocover": "mocha \"src/**/*.spec.ts\" --exclude \"src/**/*.device.spec.ts\"",
         "publish-coverage": "nyc report --reporter=text-lcov | coveralls"
     },
     "typings": "dist/index.d.ts",
     "repository": {
         "type": "git",
         "url": "https://github.com/rokucommunity/roku-debug"
+    },
+    "bin": {
+        "roku-debug": "dist/cli.js"
     },
     "author": "RokuCommunity",
     "license": "MIT",
@@ -24,6 +28,10 @@
             "source-map-support/register",
             "ts-node/register"
         ],
+        "watchFiles": [
+            "src/**/*"
+        ],
+        "timeout": 2000,
         "fullTrace": true,
         "watchExtensions": [
             "ts"
@@ -54,20 +62,24 @@
     },
     "devDependencies": {
         "@types/chai": "^4.2.22",
+        "@types/dateformat": "~3",
+        "@types/debounce": "^1.2.1",
+        "@types/decompress": "^4.2.4",
         "@types/dedent": "^0.7.0",
         "@types/find-in-files": "^0.5.1",
         "@types/fs-extra": "^9.0.13",
         "@types/line-column": "^1.0.0",
         "@types/mocha": "^9.0.0",
         "@types/node": "^16.11.6",
-        "@types/request": "^2.48.7",
+        "@types/request": "^2.48.8",
         "@types/semver": "^7.3.9",
         "@types/sinon": "^10.0.6",
         "@types/vscode": "^1.61.0",
-        "@typescript-eslint/eslint-plugin": "^5.2.0",
-        "@typescript-eslint/parser": "^5.2.0",
+        "@typescript-eslint/eslint-plugin": "^5.27.0",
+        "@typescript-eslint/parser": "^5.27.0",
         "chai": "^4.3.4",
-        "coveralls": "^3.1.1",
+        "coveralls-next": "^4.2.0",
+        "decompress": "^4.2.1",
         "dedent": "^0.7.0",
         "eslint": "^8.1.0",
         "eslint-plugin-no-only-tests": "^2.6.0",
@@ -85,26 +97,32 @@
         "undent": "^0.1.0"
     },
     "dependencies": {
-        "@rokucommunity/logger": "^0.3.0",
-        "brighterscript": "^0.61.3",
+        "@rokucommunity/logger": "^0.3.9",
+        "@types/request": "^2.48.8",
+        "brighterscript": "^0.67.3",
         "clone-regexp": "2.2.0",
         "dateformat": "^4.6.3",
+        "debounce": "^1.2.1",
         "eol": "^0.9.1",
         "eventemitter3": "^4.0.7",
         "fast-glob": "^3.2.11",
+        "find-in-files": "^0.5.0",
         "fs-extra": "^10.0.0",
         "line-column": "^1.0.2",
         "natural-orderby": "^2.0.3",
+        "portfinder": "^1.0.32",
+        "postman-request": "^2.88.1-postman.32",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
-        "roku-deploy": "^3.6.0",
-        "semver": "^7.3.5",
+        "roku-deploy": "^3.12.0",
+        "semver": "^7.5.4",
         "serialize-error": "^8.1.0",
         "smart-buffer": "^4.2.0",
         "source-map": "^0.7.4",
         "telnet-client": "^1.4.9",
         "vscode-debugadapter": "^1.49.0",
         "vscode-debugprotocol": "^1.49.0",
-        "vscode-languageserver": "^6.1.1"
+        "vscode-languageserver": "^6.1.1",
+        "xml2js": "^0.5.0"
     }
 }

@@ -1,22 +1,56 @@
-/* eslint-disable camelcase */
 import * as assert from 'assert';
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as getPort from 'get-port';
 import * as net from 'net';
 import * as path from 'path';
-import * as sinonActual from 'sinon';
-import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
-import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
+import type { BSDebugDiagnostic } from './CompileErrorProcessor';
 import * as dedent from 'dedent';
 import { util } from './util';
-let sinon = sinonActual.createSandbox();
+import { util as bscUtil } from 'brighterscript';
+import { createSandbox } from 'sinon';
+const sinon = createSandbox();
 
 beforeEach(() => {
     sinon.restore();
 });
 
 describe('Util', () => {
+
+    describe('hasNonNullishProperty', () => {
+        it('detects objects with only nullish props or no props at all', () => {
+            expect(util.hasNonNullishProperty({})).to.be.false;
+            expect(util.hasNonNullishProperty([])).to.be.false;
+            expect(util.hasNonNullishProperty(null)).to.be.false;
+            expect(util.hasNonNullishProperty(undefined)).to.be.false;
+            expect(util.hasNonNullishProperty(1 as any)).to.be.false;
+            expect(util.hasNonNullishProperty(true as any)).to.be.false;
+            expect(util.hasNonNullishProperty(/asdf/)).to.be.false;
+            expect(util.hasNonNullishProperty({ nullish: null })).to.be.false;
+            expect(util.hasNonNullishProperty({ nullish: undefined })).to.be.false;
+        });
+
+        it('detects objects with defined props', () => {
+            expect(util.hasNonNullishProperty({ val: true })).to.be.true;
+            expect(util.hasNonNullishProperty({ val: true, nullish: undefined })).to.be.true;
+            expect(util.hasNonNullishProperty({ val: false })).to.be.true;
+            expect(util.hasNonNullishProperty({ val: false, nullish: false })).to.be.true;
+        });
+    });
+
+    describe('isAssignableExpression', () => {
+        it('works', () => {
+            expect(util.isAssignableExpression('function test(): endFunction')).to.be.false;
+            expect(util.isAssignableExpression('if true then print true')).to.be.false;
+            expect(util.isAssignableExpression('while true: print true')).to.be.false;
+            expect(util.isAssignableExpression('a.b.c = "test"')).to.be.false;
+            expect(util.isAssignableExpression('array[0] = "test"')).to.be.false;
+            expect(util.isAssignableExpression('2+2')).to.be.true;
+            expect(util.isAssignableExpression('createThing()')).to.be.true;
+            expect(util.isAssignableExpression('a.b.c')).to.be.true;
+            expect(util.isAssignableExpression('array[0]')).to.be.true;
+        });
+    });
 
     describe('removeTrailingNewline', () => {
         it('works', () => {
@@ -86,6 +120,10 @@ describe('Util', () => {
         it('should should return null when there is no scheme', () => {
             assert.equal(util.getFileScheme('/images/channel-poster_hd.png'), null);
             assert.equal(util.getFileScheme('ages/channel-poster_hd.png'), null);
+        });
+
+        it('should support file schemes with underscores', () => {
+            assert.equal(util.getFileScheme('thing_with_underscores:/source/lib.brs'), 'thing_with_underscores:');
         });
     });
 
@@ -216,50 +254,6 @@ describe('Util', () => {
         });
     });
 
-    describe('filterGenericErrors', () => {
-        it('should remove generic errors IF a more specific exists', () => {
-            const err1: BrightScriptDebugCompileError = {
-                path: 'file1.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: 'Some other error',
-                errorText: 'err1'
-            };
-            const err2: BrightScriptDebugCompileError = {
-                path: 'file1.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: GENERAL_XML_ERROR,
-                errorText: 'err2'
-            };
-            const err3: BrightScriptDebugCompileError = {
-                path: 'file2.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: GENERAL_XML_ERROR,
-                errorText: 'err3'
-            };
-            const err4: BrightScriptDebugCompileError = {
-                path: 'file3.xml',
-                lineNumber: 0,
-                charStart: 0,
-                charEnd: 0,
-                message: 'Some other error',
-                errorText: 'err4'
-            };
-            const expected = [
-                err1,
-                err3,
-                err4
-            ];
-            const actual = util.filterGenericErrors([err1, err2, err3, err4]);
-            expect(actual).to.deep.equal(expected);
-        });
-    });
-
     describe('getVariablePath', () => {
         it('detects valid patterns', () => {
             expect(util.getVariablePath('a')).to.eql(['a']);
@@ -269,18 +263,18 @@ describe('Util', () => {
             expect(util.getVariablePath('a[0]')).to.eql(['a', '0']);
             expect(util.getVariablePath('a[0].b')).to.eql(['a', '0', 'b']);
             expect(util.getVariablePath('a[0].b[0]')).to.eql(['a', '0', 'b', '0']);
-            expect(util.getVariablePath('a["b"]')).to.eql(['a', 'b']);
-            expect(util.getVariablePath('a["b"]["c"]')).to.eql(['a', 'b', 'c']);
-            expect(util.getVariablePath('a["b"][0]')).to.eql(['a', 'b', '0']);
-            expect(util.getVariablePath('a["b"].c[0]')).to.eql(['a', 'b', 'c', '0']);
-            expect(util.getVariablePath(`m_that["this -that.thing"]  .other[9]`)).to.eql(['m_that', 'this -that.thing', 'other', '9']);
+            expect(util.getVariablePath('a["b"]')).to.eql(['a', '"b"']);
+            expect(util.getVariablePath('a["b"]["c"]')).to.eql(['a', '"b"', '"c"']);
+            expect(util.getVariablePath('a["b"][0]')).to.eql(['a', '"b"', '0']);
+            expect(util.getVariablePath('a["b"].c[0]')).to.eql(['a', '"b"', 'c', '0']);
+            expect(util.getVariablePath(`m_that["this -that.thing"]  .other[9]`)).to.eql(['m_that', '"this -that.thing"', 'other', '9']);
             expect(util.getVariablePath(`a`)).to.eql(['a']);
             expect(util.getVariablePath(`boy5`)).to.eql(['boy5']);
             expect(util.getVariablePath(`super_man$`)).to.eql(['super_man$']);
             expect(util.getVariablePath(`_super_man$`)).to.eql(['_super_man$']);
-            expect(util.getVariablePath(`a["something with a quote"].c`)).to.eql(['a', 'something with a quote', 'c']);
+            expect(util.getVariablePath(`a["something with a quote"].c`)).to.eql(['a', '"something with a quote"', 'c']);
             expect(util.getVariablePath(`m.global.initialInputEvent`)).to.eql(['m', 'global', 'initialInputEvent']);
-            expect(util.getVariablePath(`m.["that"]`)).to.eql(['m', 'that']);
+            expect(util.getVariablePath(`m.["that"]`)).to.eql(['m', '"that"']);
         });
 
         it('rejects invalid patterns', () => {
@@ -289,6 +283,9 @@ describe('Util', () => {
             expect(util.getVariablePath('m.global.initialInputEvent.0[123]')).undefined;
             expect(util.getVariablePath('m.global.initialInputEvent.0[123]["this \"-that.thing"]')).undefined;
             expect(util.getVariablePath('m.global["something with a quote"]initialInputEvent.0[123]["this \"-that.thing"]')).undefined;
+            expect(util.getVariablePath('m.top.gridState?.leftEdgeTime')).undefined;
+            expect(util.getVariablePath('m.top.gridState?["leftEdgeTime"]')).undefined;
+            expect(util.getVariablePath('m.top.gridState?.["leftEdgeTime"]')).undefined;
         });
     });
 
@@ -355,7 +352,7 @@ describe('Util', () => {
                     1*   pkg:/components/MainScene.brs(6)        STOP
                     *selected
 
-                    Brightscript Debugger>  
+                    Brightscript Debugger>
                 `))
             ).to.eql(dedent`
                 ID    Location                                Source Code
@@ -363,7 +360,7 @@ describe('Util', () => {
                 1*   pkg:/components/MainScene.brs(6)        STOP
                 *selected
 
-                Brightscript Debugger>  
+                Brightscript Debugger>
             `);
         });
 
@@ -374,7 +371,7 @@ describe('Util', () => {
                 1*   pkg:/components/MainScene.brs(6)        STOP
                 *selected
 
-                Brightscript Debugger> 
+                Brightscript Debugger>
             `;
             expect(
                 util.removeThreadAttachedText(text)
@@ -384,7 +381,7 @@ describe('Util', () => {
         it('matches truncated file paths', () => {
             const text = `
                 Thread attached: ...Modules/MainMenu/MainMenu.brs(309)   renderTracking = m.top.renderTracking
-                
+
                 Brightscript Debugger>
             `;
             expect(

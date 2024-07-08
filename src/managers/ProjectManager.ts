@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import * as rokuDeploy from 'roku-deploy';
+import { rokuDeploy, RokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
 import * as fastGlob from 'fast-glob';
 import type { BreakpointManager } from './BreakpointManager';
@@ -11,6 +11,8 @@ import { util } from '../util';
 import { logger } from '../logging';
 import { AssignmentStatement, CancellationTokenSource, DottedSetStatement, FunctionStatement, IndexedSetStatement, isAssignmentStatement, isCallExpression, isDottedGetExpression, isDottedSetStatement, isFunctionStatement, isIndexedSetStatement, isVariableExpression, Parser, WalkMode } from 'brighterscript';
 import lineColumn = require('line-column');
+import { Cache } from 'brighterscript/dist/Cache';
+import { util as bscUtil } from 'brighterscript';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -35,7 +37,11 @@ export class ProjectManager {
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;
+        enableDebugProtocol?: boolean;
+        packagePath: string;
     };
+
+    public logger = logger.createLogger('[ProjectManager]');
 
     public mainProject: Project;
     public componentLibraryProjects = [] as ComponentLibraryProject[];
@@ -44,15 +50,22 @@ export class ProjectManager {
         this.componentLibraryProjects.push(project);
     }
 
+    public getAllProjects() {
+        return [
+            ...(this.mainProject ? [this.mainProject] : []),
+            ...(this.componentLibraryProjects ?? [])
+        ];
+    }
+
     /**
      * Get the list of staging folder paths from all projects
      */
-    public getStagingFolderPaths() {
+    public getStagingDirs() {
         let projects = [
             ...(this.mainProject ? [this.mainProject] : []),
             ...(this.componentLibraryProjects ?? [])
         ];
-        return projects.map(x => x.stagingFolderPath);
+        return projects.map(x => x.stagingDir);
     }
 
     /**
@@ -61,7 +74,7 @@ export class ProjectManager {
      * @param debuggerLineNumber - the line number from the debugger
      */
     public getLineNumberOffsetByBreakpoints(filePath: string, debuggerLineNumber: number) {
-        let breakpoints = this.breakpointManager.getBreakpointsForFile(filePath);
+        let breakpoints = this.breakpointManager.getPermanentBreakpointsForFile(filePath);
         //throw out duplicate breakpoints (account for entry breakpoint) and sort them ascending
         breakpoints = this.breakpointManager.sortAndRemoveDuplicateBreakpoints(breakpoints);
 
@@ -88,65 +101,70 @@ export class ProjectManager {
         return sourceLineByDebuggerLine[debuggerLineNumber];
     }
 
+    public sourceLocationCache = new Cache<string, Promise<SourceLocation>>();
+
     /**
      * @param debuggerPath
      * @param debuggerLineNumber - the 1-based line number from the debugger
      */
     public async getSourceLocation(debuggerPath: string, debuggerLineNumber: number) {
-        //get source location using
-        let stagingFileInfo = await this.getStagingFileInfo(debuggerPath);
-        if (!stagingFileInfo) {
-            return;
-        }
-        let project = stagingFileInfo.project;
+        return this.sourceLocationCache.getOrAdd(`${debuggerPath}-${debuggerLineNumber}`, async () => {
+            //get source location using
+            let stagingFileInfo = await this.getStagingFileInfo(debuggerPath);
+            if (!stagingFileInfo) {
+                return;
+            }
+            let project = stagingFileInfo.project;
 
-        //remove the component library postfix if present
-        if (project instanceof ComponentLibraryProject) {
-            stagingFileInfo.absolutePath = project.removeFileNamePostfix(stagingFileInfo.absolutePath);
-            stagingFileInfo.relativePath = project.removeFileNamePostfix(stagingFileInfo.relativePath);
-        }
+            //remove the component library postfix if present
+            if (project instanceof ComponentLibraryProject) {
+                stagingFileInfo.absolutePath = fileUtils.unPostfixFilePath(stagingFileInfo.absolutePath, project.postfix);
+                stagingFileInfo.relativePath = fileUtils.unPostfixFilePath(stagingFileInfo.relativePath, project.postfix);
+            }
 
-        let sourceLocation = await this.locationManager.getSourceLocation({
-            lineNumber: debuggerLineNumber,
-            columnIndex: 0,
-            fileMappings: project.fileMappings,
-            rootDir: project.rootDir,
-            stagingFilePath: stagingFileInfo.absolutePath,
-            stagingFolderPath: project.stagingFolderPath,
-            sourceDirs: project.sourceDirs,
-            enableSourceMaps: this.launchConfiguration?.enableSourceMaps ?? true
+            let sourceLocation = await this.locationManager.getSourceLocation({
+                lineNumber: debuggerLineNumber,
+                columnIndex: 0,
+                fileMappings: project.fileMappings,
+                rootDir: project.rootDir,
+                stagingFilePath: stagingFileInfo.absolutePath,
+                stagingDir: project.stagingDir,
+                sourceDirs: project.sourceDirs,
+                enableSourceMaps: this.launchConfiguration?.enableSourceMaps ?? true
+            });
+
+            //if sourcemaps are disabled, and this is a telnet debug dession, account for breakpoint offsets
+            if (sourceLocation && this.launchConfiguration?.enableSourceMaps === false && !this.launchConfiguration.enableDebugProtocol) {
+                sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
+            }
+
+            if (!sourceLocation?.filePath) {
+                //couldn't find a source location. At least send back the staging file information so the user can still debug
+                return {
+                    filePath: stagingFileInfo.absolutePath,
+                    lineNumber: sourceLocation?.lineNumber || debuggerLineNumber,
+                    columnIndex: 0
+                } as SourceLocation;
+            } else {
+                return sourceLocation;
+            }
         });
-
-        //if sourcemaps are disabled, account for the breakpoint offsets
-        if (this.launchConfiguration?.enableSourceMaps === false) {
-            sourceLocation.lineNumber = this.getLineNumberOffsetByBreakpoints(sourceLocation.filePath, sourceLocation.lineNumber);
-        }
-
-        if (!sourceLocation.filePath) {
-            //couldn't find a source location. At least send back the staging file information so the user can still debug
-            return {
-                filePath: stagingFileInfo.absolutePath,
-                lineNumber: sourceLocation.lineNumber || debuggerLineNumber,
-                columnIndex: 0
-            } as SourceLocation;
-        } else {
-            return sourceLocation;
-        }
     }
 
     /**
      *
-     * @param stagingFolderPath - the path to
+     * @param stagingDir - the path to
      */
-    public async registerEntryBreakpoint(stagingFolderPath: string) {
+    public async registerEntryBreakpoint(stagingDir: string) {
         //find the main function from the staging flder
-        let entryPoint = await fileUtils.findEntryPoint(stagingFolderPath);
+        let entryPoint = await fileUtils.findEntryPoint(stagingDir);
 
         //convert entry point staging location to source location
         let sourceLocation = await this.getSourceLocation(entryPoint.destPath, entryPoint.position.line + 1);
 
+        this.logger.info(`Registering entry breakpoint at ${sourceLocation.filePath}:${sourceLocation.lineNumber} (${entryPoint.srcPath}:${entryPoint.position.line + 1})`);
         //register the entry breakpoint
-        this.breakpointManager.registerBreakpoint(sourceLocation.filePath, {
+        this.breakpointManager.setBreakpoint(sourceLocation.filePath, {
             //+1 to select the first line of the function
             line: sourceLocation.lineNumber + 1
         });
@@ -156,7 +174,7 @@ export class ProjectManager {
      * Given a debugger-relative file path, find the path to that file in the staging directory.
      * This supports the standard out dir, as well as component library out dirs
      * @param debuggerPath the path to the file which was provided by the debugger
-     * @param stagingFolderPath - the path to the root of the staging folder (where all of the files were copied before deployment)
+     * @param stagingDir - the path to the root of the staging folder (where all of the files were copied before deployment)
      * @return a full path to the file in the staging directory
      */
     public async getStagingFileInfo(debuggerPath: string) {
@@ -182,7 +200,7 @@ export class ProjectManager {
         if (util.getFileScheme(debuggerPath)) {
             relativePath = util.removeFileScheme(debuggerPath);
         } else {
-            relativePath = await fileUtils.findPartialFileInDirectory(debuggerPath, project.stagingFolderPath);
+            relativePath = await fileUtils.findPartialFileInDirectory(debuggerPath, project.stagingDir);
         }
         if (relativePath) {
             relativePath = fileUtils.removeLeadingSlash(
@@ -191,7 +209,7 @@ export class ProjectManager {
             );
             return {
                 relativePath: relativePath,
-                absolutePath: s`${project.stagingFolderPath}/${relativePath}`,
+                absolutePath: s`${project.stagingDir}/${relativePath}`,
                 project: project
             };
         } else {
@@ -200,9 +218,10 @@ export class ProjectManager {
     }
 }
 
-interface AddProjectParams {
+export interface AddProjectParams {
     rootDir: string;
     outDir: string;
+    packagePath?: string;
     sourceDirs?: string[];
     files: Array<FileEntry>;
     injectRaleTrackerTask?: boolean;
@@ -210,7 +229,7 @@ interface AddProjectParams {
     injectRdbOnDeviceComponent?: boolean;
     rdbFilesBasePath?: string;
     bsConst?: Record<string, boolean>;
-    stagingFolderPath?: string;
+    stagingDir?: string;
 }
 
 export class Project {
@@ -220,8 +239,7 @@ export class Project {
 
         assert(params?.outDir, 'outDir is required');
         this.outDir = fileUtils.standardizePath(params.outDir);
-
-        this.stagingFolderPath = params.stagingFolderPath ?? rokuDeploy.getOptions(this).stagingFolderPath;
+        this.stagingDir = params.stagingDir ?? rokuDeploy.getOptions(this).stagingDir;
         this.bsConst = params.bsConst;
         this.sourceDirs = (params.sourceDirs ?? [])
             //standardize every sourcedir
@@ -231,12 +249,14 @@ export class Project {
         this.injectRdbOnDeviceComponent = params.injectRdbOnDeviceComponent ?? false;
         this.rdbFilesBasePath = params.rdbFilesBasePath;
         this.files = params.files ?? [];
+        this.packagePath = params.packagePath;
     }
     public rootDir: string;
     public outDir: string;
+    public packagePath: string;
     public sourceDirs: string[];
     public files: Array<FileEntry>;
-    public stagingFolderPath: string;
+    public stagingDir: string;
     public fileMappings: Array<{ src: string; dest: string }>;
     public bsConst: Record<string, boolean>;
     public injectRaleTrackerTask: boolean;
@@ -244,10 +264,15 @@ export class Project {
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
 
+    //the default project doesn't have a postfix, but component libraries will have a postfix, so just use empty string to standardize the postfix logic
+    public get postfix() {
+        return '';
+    }
+
     private logger = logger.createLogger(`[${ProjectManager.name}]`);
 
     public async stage() {
-        let rd = new rokuDeploy.RokuDeploy();
+        let rd = new RokuDeploy();
         if (!this.fileMappings) {
             this.fileMappings = await this.getFileMappings();
         }
@@ -258,7 +283,7 @@ export class Project {
             for (let fileMapping of this.fileMappings) {
                 relativeFileMappings.push({
                     src: fileMapping.src,
-                    dest: fileUtils.replaceCaseInsensitive(fileMapping.dest, this.stagingFolderPath, '')
+                    dest: fileUtils.replaceCaseInsensitive(fileMapping.dest, this.stagingDir, '')
                 });
             }
             return Promise.resolve(relativeFileMappings);
@@ -267,7 +292,7 @@ export class Project {
         //copy all project files to the staging folder
         await rd.prepublishToStaging({
             rootDir: this.rootDir,
-            stagingFolderPath: this.stagingFolderPath,
+            stagingDir: this.stagingDir,
             files: this.files,
             outDir: this.outDir
         });
@@ -288,7 +313,7 @@ export class Project {
     private resolveFileMappingsForSourceDirs() {
         return Promise.all([
             this.fileMappings.map(async x => {
-                let stagingFilePathRelative = fileUtils.getRelativePath(this.stagingFolderPath, x.dest);
+                let stagingFilePathRelative = fileUtils.getRelativePath(this.stagingDir, x.dest);
                 let sourceDirFilePath = await fileUtils.findFirstRelativeFile(stagingFilePathRelative, this.sourceDirs);
                 if (sourceDirFilePath) {
                     x.src = sourceDirFilePath;
@@ -302,7 +327,7 @@ export class Project {
      */
     public async transformManifestWithBsConst() {
         if (this.bsConst) {
-            let manifestPath = s`${this.stagingFolderPath}/manifest`;
+            let manifestPath = s`${this.stagingDir}/manifest`;
             if (await fsExtra.pathExists(manifestPath)) {
                 // Update the bs_const values in the manifest in the staging folder before side loading the channel
                 let fileContents = (await fsExtra.readFile(manifestPath)).toString();
@@ -363,11 +388,11 @@ export class Project {
             return;
         }
         try {
-            await fsExtra.copy(this.raleTrackerTaskFileLocation, s`${this.stagingFolderPath}/components/TrackerTask.xml`);
+            await fsExtra.copy(this.raleTrackerTaskFileLocation, s`${this.stagingDir}/components/TrackerTask.xml`);
             this.logger.log('Tracker task successfully injected');
             // Search for the tracker task entry injection point
             const trackerReplacementResult = await replaceInFile({
-                files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
+                files: `${this.stagingDir}/**/*.+(xml|brs)`,
                 from: new RegExp(`^.*'\\s*${Project.RALE_TRACKER_ENTRY}.*$`, 'mig'),
                 to: (match: string) => {
                     // Strip off the comment
@@ -446,9 +471,9 @@ export class Project {
         //now look for `${sceneVar}.show()`
         entryFunc.findChild((node) => {
             if (
-                isCallExpression(node) && 
-                isDottedGetExpression(node.callee) && 
-                node.callee.name?.text?.toLowerCase() === 'show' && 
+                isCallExpression(node) &&
+                isDottedGetExpression(node.callee) &&
+                node.callee.name?.text?.toLowerCase() === 'show' &&
                 node.callee.
                 ) {
                 return;
@@ -501,7 +526,7 @@ export class Project {
                 //only include files (i.e. skip directories)
                 if (await util.isFile(filePathAbsolute)) {
                     const relativePath = s`${filePathAbsolute}`.replace(s`${this.rdbFilesBasePath}`, '');
-                    const destinationPath = s`${this.stagingFolderPath}/${relativePath}`;
+                    const destinationPath = s`${this.stagingDir}/${relativePath}`;
                     promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
                 }
                 await Promise.all(promises);
@@ -510,7 +535,7 @@ export class Project {
 
             // Search for the tracker task entry injection point
             const replacementResult = await replaceInFile({
-                files: `${this.stagingFolderPath}/**/*.+(xml|brs)`,
+                files: `${this.stagingDir}/**/*.+(xml|brs)`,
                 from: new RegExp(`^.*'\\s*${Project.RDB_ODC_ENTRY}.*$`, 'mig'),
                 to: (match: string) => {
                     // Strip off the comment
@@ -539,11 +564,36 @@ export class Project {
      *
      * @param stagingPath
      */
-    public async zipPackage(params: { retainStagingFolder: true }) {
-        await rokuDeploy.zipPackage({
+    public async zipPackage(params: { retainStagingFolder: boolean }) {
+        const options = rokuDeploy.getOptions({
             ...this,
             ...params
         });
+
+        let packagePath = this.packagePath;
+        if (!this.packagePath) {
+            //make sure the output folder exists
+            await fsExtra.ensureDir(options.outDir);
+
+            packagePath = rokuDeploy.getOutputZipFilePath(options);
+        }
+
+        //ensure the manifest file exists in the staging folder
+        if (!await rokuDeployUtil.fileExistsCaseInsensitive(`${options.stagingDir}/manifest`)) {
+            throw new Error(`Cannot zip package: missing manifest file in "${options.stagingDir}"`);
+        }
+
+        // create a zip of the staging folder
+        await rokuDeploy.zipFolder(options.stagingDir, packagePath, undefined, [
+            '**/*',
+            //exclude sourcemap files (they're large and can't be parsed on-device anyway...)
+            '!**/*.map'
+        ]);
+
+        //delete the staging folder unless told to retain it.
+        if (options.retainStagingDir !== true) {
+            await fsExtra.remove(options.stagingDir);
+        }
     }
 
     /**
@@ -554,7 +604,7 @@ export class Project {
         let fileMappings = await rokuDeploy.getFilePaths(this.files, this.rootDir);
         for (let mapping of fileMappings) {
             //if the dest path is relative, make it absolute (relative to the staging dir)
-            mapping.dest = path.resolve(this.stagingFolderPath, mapping.dest);
+            mapping.dest = path.resolve(this.stagingDir, mapping.dest);
             //standardize the paths once here, and don't need to do it again anywhere else in this project
             mapping.src = fileUtils.standardizePath(mapping.src);
             mapping.dest = fileUtils.standardizePath(mapping.dest);
@@ -576,6 +626,10 @@ export class ComponentLibraryProject extends Project {
     }
     public outFile: string;
     public libraryIndex: number;
+    /**
+     * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
+     */
+    public name: string;
 
     /**
      * Takes a component Library and checks the outFile for replaceable values pulled from the libraries manifest
@@ -584,19 +638,16 @@ export class ComponentLibraryProject extends Project {
     private async computeOutFileName(manifestPath: string) {
         let regexp = /\$\{([\w\d_]*)\}/;
         let renamingMatch: RegExpExecArray;
-        let manifestValues: Record<string, string>;
+        let manifestValues = await util.convertManifestToObject(manifestPath);
+        if (!manifestValues) {
+            throw new Error(`Cannot find manifest file at "${manifestPath}"\n\nCould not complete automatic component library naming.`);
+        }
+
+        //load the component libary name from the manifest
+        this.name = manifestValues.sg_component_libs_provided;
 
         // search the outFile for replaceable values such as ${title}
-        // eslint-disable-next-line no-cond-assign
-        while (renamingMatch = regexp.exec(this.outFile)) {
-            if (!manifestValues) {
-                // The first time a value is found we need to get the manifest values
-                manifestValues = await util.convertManifestToObject(manifestPath);
-
-                if (!manifestValues) {
-                    throw new Error(`Cannot find manifest file at "${manifestPath}"\n\nCould not complete automatic component library naming.`);
-                }
-            }
+        while ((renamingMatch = regexp.exec(this.outFile))) {
 
             // replace the replaceable key with the manifest value
             let manifestVariableName = renamingMatch[1];
@@ -616,8 +667,8 @@ export class ComponentLibraryProject extends Project {
          */
         this.fileMappings = await this.getFileMappings();
 
-        let expectedManifestDestPath = fileUtils.standardizePath(`${this.stagingFolderPath}/manifest`).toLowerCase();
-        //find the file entry with the `dest` value of `${stagingFolderPath}/manifest` (case insensitive)
+        let expectedManifestDestPath = fileUtils.standardizePath(`${this.stagingDir}/manifest`).toLowerCase();
+        //find the file entry with the `dest` value of `${stagingDir}/manifest` (case insensitive)
         let manifestFileEntry = this.fileMappings.find(x => x.dest.toLowerCase() === expectedManifestDestPath);
         if (manifestFileEntry) {
             //read the manifest from `src` since nothing has been copied to staging yet
@@ -627,18 +678,18 @@ export class ComponentLibraryProject extends Project {
         }
         let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
 
-        let defaultStagingFolderPath = this.stagingFolderPath;
+        let defaultStagingDir = this.stagingDir;
 
         //compute the staging folder path.
-        this.stagingFolderPath = s`${this.outDir}/${fileNameWithoutExtension}`;
+        this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
 
         /*
-          The fileMappings were created using the default stagingFolderPath (because we need the manifest path
-          to compute the out file name and staging path), so we need to replace the default stagingFolderPath
-          with the actual stagingFolderPath.
+          The fileMappings were created using the default stagingDir (because we need the manifest path
+          to compute the out file name and staging path), so we need to replace the default stagingDir
+          with the actual stagingDir.
          */
         for (let fileMapping of this.fileMappings) {
-            fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingFolderPath, this.stagingFolderPath);
+            fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
         }
 
         return super.stage();
@@ -656,50 +707,34 @@ export class ComponentLibraryProject extends Project {
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(
-                fileUtils.getRelativePath(this.stagingFolderPath, fileMapping.dest)
+                fileUtils.getRelativePath(this.stagingDir, fileMapping.dest)
             );
-            let parsedPath = path.parse(relativePath);
-
-            if (parsedPath.ext) {
-                let originalRelativePath = relativePath;
-
-                if (parsedPath.ext === '.brs') {
-                    // Create the new file name to be used
-                    let newFileName = `${parsedPath.name}${this.postfix}${parsedPath.ext}`;
-                    relativePath = path.join(parsedPath.dir, newFileName);
-
-                    // Rename the brs files to include the postfix namespacing tag
-                    await fsExtra.move(fileMapping.dest, path.join(this.stagingFolderPath, relativePath));
-                }
-
+            let postfixedPath = fileUtils.postfixFilePath(relativePath, this.postfix, ['.brs']);
+            if (postfixedPath !== relativePath) {
+                // Rename the brs files to include the postfix namespacing tag
+                await fsExtra.move(fileMapping.dest, path.join(this.stagingDir, postfixedPath));
                 // Add to the map of original paths and the new paths
-                pathDetails[relativePath] = originalRelativePath;
+                pathDetails[postfixedPath] = relativePath;
             }
         }));
 
         // Update all the file name references in the library to the new file names
         await replaceInFile({
             files: [
-                path.join(this.stagingFolderPath, '**/*.xml'),
-                path.join(this.stagingFolderPath, '**/*.brs')
+                path.join(this.stagingDir, '**/*.xml'),
+                path.join(this.stagingDir, '**/*.brs')
             ],
             from: /uri\s*=\s*"(.+)\.brs"/gi,
-            to: (match) => {
-                return match.replace('.brs', this.postfix + '.brs');
+            to: (match: string) => {
+                // only alter file ending if it is a) pkg:/ url or b) relative url
+                let isPkgUrl = !!/^uri\s*=\s*"pkg:\//i.exec(match);
+                let isRelativeUrl = !/:\//i.exec(match);
+                if (isPkgUrl || isRelativeUrl) {
+                    return match.replace('.brs', this.postfix + '.brs');
+                } else {
+                    return match;
+                }
             }
         });
-    }
-
-    /**
-     * Given a file path, return a new path with the component library postfix removed
-     */
-    public removeFileNamePostfix(filePath: string) {
-        let parts = path.parse(filePath);
-        let postfix = `${this.postfix}${parts.ext}`;
-        if (filePath.toLowerCase().endsWith(postfix.toLowerCase())) {
-            return fileUtils.replaceCaseInsensitive(filePath, postfix, parts.ext);
-        } else {
-            return filePath;
-        }
     }
 }

@@ -1,7 +1,8 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import * as rokuDeploy from 'roku-deploy';
+import { util } from '../util';
+import { rokuDeploy } from 'roku-deploy';
 import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { ComponentLibraryConstructorParams } from './ProjectManager';
@@ -9,6 +10,7 @@ import { Project, ComponentLibraryProject, ProjectManager } from './ProjectManag
 import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
+import * as decompress from 'decompress';
 
 let sinon = sinonActual.createSandbox();
 let n = fileUtils.standardizePath.bind(fileUtils);
@@ -17,9 +19,9 @@ let cwd = fileUtils.standardizePath(process.cwd());
 let tempPath = s`${cwd}/.tmp`;
 let rootDir = s`${tempPath}/rootDir`;
 let outDir = s`${tempPath}/outDir`;
-let stagingFolderPath = s`${outDir}/stagingDir`;
+let stagingDir = s`${outDir}/stagingDir`;
 let compLibOutDir = s`${outDir}/component-libraries`;
-let compLibStagingFolderPath = s`${rootDir}/component-libraries/CompLibA`;
+let compLibstagingDir = s`${rootDir}/component-libraries/CompLibA`;
 
 beforeEach(() => {
     fsExtra.ensureDirSync(tempPath);
@@ -42,23 +44,27 @@ describe('ProjectManager', () => {
         manager = new ProjectManager(breakpointManager, locationManager);
 
         manager.mainProject = <any>{
-            stagingFolderPath: stagingFolderPath
+            stagingDir: stagingDir
         };
         manager.componentLibraryProjects.push(<any>{
-            stagingFolderPath: compLibStagingFolderPath,
+            stagingDir: compLibstagingDir,
             libraryIndex: 1,
             outDir: compLibOutDir
         });
     });
 
+    afterEach(() => {
+        sinon.restore();
+    });
+
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
         it('accounts for the entry breakpoint', () => {
-            sinon.stub(manager.breakpointManager, 'getBreakpointsForFile').returns(<any>[{
+            manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [{
                 line: 3
             }, {
                 line: 3
-            }]);
+            }] as any);
             //no offset because line is before any breakpoints
             expect(manager.getLineNumberOffsetByBreakpoints(filePath, 1)).to.equal(1);
             //after the breakpoints, should be offset by -1
@@ -66,7 +72,6 @@ describe('ProjectManager', () => {
         });
 
         it('works with zero breakpoints', () => {
-            sinon.stub(manager.breakpointManager, 'getBreakpointsForFile').returns(<any>[]);
             //no offset because line is before any breakpoints
             expect(manager.getLineNumberOffsetByBreakpoints(filePath, 1)).to.equal(1);
             //after the breakpoints, should be offset by -1
@@ -116,7 +121,7 @@ describe('ProjectManager', () => {
                         line = 12
                 end function
              */
-            sinon.stub(manager.breakpointManager, 'getBreakpointsForFile').returns(<any>[
+            manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [
                 { line: 3 },
                 { line: 4 },
                 { line: 5 },
@@ -124,7 +129,7 @@ describe('ProjectManager', () => {
                 { line: 8 },
                 { line: 10 },
                 { line: 12 }
-            ]);
+            ] as any);
             //no offset because line is before any breakpoints
             //no breakpoint
             expect(manager.getLineNumberOffsetByBreakpoints(filePath, 1)).to.equal(1);
@@ -168,7 +173,7 @@ describe('ProjectManager', () => {
             expect(
                 await manager.getStagingFileInfo('pkg:/source/main.brs')
             ).to.include({
-                absolutePath: s`${stagingFolderPath}/source/main.brs`,
+                absolutePath: s`${stagingDir}/source/main.brs`,
                 //the relative path should not include a leading slash
                 relativePath: s`source/main.brs`
             });
@@ -177,13 +182,13 @@ describe('ProjectManager', () => {
         it(`searches for partial files in main project when '...' is encountered`, async () => {
             let stub = sinon.stub(fileUtils, 'findPartialFileInDirectory').callsFake((partialFilePath, directoryPath) => {
                 expect(partialFilePath).to.equal('...ource/main.brs');
-                expect(directoryPath).to.equal(manager.mainProject.stagingFolderPath);
+                expect(directoryPath).to.equal(manager.mainProject.stagingDir);
                 return Promise.resolve(`source/main.brs`);
             });
             expect(
                 (await manager.getStagingFileInfo('...ource/main.brs')).absolutePath
             ).to.equal(
-                s`${stagingFolderPath}/source/main.brs`
+                s`${stagingDir}/source/main.brs`
             );
             expect(stub.called).to.be.true;
         });
@@ -192,20 +197,20 @@ describe('ProjectManager', () => {
             expect(
                 (await manager.getStagingFileInfo('pkg:/source/main__lib1.brs')).absolutePath
             ).to.equal(
-                s`${compLibStagingFolderPath}/source/main__lib1.brs`
+                s`${compLibstagingDir}/source/main__lib1.brs`
             );
         });
 
         it(`detects partial paths to component library filenames`, async () => {
             let stub = sinon.stub(fileUtils, 'findPartialFileInDirectory').callsFake((partialFilePath, directoryPath) => {
                 expect(partialFilePath).to.equal('...ource/main__lib1.brs');
-                expect(directoryPath).to.equal(manager.componentLibraryProjects[0].stagingFolderPath);
+                expect(directoryPath).to.equal(manager.componentLibraryProjects[0].stagingDir);
                 return Promise.resolve(`source/main__lib1.brs`);
             });
             let info = await manager.getStagingFileInfo('...ource/main__lib1.brs');
             expect(info).to.deep.include({
                 relativePath: s`source/main__lib1.brs`,
-                absolutePath: s`${compLibStagingFolderPath}/source/main__lib1.brs`
+                absolutePath: s`${compLibstagingDir}/source/main__lib1.brs`
             });
             expect(info.project).to.include({
                 outDir: compLibOutDir
@@ -216,6 +221,12 @@ describe('ProjectManager', () => {
     });
 
     describe('getSourceLocation', () => {
+        it(`does not crash when file is missing`, async () => {
+            manager.mainProject.fileMappings = [];
+            let sourceLocation = await manager.getSourceLocation('pkg:/source/file-we-dont-know-about.brs', 1);
+            expect(n(sourceLocation.filePath)).to.equal(n(`${stagingDir}/source/file-we-dont-know-about.brs`));
+        });
+
         it('handles truncated paths', async () => {
             //mock fsExtra so we don't have to create actual files
             sinon.stub(fsExtra as any, 'pathExists').callsFake((filePath: string) => {
@@ -230,13 +241,13 @@ describe('ProjectManager', () => {
                 'source/file2.brs'
             ]));
             manager.mainProject.rootDir = rootDir;
-            manager.mainProject.stagingFolderPath = stagingFolderPath;
+            manager.mainProject.stagingDir = stagingDir;
             manager.mainProject.fileMappings = [{
                 src: s`${rootDir}/source/file1.brs`,
-                dest: s`${stagingFolderPath}/source/file1.brs`
+                dest: s`${stagingDir}/source/file1.brs`
             }, {
                 src: s`${rootDir}/source/file2.brs`,
-                dest: s`${stagingFolderPath}/source/file2.brs`
+                dest: s`${stagingDir}/source/file2.brs`
             }];
 
             let sourceLocation = await manager.getSourceLocation('...rce/file1.brs', 1);
@@ -257,13 +268,13 @@ describe('ProjectManager', () => {
                 }
             });
             manager.mainProject.rootDir = rootDir;
-            manager.mainProject.stagingFolderPath = stagingFolderPath;
+            manager.mainProject.stagingDir = stagingDir;
             manager.mainProject.fileMappings = [{
                 src: s`${rootDir}/source/file1.brs`,
-                dest: s`${stagingFolderPath}/source/file1.brs`
+                dest: s`${stagingDir}/source/file1.brs`
             }, {
                 src: s`${rootDir}/source/file2.brs`,
-                dest: s`${stagingFolderPath}/source/file2.brs`
+                dest: s`${stagingDir}/source/file2.brs`
             }];
 
             let sourceLocation = await manager.getSourceLocation('pkg:source/file1.brs', 1);
@@ -275,7 +286,6 @@ describe('ProjectManager', () => {
             sourceLocation = await manager.getSourceLocation('pkg:/source/file2.brs', 1);
             expect(n(sourceLocation.filePath)).to.equal(n(`${rootDir}/source/file2.brs`));
         });
-
     });
 });
 
@@ -294,9 +304,13 @@ describe('Project', () => {
             injectRdbOnDeviceComponent: true,
             rdbFilesBasePath: rdbFilesBasePath,
             sourceDirs: [s`${cwd}/source1`],
-            stagingFolderPath: stagingFolderPath,
+            stagingDir: stagingDir,
             raleTrackerTaskFileLocation: 'z'
         });
+    });
+
+    afterEach(() => {
+        sinon.restore();
     });
 
     it('copies the necessary properties onto the instance', () => {
@@ -306,7 +320,7 @@ describe('Project', () => {
         expect(project.injectRaleTrackerTask).to.equal(true);
         expect(project.outDir).to.eql(outDir);
         expect(project.sourceDirs).to.eql([s`${cwd}/source1`]);
-        expect(project.stagingFolderPath).to.eql(stagingFolderPath);
+        expect(project.stagingDir).to.eql(stagingDir);
         expect(project.raleTrackerTaskFileLocation).to.eql('z');
         expect(project.injectRdbOnDeviceComponent).to.equal(true);
         expect(project.rdbFilesBasePath).to.eql(rdbFilesBasePath);
@@ -322,17 +336,17 @@ describe('Project', () => {
             project.raleTrackerTaskFileLocation = undefined;
             project.rootDir = rootDir;
             project.outDir = outDir;
-            project.stagingFolderPath = stagingFolderPath;
+            project.stagingDir = stagingDir;
             fsExtra.ensureDirSync(project.rootDir);
             fsExtra.ensureDirSync(project.outDir);
-            fsExtra.ensureDirSync(project.stagingFolderPath);
+            fsExtra.ensureDirSync(project.stagingDir);
 
             fsExtra.writeFileSync(s`${project.rootDir}/manifest`, 'bs_const=b=true');
             project.files = [
                 'manifest'
             ];
             await project.stage();
-            expect(fsExtra.pathExistsSync(`${stagingFolderPath}/manifest`)).to.be.true;
+            expect(fsExtra.pathExistsSync(`${stagingDir}/manifest`)).to.be.true;
         });
     });
 
@@ -429,7 +443,7 @@ describe('Project', () => {
             let filePath = s`${folder}/main.${fileExt}`;
 
             fsExtra.writeFileSync(filePath, fileContents);
-            project.stagingFolderPath = folder;
+            project.stagingDir = folder;
             project.injectRaleTrackerTask = true;
             //these file contents don't actually matter
             project.raleTrackerTaskFileLocation = raleTrackerTaskFileLocation;
@@ -442,7 +456,7 @@ describe('Project', () => {
             fsExtra.ensureDirSync(tempPath);
             fsExtra.writeFileSync(`${tempPath}/RALE.xml`, 'test contents');
             await doTest(`sub main()\nend sub`, `sub main()\nend sub`);
-            expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/components/TrackerTask.xml`), 'TrackerTask.xml was not copied to staging').to.be.true;
+            expect(fsExtra.pathExistsSync(s`${project.stagingDir}/components/TrackerTask.xml`), 'TrackerTask.xml was not copied to staging').to.be.true;
         });
 
         it('works for inline comments brs files', async () => {
@@ -542,7 +556,7 @@ describe('Project', () => {
             let filePath = s`${folder}/main.${fileExt}`;
 
             fsExtra.writeFileSync(filePath, fileContents);
-            project.stagingFolderPath = folder;
+            project.stagingDir = folder;
             project.injectRdbOnDeviceComponent = injectRdbOnDeviceComponent;
             project.rdbFilesBasePath = rdbFilesBasePath;
             await project.copyAndTransformRDB();
@@ -553,8 +567,8 @@ describe('Project', () => {
         it('copies the RDB files', async () => {
             fsExtra.ensureDirSync(tempPath);
             await doTest(`sub main()\nend sub`, `sub main()\nend sub`);
-            expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/${sourceFileRelativePath}`), `${sourceFileRelativePath} was not copied to staging`).to.be.true;
-            expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/${componentsFileRelativePath}`), `${componentsFileRelativePath} was not copied to staging`).to.be.true;
+            expect(fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`), `${sourceFileRelativePath} was not copied to staging`).to.be.true;
+            expect(fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`), `${componentsFileRelativePath} was not copied to staging`).to.be.true;
         });
 
         it('works for inline comments brs files', async () => {
@@ -573,8 +587,8 @@ describe('Project', () => {
         //     let brsSample = `\nsub main()\n  screen.show\n  ' ${Project.RDB_ODC_ENTRY}\nend sub`;
         //     project.injectRdbOnDeviceComponent = false
         //     await doTest(brsSample, brsSample, 'brs', false);
-        //     expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/${sourceFileRelativePath}`), `${sourceFileRelativePath} should not have been copied to staging`).to.be.false;
-        //     expect(fsExtra.pathExistsSync(s`${project.stagingFolderPath}/${componentsFileRelativePath}`), `${componentsFileRelativePath} should not have been copied to staging`).to.be.false;
+        //     expect(fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`), `${sourceFileRelativePath} should not have been copied to staging`).to.be.false;
+        //     expect(fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`), `${componentsFileRelativePath} should not have been copied to staging`).to.be.false;
         // });
 
         it('works for in line comments in xml files', async () => {
@@ -634,6 +648,37 @@ describe('Project', () => {
             await doTest(xmlSample.replace('<ENTRY>', `sub init()\n            m.something = true\n             '        ${Project.RDB_ODC_ENTRY}      \n        end sub`), expectedXml, 'xml');
         });
     });
+
+
+    describe('zipPackage', () => {
+        it('excludes sourcemaps', async () => {
+            fsExtra.outputFileSync(`${project.stagingDir}/manifest`, '#stuff');
+            fsExtra.outputFileSync(`${project.stagingDir}/source/main.brs`, 'sub main() : end sub');
+            fsExtra.outputFileSync(`${project.stagingDir}/source/main.brs.map`, '{}');
+            await project.zipPackage({ retainStagingFolder: true });
+            const zipPath = path.join(
+                project.outDir,
+                fsExtra.readdirSync(project.outDir).find(x => x?.toLowerCase().endsWith('.zip'))
+            );
+
+            await decompress(zipPath, `${tempPath}/extracted`);
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/manifest`)).to.be.true;
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs`)).to.be.true;
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs.map`)).to.be.false;
+        });
+
+        it('uses "packagePath" when specified', async () => {
+            fsExtra.outputFileSync(`${project.stagingDir}/manifest`, '#stuff');
+            fsExtra.outputFileSync(`${project.stagingDir}/source/main.brs`, 'sub main() : end sub');
+            project.packagePath = s`${tempPath}/package/path.zip`;
+            await project.zipPackage({ retainStagingFolder: true });
+
+            await decompress(project.packagePath, `${tempPath}/extracted`);
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/manifest`)).to.be.true;
+            expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs`)).to.be.true;
+        });
+    });
+
 });
 
 describe('ComponentLibraryProject', () => {
@@ -646,7 +691,7 @@ describe('ComponentLibraryProject', () => {
             bsConst: { b: true },
             injectRaleTrackerTask: true,
             sourceDirs: [s`${tempPath}/source1`],
-            stagingFolderPath: s`${outDir}/complib1-staging`,
+            stagingDir: s`${outDir}/complib1-staging`,
             raleTrackerTaskFileLocation: 'z',
             libraryIndex: 0,
             outFile: 'PrettyComponent.zip'
@@ -662,9 +707,57 @@ describe('ComponentLibraryProject', () => {
         });
     });
 
+    describe('addPostFixToPath', () => {
+        it('adds postfix if path is 1) pkg:/ or 2) relative - no spaces in url', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, '');
+            fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="common:/LibCore/v30/bslCore.brs"/>
+                    <script type="text/brightscript" uri="CustomComponent.brs"/>
+                    <script type="text/brightscript" uri="pkg:/source/utils.brs"/>
+                </component>
+            `);
+            await project.postfixFiles();
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/components/Component1.xml`).toString()
+            ).to.eql(`
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="common:/LibCore/v30/bslCore.brs"/>
+                    <script type="text/brightscript" uri="CustomComponent__lib0.brs"/>
+                    <script type="text/brightscript" uri="pkg:/source/utils__lib0.brs"/>
+                </component>
+            `);
+        });
+
+        it('adds postfix if path is 1) pkg:/ or 2) relative - plus spaces in url', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, '');
+            fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri = "common:/LibCore/v30/bslCore.brs"/>
+                    <script type="text/brightscript" uri = "CustomComponent.brs"/>
+                    <script type="text/brightscript" uri = "pkg:/source/utils.brs"/>
+                </component>
+            `);
+            await project.postfixFiles();
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/components/Component1.xml`).toString()
+            ).to.eql(`
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri = "common:/LibCore/v30/bslCore.brs"/>
+                    <script type="text/brightscript" uri = "CustomComponent__lib0.brs"/>
+                    <script type="text/brightscript" uri = "pkg:/source/utils__lib0.brs"/>
+                </component>
+            `);
+        });
+    });
+
     describe('stage', () => {
-        it('computes stagingFolderPath before calling getFileMappings', async () => {
-            delete params.stagingFolderPath;
+        it('computes stagingDir before calling getFileMappings', async () => {
+            delete params.stagingDir;
             let project = new ComponentLibraryProject(params);
 
             sinon.stub(rokuDeploy, 'getFilePaths').returns(Promise.resolve([
@@ -672,6 +765,7 @@ describe('ComponentLibraryProject', () => {
                 { src: s`${rootDir}/source/main.brs`, dest: s`source/main.brs` }
             ]));
             sinon.stub(Project.prototype, 'stage').returns(Promise.resolve());
+            sinon.stub(util, 'convertManifestToObject').returns(Promise.resolve({}));
 
             await project.stage();
             expect(project.fileMappings[0]).to.eql({
@@ -694,7 +788,7 @@ describe('ComponentLibraryProject', () => {
                     files: [
                         { src: src, dest: 'manifest' }
                     ],
-                    stagingFolderPath: s`${outDir}/complib1-staging`,
+                    stagingDir: s`${outDir}/complib1-staging`,
                     libraryIndex: 0,
                     // eslint-disable-next-line no-template-curly-in-string
                     outFile: '${title}.zip'

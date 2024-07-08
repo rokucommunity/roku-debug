@@ -4,7 +4,8 @@ import { logger } from './logging';
 const Telnet = require('telnet-client');
 
 export class SceneGraphDebugCommandController {
-    constructor(public host: string) {
+    constructor(public host: string, port?: number) {
+        this.port = port ?? 8080;
     }
 
     private connection: typeof Telnet;
@@ -13,7 +14,7 @@ export class SceneGraphDebugCommandController {
     private echoLines = 0;
     public timeout = 5000;
     public execTimeout = 2000;
-    private port = 8080;
+    private port;
     private maxBufferLength = 5242880;
 
     private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);
@@ -222,6 +223,15 @@ export class SceneGraphDebugCommandController {
     public async type(text: string): Promise<SceneGraphCommandResponse> {
         // Add 1 second per character to the max execution timeout because roku is really slow......
         return this.exec(`type ${text}`, { execTimeout: this.execTimeout + (text.length * 1000) });
+    }
+
+
+    /**
+     * Changes the number of brightscript warnings displayed on application install.
+     * @param warningLimit maximum number of warnings to show
+     */
+    public async brightscriptWarnings(warningLimit: number): Promise<SceneGraphCommandResponse> {
+        return this.exec(`brightscript_warnings ${warningLimit ?? 100}`);
     }
 
 

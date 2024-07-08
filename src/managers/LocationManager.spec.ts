@@ -17,8 +17,7 @@ const sourceDirs = [
 describe('LocationManager', () => {
     let locationManager: LocationManager;
     let sourceMapManager: SourceMapManager;
-    // eslint-disable-next-line prefer-arrow-callback
-    beforeEach(function beforeEach() {
+    beforeEach(() => {
         sourceMapManager = new SourceMapManager();
         locationManager = new LocationManager(sourceMapManager);
         fsExtra.removeSync(tempDir);
@@ -53,7 +52,7 @@ describe('LocationManager', () => {
 
             let location = await locationManager.getSourceLocation({
                 stagingFilePath: stagingFilePath,
-                stagingFolderPath: stagingDir,
+                stagingDir: stagingDir,
                 fileMappings: [],
                 rootDir: rootDir,
                 lineNumber: 1,
@@ -77,7 +76,7 @@ describe('LocationManager', () => {
 
                 let location = await locationManager.getSourceLocation({
                     stagingFilePath: s`${stagingDir}/lib1.brs`,
-                    stagingFolderPath: stagingDir,
+                    stagingDir: stagingDir,
                     fileMappings: [{
                         src: s`${rootDir}/lib1.brs`,
                         dest: s`${stagingDir}/lib1.brs`
@@ -117,7 +116,7 @@ describe('LocationManager', () => {
 
                 let location = await locationManager.getSourceLocation({
                     stagingFilePath: stagingFilePath,
-                    stagingFolderPath: stagingDir,
+                    stagingDir: stagingDir,
                     fileMappings: [],
                     rootDir: rootDir,
                     lineNumber: 3,
@@ -143,7 +142,7 @@ describe('LocationManager', () => {
 
                 let location = await locationManager.getSourceLocation({
                     stagingFilePath: s`${stagingDir}/lib1.brs`,
-                    stagingFolderPath: stagingDir,
+                    stagingDir: stagingDir,
                     fileMappings: [{
                         src: s`${sourceDirs[0]}/lib1.brs`,
                         dest: '/lib1.brs'
@@ -170,7 +169,7 @@ describe('LocationManager', () => {
 
                 let location = await locationManager.getSourceLocation({
                     stagingFilePath: s`${stagingDir}/lib1.brs`,
-                    stagingFolderPath: stagingDir,
+                    stagingDir: stagingDir,
                     fileMappings: [{
                         src: s`${sourceDirs[1]}/lib1.brs`,
                         dest: '/lib1.brs'
@@ -196,7 +195,7 @@ describe('LocationManager', () => {
 
                 let location = await locationManager.getSourceLocation({
                     stagingFilePath: s`${stagingDir}/lib1.brs`,
-                    stagingFolderPath: stagingDir,
+                    stagingDir: stagingDir,
                     fileMappings: [{
                         src: s`${sourceDirs[2]}/lib1.brs`,
                         dest: '/lib1.brs'

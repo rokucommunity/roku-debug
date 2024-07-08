@@ -18,7 +18,7 @@ export class LocationManager {
      */
     public async getSourceLocation(options: GetSourceLocationOptions): Promise<SourceLocation> {
         let rootDir = s`${options.rootDir}`;
-        let stagingFolderPath = s`${options.stagingFolderPath}`;
+        let stagingDir = s`${options.stagingDir}`;
         let currentFilePath = s`${options.stagingFilePath}`;
         let sourceDirs = options.sourceDirs ? options.sourceDirs.map(x => s`${x}`) : [];
         //throw out any sourceDirs pointing the rootDir
@@ -62,7 +62,7 @@ export class LocationManager {
         //if we have sourceDirs, rootDir is the project's OUTPUT folder, so skip looking for files there, and
         //instead walk backwards through sourceDirs until we find the file we want
         if (sourceDirs.length > 0) {
-            let relativeFilePath = fileUtils.getRelativePath(stagingFolderPath, currentFilePath);
+            let relativeFilePath = fileUtils.getRelativePath(stagingDir, currentFilePath);
             let sourceDirsFilePath = await fileUtils.findFirstRelativeFile(relativeFilePath, sourceDirs);
             //if we found a file in one of the sourceDirs, use that
             if (sourceDirsFilePath) {
@@ -104,18 +104,18 @@ export class LocationManager {
         sourceLineNumber: number,
         sourceColumnIndex: number,
         sourceDirs: string[],
-        stagingFolderPath: string,
+        stagingDir: string,
         fileMappings: Array<{ src: string; dest: string }>
     ): Promise<{ type: 'fileMap' | 'sourceDirs' | 'sourceMap'; locations: SourceLocation[] }> {
 
         sourceFilePath = s`${sourceFilePath}`;
         sourceDirs = sourceDirs.map(x => s`${x}`);
-        stagingFolderPath = s`${stagingFolderPath}`;
+        stagingDir = s`${stagingDir}`;
 
         //look through the sourcemaps in the staging folder for any instances of this source location
         let locations = await this.sourceMapManager.getGeneratedLocations(
             await fastGlob('**/*.map', {
-                cwd: stagingFolderPath,
+                cwd: stagingDir,
                 absolute: true
             }),
             {
@@ -141,7 +141,7 @@ export class LocationManager {
         let parentFolderPath = fileUtils.findFirstParent(sourceFilePath, sourceDirs);
         if (parentFolderPath) {
             let relativeFilePath = fileUtils.replaceCaseInsensitive(sourceFilePath, parentFolderPath, '');
-            let stagingFilePathAbsolute = path.join(stagingFolderPath, relativeFilePath);
+            let stagingFilePathAbsolute = path.join(stagingDir, relativeFilePath);
             return {
                 type: 'sourceDirs',
                 locations: [{
@@ -154,7 +154,7 @@ export class LocationManager {
 
         //look through the files array to see if there are any mappings that reference this file.
         //both `src` and `dest` are assumed to already be standardized
-        for (let fileMapping of fileMappings) {
+        for (let fileMapping of fileMappings ?? []) {
             if (fileMapping.src === sourceFilePath) {
                 return {
                     type: 'fileMap',
@@ -180,7 +180,7 @@ export interface GetSourceLocationOptions {
     /**
      * The absolute path to the staging folder
      */
-    stagingFolderPath: string;
+    stagingDir: string;
 
     /**
      * The absolute path to the file in the staging folder

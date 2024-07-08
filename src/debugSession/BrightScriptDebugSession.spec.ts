@@ -1,39 +1,45 @@
 import { expect } from 'chai';
 import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
-import { standardizePath as s } from 'brighterscript';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from 'vscode-debugprotocol/lib/debugProtocol';
 import { DebugSession } from 'vscode-debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
-import type { EvaluateContainer } from '../adapters/TelnetAdapter';
-import { PrimativeType } from '../adapters/TelnetAdapter';
-import { defer } from '../util';
+import type { EvaluateContainer, StackFrame } from '../adapters/TelnetAdapter';
+import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';
+import { defer, util } from '../util';
 import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
+import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brighterscript';
+import { DefaultFiles, rokuDeploy } from 'roku-deploy';
+import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
+import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
+import { RendezvousTracker } from '../RendezvousTracker';
+import { ClientToServerCustomEventName, isCustomRequestEvent } from './Events';
+import { EventEmitter } from 'eventemitter3';
 
 const sinon = sinonActual.createSandbox();
-const tempDir = s`${__dirname}/../.tmp`;
-const cwd = fileUtils.standardizePath(process.cwd());
-const outDir = fileUtils.standardizePath(`${cwd}/outDir`);
-const stagingFolderPath = fileUtils.standardizePath(`${outDir}/stagingDir`);
+const tempDir = s`${__dirname}/../../.tmp`;
 const rootDir = s`${tempDir}/rootDir`;
+const outDir = s`${tempDir}/outDir`;
+const stagingDir = s`${outDir}/stagingDir`;
+const complib1Dir = s`${tempDir}/complib1`;
 
 describe('BrightScriptDebugSession', () => {
     let responseDeferreds = [];
     let responses = [];
 
     beforeEach(() => {
-        fsExtra.emptydirSync(rootDir);
-        fsExtra.emptydirSync(stagingFolderPath);
-        fsExtra.emptydirSync(outDir);
+        fsExtra.emptyDirSync(rootDir);
+        fsExtra.emptyDirSync(stagingDir);
+        fsExtra.emptyDirSync(outDir);
     });
 
     afterEach(() => {
-        fsExtra.emptydirSync(tempDir);
+        fsExtra.emptyDirSync(tempDir);
         sinon.restore();
     });
 
@@ -42,31 +48,38 @@ describe('BrightScriptDebugSession', () => {
     let launchConfiguration: LaunchConfiguration;
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
-    let rokuAdapter: any = {
-        on: () => {
-            return () => {
-            };
-        },
-        activate: () => Promise.resolve(),
-        registerSourceLocator: (a, b) => { },
-        setConsoleOutput: (a) => { }
-    };
+    let rokuAdapter: TelnetAdapter;
+    let errorSpy: sinon.SinonSpy;
+
     beforeEach(() => {
+        fsExtra.emptydirSync(tempDir);
         sinon.restore();
+
+        //prevent calling DebugSession.shutdown() because that calls process.kill(), which would kill the test session
+        sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
 
         try {
             session = new BrightScriptDebugSession();
         } catch (e) {
             console.log(e);
         }
+        errorSpy = sinon.spy(session.logger, 'error');
         //override the error response function and throw an exception so we can fail any tests
         (session as any).sendErrorResponse = (...args: string[]) => {
             throw new Error(args[2]);
         };
-        launchConfiguration = {} as any;
+        launchConfiguration = {
+            rootDir: rootDir,
+            outDir: outDir,
+            stagingDir: stagingDir,
+            files: DefaultFiles
+        } as any;
         session['launchConfiguration'] = launchConfiguration;
+        session.projectManager.launchConfiguration = launchConfiguration;
+        session.breakpointManager.launchConfiguration = launchConfiguration;
         initRequestArgs = {} as any;
         session['initRequestArgs'] = initRequestArgs;
+
         //mock the rokuDeploy module with promises so we can have predictable tests
         session.rokuDeploy = <any>{
             prepublishToStaging: () => {
@@ -93,19 +106,25 @@ describe('BrightScriptDebugSession', () => {
             }
         };
         rokuAdapter = {
-            on: () => {
-                return () => {
-                };
-            },
+            emitter: new EventEmitter(),
+            on: TelnetAdapter.prototype.on,
+            once: TelnetAdapter.prototype.once,
+            emit: TelnetAdapter.prototype['emit'],
             activate: () => Promise.resolve(),
             registerSourceLocator: (a, b) => { },
             setConsoleOutput: (a) => { },
             evaluate: () => { },
-            getVariable: () => { }
-        };
-        (session as any).rokuAdapter = rokuAdapter;
+            syncBreakpoints: () => { },
+            getVariable: () => { },
+            getScopeVariables: (a) => { },
+            getThreads: () => {
+                return [];
+            },
+            getStackTrace: () => { }
+        } as any;
+        session['rokuAdapter'] = rokuAdapter;
         //mock the roku adapter
-        (session as any).connectRokuAdapter = () => {
+        session['connectRokuAdapter'] = () => {
             return Promise.resolve(rokuAdapter);
         };
 
@@ -127,6 +146,299 @@ describe('BrightScriptDebugSession', () => {
                     filteredList.push(deferred);
                 }
             }
+        });
+    });
+
+    afterEach(() => {
+        fsExtra.emptydirSync(tempDir);
+        fsExtra.removeSync(outDir);
+        sinon.restore();
+    });
+
+    it('supports external zipping process', async () => {
+        //write some project files
+        fsExtra.outputFileSync(`${rootDir}/source/main.brs`, `
+            sub main()
+                print "hello"
+            end sub
+        `);
+        fsExtra.outputFileSync(`${rootDir}/manifest`, '');
+
+        const packagePath = s`${tempDir}/custom/app.zip`;
+
+        //init the session
+        session.initializeRequest({} as any, {} as any);
+
+        //set a breakpoint in main
+        await session.setBreakPointsRequest({} as any, {
+            source: {
+                path: s`${rootDir}/source/main.brs`
+            },
+            breakpoints: [{
+                line: 2
+            }]
+        });
+
+        sinon.stub(rokuDeploy, 'getDeviceInfo').returns(Promise.resolve({
+            developerEnabled: true
+        }));
+        sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+
+        let sendEvent = session.sendEvent.bind(session);
+        sinon.stub(session, 'sendEvent').callsFake((event) => {
+            if (isCustomRequestEvent(event)) {
+                void rokuDeploy.zipFolder(session['launchConfiguration'].stagingDir, packagePath).then(() => {
+                    //pretend we are the client and send a response back
+                    session.emit(ClientToServerCustomEventName.customRequestEventResponse, {
+                        requestId: event.body.requestId
+                    });
+                });
+            } else {
+                //call through
+                return sendEvent(event);
+            }
+        });
+        sinon.stub(session as any, 'connectRokuAdapter').callsFake(() => {
+            sinon.stub(session['rokuAdapter'], 'connect').returns(Promise.resolve());
+            session['rokuAdapter'].connected = true;
+            return Promise.resolve(session['rokuAdapter']);
+        });
+
+        const publishStub = sinon.stub(session.rokuDeploy, 'publish').callsFake(() => {
+            //emit the app-ready event
+            (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
+
+            return Promise.resolve({
+                message: 'success',
+                results: []
+            });
+        });
+
+        await session.launchRequest({} as any, {
+            cwd: tempDir,
+            //where the source files reside
+            rootDir: rootDir,
+            //where roku-debug should put the staged files (and inject breakpoints)
+            stagingDir: `${stagingDir}/staging`,
+            //the name of the task that should be run to create the zip (doesn't matter for this test...we're going to intercept it anyway)
+            packageTask: 'custom-build',
+            //where the packageTask will be placing the compiled zip
+            packagePath: packagePath,
+            packageUploadOverrides: {
+                route: '1234',
+                formData: {
+                    one: 'two',
+                    three: null
+                }
+            }
+        } as Partial<LaunchConfiguration> as LaunchConfiguration);
+
+        expect(publishStub.getCall(0).args[0].packageUploadOverrides).to.eql({
+            route: '1234',
+            formData: {
+                one: 'two',
+                three: null
+            }
+        });
+    });
+
+    describe('evaluateRequest', () => {
+        it('resets local var counter on suspend', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
+            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+            sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
+                return Promise.resolve({
+                    evaluateName: x,
+                    highLevelType: 'primative',
+                    value: '1'
+                } as EvaluateContainer);
+            });
+            rokuAdapter.isAtDebuggerPrompt = true;
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '1+2', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '2+3', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(0).firstArg).to.eql(`${session.tempVarPrefix}eval = []`);
+            expect(stub.getCall(1).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 1+2`);
+            expect(stub.getCall(2).firstArg).to.eql(`${session.tempVarPrefix}eval[1] = 2+3`);
+            await session['onSuspend']();
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '3+4', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(3).firstArg).to.eql(`${session.tempVarPrefix}eval = []`);
+            expect(stub.getCall(4).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 3+4`);
+        });
+
+        it('can assign to a variable', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
+            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+            sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
+                return Promise.resolve({
+                    evaluateName: x,
+                    highLevelType: 'primative',
+                    value: '1'
+                } as EvaluateContainer);
+            });
+            rokuAdapter.isAtDebuggerPrompt = true;
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: 'testVar = "foo"', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(0).firstArg).to.eql('testVar = "foo"');
+        });
+
+        it('handels evaluating expressions on different threads', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
+            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+            sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
+                return Promise.resolve({
+                    evaluateName: x,
+                    highLevelType: 'primative',
+                    value: '1'
+                } as EvaluateContainer);
+            });
+            rokuAdapter.isAtDebuggerPrompt = true;
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '1+2', frameId: 1 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(0).firstArg).to.eql(`${session.tempVarPrefix}eval = []`);
+            expect(stub.getCall(1).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 1+2`);
+            await session.evaluateRequest(
+                {} as DebugProtocol.EvaluateResponse,
+                { context: 'repl', expression: '2+3', frameId: 2 } as DebugProtocol.EvaluateArguments
+            );
+            expect(stub.getCall(2).firstArg).to.eql(`${session.tempVarPrefix}eval = []`);
+            expect(stub.getCall(3).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 2+3`);
+        });
+    });
+
+    describe('variablesRequest', () => {
+        it('hides debug local variables', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
+            sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+            sinon.stub(rokuAdapter, 'getScopeVariables').callsFake(() => {
+                return Promise.resolve(['m', 'top', `${session.tempVarPrefix}eval`]);
+            });
+            sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
+                return Promise.resolve(
+                    {
+                        name: x,
+                        highLevelType: 'primative',
+                        value: '1'
+                    } as EvaluateContainer);
+            });
+
+            let response: DebugProtocol.VariablesResponse = {
+                body: {
+                    variables: []
+                },
+                request_seq: 0,
+                success: false,
+                command: '',
+                seq: 0,
+                type: ''
+            };
+
+            rokuAdapter.isAtDebuggerPrompt = true;
+            session['launchConfiguration'].enableVariablesPanel = true;
+            session['dispatchRequest']({ command: 'scopes', arguments: { frameId: 0 }, type: 'request', seq: 8 });
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1000, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+
+            expect(
+                response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
+            ).to.not.exist;
+
+            session['launchConfiguration'].showHiddenVariables = true;
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1000, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+            expect(
+                response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
+            ).to.exist;
+        });
+
+        it('hides debug children variables', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
+            sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+                return Promise.resolve({ type: 'message', message: '' });
+            });
+
+            rokuAdapter.isAtDebuggerPrompt = true;
+
+            let response: DebugProtocol.VariablesResponse = {
+                body: {
+                    variables: []
+                },
+                request_seq: 0,
+                success: false,
+                command: '',
+                seq: 0,
+                type: ''
+            };
+            //Set the this.variables
+            session['variables'][1001] = {
+                name: 'm',
+                value: 'roAssociativeArray',
+                variablesReference: 1,
+                childVariables: [
+                    {
+                        name: '__rokudebug__eval',
+                        value: 'true',
+                        variablesReference: 0
+                    },
+                    {
+                        name: 'top',
+                        value: 'roSGNode:GetSubReddit',
+                        variablesReference: 3
+                    },
+                    {
+                        name: '[[count]]',
+                        value: '3',
+                        variablesReference: 0
+                    }
+                ]
+            };
+
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1001, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+
+            expect(
+                response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
+            ).to.not.exist;
+
+            session['launchConfiguration'].showHiddenVariables = true;
+            await session.variablesRequest(
+                response,
+                { variablesReference: 1001, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+            );
+            expect(
+                response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
+            ).to.exist;
         });
     });
 
@@ -171,6 +483,8 @@ describe('BrightScriptDebugSession', () => {
         }
 
         it('returns the correct boolean variable', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             let expression = 'someBool';
             getVariableValue = getBooleanEvaluateContainer(expression);
             //adapter has to be at prompt for evaluates to work
@@ -188,6 +502,8 @@ describe('BrightScriptDebugSession', () => {
 
         //this fails on TravisCI for some reason. TODO - fix this
         it('returns the correct indexed variables count', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             let expression = 'someArray';
             getVariableValue = <EvaluateContainer>{
                 name: expression,
@@ -212,6 +528,8 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('returns the correct named variables count', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             let expression = 'someObject';
             getVariableValue = <EvaluateContainer>{
                 name: expression,
@@ -349,9 +667,36 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('initRendezvousTracking', () => {
+        it('clears history when disabled', async () => {
+            const stub = sinon.stub(session, 'sendEvent');
+            const activateStub = sinon.stub(RendezvousTracker.prototype, 'activate');
+            const clearHistoryStub = sinon.stub(RendezvousTracker.prototype, 'clearHistory');
+
+            session['launchConfiguration'].rendezvousTracking = false;
+
+            await session['initRendezvousTracking']();
+            expect(clearHistoryStub.called).to.be.true;
+            expect(activateStub.called).to.be.false;
+        });
+
+        it('activates when not disabled', async () => {
+            const stub = sinon.stub(session, 'sendEvent');
+            const activateStub = sinon.stub(RendezvousTracker.prototype, 'activate');
+            const clearHistoryStub = sinon.stub(RendezvousTracker.prototype, 'clearHistory');
+
+            session['launchConfiguration'].rendezvousTracking = undefined;
+
+            await session['initRendezvousTracking']();
+            expect(clearHistoryStub.called).to.be.true;
+            expect(activateStub.called).to.be.true;
+
+        });
+    });
+
     describe('setBreakPointsRequest', () => {
         let response;
-        let args;
+        let args: DebugProtocol.SetBreakpointsArguments;
         beforeEach(() => {
             response = undefined;
             //intercept the sent response
@@ -361,31 +706,35 @@ describe('BrightScriptDebugSession', () => {
 
             args = {
                 source: {
-                    path: path.normalize(`${rootDir}/dest/some/file.brs`)
+                    path: s`${rootDir}/dest/some/file.brs`
                 },
                 breakpoints: []
             };
         });
 
-        it('returns correct results', () => {
+        it('returns correct results', async () => {
+            args.source.path = s`${rootDir}/source/main.brs`;
+
+            fsExtra.outputFileSync(s`${rootDir}/manifest`, '');
+            fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, 'sub main()\nend sub');
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints[0]).to.deep.include({
                 line: 1,
-                verified: true
+                verified: false
             });
 
-            //mark debugger as 'launched' which should change the behavior of breakpoints.
-            session.breakpointManager.lockBreakpoints();
+            //simulate "launch"
+            await session.prepareMainProject();
 
-            //remove the breakpoint breakpoint (it should not remove the breakpoint because it was already verified)
+            //remove the breakpoint
             args.breakpoints = [];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //add breakpoint during live debug session. one was there before, the other is new. Only one will be verified
+            //add breakpoint during live debug session. one was there before, the other is new. Neither will be verified right now
             args.breakpoints = [{ line: 1 }, { line: 2 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(
                 response.body.breakpoints.map(x => ({ line: x.line, verified: x.verified }))
             ).to.eql([{
@@ -397,18 +746,21 @@ describe('BrightScriptDebugSession', () => {
             }]);
         });
 
-        it('supports breakpoints within xml files', () => {
+        it('supports breakpoints within xml files', async () => {
             args.source.path = `${rootDir}/some/xml-file.xml`;
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
-            //breakpoint should be disabled
-            expect(response.body.breakpoints[0]).to.deep.include({ line: 1, verified: true });
+            await session.setBreakPointsRequest(<any>{}, args);
+            //breakpoint should be unverified by default
+            expect(response.body.breakpoints[0]).to.deep.include({
+                line: 1,
+                verified: false
+            });
         });
 
-        it('handles breakpoints for non-brightscript files', () => {
+        it('handles breakpoints for non-brightscript files', async () => {
             args.source.path = `${rootDir}/some/xml-file.jpg`;
             args.breakpoints = [{ line: 1 }];
-            session.setBreakPointsRequest(<any>{}, args);
+            await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(1);
             //breakpoint should be disabled
             expect(response.body.breakpoints[0]).to.deep.include({ line: 1, verified: false });
@@ -419,12 +771,12 @@ describe('BrightScriptDebugSession', () => {
         it('registers the entry breakpoint when stopOnEntry is enabled', async () => {
             (session as any).launchConfiguration = { stopOnEntry: true };
             session.projectManager.mainProject = <any>{
-                stagingFolderPath: stagingFolderPath
+                stagingDir: stagingDir
             };
             let stub = sinon.stub(session.projectManager, 'registerEntryBreakpoint').returns(Promise.resolve());
             await session.handleEntryBreakpoint();
             expect(stub.called).to.be.true;
-            expect(stub.args[0][0]).to.equal(stagingFolderPath);
+            expect(stub.args[0][0]).to.equal(stagingDir);
         });
         it('does NOT register the entry breakpoint when stopOnEntry is enabled', async () => {
             (session as any).launchConfiguration = { stopOnEntry: false };
@@ -435,26 +787,55 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('shutdown', () => {
-        it('erases all staging folders when configured to do so', () => {
+        it('erases all staging folders when configured to do so', async () => {
             let stub = sinon.stub(fsExtra, 'removeSync').returns(null);
             session.projectManager.mainProject = <any>{
-                stagingFolderPath: 'stagingPathA'
+                stagingDir: 'stagingPathA'
             };
             session.projectManager.componentLibraryProjects.push(<any>{
-                stagingFolderPath: 'stagingPathB'
+                stagingDir: 'stagingPathB'
             });
             (session as any).launchConfiguration = {
                 retainStagingFolder: false
             };
-            //stub the super shutdown call so it doesn't kill the test session
-            sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
 
-            session.shutdown();
+            await session.shutdown();
             expect(stub.callCount).to.equal(2);
             expect(stub.args.map(x => x[0])).to.eql([
                 'stagingPathA',
                 'stagingPathB'
             ]);
+        });
+    });
+
+    describe('handleDiagnostics', () => {
+        it('finds source location for file-only path', async () => {
+            session['rokuAdapter'] = { destroy: () => { } } as any;
+            session.projectManager.mainProject = new Project({
+                rootDir: rootDir,
+                outDir: stagingDir
+            } as Partial<AddProjectParams> as any);
+            session.projectManager['mainProject'].fileMappings = [];
+
+            fsExtra.outputFileSync(`${stagingDir}/.roku-deploy-staging/components/SomeComponent.xml`, '');
+            fsExtra.outputFileSync(`${rootDir}/components/SomeComponent.xml`, '');
+
+            const stub = sinon.stub(session, 'sendEvent').callsFake(() => { });
+            await session['handleDiagnostics']([{
+                message: 'Crash',
+                path: 'SomeComponent.xml',
+                range: bscUtil.createRange(1, 2, 3, 4),
+                severity: DiagnosticSeverity.Warning
+            }]);
+            expect(stub.getCall(0).args[0]?.body).to.eql({
+                diagnostics: [{
+                    message: 'Crash',
+                    path: s`${stagingDir}/.roku-deploy-staging/components/SomeComponent.xml`,
+                    range: bscUtil.createRange(1, 2, 1, 4),
+                    severity: DiagnosticSeverity.Warning,
+                    source: 'roku-debug'
+                }]
+            });
         });
     });
 
@@ -469,13 +850,15 @@ describe('BrightScriptDebugSession', () => {
         } as EvaluateContainer;
 
         beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             rokuAdapter.isAtDebuggerPrompt = true;
             evalStub = sinon.stub(rokuAdapter, 'evaluate').callsFake((args) => {
                 console.log('called with', args);
-                return {
+                return Promise.resolve({
                     message: undefined,
                     type: 'message'
-                };
+                });
             });
             getVarStub = sinon.stub(rokuAdapter, 'getVariable').callsFake(() => {
                 return Promise.resolve(getVarValue);
@@ -493,15 +876,15 @@ describe('BrightScriptDebugSession', () => {
 
         it('ensures closing quote for hover', async () => {
             initRequestArgs.supportsInvalidatedEvent = true;
-            await expectResponse({
+            const result = await session.evaluateRequest({} as any, {
+                frameId: frameId,
                 expression: `"Billy`,
                 context: 'hover'
-            }, {
-                result: 'invalid',
-                variablesReference: 0
             });
             console.log('checking calls');
-            expect(evalStub.getCall(0)?.args[0]).equal('"Billy"');
+            expect(
+                evalStub.getCalls().find(x => x.args.find(x => x?.toString().includes('"Billy"')))
+            ).to.exist;
         });
 
         it('skips when not at debugger prompt', async () => {
@@ -551,6 +934,42 @@ describe('BrightScriptDebugSession', () => {
             expect(session['variables']).to.be.empty;
         });
 
+        describe('stackTraceRequest', () => {
+            it('gracefully handles missing files', async () => {
+                session.projectManager.mainProject = new Project({
+                    rootDir: rootDir,
+                    outDir: stagingDir
+                } as Partial<AddProjectParams> as any);
+                session.projectManager['mainProject'].fileMappings = [];
+
+                session.projectManager.componentLibraryProjects.push(
+                    new ComponentLibraryProject({
+                        rootDir: complib1Dir,
+                        stagingDir: stagingDir,
+                        outDir: outDir,
+                        libraryIndex: 1
+                    } as Partial<ComponentLibraryConstructorParams> as any)
+                );
+                session.projectManager['componentLibraryProjects'][0].fileMappings = [];
+
+                sinon.stub(rokuAdapter, 'getStackTrace').returns(Promise.resolve([{
+                    filePath: 'customComplib:/source/lib/AdManager__lib1.brs',
+                    lineNumber: 500,
+                    functionIdentifier: 'doSomething'
+                }, {
+                    filePath: 'roku_ads_lib:/libsource/Roku_Ads.brs',
+                    lineNumber: 400,
+                    functionIdentifier: 'roku_ads__showads'
+                }, {
+                    filePath: 'pkg:/source/main.brs',
+                    lineNumber: 10,
+                    functionIdentifier: 'main'
+                }] as StackFrame[]));
+                await session['stackTraceRequest']({} as any, { threadId: 1 });
+                expect(errorSpy.getCalls()[0]?.args ?? []).to.eql([]);
+            });
+        });
+
         describe('repl', () => {
             it('calls eval for print statement', async () => {
                 await expectResponse({
@@ -577,7 +996,5 @@ describe('BrightScriptDebugSession', () => {
                 expect(getVarStub.calledWith('person.name', frameId, true));
             });
         });
-
     });
-
 });

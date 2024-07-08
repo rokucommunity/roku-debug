@@ -1,14 +1,12 @@
-
-//export everything we need
 export * from './managers/BreakpointManager';
 export * from './LaunchConfiguration';
-export * from './debugProtocol/Debugger';
+export * from './debugProtocol/client/DebugProtocolClient';
 export * from './debugSession/BrightScriptDebugSession';
+export * from './debugSession/Events';
 export * from './ComponentLibraryServer';
 export * from './CompileErrorProcessor';
 export * from './debugProtocol/Constants';
-export * from './debugProtocol/Debugger';
-export * from './debugProtocol/responses';
+export * from './debugProtocol/client/DebugProtocolClient';
 export * from './FileUtils';
 export * from './managers/ProjectManager';
 export * from './RendezvousTracker';

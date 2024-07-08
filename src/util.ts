@@ -2,16 +2,18 @@ import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as net from 'net';
 import * as url from 'url';
-import type { SmartBuffer } from 'smart-buffer';
+import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
-import { DiagnosticSeverity, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
-import type { BrightScriptDebugCompileError } from './CompileErrorProcessor';
-import { GENERAL_XML_ERROR } from './CompileErrorProcessor';
+import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
 import type { AdapterOptions } from './interfaces';
+import * as r from 'postman-request';
+import type { Response } from 'request';
+import type * as requestType from 'request';
+const request = r as typeof requestType;
 
 class Util {
     /**
@@ -66,7 +68,7 @@ class Util {
      * @param filePath
      */
     public getFileScheme(filePath: string): string | null {
-        return url.parse(filePath).protocol;
+        return /^([\w_-]+:)/.exec(filePath)?.[1]?.toLowerCase();
     }
 
     /**
@@ -92,6 +94,8 @@ class Util {
                 let match = /(\w+)=(.+)/.exec(line);
                 if (match) {
                     manifestValues[match[1]] = match[2];
+                    //add match in all lower case too (for consistency)
+                    manifestValues[match[1]?.toLowerCase()] = match[2];
                 }
             }
 
@@ -118,27 +122,6 @@ class Util {
                 }).close())
                 .listen(port);
         });
-    }
-
-    /**
-     * Tries to read a string from the buffer and will throw an error if there is no null terminator.
-     * @param {SmartBuffer} bufferReader
-     */
-    public readStringNT(bufferReader: SmartBuffer): string {
-        // Find next null character (if one is not found, throw)
-        let buffer = bufferReader.toBuffer();
-        let foundNullTerminator = false;
-        for (let i = bufferReader.readOffset; i < buffer.length; i++) {
-            if (buffer[i] === 0x00) {
-                foundNullTerminator = true;
-                break;
-            }
-        }
-
-        if (!foundNullTerminator) {
-            throw new Error('Could not read buffer string as there is no null terminator.');
-        }
-        return bufferReader.readStringNT();
     }
 
     /**
@@ -194,8 +177,7 @@ class Util {
         const regexp = /^((.*?)Brightscript\s+Debugger>\s*)(.*?)$/gm;
         let match: RegExpExecArray;
         const splitIndexes = [] as number[];
-        // eslint-disable-next-line no-cond-assign
-        while (match = regexp.exec(text)) {
+        while ((match = regexp.exec(text))) {
             const leadingAndBeaconText = match[1];
             const leadingText = match[2];
             const trailingText = match[3];
@@ -252,23 +234,6 @@ class Util {
         }
     }
 
-    public filterGenericErrors(errors: BrightScriptDebugCompileError[]) {
-        const specificErrors: Record<string, BrightScriptDebugCompileError> = {};
-
-        //ignore generic errors when a specific error exists
-        return errors.filter(e => {
-            const path = e.path.toLowerCase();
-            if (e.message === GENERAL_XML_ERROR) {
-                if (specificErrors[path]) {
-                    return false;
-                }
-            } else {
-                specificErrors[path] = e;
-            }
-            return true;
-        });
-    }
-
     /**
      * Removes the trailing `Brightscript Debugger>` prompt if present. If not present, returns original value
      * @param value
@@ -282,6 +247,33 @@ class Util {
         }
     }
 
+    /**
+     * Check if the parameter is an expression
+     * The HACK portion is copied from the getVariablePath function
+     * @param expression
+     */
+    public isAssignableExpression(expression: string): boolean {
+        let parser = Parser.parse(expression);
+        if (
+            isAssignmentStatement(parser.ast.statements[0]) ||
+            isDottedSetStatement(parser.ast.statements[0]) ||
+            isIndexedSetStatement(parser.ast.statements[0])
+        ) {
+            return false;
+        }
+        //HACK: assign to a variable so it turns into a valid expression, then we'll look at the right-hand-side
+        parser = Parser.parse(`__rokuDebugVar = ${expression}`);
+        if (
+            //quit if there are parse errors
+            parser.diagnostics.find(x => x.severity === DiagnosticSeverity.Error) ||
+            //quit if there are zero statements or more than one statement
+            parser.ast.statements.length !== 1
+        ) {
+            return false;
+        }
+        let value = (parser.ast.statements[0] as AssignmentStatement).value;
+        return value instanceof Expression;
+    }
     /**
      * Get the keys for a given variable expression, or undefined if the expression doesn't make sense.
      */
@@ -304,13 +296,18 @@ class Util {
                 parts.unshift(value.name.text);
                 return parts;
             } else if (isDottedGetExpression(value)) {
+                if (value.dot.text.includes('?')) {
+                    return;
+                }
                 parts.unshift(value.name.text);
                 value = value.obj;
             } else if (isIndexedGetExpression(value)) {
+                if (value.questionDotToken?.text.includes('?') || value.openingSquare?.text.includes('?')) {
+                    return;
+                }
                 if (isLiteralExpression(value.index)) {
                     parts.unshift(
-                        //remove leading and trailing quotes (won't hurt for numeric literals)
-                        value.index.token.text?.replace(/^"/, '').replace(/"$/, '')
+                        value.index.token.text
                     );
                 } else {
                     //if we found a non-literal value, this entire variable path is NOT a true variable path
@@ -322,6 +319,19 @@ class Util {
                 return;
             }
         }
+    }
+
+    /**
+     * Given a full URL, convert any dns name into its IP address and then return the full URL with the name replaced
+     */
+    public async resolveUrl(url: string, skipCache = false) {
+        //https://regex101.com/r/cSkoTx/1
+        const [, protocol, host] = /^((?:http[s]?|ftp):\/\/)?([^:\/\s]+)(:\d+)?([^?#]+)?(\?[^#]+)?(#.*)?$/.exec(url) ?? [];
+        if (host) {
+            const ipAddress = await this.dnsLookup(host);
+            url = protocol + ipAddress + url.substring(protocol.length + host.length);
+        }
+        return url;
     }
 
     /*
@@ -387,6 +397,79 @@ class Util {
         options.brightScriptConsolePort ??= 8085;
         options.remotePort ??= 8060;
     }
+
+    /**
+     * Set an interval that can be cleared by calling the callback
+     * @param intervalMs the number of milliseconds to wait for the next interval
+     */
+    public setInterval(callback: (cancel: () => void) => any, intervalMs: number) {
+        const cancel = () => {
+            clearInterval(handle);
+        };
+        const handle = setInterval(() => {
+            callback(cancel);
+        }, intervalMs);
+
+        //call immediately
+        callback(cancel);
+
+        return cancel;
+    }
+
+    public isNullish(item: any) {
+        return item === undefined || item === null;
+    }
+
+    /**
+     * Do an http GET request
+     */
+    public httpGet(url: string) {
+        return new Promise<Response>((resolve, reject) => {
+            request.get(url, (err, response) => {
+                return err ? reject(err) : resolve(response);
+            });
+        });
+    }
+
+    /**
+     * Do an http POST request
+     */
+    public httpPost(url: string, options?: requestType.CoreOptions) {
+        return new Promise<Response>((resolve, reject) => {
+            request.post(url, options, (err, response) => {
+                return err ? reject(err) : resolve(response);
+            });
+        });
+    }
+
+    /**
+     * Does the supplied value have at least one defined property with a non-nullish value?
+     */
+    public hasNonNullishProperty(value: Record<string, any>) {
+        return Object.values(
+            value ?? {}
+        ).some(x => !this.isNullish(x));
+    }
+
+    private minPort = 1;
+
+    public async getPort() {
+        let port: number;
+        try {
+            port = await portfinder.getPortPromise({
+                //startPort
+                port: this.minPort
+            });
+        } catch {
+            this.minPort = 1;
+            port = await portfinder.getPortPromise({
+                //startPort
+                port: this.minPort
+            });
+        }
+        this.minPort = port + 1;
+        return port;
+    }
 }
 
 export function defer<T>() {
@@ -398,6 +481,11 @@ export function defer<T>() {
     });
     return {
         promise: promise,
+        tryResolve: function tryResolve(value?: PromiseLike<T> | T) {
+            if (!this.isCompleted) {
+                this.resolve(value);
+            }
+        },
         resolve: function resolve(value?: PromiseLike<T> | T) {
             if (!this.isResolved) {
                 this.isResolved = true;
@@ -408,6 +496,11 @@ export function defer<T>() {
                     `Attempted to resolve a promise that was already ${this.isResolved ? 'resolved' : 'rejected'}.` +
                     `New value: ${JSON.stringify(value)}`
                 );
+            }
+        },
+        tryReject: function tryReject(reason?: any) {
+            if (!this.isCompleted) {
+                this.reject(reason);
             }
         },
         reject: function reject(reason?: any) {
