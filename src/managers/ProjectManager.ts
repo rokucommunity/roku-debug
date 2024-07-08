@@ -3,15 +3,16 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import { rokuDeploy, RokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
-import * as glob from 'glob';
-import { promisify } from 'util';
-const globAsync = promisify(glob);
+import * as fastGlob from 'fast-glob';
 import type { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
 import { logger } from '../logging';
+import { AssignmentStatement, CancellationTokenSource, DottedSetStatement, FunctionStatement, IndexedSetStatement, isAssignmentStatement, isCallExpression, isDottedGetExpression, isDottedSetStatement, isFunctionStatement, isIndexedSetStatement, isVariableExpression, Parser, WalkMode } from 'brighterscript';
+import lineColumn = require('line-column');
 import { Cache } from 'brighterscript/dist/Cache';
+import { util as bscUtil } from 'brighterscript';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -159,9 +160,9 @@ export class ProjectManager {
         let entryPoint = await fileUtils.findEntryPoint(stagingDir);
 
         //convert entry point staging location to source location
-        let sourceLocation = await this.getSourceLocation(entryPoint.relativePath, entryPoint.lineNumber);
+        let sourceLocation = await this.getSourceLocation(entryPoint.destPath, entryPoint.position.line + 1);
 
-        this.logger.info(`Registering entry breakpoint at ${sourceLocation.filePath}:${sourceLocation.lineNumber} (${entryPoint.pathAbsolute}:${entryPoint.lineNumber})`);
+        this.logger.info(`Registering entry breakpoint at ${sourceLocation.filePath}:${sourceLocation.lineNumber} (${entryPoint.srcPath}:${entryPoint.position.line + 1})`);
         //register the entry breakpoint
         this.breakpointManager.setBreakpoint(sourceLocation.filePath, {
             //+1 to select the first line of the function
@@ -416,6 +417,94 @@ export class Project {
         }
     }
 
+    /**
+     * Find the line where the `scene.show()` function is called (if possible).
+     * This does the following:
+     *  - finds the entryPoint function
+     *  - scan the function to find the `screen = createObject("roSGScreen")` call and note its variable
+     *  - find where the screen variable's `show()` method is called (i.e. `screen.show()`)
+     */
+    private async findSceneShow() {
+        const entryPoint = await fileUtils.findEntryPoint(this.rootDir);
+        const lowerFunctionName = entryPoint.functionName?.toLowerCase();
+        const { ast } = Parser.parse(
+            entryPoint.fileContents
+        );
+
+        const entryFunc = ast.findChild(node => {
+            return isFunctionStatement(node) && node.name.text.toLowerCase() === lowerFunctionName;
+        }, {
+            walkMode: WalkMode.visitStatements
+        });
+
+        if (!entryFunc) {
+            return;
+        }
+
+        //find the "screen.createScene()" call
+        const cancel = new CancellationTokenSource();
+        const sceneVar = entryFunc.findChild<AssignmentStatement>((node) => {
+            //find a function call in this format: `something.CreateScene(`
+            if (isCallExpression(node) && isDottedGetExpression(node.callee) && node.callee.name.text?.toLowerCase() === 'createscene') {
+                //walk upwards until we find an assignment, dotted set, or indexed set
+                const result = node.findAncestor((ancestor) => {
+                    if (isAssignmentStatement(ancestor)) {
+                        return true;
+                    }
+                }) as AssignmentStatement;
+
+                if (result) {
+                    return result;
+                } else {
+                    cancel.cancel();
+                }
+            }
+        }, {
+            walkMode: WalkMode.visitAll,
+            cancel: cancel.token
+        });
+
+        if (!sceneVar) {
+            return;
+        }
+
+        //now look for `${sceneVar}.show()`
+        entryFunc.findChild((node) => {
+            if (
+                isCallExpression(node) &&
+                isDottedGetExpression(node.callee) &&
+                node.callee.name?.text?.toLowerCase() === 'show' &&
+                node.callee.
+                ) {
+                return;
+            }
+        });
+
+        if (entryFunc) {
+            const finder = lineColumn(entryPoint.fileContents);
+            const range = entryFunc.func.body.range;
+            const startIndex = finder.toIndex(range.start.line, range.start.character);
+            const stopIndex = finder.toIndex(range.end.line, range.end.character);
+            const functionBody = entryPoint.fileContents.substring(startIndex, stopIndex);
+
+            const [, sceneVariable] = /([a-z0-9_\[\]"]+)\s*=\s*createObject\s*\(\s*"roSGScreen"\s*)/i.exec(functionBody);
+            if (sceneVariable) {
+                const regexp = new RegExp(`\\b${sceneVariable}\\s*\\.\\s*show\\(.*\\)`, 'i');
+                const match = regexp.exec(functionBody);
+                const startPosition = finder.fromIndex(startIndex + match.index);
+                const stopPosition = finder.fromIndex(startIndex + match.index + match[0].length);
+                return {
+                    range: bscUtil.createRange(
+                        startPosition.line,
+                        startPosition.col,
+                        stopPosition.line,
+                        stopPosition.col
+                    )
+                };
+            }
+        }
+    }
+
     public static RDB_ODC_NODE_CODE = `if true = CreateObject("roAppInfo").IsDev() then m.vscode_rdb_odc_node = createObject("roSGNode", "RTA_OnDeviceComponent") ' RDB OnDeviceComponent`;
     public static RDB_ODC_ENTRY = 'vscode_rdb_on_device_component_entry';
     /**
@@ -427,10 +516,10 @@ export class Project {
             return;
         }
         try {
-            let files = await globAsync(`${this.rdbFilesBasePath}/**/*`, {
+            let files = await fastGlob(`${this.rdbFilesBasePath}/**/*`, {
                 cwd: './',
                 absolute: false,
-                follow: true
+                followSymbolicLinks: true
             });
             for (let filePathAbsolute of files) {
                 const promises = [];

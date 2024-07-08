@@ -809,4 +809,65 @@ describe('ComponentLibraryProject', () => {
             });
         });
     });
+
+    describe('removeFileNamePostfix', () => {
+        let project: ComponentLibraryProject;
+        beforeEach(() => {
+            project = new ComponentLibraryProject(params);
+        });
+
+        it('removes postfix from paths that contain it', () => {
+            expect(project.removeFileNamePostfix(`source/main__lib0.brs`)).to.equal('source/main.brs');
+            expect(project.removeFileNamePostfix(`components/component1__lib0.brs`)).to.equal('components/component1.brs');
+        });
+
+        it('removes postfix case insensitive', () => {
+            expect(project.removeFileNamePostfix(`source/main__LIB0.brs`)).to.equal('source/main.brs');
+            expect(project.removeFileNamePostfix(`source/MAIN__lib0.brs`)).to.equal('source/MAIN.brs');
+        });
+
+        it('does nothing to files without the postfix', () => {
+            expect(project.removeFileNamePostfix(`source/main.brs`)).to.equal('source/main.brs');
+        });
+
+        it('does nothing to files with a different postfix', () => {
+            expect(project.removeFileNamePostfix(`source/main__lib1.brs`)).to.equal('source/main__lib1.brs');
+        });
+
+        it('only removes the postfix from the end of the file', () => {
+            expect(project.removeFileNamePostfix(`source/__lib1.brs/main.brs`)).to.equal('source/__lib1.brs/main.brs');
+        });
+    });
+
+    describe('findSceneShow', () => {
+        it('finds simple case', () => {
+            fsExtra.outputFileSync(`${rootDir}/source/main.brs`, `
+                sub Main(inputArguments as object)
+                    screen = createObject("roSGScreen")
+                    m.port = createObject("roMessagePort")
+                    screen.setMessagePort(m.port)
+                    scene = screen.CreateScene("MainScene")
+                    screen.show() : initThing()
+                    scene.observeField("appExit", m.port)
+                    scene.setFocus(true)
+
+                    while true
+                        msg = wait(0, m.port)
+                        msgType = type(msg)
+
+                        if msgType = "roSGScreenEvent" then
+                            if msg.isScreenClosed() then
+                                return
+                            else if msgType = "roSGNodeEvent" then
+                                field = msg.getField()
+                                if field = "appExit" then
+                                return
+                                end if
+                            end if
+                        end if
+                    end while
+                end sub
+            `);
+        });
+    });
 });
