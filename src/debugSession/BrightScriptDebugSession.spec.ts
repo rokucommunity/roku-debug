@@ -239,6 +239,8 @@ describe('BrightScriptDebugSession', () => {
 
     describe('evaluateRequest', () => {
         it('resets local var counter on suspend', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
@@ -271,6 +273,8 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('can assign to a variable', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
@@ -290,6 +294,8 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('handels evaluating expressions on different threads', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
@@ -318,7 +324,9 @@ describe('BrightScriptDebugSession', () => {
 
     describe('variablesRequest', () => {
         it('hides debug local variables', async () => {
-            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
+            sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
             sinon.stub(rokuAdapter, 'getScopeVariables').callsFake(() => {
@@ -367,7 +375,9 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('hides debug children variables', async () => {
-            const stub = sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
+            sinon.stub(session['rokuAdapter'], 'evaluate').callsFake(x => {
                 return Promise.resolve({ type: 'message', message: '' });
             });
 
@@ -468,6 +478,8 @@ describe('BrightScriptDebugSession', () => {
         }
 
         it('returns the correct boolean variable', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             let expression = 'someBool';
             getVariableValue = getBooleanEvaluateContainer(expression);
             //adapter has to be at prompt for evaluates to work
@@ -485,6 +497,8 @@ describe('BrightScriptDebugSession', () => {
 
         //this fails on TravisCI for some reason. TODO - fix this
         it('returns the correct indexed variables count', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             let expression = 'someArray';
             getVariableValue = <EvaluateContainer>{
                 name: expression,
@@ -509,6 +523,8 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('returns the correct named variables count', async () => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             let expression = 'someObject';
             getVariableValue = <EvaluateContainer>{
                 name: expression,
@@ -826,6 +842,8 @@ describe('BrightScriptDebugSession', () => {
         } as EvaluateContainer;
 
         beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+
             rokuAdapter.isAtDebuggerPrompt = true;
             evalStub = sinon.stub(rokuAdapter, 'evaluate').callsFake((args) => {
                 console.log('called with', args);

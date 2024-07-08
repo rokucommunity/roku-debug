@@ -151,6 +151,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return this.launchConfiguration.enableDebugProtocol;
     }
 
+    /**
+     * Get a promise that resolves when the roku adapter is ready to be used
+     */
     private getRokuAdapter() {
         return this.rokuAdapterDeferred.promise;
     }
@@ -889,6 +892,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 ));
                 this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn');
             } else {
+                //ensure the rokuAdapter is loaded
+                await this.getRokuAdapter();
+
                 if (this.rokuAdapter.isAtDebuggerPrompt) {
                     let stackTrace = await this.rokuAdapter.getStackTrace(args.threadId);
 
@@ -1082,10 +1088,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             logger.log('begin', { args });
 
+            //ensure the rokuAdapter is loaded
+            await this.getRokuAdapter();
+
             let childVariables: AugmentedVariable[] = [];
             //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
             await this.evaluateRequestPromise;
-            if (!this.rokuAdapter.isAtDebuggerPrompt) {
+            if (this.rokuAdapter?.isAtDebuggerPrompt !== true) {
                 logger.log('Skipped getting variables because the RokuAdapter is not accepting input at this time');
                 response.success = false;
                 response.message = 'Debug session is not paused';
@@ -1160,6 +1169,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     public async evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) {
+        //ensure the rokuAdapter is loaded
+        await this.getRokuAdapter();
+
         let deferred = defer<void>();
         if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
             this.clearState();
