@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.10](https://github.com/rokucommunity/roku-debug/compare/v0.21.9...0.21.10) - 2024-07-24
+### Changed
+ - Prevent crash when rokuAdapter is not defined. ([#194](https://github.com/rokucommunity/roku-debug/pull/194))
+ - upgrade to [brighterscript@0.67.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0674---2024-07-24). Notable changes since 0.67.2:
+     - Fix crash with missing scope ([brighterscript#1234](https://github.com/rokucommunity/brighterscript/pull/1234))
+     - Flag using devDependency in production code ([brighterscript#1222](https://github.com/rokucommunity/brighterscript/pull/1222))
+ - upgrade to [roku-deploy@3.12.1](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3121---2024-07-19). Notable changes since 3.12.0:
+     - Fix bug with absolute paths and getDestPath ([roku-deploy#171](https://github.com/rokucommunity/roku-deploy/pull/171))
+
+
+
 ## [0.21.9](https://github.com/rokucommunity/roku-debug/compare/v0.21.8...v0.21.9) - 2024-06-03
 ### Changed
  - upgrade to [brighterscript@0.67.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0672---2024-06-03)
