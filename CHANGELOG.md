@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.11](https://github.com/rokucommunity/roku-debug/compare/v0.21.10...0.21.11) - 2024-09-25
+### Changed
+ - upgrade to [brighterscript@0.67.7](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0677---2024-09-25). Notable changes since 0.67.4:
+     - Ast node clone ([brighterscript#1281](https://github.com/rokucommunity/brighterscript/pull/1281))
+     - Add support for resolving sourceRoot at time of config load ([brighterscript#1290](https://github.com/rokucommunity/brighterscript/pull/1290))
+     - Add support for roIntrinsicDouble ([brighterscript#1291](https://github.com/rokucommunity/brighterscript/pull/1291))
+     - Add plugin naming convention ([brighterscript#1284](https://github.com/rokucommunity/brighterscript/pull/1284))
+     - Add templatestring support for annotation.getArguments() ([brighterscript#1264](https://github.com/rokucommunity/brighterscript/pull/1264))
+
+
+
 ## [0.21.10](https://github.com/rokucommunity/roku-debug/compare/v0.21.9...0.21.10) - 2024-07-24
 ### Changed
  - Prevent crash when rokuAdapter is not defined. ([#194](https://github.com/rokucommunity/roku-debug/pull/194))
