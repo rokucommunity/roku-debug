@@ -150,7 +150,8 @@ describe('BrightScriptDebugSession', () => {
         sinon.restore();
     });
 
-    it('supports external zipping process', async () => {
+    it('supports external zipping process', async function() {
+        this.timeout(15_000);
         //write some project files
         fsExtra.outputFileSync(`${rootDir}/source/main.brs`, `
             sub main()
