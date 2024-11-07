@@ -66,6 +66,12 @@ export enum Command {
      */
     AddConditionalBreakpoints = 'AddConditionalBreakpoints',
     /**
+     * Adds a exception breakpoint.
+     *
+     * @since protocol TBD
+     */
+    AddExceptionBreakpoints = 'AddExceptionBreakpoints',
+    /**
      *
      */
     ExitChannel = 'ExitChannel'
@@ -85,6 +91,7 @@ export enum CommandCode {
     RemoveBreakpoints = 9,
     Execute = 10,
     AddConditionalBreakpoints = 11,
+    SetExceptionsBreakpoints = 12,
     ExitChannel = 122
 }
 

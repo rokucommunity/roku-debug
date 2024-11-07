@@ -32,6 +32,7 @@ import { CompileErrorUpdate } from '../events/updates/CompileErrorUpdate';
 import { GenericResponse } from '../events/responses/GenericResponse';
 import type { StackTraceResponse } from '../events/responses/StackTraceResponse';
 import { ThreadsResponse } from '../events/responses/ThreadsResponse';
+import { SetExceptionsBreakpointsResponse } from '../events/responses/SetExceptionsBreakpointsResponse';
 import type { Variable } from '../events/responses/VariablesResponse';
 import { VariablesResponse, VariableType } from '../events/responses/VariablesResponse';
 import { IOPortOpenedUpdate, isIOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
@@ -932,6 +933,8 @@ export class DebugProtocolClient {
                 return StackTraceV3Response.fromBuffer(buffer);
             case Command.Threads:
                 return ThreadsResponse.fromBuffer(buffer);
+            case Command.AddExceptionBreakpoints:
+                return SetExceptionsBreakpointsResponse.fromBuffer(buffer);
             default:
                 return undefined;
         }
