@@ -190,6 +190,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // This debug adapter supports conditional breakpoints
         response.body.supportsConditionalBreakpoints = true;
 
+        //
+        response.body.exceptionBreakpointFilters = [
+            {
+                filter: 'caught',
+                label: 'Caught Exceptions',
+                description: 'Break on all exceptions',
+                default: false
+            },
+            {
+                filter: 'uncaught',
+                label: 'Uncaught Exceptions',
+                description: 'Break on uncaught exceptions',
+                default: false
+            }
+        ];
+
         // This debug adapter supports breakpoints that break execution after a specified number of hits
         response.body.supportsHitConditionalBreakpoints = true;
 
