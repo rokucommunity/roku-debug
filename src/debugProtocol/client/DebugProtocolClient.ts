@@ -933,7 +933,7 @@ export class DebugProtocolClient {
                 return StackTraceV3Response.fromBuffer(buffer);
             case Command.Threads:
                 return ThreadsResponse.fromBuffer(buffer);
-            case Command.AddExceptionBreakpoints:
+            case Command.SetExceptionsBreakpoints:
                 return SetExceptionsBreakpointsResponse.fromBuffer(buffer);
             default:
                 return undefined;

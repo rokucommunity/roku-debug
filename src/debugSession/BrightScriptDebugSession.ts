@@ -200,7 +200,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             },
             {
                 filter: 'uncaught',
-                label: 'Uncaught Exceptions',
+                label: 'Uncaught Exceptions When does this show up',
                 description: 'Break on uncaught exceptions',
                 default: false
             }

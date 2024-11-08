@@ -63,6 +63,6 @@ export class SetExceptionsBreakpointsRequest implements ProtocolRequest {
         //common props
         packetLength: undefined as number,
         requestId: undefined as number,
-        command: Command.AddExceptionBreakpoints
+        command: Command.SetExceptionsBreakpoints
     };
 }
