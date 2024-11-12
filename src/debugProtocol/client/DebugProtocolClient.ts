@@ -19,6 +19,7 @@ import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsReques
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { StackTraceRequest } from '../events/requests/StackTraceRequest';
 import { ThreadsRequest } from '../events/requests/ThreadsRequest';
+import { SetExceptionsBreakpointsRequest } from '../events/requests/SetExceptionsBreakpointsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
@@ -435,6 +436,22 @@ export class DebugProtocolClient {
         }
     }
 
+    public async setExceptionBreakpoints(filters: string[]): Promise<SetExceptionsBreakpointsResponse> {
+        const json = {
+            requestId: this.requestIdSequence++,
+            breakpoints: filters.map(x => {
+                let breakpoint = {
+                    filter: x === 'caught' ? 1 : x === 'uncaught' ? 2 : 0,
+                    conditionExpression: ''
+                }
+                return breakpoint;
+            })
+        };
+        return this.processRequest<SetExceptionsBreakpointsResponse>(
+            SetExceptionsBreakpointsRequest.fromJson(json)
+        );
+    }
+
     /**
      * Get the stackTrace from the device IF currently stopped
      */
@@ -734,6 +751,7 @@ export class DebugProtocolClient {
             case AddConditionalBreakpointsRequest.name:
             case ExitChannelRequest.name:
             case ListBreakpointsRequest.name:
+            case SetExceptionsBreakpointsRequest.name:
                 return this.sendRequest(request);
             default:
                 this.logger.log('Unknown request type. Sending anyway...', request);

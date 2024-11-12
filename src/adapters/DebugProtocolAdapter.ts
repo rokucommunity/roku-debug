@@ -21,6 +21,7 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
+import type { DebugProtocol } from 'vscode-debugprotocol';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -827,6 +828,11 @@ export class DebugProtocolAdapter {
      */
     public clearChanperfHistory() {
         this.chanperfTracker.clearHistory();
+    }
+
+    public async setExceptionsBreakpointsRequest(filters: string[]) {
+        //tell the client to set the exception breakpointsA
+        return this.client?.setExceptionBreakpoints(filters);
     }
 
     private syncBreakpointsPromise = Promise.resolve();

@@ -819,6 +819,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('configurationDoneRequest');
     }
 
+    protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments, request?: DebugProtocol.Request): void {
+        this.rokuAdapter?.setExceptionsBreakpointsRequest(args.filters);
+    }
+
     /**
      * Called every time a breakpoint is created, modified, or deleted, for each file. This receives the entire list of breakpoints every time.
      */
