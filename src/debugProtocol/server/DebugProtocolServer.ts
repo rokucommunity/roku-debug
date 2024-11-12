@@ -195,7 +195,7 @@ export class DebugProtocolServer {
                 return AddConditionalBreakpointsRequest.fromBuffer(buffer);
             case Command.ExitChannel:
                 return ExitChannelRequest.fromBuffer(buffer);
-            case Command.ExitChannel:
+            case Command.SetExceptionsBreakpoints:
                 return SetExceptionsBreakpointsRequest.fromBuffer(buffer);
         }
     }

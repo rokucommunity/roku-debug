@@ -154,8 +154,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Get a promise that resolves when the roku adapter is ready to be used
      */
-    private getRokuAdapter() {
-        return this.rokuAdapterDeferred.promise;
+    private async getRokuAdapter() {
+        await this.rokuAdapterDeferred.promise;
+        await this.rokuAdapter.onReady();
+        return this.rokuAdapter;
     }
 
     private launchConfiguration: LaunchConfiguration;
@@ -190,21 +192,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // This debug adapter supports conditional breakpoints
         response.body.supportsConditionalBreakpoints = true;
 
-        //
-        response.body.exceptionBreakpointFilters = [
-            {
-                filter: 'caught',
-                label: 'Caught Exceptions',
-                description: 'Break on all exceptions',
-                default: false
-            },
-            {
-                filter: 'uncaught',
-                label: 'Uncaught Exceptions When does this show up',
-                description: 'Break on uncaught exceptions',
-                default: false
-            }
-        ];
+        response.body.supportsExceptionFilterOptions = true;
+
+        //the list of exception breakpoints (we have to send them all the time, even if the device doesn't support them
+        response.body.exceptionBreakpointFilters = [{
+            filter: 'caught',
+            supportsCondition: true,
+            conditionDescription: '_brserr.rethrown = true',
+            label: 'Caught Exceptions',
+            description: `Breaks on all errors, even if they're caught later.`,
+            default: true
+        }, {
+            filter: 'uncaught',
+            supportsCondition: true,
+            conditionDescription: '_brserr.rethrown = true',
+            label: 'Uncaught Exceptions',
+            description: 'Breaks only on errors that are not handled.',
+            default: true
+        }];
 
         // This debug adapter supports breakpoints that break execution after a specified number of hits
         response.body.supportsHitConditionalBreakpoints = true;
@@ -223,6 +228,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             );
         });
         this.logger.log('initializeRequest finished');
+    }
+
+    protected async setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments, request?: DebugProtocol.Request) {
+        //TODO re-enable this once we figured out what was broken
+        // try {
+        //     //ensure the rokuAdapter is loaded
+        //     await this.getRokuAdapter();
+        //     await this.rokuAdapter?.setExceptionBreakpoints(args.filters);
+        //     // this.sendResponse(response);
+        // } catch (e) {
+        //     console.error(e);
+        // }
     }
 
     private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
@@ -817,10 +834,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
         this.logger.log('configurationDoneRequest');
-    }
-
-    protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments, request?: DebugProtocol.Request): void {
-        this.rokuAdapter?.setExceptionsBreakpointsRequest(args.filters);
     }
 
     /**
@@ -1420,6 +1433,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //sync breakpoints
         await this.rokuAdapter?.syncBreakpoints();
+
+        //TODO please delete this, we're just hardcoding stuff for now
+        await this.rokuAdapter.setExceptionBreakpoints([{
+            filter: 'caught',
+            conditionExpression: '1 = 1'
+        }, {
+            filter: 'uncaught',
+            conditionExpression: '1 = 1'
+        }]);
+
         this.logger.info('received "suspend" event from adapter');
 
         //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue

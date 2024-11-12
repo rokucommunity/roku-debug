@@ -19,6 +19,7 @@ import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsReques
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { StackTraceRequest } from '../events/requests/StackTraceRequest';
 import { ThreadsRequest } from '../events/requests/ThreadsRequest';
+import type { ExceptionBreakpointFilter } from '../events/requests/SetExceptionsBreakpointsRequest';
 import { SetExceptionsBreakpointsRequest } from '../events/requests/SetExceptionsBreakpointsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
@@ -45,6 +46,7 @@ import PluginInterface from '../PluginInterface';
 import type { VerifiedBreakpoint } from '../events/updates/BreakpointVerifiedUpdate';
 import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUpdate';
 import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
+import { ExceptionBreakpointErrorUpdate } from '../events/updates/ExceptionBreakpointErrorUpdate';
 
 export class DebugProtocolClient {
 
@@ -290,15 +292,16 @@ export class DebugProtocolClient {
     /**
      * Send the initial handshake request, and wait for the handshake response
      */
-    public async sendHandshake() {
-        return this.processHandshakeRequest(
+    public async sendHandshake(): Promise<HandshakeV3Response | HandshakeResponse> {
+        const response = await this.processHandshakeRequest(
             HandshakeRequest.fromJson({
                 magic: DebugProtocolClient.DEBUGGER_MAGIC
             })
         );
+        return response;
     }
 
-    private async processHandshakeRequest(request: HandshakeRequest) {
+    private async processHandshakeRequest(request: HandshakeRequest): Promise<HandshakeV3Response | HandshakeResponse> {
         //send the magic, which triggers the debug session
         this.logger.log('Sending magic to server');
 
@@ -436,19 +439,12 @@ export class DebugProtocolClient {
         }
     }
 
-    public async setExceptionBreakpoints(filters: string[]): Promise<SetExceptionsBreakpointsResponse> {
-        const json = {
-            requestId: this.requestIdSequence++,
-            breakpoints: filters.map(x => {
-                let breakpoint = {
-                    filter: x === 'caught' ? 1 : x === 'uncaught' ? 2 : 0,
-                    conditionExpression: ''
-                }
-                return breakpoint;
-            })
-        };
+    public async setExceptionBreakpoints(filters: ExceptionBreakpointFilter[]): Promise<SetExceptionsBreakpointsResponse> {
         return this.processRequest<SetExceptionsBreakpointsResponse>(
-            SetExceptionsBreakpointsRequest.fromJson(json)
+            SetExceptionsBreakpointsRequest.fromJson({
+                requestId: this.requestIdSequence++,
+                breakpoints: filters
+            })
         );
     }
 
@@ -990,6 +986,11 @@ export class DebugProtocolClient {
                     this.emit('breakpoints-verified', response.data);
                 }
                 return response;
+            case UpdateType.ExceptionBreakpointError:
+                //we do nothing with exception breakpoint errors at this time.
+                const update = ExceptionBreakpointErrorUpdate.fromBuffer(buffer);
+                this.logger.error('Exception breakpoint error occurred', update);
+                return update;
             default:
                 return undefined;
         }

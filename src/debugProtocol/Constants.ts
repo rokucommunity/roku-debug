@@ -120,7 +120,9 @@ export enum ErrorCode {
     UNDEFINED_COMMAND = 2,
     CANT_CONTINUE = 3,
     NOT_STOPPED = 4,
-    INVALID_ARGS = 5
+    INVALID_ARGS = 5,
+    THREAD_DETACHED = 6,
+    EXECUTION_TIMEOUT = 7
 }
 
 export enum ErrorFlags {
@@ -205,7 +207,18 @@ export enum UpdateType {
      * Breakpoints were successfully verified
      * @since protocol 3.2
      */
-    BreakpointVerified = 'BreakpointVerified'
+    BreakpointVerified = 'BreakpointVerified',
+    /**
+     * An unrecoverable error has occurred on the protocol stream. As a result, the debug target is terminated.
+     * @since Roku OS 12.0
+     */
+    ProtocolError = 'ProtocolError',
+    /**
+     * ExceptionBreakpointError updates will be sent for compile and runtime errors for exception breakpoint conditions.
+     * These updates will be sent every time the condition fails to compile/run while throwing an exception.
+     * @since protocol 3.3 (OS 14.1.4 or greater)
+     */
+    ExceptionBreakpointError = 'ExceptionBreakpointError'
 }
 /**
  * The integer values for `UPDATE_TYPE`. Only used for serializing/deserializing over the debug protocol. Use `UpdateType` in your code.
@@ -217,10 +230,19 @@ export enum UpdateTypeCode {
     ThreadAttached = 3,
     BreakpointError = 4,
     CompileError = 5,
-    // /**
-    //  * Breakpoints were successfully verified
-    //  * @since protocol 3.2
-    //  */
-    BreakpointVerified = 6
+    /**
+     * Breakpoints were successfully verified
+     * @since protocol 3.2
+     */
+    BreakpointVerified = 6,
+    /**
+     * An unrecoverable error has occurred on the protocol stream. As a result, the debug target is terminated.
+     */
+    ProtocolError = 7,
+    /**
+     * ExceptionBreakpointError updates will be sent for compile and runtime errors for exception breakpoint conditions.
+     * These updates will be sent every time the condition fails to compile/run while throwing an exception.
+     * @since protocol 3.2
+     */
+    ExceptionBreakpointError = 8
 }
-

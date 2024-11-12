@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import { Command } from '../../Constants';
 import { SetExceptionsBreakpointsRequest } from './SetExceptionsBreakpointsRequest';
 
-describe('SetExceptionsBreakpointsRequest', () => {
+describe.only('SetExceptionsBreakpointsRequest', () => {
     it('serializes and deserializes properly with zero breakpoints', () => {
         const command = SetExceptionsBreakpointsRequest.fromJson({
             requestId: 3,
@@ -33,11 +33,11 @@ describe('SetExceptionsBreakpointsRequest', () => {
         const command = SetExceptionsBreakpointsRequest.fromJson({
             requestId: 3,
             breakpoints: [{
-                filter: 0,
+                filter: 'caught',
                 conditionExpression: 'some conditions'
             },
             {
-                filter: 0,
+                filter: 'uncaught',
                 conditionExpression: ''
             }]
         });
@@ -48,11 +48,11 @@ describe('SetExceptionsBreakpointsRequest', () => {
             command: Command.SetExceptionsBreakpoints,
 
             breakpoints: [{
-                filter: 0,
+                filter: 'caught',
                 conditionExpression: 'some conditions'
             },
             {
-                filter: 0,
+                filter: 'uncaught',
                 conditionExpression: ''
             }]
         });
@@ -65,11 +65,11 @@ describe('SetExceptionsBreakpointsRequest', () => {
             command: Command.SetExceptionsBreakpoints, // 4 bytes
             // num_breakpoints // 4 bytes
             breakpoints: [{
-                filter: 0,
+                filter: 'caught',
                 conditionExpression: 'some conditions'
             },
             {
-                filter: 0,
+                filter: 'uncaught',
                 conditionExpression: ''
             }]
         });

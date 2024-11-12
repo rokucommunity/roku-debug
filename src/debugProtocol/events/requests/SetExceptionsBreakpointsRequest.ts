@@ -3,14 +3,18 @@ import { Command } from '../../Constants';
 import { protocolUtil } from '../../ProtocolUtil';
 import type { ProtocolRequest } from '../ProtocolEvent';
 
+const ExceptionBreakpointFilterType = {
+    '1': 'caught',
+    '2': 'uncaught',
+    caught: 1,
+    uncaught: 2
+};
+
 export class SetExceptionsBreakpointsRequest implements ProtocolRequest {
 
     public static fromJson(data: {
         requestId: number;
-        breakpoints: Array<{
-            filter: number;
-            conditionExpression: string;
-        }>;
+        breakpoints: Array<ExceptionBreakpointFilter>;
     }) {
         const request = new SetExceptionsBreakpointsRequest();
         protocolUtil.loadJson(request, data);
@@ -26,8 +30,9 @@ export class SetExceptionsBreakpointsRequest implements ProtocolRequest {
             const numBreakpoints = smartBuffer.readUInt32LE(); // num_breakpoints
             request.data.breakpoints = [];
             for (let i = 0; i < numBreakpoints; i++) {
+                const filterTypeId = smartBuffer.readUInt32LE();
                 request.data.breakpoints.push({
-                    filter: smartBuffer.readUInt32LE(), // filter
+                    filter: ExceptionBreakpointFilterType[filterTypeId], // filter
                     conditionExpression: protocolUtil.readStringNT(smartBuffer) // cond_expr
                 });
             }
@@ -40,12 +45,21 @@ export class SetExceptionsBreakpointsRequest implements ProtocolRequest {
 
         smartBuffer.writeUInt32LE(this.data.breakpoints.length); // num_breakpoints
         for (const breakpoint of this.data.breakpoints) {
-            smartBuffer.writeUInt32LE(breakpoint.filter); // filter
-            smartBuffer.writeStringNT(breakpoint.conditionExpression); // cond_expr
+            const filterTypeId = ExceptionBreakpointFilterType[breakpoint.filter] as number;
+            smartBuffer.writeUInt32LE(filterTypeId); // filter
+            smartBuffer.writeStringNT(breakpoint.conditionExpression ?? ''); // cond_expr
         }
 
         protocolUtil.insertCommonRequestFields(this, smartBuffer);
         return smartBuffer.toBuffer();
+    }
+
+    private filterToNumber(filter: string): number {
+        switch (filter) {
+            case 'caught': return 1;
+            case 'uncaught': return 2;
+            default: throw new Error(`Unknown filter: ${filter}`);
+        }
     }
 
     public success = false;
@@ -56,7 +70,7 @@ export class SetExceptionsBreakpointsRequest implements ProtocolRequest {
 
     public data = {
         breakpoints: undefined as Array<{
-            filter: number;
+            filter: string;
             conditionExpression: string;
         }>,
 
@@ -65,4 +79,13 @@ export class SetExceptionsBreakpointsRequest implements ProtocolRequest {
         requestId: undefined as number,
         command: Command.SetExceptionsBreakpoints
     };
+}
+
+
+export interface ExceptionBreakpointFilter {
+    /**
+     * Possible values: 'caught', 'uncaught'
+     */
+    filter: 'caught' | 'uncaught';
+    conditionExpression?: string;
 }

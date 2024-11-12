@@ -6,7 +6,6 @@ import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
-import type { SourceLocation } from '../managers/LocationManager';
 import { ErrorCode, PROTOCOL_ERROR_CODES, UpdateType } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
@@ -21,7 +20,7 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
-import type { DebugProtocol } from 'vscode-debugprotocol';
+import type { ExceptionBreakpointFilter } from '../debugProtocol/events/requests/SetExceptionsBreakpointsRequest';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -186,7 +185,7 @@ export class DebugProtocolAdapter {
         return new Promise((resolve) => {
             let callCount = -1;
 
-            function handler() {
+            function handler(data: Buffer) {
                 callCount++;
                 let myCallCount = callCount;
                 setTimeout(() => {
@@ -200,7 +199,7 @@ export class DebugProtocolAdapter {
 
             client.addListener(name, handler);
             //call the handler immediately so we have a timeout
-            handler();
+            handler(Buffer.from([]));
         });
     }
 
@@ -208,15 +207,30 @@ export class DebugProtocolAdapter {
         return this.client?.isStopped ?? false;
     }
 
+    private firstConnectDeferred = defer<void>();
+
+    /**
+     * Resolves when the first connection to the client is established
+     */
+    public onReady() {
+        return this.firstConnectDeferred.promise;
+    }
+
     /**
      * Connect to the telnet session. This should be called before the channel is launched.
      */
-    public async connect() {
+    public async connect(): Promise<void> {
         //Start processing telnet output to look for compile errors or the debugger prompt
         await this.processTelnetOutput();
 
-        this.on('waiting-for-debugger', () => {
-            void this.createDebugProtocolClient();
+        this.on('waiting-for-debugger', async () => { // eslint-disable-line @typescript-eslint/no-misused-promises
+            await this.createDebugProtocolClient();
+
+            //if this is the first time we are connecting, resolve the promise.
+            //(future events fire for "reconnect" situations, we don't need to resolve again for those)
+            if (!this.firstConnectDeferred.isCompleted) {
+                this.firstConnectDeferred.resolve();
+            }
         });
     }
 
@@ -830,9 +844,11 @@ export class DebugProtocolAdapter {
         this.chanperfTracker.clearHistory();
     }
 
-    public async setExceptionsBreakpointsRequest(filters: string[]) {
+    public async setExceptionBreakpoints(filters: ExceptionBreakpointFilter[]) {
         //tell the client to set the exception breakpointsA
-        return this.client?.setExceptionBreakpoints(filters);
+        const response = await this.client?.setExceptionBreakpoints(filters);
+        console.log(response);
+        return response;
     }
 
     private syncBreakpointsPromise = Promise.resolve();
