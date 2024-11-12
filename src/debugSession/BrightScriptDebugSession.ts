@@ -562,10 +562,19 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             packageIsPublished = true;
         }).catch(async (e) => {
             const statusCode = e?.results?.response?.statusCode;
-            const message = e.message as string;
+            let message = e.message as string;
             if (statusCode && statusCode !== 200) {
-                this.showPopupMessage(message, 'error', true);
-                await this.shutdown(message);
+                switch (statusCode) {
+                    case 577:
+                        message = 'DebugServer: Error (577) - Your device requires a system update before accepting connections. Follow these instructions to manually check for updates https://support.roku.com/article/208755668.'
+                        this.showPopupMessage(message, 'error', true);
+                        await this.shutdown(message);
+                        break;
+                    default:
+                        this.showPopupMessage(message, 'error', true);
+                        await this.shutdown(message);
+                        break;
+                }
                 throw e;
             }
             this.logger.error(e);
