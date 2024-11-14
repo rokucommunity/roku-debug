@@ -156,6 +156,10 @@ export class DebugProtocolClient {
         return semver.satisfies(this.protocolVersion, '>=3.2.0');
     }
 
+    public get supportsExceptionBreakpointFilters() {
+        return semver.satisfies(this.protocolVersion, '>=3.3.0');
+    }
+
     /**
      * Get a promise that resolves after an event occurs exactly once
      */

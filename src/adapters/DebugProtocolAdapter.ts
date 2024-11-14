@@ -845,10 +845,13 @@ export class DebugProtocolAdapter {
     }
 
     public async setExceptionBreakpoints(filters: ExceptionBreakpointFilter[]) {
-        //tell the client to set the exception breakpointsA
-        const response = await this.client?.setExceptionBreakpoints(filters);
-        console.log(response);
-        return response;
+        if (this.client?.supportsExceptionBreakpointFilters) {
+            //tell the client to set the exception breakpoints
+            const response = await this.client?.setExceptionBreakpoints(filters);
+            console.log(response);
+            return response;
+        }
+        return undefined;
     }
 
     private syncBreakpointsPromise = Promise.resolve();

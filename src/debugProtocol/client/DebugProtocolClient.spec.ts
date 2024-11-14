@@ -519,6 +519,29 @@ describe('DebugProtocolClient', () => {
         ).to.be.true;
     });
 
+    it('knows when to enable exception breakpoint filters', () => {
+        //only supported on version 3.3.0 and above
+        client.protocolVersion = '1.0.0';
+        expect(
+            client['supportsExceptionBreakpointFilters']
+        ).to.be.false;
+
+        client.protocolVersion = '3.0.0';
+        expect(
+            client['supportsExceptionBreakpointFilters']
+        ).to.be.false;
+
+        client.protocolVersion = '3.3.0';
+        expect(
+            client['supportsExceptionBreakpointFilters']
+        ).to.be.true;
+
+        client.protocolVersion = '4.0.0';
+        expect(
+            client['supportsExceptionBreakpointFilters']
+        ).to.be.true;
+    });
+
     it('handles v3 handshake', async () => {
         //these are false by default
         expect(client.watchPacketLength).to.be.equal(false);
