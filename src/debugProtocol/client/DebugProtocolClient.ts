@@ -407,11 +407,12 @@ export class DebugProtocolClient {
     }
 
     public async threads() {
-        return this.processThreadsRequest(
+        const result = await this.processThreadsRequest(
             ThreadsRequest.fromJson({
                 requestId: this.requestIdSequence++
             })
         );
+        return result;
     }
     public async processThreadsRequest(request: ThreadsRequest) {
         if (this.isStopped) {
@@ -968,9 +969,11 @@ export class DebugProtocolClient {
                 //TODO handle this
                 return IOPortOpenedUpdate.fromBuffer(buffer);
             case UpdateType.AllThreadsStopped:
-                return AllThreadsStoppedUpdate.fromBuffer(buffer);
+                const allThreadsStoppedResponse = AllThreadsStoppedUpdate.fromBuffer(buffer);
+                return allThreadsStoppedResponse;
             case UpdateType.ThreadAttached:
-                return ThreadAttachedUpdate.fromBuffer(buffer);
+                const threadAttachedResponse = ThreadAttachedUpdate.fromBuffer(buffer);
+                return threadAttachedResponse;
             case UpdateType.BreakpointError:
                 //we do nothing with breakpoint errors at this time.
                 return BreakpointErrorUpdate.fromBuffer(buffer);
