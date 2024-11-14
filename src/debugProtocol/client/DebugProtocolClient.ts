@@ -483,7 +483,8 @@ export class DebugProtocolClient {
                     //remove leading and trailing quotes
                     name: x.replace(/^"/, '').replace(/"$/, ''),
                     forceCaseInsensitive: !x.startsWith('"') && !x.endsWith('"'),
-                    isVirtual: x.startsWith('$')
+                    //vars that start with `'$'` are virtual (AA keys will wrapped in quotes so would start with `"$`
+                    isVirtual: x.startsWith('$') // || x.startsWith('"$')
                 })),
                 //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
                 enableForceCaseInsensitivity: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
