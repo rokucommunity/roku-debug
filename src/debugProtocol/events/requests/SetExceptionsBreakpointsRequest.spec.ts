@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import { Command } from '../../Constants';
 import { SetExceptionsBreakpointsRequest } from './SetExceptionsBreakpointsRequest';
 
-describe.only('SetExceptionsBreakpointsRequest', () => {
+describe('SetExceptionsBreakpointsRequest', () => {
     it('serializes and deserializes properly with zero breakpoints', () => {
         const command = SetExceptionsBreakpointsRequest.fromJson({
             requestId: 3,

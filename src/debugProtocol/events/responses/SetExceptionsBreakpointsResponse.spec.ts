@@ -36,10 +36,10 @@ describe('ListBreakpointsResponse', () => {
             errorCode: ErrorCode.OK,
             breakpoints: [{
                 errorCode: ErrorCode.OK,
-                filter: 10,
+                filter: 10
             }, {
                 errorCode: ErrorCode.OK,
-                filter: 20,
+                filter: 20
             }]
         });
 
@@ -54,10 +54,10 @@ describe('ListBreakpointsResponse', () => {
             //num_breakpoints // 4 bytes
             breakpoints: [{
                 errorCode: ErrorCode.OK, // 4 bytes
-                filter: 10, // 4 bytes
+                filter: 10 // 4 bytes
             }, {
                 errorCode: ErrorCode.OK, // 4 bytes
-                filter: 20, // 4 bytes
+                filter: 20 // 4 bytes
             }]
         });
     });
@@ -115,7 +115,7 @@ describe('ListBreakpointsResponse', () => {
             requestId: 3,
             breakpoints: [{
                 errorCode: ErrorCode.OK,
-                filter: 1,
+                filter: 1
             }]
         }).toBuffer();
 
