@@ -277,6 +277,11 @@ describe('Util', () => {
             expect(util.getVariablePath(`m.["that"]`)).to.eql(['m', '"that"']);
         });
 
+        it('detects valid virtual patterns', () => {
+            expect(util.getVariablePath('m["top"].$children')).to.eql(['m', '"top"', '$children']);
+            expect(util.getVariablePath('m["top"]["$children"]')).to.eql(['m', '"top"', '"$children"']);
+        });
+
         it('rejects invalid patterns', () => {
             expect(util.getVariablePath('[0]')).undefined;
             expect(util.getVariablePath('m.global.initialInputEvent.0')).undefined;

@@ -660,7 +660,7 @@ export class DebugProtocolAdapter {
         if (!parentEvaluateName?.trim()) {
             evaluateName = name;
         } else if (variable.isVirtual) {
-            evaluateName = `${parentEvaluateName}[${name}]`;
+            evaluateName = `${parentEvaluateName}.${name}`;
         } else if (typeof name === 'string') {
             evaluateName = `${parentEvaluateName}["${name}"]`;
         } else if (typeof name === 'number') {

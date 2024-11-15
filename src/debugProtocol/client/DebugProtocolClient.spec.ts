@@ -641,6 +641,7 @@ describe('DebugProtocolClient', () => {
                 childCount: 0,
                 isConst: false,
                 isContainer: false,
+                isVirtual: false,
                 refCount: 0
             } as Variable);
         });
@@ -720,6 +721,7 @@ describe('DebugProtocolClient', () => {
                 childCount: 0,
                 isConst: false,
                 isContainer: false,
+                isVirtual: false,
                 refCount: 0
             } as Variable);
         });
@@ -1004,14 +1006,18 @@ describe('DebugProtocolClient', () => {
                 requestId: 1,
                 command: Command.Variables,
                 enableForceCaseInsensitivity: false,
+                getVirtualKeys: false,
+                includesVirtualPath: false,
                 getChildKeys: true,
                 stackFrameIndex: 1,
                 threadIndex: 2,
                 variablePathEntries: [{
                     name: 'm',
+                    isVirtual: false,
                     forceCaseInsensitive: false
                 }, {
                     name: 'top',
+                    isVirtual: false,
                     forceCaseInsensitive: false
                 }]
             } as VariablesRequest['data']);
@@ -1032,14 +1038,18 @@ describe('DebugProtocolClient', () => {
                 requestId: 2,
                 command: Command.Variables,
                 enableForceCaseInsensitivity: true,
+                getVirtualKeys: false,
+                includesVirtualPath: false,
                 getChildKeys: true,
                 stackFrameIndex: 1,
                 threadIndex: 2,
                 variablePathEntries: [{
                     name: 'm',
+                    isVirtual: false,
                     forceCaseInsensitive: true
                 }, {
                     name: 'top',
+                    isVirtual: false,
                     forceCaseInsensitive: false
                 }]
             } as VariablesRequest['data']);
