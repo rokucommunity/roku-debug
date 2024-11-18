@@ -54,6 +54,7 @@ import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLeve
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
+import type { ExceptionBreakpointFilter } from '../debugProtocol/events/requests/SetExceptionsBreakpointsRequest';
 
 const diagnosticSource = 'roku-debug';
 
@@ -163,6 +164,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private launchConfiguration: LaunchConfiguration;
     private initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
+    private exceptionBreakpointFilters: ExceptionBreakpointFilter[] = [];
+
     /**
      * The 'initialize' request is the first request called by the frontend
      * to interrogate the features the debug adapter provides.
@@ -252,6 +255,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     filter: x as 'caught' | 'uncaught'
                 }));
             }
+            this.exceptionBreakpointFilters = filterOptions
 
             await this.rokuAdapter.setExceptionBreakpoints(filterOptions);
             //if success
@@ -261,14 +265,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             ];
         } catch (e) {
             //if error (or not supported)
-            //if success
             response.body.breakpoints = [
                 { verified: false },
                 { verified: false }
             ];
             console.error(e);
         } finally {
-
             this.sendResponse(response);
         }
     }
@@ -447,6 +449,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
                     this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
+                    this.rokuAdapter.once('connected').then(() => {
+                        this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpointFilters);
+                    });
                 }
             });
 

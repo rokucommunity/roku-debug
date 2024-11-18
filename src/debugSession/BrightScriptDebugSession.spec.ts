@@ -112,6 +112,7 @@ describe('BrightScriptDebugSession', () => {
             syncBreakpoints: () => { },
             getVariable: () => { },
             getScopeVariables: (a) => { },
+            setExceptionBreakpoints: (a) => { },
             getThreads: () => {
                 return [];
             },
@@ -444,6 +445,127 @@ describe('BrightScriptDebugSession', () => {
                 session.initializeRequest({} as DebugProtocol.InitializeResponse, {} as DebugProtocol.InitializeRequestArguments);
             });
         });
+    });
+
+    describe('setExceptionBreakPointsRequestSets', () => {
+        let response;
+        beforeEach(() => {
+            response = {
+                seq: 0,
+                type: "response",
+                request_seq: 3,
+                command: "setExceptionBreakpoints",
+                success: true,
+            }
+        });
+        it('both caught and uncaught filters', async function() {
+            let args = {
+                filters: [],
+                filterOptions: [
+                    { filterId: "caught" },
+                    { filterId: "uncaught" }
+                ],
+            }
+            sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
+            const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+
+            await session['setExceptionBreakPointsRequest'](response, args);
+
+            expect(response.body.breakpoints).to.eql([
+                { verified: true },
+                { verified: true }
+            ]);
+            expect(stub.firstCall.args[0]).to.eql([
+                {
+                    filter: 'caught',
+                    conditionExpression: undefined
+                },
+                {
+                    filter: 'uncaught',
+                    conditionExpression: undefined
+                }
+            ]);
+        });
+
+        it('set uncaught filters', async function() {
+            let args = {
+                filters: [],
+                filterOptions: [{ filterId: "uncaught" }],
+            }
+            sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
+            const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+
+            await session['setExceptionBreakPointsRequest'](response, args);
+
+            expect(response.body.breakpoints).to.eql([
+                { verified: true },
+                { verified: true }
+            ]);
+            expect(stub.firstCall.args[0]).to.eql([
+                {
+                    filter: 'uncaught',
+                    conditionExpression: undefined
+                }
+            ]);
+        });
+
+        it('set caught filter', async function() {
+            let args = {
+                filters: [],
+                filterOptions: [{ filterId: "caught" }],
+            }
+            sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
+            const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+
+            await session['setExceptionBreakPointsRequest'](response, args);
+
+            expect(response.body.breakpoints).to.eql([
+                { verified: true },
+                { verified: true }
+            ]);
+            expect(stub.firstCall.args[0]).to.eql([
+                {
+                    filter: 'caught',
+                    conditionExpression: undefined
+                }
+            ]);
+        });
+
+        it('set zero filters', async function() {
+            let args = {
+                filters: [],
+                filterOptions: [],
+            }
+            sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
+            const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+
+            await session['setExceptionBreakPointsRequest'](response, args);
+
+            expect(response.body.breakpoints).to.eql([
+                { verified: true },
+                { verified: true }
+            ]);
+            expect(stub.firstCall.args[0]).to.eql([]);
+        });
+
+        it('fails to set filters', async function() {
+            let args = {
+                filters: [],
+                filterOptions: [],
+            }
+            sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
+            const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => {
+                throw new Error('error')
+            });
+
+            await session['setExceptionBreakPointsRequest'](response, args);
+
+            expect(response.body.breakpoints).to.eql([
+                { verified: false },
+                { verified: false }
+            ]);
+        });
+
     });
 
     describe('evaluating variable', () => {

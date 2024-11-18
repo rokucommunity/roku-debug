@@ -72,6 +72,7 @@ export class TelnetAdapter {
     public supportsExecute = true;
 
     public once(eventName: 'app-ready'): Promise<void>;
+    public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: string) {
         return new Promise((resolve) => {
             const disconnect = this.on(eventName as Parameters<DebugProtocolAdapter['on']>[0], (...args) => {
