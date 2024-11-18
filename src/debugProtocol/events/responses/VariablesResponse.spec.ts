@@ -165,6 +165,7 @@ describe('VariablesResponse', () => {
                 refCount: 2,
                 isConst: false,
                 isContainer: true,
+                isVirtual: false,
                 type: VariableType.AssociativeArray,
                 keyType: 'String',
                 value: undefined,
@@ -173,6 +174,7 @@ describe('VariablesResponse', () => {
                     refCount: 1,
                     value: 'Bob',
                     type: VariableType.String,
+                    isVirtual: false,
                     isContainer: false,
                     isConst: false
                 }, {
@@ -180,6 +182,7 @@ describe('VariablesResponse', () => {
                     refCount: 1,
                     value: undefined,
                     isContainer: false,
+                    isVirtual: false,
                     type: VariableType.Invalid,
                     isConst: false
                 }]
@@ -203,6 +206,7 @@ describe('VariablesResponse', () => {
                 refCount: 2, // 4 bytes
                 isConst: false, // 0 bytes -- part of flags
                 isContainer: true, // 0 bytes -- part of flags
+                isVirtual: false, // 0 bytes -- part of flags
                 type: VariableType.AssociativeArray, // 1 byte
                 keyType: 'String', // 1 byte
                 // element_count // 4 bytes
@@ -210,6 +214,7 @@ describe('VariablesResponse', () => {
                     // flags // 1 byte
                     isContainer: false, // 0 bytes --part of flags
                     isConst: false, // 0 bytes -- part of flags
+                    isVirtual: false, // 0 bytes -- part of flags
                     type: VariableType.String, // 1 byte
                     name: 'firstName', // 10 bytes
                     refCount: 1, // 4 bytes
@@ -218,8 +223,205 @@ describe('VariablesResponse', () => {
                     // flags // 1 byte
                     isContainer: false, // 0 bytes -- part of flags
                     isConst: false, // 0 bytes -- part of flags
+                    isVirtual: false, // 0 bytes -- part of flags
                     type: VariableType.Invalid, // 1 byte
                     name: 'lastName', // 9 bytes
+                    refCount: 1 // 4 bytes
+                }]
+            }]
+        });
+    });
+
+    it('handles parent var with children and virtual variables', () => {
+        let response = VariablesResponse.fromJson({
+            requestId: 2,
+            variables: [{
+                name: 'person',
+                refCount: 2,
+                isConst: false,
+                isContainer: true,
+                type: VariableType.AssociativeArray,
+                keyType: VariableType.String,
+                value: undefined,
+                children: [{
+                    name: 'firstName',
+                    refCount: 1,
+                    value: 'Bob',
+                    type: VariableType.String,
+                    isContainer: false,
+                    isConst: false
+                }, {
+                    name: 'lastName',
+                    refCount: 1,
+                    value: undefined,
+                    isContainer: false,
+                    type: VariableType.Invalid,
+                    isConst: false
+                }, {
+                    name: '$children',
+                    refCount: 1,
+                    value: undefined,
+                    isContainer: true,
+                    isConst: false,
+                    isVirtual: true,
+                    childCount: 4,
+                    keyType: VariableType.Integer,
+                    type: VariableType.Array
+                }, {
+                    name: '$parent',
+                    refCount: 1,
+                    value: undefined,
+                    isContainer: true,
+                    isConst: false,
+                    isVirtual: true,
+                    childCount: 4,
+                    keyType: VariableType.String,
+                    type: VariableType.SubtypedObject
+                }, {
+                    name: '$threadinfo',
+                    refCount: 1,
+                    value: undefined,
+                    isContainer: true,
+                    isConst: false,
+                    isVirtual: true,
+                    childCount: 4,
+                    keyType: VariableType.String,
+                    type: VariableType.AssociativeArray
+                }]
+            }]
+        });
+
+        expect(response.data).to.eql({
+            packetLength: undefined,
+            errorCode: ErrorCode.OK,
+            requestId: 2,
+            variables: [{
+                name: 'person',
+                refCount: 2,
+                isConst: false,
+                isContainer: true,
+                isVirtual: false,
+                type: VariableType.AssociativeArray,
+                keyType: 'String',
+                value: undefined,
+                children: [{
+                    name: 'firstName',
+                    refCount: 1,
+                    value: 'Bob',
+                    type: VariableType.String,
+                    isVirtual: false,
+                    isContainer: false,
+                    isConst: false
+                }, {
+                    name: 'lastName',
+                    refCount: 1,
+                    value: undefined,
+                    isContainer: false,
+                    isVirtual: false,
+                    type: VariableType.Invalid,
+                    isConst: false
+                }, {
+                    name: '$children',
+                    refCount: 1,
+                    value: undefined,
+                    isContainer: true,
+                    isVirtual: true,
+                    isConst: false,
+                    childCount: 4,
+                    type: VariableType.Array,
+                    keyType: VariableType.Integer
+                }, {
+                    name: '$parent',
+                    refCount: 1,
+                    value: undefined,
+                    isContainer: true,
+                    isVirtual: true,
+                    isConst: false,
+                    childCount: 4,
+                    type: VariableType.SubtypedObject,
+                    keyType: VariableType.String
+                }, {
+                    name: '$threadinfo',
+                    refCount: 1,
+                    value: undefined,
+                    isContainer: true,
+                    isVirtual: true,
+                    isConst: false,
+                    childCount: 4,
+                    type: VariableType.AssociativeArray,
+                    keyType: VariableType.String
+                }]
+            }]
+        });
+
+        response = VariablesResponse.fromBuffer(response.toBuffer());
+
+        expect(response.success).to.be.true;
+
+
+        expect(
+            response.data
+        ).to.eql({
+            packetLength: 132, // 4  bytes
+            errorCode: ErrorCode.OK, // 4 bytes
+            requestId: 2, // 4 bytes
+            // num_variables // 4 bytes
+            variables: [{
+                // flags // 1 byte
+                name: 'person', // 7 bytes
+                refCount: 2, // 4 bytes
+                isConst: false, // 0 bytes -- part of flags
+                isContainer: true, // 0 bytes -- part of flags
+                isVirtual: false, // 0 bytes -- part of flags
+                type: VariableType.AssociativeArray, // 1 byte
+                keyType: 'String', // 1 byte
+                // element_count // 4 bytes
+                children: [{
+                    // flags // 1 byte
+                    isContainer: false, // 0 bytes --part of flags
+                    isConst: false, // 0 bytes -- part of flags
+                    isVirtual: false, // 0 bytes -- part of flags
+                    type: VariableType.String, // 1 byte
+                    name: 'firstName', // 10 bytes
+                    refCount: 1, // 4 bytes
+                    value: 'Bob' // 4 bytes
+                }, {
+                    // flags // 1 byte
+                    isContainer: false, // 0 bytes -- part of flags
+                    isConst: false, // 0 bytes -- part of flags
+                    isVirtual: false, // 0 bytes -- part of flags
+                    type: VariableType.Invalid, // 1 byte
+                    name: 'lastName', // 9 bytes
+                    refCount: 1 // 4 bytes
+                }, {
+                    // flags // 1 byte
+                    isContainer: true, // 0 bytes -- part of flags
+                    isConst: false, // 0 bytes -- part of flags
+                    isVirtual: true, // 0 bytes -- part of flags
+                    childCount: 4, // 4 bytes
+                    type: VariableType.Array, // 1 byte
+                    keyType: VariableType.Integer, // 1 byte
+                    name: '$children', // 10 bytes
+                    refCount: 1 // 4 bytes
+                }, {
+                    // flags // 1 byte
+                    isContainer: true, // 0 bytes -- part of flags
+                    isConst: false, // 0 bytes -- part of flags
+                    isVirtual: true, // 0 bytes -- part of flags
+                    childCount: 4, // 4 bytes
+                    type: VariableType.SubtypedObject, // 1 byte
+                    keyType: VariableType.String, // 1 byte
+                    name: '$parent', // 8 bytes
+                    refCount: 1 // 4 bytes
+                }, {
+                    // flags // 1 byte
+                    isContainer: true, // 0 bytes -- part of flags
+                    isConst: false, // 0 bytes -- part of flags
+                    isVirtual: true, // 0 bytes -- part of flags
+                    childCount: 4, // 4 bytes
+                    type: VariableType.AssociativeArray, // 1 byte
+                    keyType: VariableType.String, // 1 byte
+                    name: '$threadinfo', // 12 bytes
                     refCount: 1 // 4 bytes
                 }]
             }]
@@ -387,6 +589,7 @@ describe('VariablesResponse', () => {
             variables: [{
                 isConst: false,
                 isContainer: true,
+                isVirtual: false,
                 type: VariableType.AssociativeArray,
                 name: 'm',
                 refCount: 2,
@@ -396,6 +599,7 @@ describe('VariablesResponse', () => {
             }, {
                 isConst: false,
                 isContainer: true,
+                isVirtual: false,
                 type: VariableType.Array,
                 name: 'nodes',
                 refCount: 2,
@@ -405,6 +609,7 @@ describe('VariablesResponse', () => {
             }, {
                 isConst: false,
                 isContainer: false,
+                isVirtual: false,
                 type: VariableType.String,
                 name: 'message',
                 refCount: 2,
@@ -427,6 +632,7 @@ describe('VariablesResponse', () => {
                 // flags // 1 byte
                 isConst: false, // 0 bytes -- part of flags
                 isContainer: true, // 0 bytes -- part of flags
+                isVirtual: false, // 0 bytes -- part of flags
                 type: VariableType.AssociativeArray, // 1 byte
                 name: 'm', // 2 bytes
                 refCount: 2, // 4 bytes
@@ -436,6 +642,7 @@ describe('VariablesResponse', () => {
                 // flags // 1 byte
                 isConst: false, // 0 bytes -- part of flags
                 isContainer: true, // 0 bytes -- part of flags
+                isVirtual: false, // 0 bytes -- part of flags
                 type: VariableType.Array, // 1 byte
                 name: 'nodes', // 6 bytes
                 refCount: 2, // 4 bytes
@@ -445,6 +652,7 @@ describe('VariablesResponse', () => {
                 // flags // 1 byte
                 isConst: false, // 0 bytes -- part of flags
                 isContainer: false, // 0 bytes -- part of flags
+                isVirtual: false, // 0 bytes -- part of flags
                 type: VariableType.String, // 1 byte
                 name: 'message', // 8 bytes
                 refCount: 2, // 4 bytes
