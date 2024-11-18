@@ -73,7 +73,7 @@ export class VariablesRequest implements ProtocolRequest {
 
                 if (request.data.includesVirtualPath) {
                     for (let i = 0; i < variablePathLength; i++) {
-                        //0 means case SENSITIVE lookup, 1 means forced case INsensitive lookup
+                        //0 means this is not a virtual variable, 1 means  it a virtual variable and must be request as such when making a variables request
                         request.data.variablePathEntries[i].isVirtual = smartBuffer.readUInt8() === 0 ? false : true;
                     }
                 }
