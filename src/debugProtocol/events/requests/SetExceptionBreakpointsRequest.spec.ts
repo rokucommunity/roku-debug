@@ -1,10 +1,10 @@
 import { expect } from 'chai';
 import { Command } from '../../Constants';
-import { SetExceptionsBreakpointsRequest } from './SetExceptionsBreakpointsRequest';
+import { SetExceptionBreakpointsRequest } from './SetExceptionBreakpointsRequest';
 
-describe('SetExceptionsBreakpointsRequest', () => {
+describe('SetExceptionBreakpointsRequest', () => {
     it('serializes and deserializes properly with zero breakpoints', () => {
-        const command = SetExceptionsBreakpointsRequest.fromJson({
+        const command = SetExceptionBreakpointsRequest.fromJson({
             requestId: 3,
             breakpoints: []
         });
@@ -12,17 +12,17 @@ describe('SetExceptionsBreakpointsRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            command: Command.SetExceptionsBreakpoints,
+            command: Command.SetExceptionBreakpoints,
 
             breakpoints: []
         });
 
         expect(
-            SetExceptionsBreakpointsRequest.fromBuffer(command.toBuffer()).data
+            SetExceptionBreakpointsRequest.fromBuffer(command.toBuffer()).data
         ).to.eql({
             packetLength: 16, // 4 bytes
             requestId: 3, // 4 bytes
-            command: Command.SetExceptionsBreakpoints, // 4 bytes
+            command: Command.SetExceptionBreakpoints, // 4 bytes
 
             // num_breakpoints // 4 bytes
             breakpoints: []
@@ -30,7 +30,7 @@ describe('SetExceptionsBreakpointsRequest', () => {
     });
 
     it('serializes and deserializes properly with breakpoints', () => {
-        const command = SetExceptionsBreakpointsRequest.fromJson({
+        const command = SetExceptionBreakpointsRequest.fromJson({
             requestId: 3,
             breakpoints: [{
                 filter: 'caught',
@@ -45,7 +45,7 @@ describe('SetExceptionsBreakpointsRequest', () => {
         expect(command.data).to.eql({
             packetLength: undefined,
             requestId: 3,
-            command: Command.SetExceptionsBreakpoints,
+            command: Command.SetExceptionBreakpoints,
 
             breakpoints: [{
                 filter: 'caught',
@@ -58,11 +58,11 @@ describe('SetExceptionsBreakpointsRequest', () => {
         });
 
         expect(
-            SetExceptionsBreakpointsRequest.fromBuffer(command.toBuffer()).data
+            SetExceptionBreakpointsRequest.fromBuffer(command.toBuffer()).data
         ).to.eql({
             packetLength: 41, // 4 bytes
             requestId: 3, // 4 bytes
-            command: Command.SetExceptionsBreakpoints, // 4 bytes
+            command: Command.SetExceptionBreakpoints, // 4 bytes
             // num_breakpoints // 4 bytes
             breakpoints: [{
                 filter: 'caught',

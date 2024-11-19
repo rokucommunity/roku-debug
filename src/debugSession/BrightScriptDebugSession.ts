@@ -54,7 +54,7 @@ import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLeve
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
-import type { ExceptionBreakpointFilter } from '../debugProtocol/events/requests/SetExceptionsBreakpointsRequest';
+import type { ExceptionBreakpointFilter } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 
 const diagnosticSource = 'roku-debug';
 

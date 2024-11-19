@@ -15,7 +15,7 @@ import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces'
 import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
 import type { DebugProtocolAdapter } from './DebugProtocolAdapter';
-import type { ExceptionBreakpointFilter } from '../debugProtocol/events/requests/SetExceptionsBreakpointsRequest';
+import type { ExceptionBreakpointFilter } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.

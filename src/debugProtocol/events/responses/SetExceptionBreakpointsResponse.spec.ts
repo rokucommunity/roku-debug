@@ -1,25 +1,25 @@
 import { expect } from 'chai';
-import { SetExceptionsBreakpointsResponse } from './SetExceptionsBreakpointsResponse';
+import { SetExceptionBreakpointsResponse } from './SetExceptionBreakpointsResponse';
 import { ErrorCode } from '../../Constants';
 import { getRandomBuffer } from '../../../testHelpers.spec';
 
 describe('ListBreakpointsResponse', () => {
     it('defaults undefined breakpoint array to empty', () => {
-        let response = SetExceptionsBreakpointsResponse.fromJson({} as any);
+        let response = SetExceptionBreakpointsResponse.fromJson({} as any);
         expect(response.data.breakpoints).to.eql([]);
     });
 
     it('defaults num_breakpoints to 0 if array is missing', () => {
-        let response = SetExceptionsBreakpointsResponse.fromJson({} as any);
+        let response = SetExceptionBreakpointsResponse.fromJson({} as any);
         response.data = {} as any;
-        response = SetExceptionsBreakpointsResponse.fromBuffer(
+        response = SetExceptionBreakpointsResponse.fromBuffer(
             response.toBuffer()
         );
         expect(response.data.breakpoints).to.eql([]);
     });
 
     it('serializes and deserializes multiple breakpoints properly', () => {
-        let response = SetExceptionsBreakpointsResponse.fromJson({
+        let response = SetExceptionBreakpointsResponse.fromJson({
             requestId: 3,
             breakpoints: [{
                 errorCode: ErrorCode.OK,
@@ -43,7 +43,7 @@ describe('ListBreakpointsResponse', () => {
             }]
         });
 
-        response = SetExceptionsBreakpointsResponse.fromBuffer(response.toBuffer());
+        response = SetExceptionBreakpointsResponse.fromBuffer(response.toBuffer());
 
         expect(
             response.data
@@ -63,7 +63,7 @@ describe('ListBreakpointsResponse', () => {
     });
 
     it('handles empty breakpoints array', () => {
-        let response = SetExceptionsBreakpointsResponse.fromJson({
+        let response = SetExceptionBreakpointsResponse.fromJson({
             requestId: 3,
             breakpoints: []
         });
@@ -75,7 +75,7 @@ describe('ListBreakpointsResponse', () => {
             breakpoints: []
         });
 
-        response = SetExceptionsBreakpointsResponse.fromBuffer(response.toBuffer());
+        response = SetExceptionBreakpointsResponse.fromBuffer(response.toBuffer());
 
         expect(
             response.data
@@ -89,29 +89,29 @@ describe('ListBreakpointsResponse', () => {
     });
 
     it('handles empty buffer', () => {
-        const response = SetExceptionsBreakpointsResponse.fromBuffer(null);
+        const response = SetExceptionBreakpointsResponse.fromBuffer(null);
         expect(response.success).to.be.false;
     });
 
     it('handles undersized buffers', () => {
-        let response = SetExceptionsBreakpointsResponse.fromBuffer(
+        let response = SetExceptionBreakpointsResponse.fromBuffer(
             getRandomBuffer(0)
         );
         expect(response.success).to.be.false;
 
-        response = SetExceptionsBreakpointsResponse.fromBuffer(
+        response = SetExceptionBreakpointsResponse.fromBuffer(
             getRandomBuffer(1)
         );
         expect(response.success).to.be.false;
 
-        response = SetExceptionsBreakpointsResponse.fromBuffer(
+        response = SetExceptionBreakpointsResponse.fromBuffer(
             getRandomBuffer(11)
         );
         expect(response.success).to.be.false;
     });
 
     it('gracefully handles mismatched breakpoint count', () => {
-        let buffer = SetExceptionsBreakpointsResponse.fromJson({
+        let buffer = SetExceptionBreakpointsResponse.fromJson({
             requestId: 3,
             breakpoints: [{
                 errorCode: ErrorCode.OK,
@@ -126,7 +126,7 @@ describe('ListBreakpointsResponse', () => {
             buffer.slice(16)
         ]);
 
-        const response = SetExceptionsBreakpointsResponse.fromBuffer(buffer);
+        const response = SetExceptionBreakpointsResponse.fromBuffer(buffer);
         expect(response.success).to.be.false;
         expect(response.data.breakpoints).to.eql([{
             errorCode: ErrorCode.OK,
@@ -135,7 +135,7 @@ describe('ListBreakpointsResponse', () => {
     });
 
     it('handles malformed breakpoint data', () => {
-        let buffer = SetExceptionsBreakpointsResponse.fromJson({
+        let buffer = SetExceptionBreakpointsResponse.fromJson({
             requestId: 3,
             breakpoints: [{
                 errorCode: ErrorCode.OK,
@@ -151,7 +151,7 @@ describe('ListBreakpointsResponse', () => {
             buffer.slice(0, buffer.length - 3)
         ]);
 
-        const response = SetExceptionsBreakpointsResponse.fromBuffer(buffer);
+        const response = SetExceptionBreakpointsResponse.fromBuffer(buffer);
         expect(response.success).to.be.false;
         expect(response.data.breakpoints).to.eql([{
             errorCode: ErrorCode.OK,

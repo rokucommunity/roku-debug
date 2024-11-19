@@ -10,20 +10,20 @@ const ExceptionBreakpointFilterType = {
     uncaught: 2
 };
 
-export class SetExceptionsBreakpointsRequest implements ProtocolRequest {
+export class SetExceptionBreakpointsRequest implements ProtocolRequest {
 
     public static fromJson(data: {
         requestId: number;
         breakpoints: Array<ExceptionBreakpointFilter>;
     }) {
-        const request = new SetExceptionsBreakpointsRequest();
+        const request = new SetExceptionBreakpointsRequest();
         protocolUtil.loadJson(request, data);
         request.data.breakpoints ??= [];
         return request;
     }
 
     public static fromBuffer(buffer: Buffer) {
-        const request = new SetExceptionsBreakpointsRequest();
+        const request = new SetExceptionBreakpointsRequest();
         protocolUtil.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
             protocolUtil.loadCommonRequestFields(request, smartBuffer);
 
@@ -77,7 +77,7 @@ export class SetExceptionsBreakpointsRequest implements ProtocolRequest {
         //common props
         packetLength: undefined as number,
         requestId: undefined as number,
-        command: Command.SetExceptionsBreakpoints
+        command: Command.SetExceptionBreakpoints
     };
 }
 

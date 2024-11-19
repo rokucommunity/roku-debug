@@ -70,7 +70,7 @@ export enum Command {
      *
      * @since protocol TBD
      */
-    SetExceptionsBreakpoints = 'SetExceptionsBreakpoints',
+    SetExceptionBreakpoints = 'SetExceptionBreakpoints',
     /**
      *
      */
@@ -91,7 +91,7 @@ export enum CommandCode {
     RemoveBreakpoints = 9,
     Execute = 10,
     AddConditionalBreakpoints = 11,
-    SetExceptionsBreakpoints = 12,
+    SetExceptionBreakpoints = 12,
     ExitChannel = 122
 }
 

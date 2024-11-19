@@ -19,8 +19,8 @@ import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsReques
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { StackTraceRequest } from '../events/requests/StackTraceRequest';
 import { ThreadsRequest } from '../events/requests/ThreadsRequest';
-import type { ExceptionBreakpointFilter } from '../events/requests/SetExceptionsBreakpointsRequest';
-import { SetExceptionsBreakpointsRequest } from '../events/requests/SetExceptionsBreakpointsRequest';
+import type { ExceptionBreakpointFilter } from '../events/requests/SetExceptionBreakpointsRequest';
+import { SetExceptionBreakpointsRequest as SetExceptionBreakpointsRequest } from '../events/requests/SetExceptionBreakpointsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
@@ -34,7 +34,7 @@ import { CompileErrorUpdate } from '../events/updates/CompileErrorUpdate';
 import { GenericResponse } from '../events/responses/GenericResponse';
 import type { StackTraceResponse } from '../events/responses/StackTraceResponse';
 import { ThreadsResponse } from '../events/responses/ThreadsResponse';
-import { SetExceptionsBreakpointsResponse } from '../events/responses/SetExceptionsBreakpointsResponse';
+import { SetExceptionBreakpointsResponse } from '../events/responses/SetExceptionBreakpointsResponse';
 import type { Variable } from '../events/responses/VariablesResponse';
 import { VariablesResponse, VariableType } from '../events/responses/VariablesResponse';
 import { IOPortOpenedUpdate, isIOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
@@ -444,9 +444,9 @@ export class DebugProtocolClient {
         }
     }
 
-    public async setExceptionBreakpoints(filters: ExceptionBreakpointFilter[]): Promise<SetExceptionsBreakpointsResponse> {
-        return this.processRequest<SetExceptionsBreakpointsResponse>(
-            SetExceptionsBreakpointsRequest.fromJson({
+    public async setExceptionBreakpoints(filters: ExceptionBreakpointFilter[]): Promise<SetExceptionBreakpointsResponse> {
+        return this.processRequest<SetExceptionBreakpointsResponse>(
+            SetExceptionBreakpointsRequest.fromJson({
                 requestId: this.requestIdSequence++,
                 breakpoints: filters
             })
@@ -752,7 +752,7 @@ export class DebugProtocolClient {
             case AddConditionalBreakpointsRequest.name:
             case ExitChannelRequest.name:
             case ListBreakpointsRequest.name:
-            case SetExceptionsBreakpointsRequest.name:
+            case SetExceptionBreakpointsRequest.name:
                 return this.sendRequest(request);
             default:
                 this.logger.log('Unknown request type. Sending anyway...', request);
@@ -952,8 +952,8 @@ export class DebugProtocolClient {
                 return StackTraceV3Response.fromBuffer(buffer);
             case Command.Threads:
                 return ThreadsResponse.fromBuffer(buffer);
-            case Command.SetExceptionsBreakpoints:
-                return SetExceptionsBreakpointsResponse.fromBuffer(buffer);
+            case Command.SetExceptionBreakpoints:
+                return SetExceptionBreakpointsResponse.fromBuffer(buffer);
             default:
                 return undefined;
         }

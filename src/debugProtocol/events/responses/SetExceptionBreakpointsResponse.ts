@@ -3,20 +3,20 @@ import { ErrorCode } from '../../Constants';
 import { protocolUtil } from '../../ProtocolUtil';
 import type { ProtocolResponse } from '../ProtocolEvent';
 
-export class SetExceptionsBreakpointsResponse implements ProtocolResponse {
+export class SetExceptionBreakpointsResponse implements ProtocolResponse {
 
     public static fromJson(data: {
         requestId: number;
         breakpoints: BreakpointInfo[];
     }) {
-        const response = new SetExceptionsBreakpointsResponse();
+        const response = new SetExceptionBreakpointsResponse();
         protocolUtil.loadJson(response, data);
         response.data.breakpoints ??= [];
         return response;
     }
 
     public static fromBuffer(buffer: Buffer) {
-        const response = new SetExceptionsBreakpointsResponse();
+        const response = new SetExceptionBreakpointsResponse();
         protocolUtil.bufferLoaderHelper(response, buffer, 12, (smartBuffer: SmartBuffer) => {
             protocolUtil.loadCommonResponseFields(response, smartBuffer);
             const numBreakpoints = smartBuffer.readUInt32LE(); // num_breakpoints
