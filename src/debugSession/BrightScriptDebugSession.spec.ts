@@ -453,18 +453,18 @@ describe('BrightScriptDebugSession', () => {
         beforeEach(() => {
             response = {
                 seq: 0,
-                type: "response",
+                type: 'response',
                 request_seq: 3,
-                command: "setExceptionBreakpoints",
-                success: true,
-            }
+                command: 'setExceptionBreakpoints',
+                success: true
+            };
             args = {
                 filters: undefined,
                 filterOptions: undefined
-            }
+            };
         });
-        it('both caught and uncaught filters', async function() {
-            args.filters = ["caught", "uncaught"]
+        it('both caught and uncaught filters', async () => {
+            args.filters = ['caught', 'uncaught'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
 
@@ -480,8 +480,8 @@ describe('BrightScriptDebugSession', () => {
             ]);
         });
 
-        it('set uncaught filters', async function() {
-            args.filters = ["uncaught"]
+        it('set uncaught filters', async () => {
+            args.filters = ['uncaught'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
 
@@ -496,8 +496,8 @@ describe('BrightScriptDebugSession', () => {
             ]);
         });
 
-        it('set caught filter', async function() {
-            args.filters = ["caught"]
+        it('set caught filter', async () => {
+            args.filters = ['caught'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
 
@@ -512,9 +512,9 @@ describe('BrightScriptDebugSession', () => {
             ]);
         });
 
-        it('set zero filters', async function() {
-            args.filters = []
-            args.filterOptions = []
+        it('set zero filters', async () => {
+            args.filters = [];
+            args.filterOptions = [];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
 
@@ -527,8 +527,8 @@ describe('BrightScriptDebugSession', () => {
             expect(stub.firstCall.args[0]).to.eql([]);
         });
 
-        it.only('set filters with bad values', async function() {
-            args.filters = ['garbage']
+        it('set filters with bad values', async () => {
+            args.filters = ['garbage'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
 
@@ -541,10 +541,10 @@ describe('BrightScriptDebugSession', () => {
             expect(stub.firstCall.args[0]).to.eql([]);
         });
 
-        it('fails to set filters', async function() {
+        it('fails to set filters', async () => {
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
-            const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => {
-                throw new Error('error')
+            sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake((filters) => {
+                throw new Error('error');
             });
 
             await session['setExceptionBreakPointsRequest'](response, args);
@@ -555,8 +555,8 @@ describe('BrightScriptDebugSession', () => {
             ]);
         });
 
-        it('sets filters with conditions', async function() {
-            args.filterOptions = [{ filterId: "caught", condition: "a > 1" }]
+        it('sets filters with conditions', async () => {
+            args.filterOptions = [{ filterId: 'caught', condition: 'a > 1' }];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
 
@@ -574,8 +574,8 @@ describe('BrightScriptDebugSession', () => {
             ]);
         });
 
-        it('resets filters when the app closes', async function() {
-            args.filters = ['caught', 'uncaught']
+        it('resets filters when the app closes', async () => {
+            args.filters = ['caught', 'uncaught'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
 

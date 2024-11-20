@@ -253,7 +253,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     filter: x as 'caught' | 'uncaught'
                 }));
             }
-            this.exceptionBreakpointFilters = filterOptions
+            this.exceptionBreakpointFilters = filterOptions;
 
             //ensure the rokuAdapter is loaded
             await this.getRokuAdapter();
@@ -450,8 +450,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
                     this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
-                    this.rokuAdapter.once('connected').then(() => {
-                        this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpointFilters);
+                    void this.rokuAdapter.once('connected').then(async () => {
+                        await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpointFilters);
                     });
                 }
             });

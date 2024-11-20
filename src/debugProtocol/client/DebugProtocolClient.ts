@@ -20,7 +20,7 @@ import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { StackTraceRequest } from '../events/requests/StackTraceRequest';
 import { ThreadsRequest } from '../events/requests/ThreadsRequest';
 import type { ExceptionBreakpointFilter } from '../events/requests/SetExceptionBreakpointsRequest';
-import { SetExceptionBreakpointsRequest as SetExceptionBreakpointsRequest } from '../events/requests/SetExceptionBreakpointsRequest';
+import { SetExceptionBreakpointsRequest } from '../events/requests/SetExceptionBreakpointsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
