@@ -104,6 +104,7 @@ describe('BrightScriptDebugSession', () => {
             emitter: new EventEmitter(),
             on: TelnetAdapter.prototype.on,
             once: TelnetAdapter.prototype.once,
+            onReady: () => Promise.resolve(),
             emit: TelnetAdapter.prototype['emit'],
             activate: () => Promise.resolve(),
             registerSourceLocator: (a, b) => { },
