@@ -566,7 +566,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (statusCode && statusCode !== 200) {
                 switch (statusCode) {
                     case 577:
-                        message = 'DebugServer: Error (577) - Your device requires a system update before accepting connections. Follow these instructions to manually check for updates https://support.roku.com/article/208755668.'
+                        message = 'DebugServer: Error (577) - Your device requires a system update before accepting connections. Follow these instructions to manually check for updates https://support.roku.com/article/208755668.';
                         this.showPopupMessage(message, 'error', true);
                         await this.shutdown(message);
                         break;
