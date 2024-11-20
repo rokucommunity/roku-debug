@@ -21,6 +21,7 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
+import { insertCustomVariablesHelpers } from './InsertVariableHelper';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -598,34 +599,7 @@ export class DebugProtocolAdapter {
                 //this is the top-level container, so there are no parent keys to this entry
                 undefined
             );
-            if (container?.value?.startsWith('roSGNode')) {
-                let nodeChildren = <EvaluateContainer>{
-                    name: '[[children]]',
-                    type: 'roArray',
-                    highLevelType: 'array',
-                    keyType: KeyType.integer,
-                    presentationHint: 'virtual',
-                    evaluateName: `${expression}.getChildren(-1, 0)`,
-                    children: []
-                };
-                container.children.push(nodeChildren);
-            }
-            if (container.elementCount > 0 || container.type === 'Array') {
-                let nodeCount = <EvaluateContainer>{
-                    name: '[[count]]',
-                    evaluateName: container.elementCount.toString(),
-                    type: 'number',
-                    highLevelType: undefined,
-                    keyType: undefined,
-                    presentationHint: 'virtual',
-                    value: container.elementCount.toString(),
-                    elementCount: undefined,
-                    children: []
-                };
-                container.children.push(nodeCount);
-            }
-
-            return container;
+            return insertCustomVariablesHelpers(this, expression, container);
         }
     }
 
