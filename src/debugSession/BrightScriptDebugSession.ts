@@ -241,8 +241,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     protected async setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments) {
         response.body ??= {};
         try {
-            //ensure the rokuAdapter is loaded
-            await this.getRokuAdapter();
 
             let filterOptions: ExceptionBreakpointFilter[];
             if (args.filterOptions) {
@@ -256,6 +254,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }));
             }
             this.exceptionBreakpointFilters = filterOptions
+
+            //ensure the rokuAdapter is loaded
+            await this.getRokuAdapter();
 
             await this.rokuAdapter.setExceptionBreakpoints(filterOptions);
             //if success
