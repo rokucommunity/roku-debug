@@ -539,7 +539,9 @@ describe('BrightScriptDebugSession', () => {
                 { verified: true },
                 { verified: true }
             ]);
-            expect(stub.firstCall.args[0]).to.eql([]);
+            expect(stub.firstCall.args[0]).to.eql([
+                { filter: 'garbage' }
+            ]);
         });
 
         it('fails to set filters', async () => {
