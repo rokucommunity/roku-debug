@@ -6,7 +6,7 @@ export function insertCustomVariablesHelpers(adapter: DebugProtocolAdapter, expr
     if (semver.satisfies(adapter?.activeProtocolVersion, '<3.3.0')) {
         if (container?.value?.startsWith('roSGNode')) {
             let nodeChildren = <EvaluateContainer>{
-                name: '[[children]]',
+                name: '$children',
                 type: 'roArray',
                 highLevelType: 'array',
                 keyType: KeyType.integer,
@@ -18,7 +18,7 @@ export function insertCustomVariablesHelpers(adapter: DebugProtocolAdapter, expr
         }
         if (container.elementCount > 0 || container.type === 'Array') {
             let nodeCount = <EvaluateContainer>{
-                name: '[[count]]',
+                name: '$count',
                 evaluateName: container.elementCount.toString(),
                 type: 'number',
                 highLevelType: undefined,
