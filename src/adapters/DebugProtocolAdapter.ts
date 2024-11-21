@@ -599,7 +599,8 @@ export class DebugProtocolAdapter {
                 //this is the top-level container, so there are no parent keys to this entry
                 undefined
             );
-            return insertCustomVariablesHelpers(this, expression, container);
+            insertCustomVariablesHelpers(this, expression, container);
+            return container;
         }
     }
 
