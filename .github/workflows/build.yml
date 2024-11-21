@@ -25,7 +25,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run lint
-      - run: npm run test
+      - run: npx cross-env NODE_OPTIONS="--max-old-space-size=4096" npm run test
       #- run: npm run publish-coverage
   npm-release:
     #only run this task if a tag starting with 'v' was used to trigger this (i.e. a tagged release)
