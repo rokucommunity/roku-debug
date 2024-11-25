@@ -14,7 +14,7 @@ export class SetExceptionBreakpointsRequest implements ProtocolRequest {
 
     public static fromJson(data: {
         requestId: number;
-        breakpoints: Array<ExceptionBreakpointFilter>;
+        breakpoints: Array<ExceptionBreakpoint>;
     }) {
         const request = new SetExceptionBreakpointsRequest();
         protocolUtil.loadJson(request, data);
@@ -82,7 +82,7 @@ export class SetExceptionBreakpointsRequest implements ProtocolRequest {
 }
 
 
-export interface ExceptionBreakpointFilter {
+export interface ExceptionBreakpoint {
     /**
      * Possible values: 'caught', 'uncaught'
      */

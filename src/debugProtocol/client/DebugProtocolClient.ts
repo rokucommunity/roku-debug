@@ -19,7 +19,7 @@ import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsReques
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { StackTraceRequest } from '../events/requests/StackTraceRequest';
 import { ThreadsRequest } from '../events/requests/ThreadsRequest';
-import type { ExceptionBreakpointFilter } from '../events/requests/SetExceptionBreakpointsRequest';
+import type { ExceptionBreakpoint } from '../events/requests/SetExceptionBreakpointsRequest';
 import { SetExceptionBreakpointsRequest } from '../events/requests/SetExceptionBreakpointsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
@@ -156,7 +156,7 @@ export class DebugProtocolClient {
         return semver.satisfies(this.protocolVersion, '>=3.2.0');
     }
 
-    public get supportsExceptionBreakpointFilters() {
+    public get supportsExceptionBreakpoints() {
         return semver.satisfies(this.protocolVersion, '>=3.3.0');
     }
 
@@ -444,7 +444,7 @@ export class DebugProtocolClient {
         }
     }
 
-    public async setExceptionBreakpoints(filters: ExceptionBreakpointFilter[]): Promise<SetExceptionBreakpointsResponse> {
+    public async setExceptionBreakpoints(filters: ExceptionBreakpoint[]): Promise<SetExceptionBreakpointsResponse> {
         return this.processRequest<SetExceptionBreakpointsResponse>(
             SetExceptionBreakpointsRequest.fromJson({
                 requestId: this.requestIdSequence++,

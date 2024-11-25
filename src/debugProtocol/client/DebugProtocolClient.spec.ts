@@ -523,22 +523,22 @@ describe('DebugProtocolClient', () => {
         //only supported on version 3.3.0 and above
         client.protocolVersion = '1.0.0';
         expect(
-            client['supportsExceptionBreakpointFilters']
+            client['supportsExceptionBreakpoints']
         ).to.be.false;
 
         client.protocolVersion = '3.0.0';
         expect(
-            client['supportsExceptionBreakpointFilters']
+            client['supportsExceptionBreakpoints']
         ).to.be.false;
 
         client.protocolVersion = '3.3.0';
         expect(
-            client['supportsExceptionBreakpointFilters']
+            client['supportsExceptionBreakpoints']
         ).to.be.true;
 
         client.protocolVersion = '4.0.0';
         expect(
-            client['supportsExceptionBreakpointFilters']
+            client['supportsExceptionBreakpoints']
         ).to.be.true;
     });
 

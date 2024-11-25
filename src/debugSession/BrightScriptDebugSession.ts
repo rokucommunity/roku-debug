@@ -54,7 +54,7 @@ import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLeve
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
-import type { ExceptionBreakpointFilter } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
+import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 
 const diagnosticSource = 'roku-debug';
 
@@ -164,7 +164,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private launchConfiguration: LaunchConfiguration;
     private initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
-    private exceptionBreakpointFilters: ExceptionBreakpointFilter[] = [];
+    private exceptionBreakpoints: ExceptionBreakpoint[] = [];
 
     /**
      * The 'initialize' request is the first request called by the frontend
@@ -242,7 +242,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         response.body ??= {};
         try {
 
-            let filterOptions: ExceptionBreakpointFilter[];
+            let filterOptions: ExceptionBreakpoint[];
             if (args.filterOptions) {
                 filterOptions = args.filterOptions.map(x => ({
                     filter: x.filterId as 'caught' | 'uncaught',
@@ -253,7 +253,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     filter: x as 'caught' | 'uncaught'
                 }));
             }
-            this.exceptionBreakpointFilters = filterOptions;
+            this.exceptionBreakpoints = filterOptions;
 
             //ensure the rokuAdapter is loaded
             await this.getRokuAdapter();
@@ -451,7 +451,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
                     void this.rokuAdapter.once('connected').then(async () => {
-                        await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpointFilters);
+                        await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpoints);
                     });
                 }
             });
@@ -1282,8 +1282,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let varIndex = this.getNextVarIndex(args.frameId);
                     let arrayVarName = this.tempVarPrefix + 'eval';
                     if (varIndex === 0) {
-                        const response = await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
-                        console.log(response);
+                        await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
                     }
                     let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
                     args.expression = `${arrayVarName}[${varIndex}]`;

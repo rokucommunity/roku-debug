@@ -20,7 +20,7 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
-import type { ExceptionBreakpointFilter } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
+import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -185,7 +185,7 @@ export class DebugProtocolAdapter {
         return new Promise((resolve) => {
             let callCount = -1;
 
-            function handler(data: Buffer) {
+            function handler() {
                 callCount++;
                 let myCallCount = callCount;
                 setTimeout(() => {
@@ -199,7 +199,7 @@ export class DebugProtocolAdapter {
 
             client.addListener(name, handler);
             //call the handler immediately so we have a timeout
-            handler(Buffer.from([]));
+            handler();
         });
     }
 
@@ -844,11 +844,10 @@ export class DebugProtocolAdapter {
         this.chanperfTracker.clearHistory();
     }
 
-    public async setExceptionBreakpoints(filters: ExceptionBreakpointFilter[]) {
-        if (this.client?.supportsExceptionBreakpointFilters) {
+    public async setExceptionBreakpoints(filters: ExceptionBreakpoint[]) {
+        if (this.client?.supportsExceptionBreakpoints) {
             //tell the client to set the exception breakpoints
             const response = await this.client?.setExceptionBreakpoints(filters);
-            console.log(response);
             return response;
         }
         return undefined;

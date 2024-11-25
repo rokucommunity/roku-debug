@@ -591,7 +591,7 @@ describe('BrightScriptDebugSession', () => {
                 { filter: 'caught' },
                 { filter: 'uncaught' }
             ]);
-            expect(session['exceptionBreakpointFilters']).to.eql([
+            expect(session['exceptionBreakpoints']).to.eql([
                 { filter: 'caught' },
                 { filter: 'uncaught' }
             ]);
