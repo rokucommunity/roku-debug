@@ -4,7 +4,7 @@ import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAda
 
 /**
  * Insert custom variables into the `EvaluateContainer`. Most of these are for compatibility with older versions of the BrightScript debug protocol,
- * but occasionally can be adding new functionality for properties that don't exist in the debug protocol. Some of these will run `evaluate` commands
+ * but occasionally can be for adding new functionality for properties that don't exist in the debug protocol. Some of these will run `evaluate` commands
  * to look up the data for the custom variables.
  */
 export async function insertCustomVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer): Promise<void> {
