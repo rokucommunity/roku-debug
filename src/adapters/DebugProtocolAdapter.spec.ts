@@ -543,6 +543,7 @@ describe('DebugProtocolAdapter', function() {
             ).to.eql([
                 'person["name"]',
                 'person["age"]',
+                //$count
                 '2'
             ]);
             //the top level object should be an AA
