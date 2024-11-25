@@ -68,7 +68,7 @@ export enum Command {
     /**
      * Adds a exception breakpoint.
      *
-     * @since protocol TBD
+     * @since protocol 3.3.0 (Roku OS 14.1.4)
      */
     SetExceptionBreakpoints = 'SetExceptionBreakpoints',
     /**
