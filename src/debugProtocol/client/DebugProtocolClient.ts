@@ -260,7 +260,7 @@ export class DebugProtocolClient {
             this.emit('data', data);
             //queue up processing the new data, chunk by chunk
             void this.bufferQueue.run(async () => {
-                this.buffer = Buffer.concat([this.buffer, data]);
+                this.buffer = Buffer.concat([this.buffer, data] as any[]);
                 while (this.buffer.length > 0 && await this.process()) {
                     //the loop condition is the actual work
                 }
@@ -995,9 +995,8 @@ export class DebugProtocolClient {
                 return response;
             case UpdateType.ExceptionBreakpointError:
                 //we do nothing with exception breakpoint errors at this time.
-                const update = ExceptionBreakpointErrorUpdate.fromBuffer(buffer);
-                this.logger.error('Exception breakpoint error occurred', update);
-                return update;
+                const exceptionBreakpointErrorUpdate = ExceptionBreakpointErrorUpdate.fromBuffer(buffer);
+                return exceptionBreakpointErrorUpdate;
             default:
                 return undefined;
         }

@@ -258,19 +258,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //ensure the rokuAdapter is loaded
             await this.getRokuAdapter();
 
-            await this.rokuAdapter.setExceptionBreakpoints(filterOptions);
-            //if success
-            response.body.breakpoints = [
-                { verified: true },
-                { verified: true }
-            ];
+            if (this.rokuAdapter.supportsExceptionBreakpoints) {
+                await this.rokuAdapter.setExceptionBreakpoints(filterOptions);
+                //if success
+                response.body.breakpoints = [
+                    { verified: true },
+                    { verified: true }
+                ];
+            } else {
+                response.body.breakpoints = [
+                    { verified: false },
+                    { verified: false }
+                ];
+            }
         } catch (e) {
             //if error (or not supported)
             response.body.breakpoints = [
                 { verified: false },
                 { verified: false }
             ];
-            console.error(e);
+            this.logger.error('Failed to set exception breakpoints', e);
         } finally {
             this.sendResponse(response);
         }

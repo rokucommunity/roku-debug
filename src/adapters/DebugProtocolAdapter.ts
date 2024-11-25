@@ -143,6 +143,13 @@ export class DebugProtocolAdapter {
     }
 
     /**
+     * Does the current client support exception breakpoints? This value will be undefined if the client has not yet connected
+     */
+    public get supportsExceptionBreakpoints(): boolean | undefined {
+        return this.client?.supportsExceptionBreakpoints;
+    }
+
+    /**
      * The debugger needs to tell us when to be active (i.e. when the package was deployed)
      */
     public isActivated = false;

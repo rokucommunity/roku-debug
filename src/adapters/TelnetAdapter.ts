@@ -71,6 +71,8 @@ export class TelnetAdapter {
      */
     public supportsExecute = true;
 
+    public supportsExceptionBreakpoints = false;
+
     public once(eventName: 'app-ready'): Promise<void>;
     public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: string) {
