@@ -516,7 +516,7 @@ export class DebugProtocolAdapter {
             let thread = await this.getThreadByThreadId(threadIndex);
             let frames: StackFrame[] = [];
             let stackTraceData = await this.client.getStackTrace(threadIndex);
-            for (let i = 0; i < stackTraceData?.data?.entries?.length ?? 0; i++) {
+            for (let i = 0; i < (stackTraceData?.data?.entries?.length ?? 0); i++) {
                 let frameData = stackTraceData.data.entries[i];
                 let stackFrame: StackFrame = {
                     frameId: this.nextFrameId++,
@@ -738,7 +738,7 @@ export class DebugProtocolAdapter {
                 return [];
             }
 
-            for (let i = 0; i < threadsResponse.data?.threads?.length ?? 0; i++) {
+            for (let i = 0; i < (threadsResponse.data?.threads?.length ?? 0); i++) {
                 let threadInfo = threadsResponse.data.threads[i];
                 let thread = <Thread>{
                     // NOTE: On THREAD_ATTACHED events the threads request is marking the wrong thread as primary.
@@ -904,7 +904,7 @@ export class DebugProtocolAdapter {
 
                 //if the response was successful, and we have the correct number of breakpoints in the response
                 if (response.data.errorCode === ErrorCode.OK && response?.data?.breakpoints?.length === breakpoints.length) {
-                    for (let i = 0; i < response?.data?.breakpoints?.length ?? 0; i++) {
+                    for (let i = 0; i < (response?.data?.breakpoints?.length ?? 0); i++) {
                         const deviceBreakpoint = response.data.breakpoints[i];
 
                         if (typeof deviceBreakpoint?.id === 'number') {
