@@ -21,7 +21,7 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
-import { insertCustomVariablesHelpers } from './InsertVariableHelper';
+import { insertCustomVariables } from './InsertVariableHelper';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -599,7 +599,7 @@ export class DebugProtocolAdapter {
                 //this is the top-level container, so there are no parent keys to this entry
                 undefined
             );
-            insertCustomVariablesHelpers(this, expression, container);
+            await insertCustomVariables(this, expression, container);
             return container;
         }
     }

@@ -2,7 +2,12 @@ import * as semver from 'semver';
 import { KeyType } from './DebugProtocolAdapter';
 import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAdapter';
 
-export function insertCustomVariablesHelpers(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
+/**
+ * Insert custom variables into the `EvaluateContainer`. Most of these are for compatibility with older versions of the BrightScript debug protocol,
+ * but occasionally can be adding new functionality for properties that don't exist in the debug protocol. Some of these will run `evaluate` commands
+ * to look up the data for the custom variables.
+ */
+export async function insertCustomVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer): Promise<void> {
     if (semver.satisfies(adapter?.activeProtocolVersion, '<3.3.0')) {
         if (container?.value?.startsWith('roSGNode')) {
             let nodeChildren = <EvaluateContainer>{
@@ -31,4 +36,5 @@ export function insertCustomVariablesHelpers(adapter: DebugProtocolAdapter, expr
             container.children.push(nodeCount);
         }
     }
+    await Promise.resolve();
 }
