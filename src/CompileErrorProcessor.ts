@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import type { Diagnostic } from 'vscode-languageserver-protocol/node';
 import { logger } from './logging';
+import type { Range } from 'brighterscript';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 
 export class CompileErrorProcessor {
@@ -359,7 +359,25 @@ export class CompileErrorProcessor {
     }
 }
 
-export interface BSDebugDiagnostic extends Diagnostic {
+export interface BSDebugDiagnostic {
+    /**
+     * The diagnostic's message. It usually appears in the user interface
+     */
+    message: string;
+    /**
+     * The range at which the message applies
+     */
+    range: Range;
+    /**
+     * The diagnostic's code, which usually appear in the user interface.
+     */
+    code?: number | string;
+    /**
+     * A human-readable string describing the source of this
+     * diagnostic, e.g. 'typescript' or 'super lint'. It usually
+     * appears in the user interface.
+     */
+    source?: string;
     /**
      * Path to the file in question. When emitted from a Roku device, this will be a full pkgPath (i.e. `pkg:/source/main.brs`).
      * As it flows through the program, this may be modified to represent a source location (i.e. `C:/projects/app/source/main.brs`)
@@ -371,9 +389,10 @@ export interface BSDebugDiagnostic extends Diagnostic {
      */
     componentLibraryName?: string;
     /**
-     * The diagnostic's severity.
+     * The diagnostic's severity. Can be omitted. If omitted it is up to the
+     * client to interpret diagnostics as error, warning, info or hint.
      */
-    severity: DiagnosticSeverity;
+    severity?: DiagnosticSeverity;
 }
 
 export enum CompileStatus {
