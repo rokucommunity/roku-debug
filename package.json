@@ -98,7 +98,9 @@
     "dependencies": {
         "@rokucommunity/logger": "^0.3.9",
         "@types/request": "^2.48.8",
-        "brighterscript": "^0.67.8",
+        "@vscode/debugadapter": "^1.68.0",
+        "@vscode/debugprotocol": "^1.68.0",
+        "brighterscript": "^0.68.1",
         "dateformat": "^4.6.3",
         "debounce": "^1.2.1",
         "eol": "^0.9.1",
@@ -108,7 +110,7 @@
         "fs-extra": "^10.0.0",
         "natural-orderby": "^2.0.3",
         "portfinder": "^1.0.32",
-        "postman-request": "^2.88.1-postman.32",
+        "postman-request": "^2.88.1-postman.40",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
         "roku-deploy": "^3.12.2",
@@ -117,9 +119,6 @@
         "smart-buffer": "^4.2.0",
         "source-map": "^0.7.4",
         "telnet-client": "^1.4.9",
-        "vscode-debugadapter": "^1.49.0",
-        "vscode-debugprotocol": "^1.49.0",
-        "vscode-languageserver": "^6.1.1",
         "xml2js": "^0.5.0"
     }
 }
