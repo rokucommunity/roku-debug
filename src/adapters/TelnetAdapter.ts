@@ -15,6 +15,7 @@ import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces'
 import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
 import type { DebugProtocolAdapter } from './DebugProtocolAdapter';
+import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -70,7 +71,10 @@ export class TelnetAdapter {
      */
     public supportsExecute = true;
 
+    public supportsExceptionBreakpoints = false;
+
     public once(eventName: 'app-ready'): Promise<void>;
+    public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: string) {
         return new Promise((resolve) => {
             const disconnect = this.on(eventName as Parameters<DebugProtocolAdapter['on']>[0], (...args) => {
@@ -226,6 +230,12 @@ export class TelnetAdapter {
         }
     }
 
+    private firstConnectDeferred = defer<void>();
+
+    public onReady() {
+        return this.firstConnectDeferred.promise;
+    }
+
     /**
      * Connect to the telnet session. This should be called before the channel is launched.
      */
@@ -356,6 +366,7 @@ export class TelnetAdapter {
         } catch (e) {
             deferred.reject(e);
         }
+        this.firstConnectDeferred.resolve();
         return deferred.promise;
     }
 
@@ -1074,6 +1085,10 @@ export class TelnetAdapter {
      */
     public clearChanperfHistory() {
         this.chanperfTracker.clearHistory();
+    }
+
+    public async setExceptionBreakpoints(filters: ExceptionBreakpoint[]) {
+        //we can't send dynamic breakpoints to the server...so just do nothing
     }
 
     public async syncBreakpoints() {
