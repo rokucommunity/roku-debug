@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events';
 import { logger } from './logging';
-import type { Range } from 'brighterscript';
+import type { DiagnosticTag, Range } from 'brighterscript';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
+import type { DiagnosticRelatedInformation } from 'vscode';
 
 export class CompileErrorProcessor {
 
@@ -373,6 +374,18 @@ export interface BSDebugDiagnostic {
      */
     code?: number | string;
     /**
+     * An optional property to describe the error code.
+     * Requires the code field (above) to be present/not null.
+     *
+     * @since 3.16.0
+     */
+    codeDescription?: {
+        /**
+         * An URI to open with more information about the diagnostic error.
+         */
+        href: string;
+    };
+    /**
      * A human-readable string describing the source of this
      * diagnostic, e.g. 'typescript' or 'super lint'. It usually
      * appears in the user interface.
@@ -393,6 +406,25 @@ export interface BSDebugDiagnostic {
      * client to interpret diagnostics as error, warning, info or hint.
      */
     severity?: DiagnosticSeverity;
+
+    /**
+     * Additional metadata about the diagnostic.
+     *
+     * @since 3.15.0
+     */
+    tags?: DiagnosticTag[];
+    /**
+     * An array of related diagnostic information, e.g. when symbol-names within
+     * a scope collide all definitions can be marked via this property.
+     */
+    relatedInformation?: DiagnosticRelatedInformation[];
+    /**
+     * A data entry field that is preserved between a `textDocument/publishDiagnostics`
+     * notification and `textDocument/codeAction` request.
+     *
+     * @since 3.16.0
+     */
+    data?: any;
 }
 
 export enum CompileStatus {
