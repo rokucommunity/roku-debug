@@ -464,10 +464,12 @@ describe('BrightScriptDebugSession', () => {
                 filterOptions: undefined
             };
         });
+
         it('both caught and uncaught filters', async () => {
             args.filters = ['caught', 'uncaught'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+            rokuAdapter.supportsExceptionBreakpoints = true;
 
             await session['setExceptionBreakPointsRequest'](response, args);
 
@@ -481,10 +483,25 @@ describe('BrightScriptDebugSession', () => {
             ]);
         });
 
+        it('handles devices that do not support exception breakpoints', async () => {
+            args.filters = ['caught', 'uncaught'];
+            sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
+            const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+            rokuAdapter.supportsExceptionBreakpoints = false;
+
+            await session['setExceptionBreakPointsRequest'](response, args);
+
+            expect(response.body.breakpoints).to.eql([
+                { verified: false },
+                { verified: false }
+            ]);
+        });
+
         it('set uncaught filters', async () => {
             args.filters = ['uncaught'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+            rokuAdapter.supportsExceptionBreakpoints = true;
 
             await session['setExceptionBreakPointsRequest'](response, args);
 
@@ -501,6 +518,7 @@ describe('BrightScriptDebugSession', () => {
             args.filters = ['caught'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+            rokuAdapter.supportsExceptionBreakpoints = true;
 
             await session['setExceptionBreakPointsRequest'](response, args);
 
@@ -518,6 +536,7 @@ describe('BrightScriptDebugSession', () => {
             args.filterOptions = [];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+            rokuAdapter.supportsExceptionBreakpoints = true;
 
             await session['setExceptionBreakPointsRequest'](response, args);
 
@@ -532,6 +551,7 @@ describe('BrightScriptDebugSession', () => {
             args.filters = ['garbage'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+            rokuAdapter.supportsExceptionBreakpoints = true;
 
             await session['setExceptionBreakPointsRequest'](response, args);
 
@@ -549,6 +569,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake((filters) => {
                 throw new Error('error');
             });
+            rokuAdapter.supportsExceptionBreakpoints = true;
 
             await session['setExceptionBreakPointsRequest'](response, args);
 
@@ -562,6 +583,7 @@ describe('BrightScriptDebugSession', () => {
             args.filterOptions = [{ filterId: 'caught', condition: 'a > 1' }];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+            rokuAdapter.supportsExceptionBreakpoints = true;
 
             await session['setExceptionBreakPointsRequest'](response, args);
 
@@ -581,6 +603,7 @@ describe('BrightScriptDebugSession', () => {
             args.filters = ['caught', 'uncaught'];
             sinon.stub(session, 'getRokuAdapter' as keyof BrightScriptDebugSession).callsFake(async () => { });
             const stub = sinon.stub(rokuAdapter, 'setExceptionBreakpoints').callsFake(async (filters) => { });
+            rokuAdapter.supportsExceptionBreakpoints = true;
 
             await session['setExceptionBreakPointsRequest'](response, args);
             expect(response.body.breakpoints).to.eql([
