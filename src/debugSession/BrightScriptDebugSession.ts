@@ -17,10 +17,10 @@ import {
     TerminatedEvent,
     Thread,
     Variable
-} from 'vscode-debugadapter';
+} from '@vscode/debugadapter';
 import type { SceneGraphCommandResponse } from '../SceneGraphDebugCommandController';
 import { SceneGraphDebugCommandController } from '../SceneGraphDebugCommandController';
-import type { DebugProtocol } from 'vscode-debugprotocol';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';

@@ -2,7 +2,7 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import type { CodeWithSourceMap } from 'source-map';
 import { SourceNode } from 'source-map';
-import type { DebugProtocol } from 'vscode-debugprotocol';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 import { fileUtils, standardizePath } from '../FileUtils';
 import type { ComponentLibraryProject, Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
