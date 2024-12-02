@@ -2,7 +2,6 @@ import { EventEmitter } from 'events';
 import { logger } from './logging';
 import type { DiagnosticTag, Range } from 'brighterscript';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
-import type { DiagnosticRelatedInformation } from 'vscode';
 
 export class CompileErrorProcessor {
 
@@ -417,7 +416,19 @@ export interface BSDebugDiagnostic {
      * An array of related diagnostic information, e.g. when symbol-names within
      * a scope collide all definitions can be marked via this property.
      */
-    relatedInformation?: DiagnosticRelatedInformation[];
+    relatedInformation?: Array<{
+        /**
+         * The location of this related diagnostic information.
+         */
+        location: {
+            uri: string;
+            range: Range;
+        };
+        /**
+         * The message of this related diagnostic information.
+         */
+        message: string;
+    }>;
     /**
      * A data entry field that is preserved between a `textDocument/publishDiagnostics`
      * notification and `textDocument/codeAction` request.
