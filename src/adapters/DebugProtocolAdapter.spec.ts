@@ -543,7 +543,7 @@ describe('DebugProtocolAdapter', function() {
             ).to.eql([
                 'person["name"]',
                 'person["age"]',
-                //$count
+                //For arrays or objects with children we add a $count property for the number of items or children
                 '2'
             ]);
             //the top level object should be an AA
