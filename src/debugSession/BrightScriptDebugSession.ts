@@ -530,8 +530,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const statusCode = e?.results?.response?.statusCode;
             const message = e.message as string;
             if (statusCode === 401) {
-                this.showPopupMessage(message, 'error', true);
-                await this.shutdown(message);
+
+                await this.shutdown(message, true);
                 throw e;
             }
             this.logger.warn('Failed to delete the dev channel...probably not a big deal', e);
@@ -563,9 +563,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }).catch(async (e) => {
             const statusCode = e?.results?.response?.statusCode;
             const message = e.message as string;
-            if (statusCode && statusCode !== 200) {
-                this.showPopupMessage(message, 'error', true);
-                await this.shutdown(message);
+            if ((statusCode && statusCode !== 200) || isUpdateCheckRequiredError(e) || isConnectionResetError(e)) {
+                await this.shutdown(message, true);
                 throw e;
             }
             this.logger.error(e);
@@ -1545,7 +1544,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Called when the debugger is terminated. Feel free to call this as frequently as you want; we'll only run the shutdown process the first time, and return
      * the same promise on subsequent calls
      */
-    public async shutdown(errorMessage?: string): Promise<void> {
+    public async shutdown(errorMessage?: string, isModal?: boolean): Promise<void> {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
             this.shutdownPromise = this._shutdown(errorMessage);
@@ -1555,7 +1554,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return this.shutdownPromise;
     }
 
-    private async _shutdown(errorMessage?: string): Promise<void> {
+    private async _shutdown(errorMessage?: string, isModal?: boolean): Promise<void> {
         try {
             this.componentLibraryServer?.stop();
 
@@ -1578,7 +1577,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //if there was an error message, display it to the user
             if (errorMessage) {
                 this.logger.error(errorMessage);
-                this.showPopupMessage(errorMessage, 'error');
+                this.showPopupMessage(errorMessage, 'error', isModal);
             }
 
             this.logger.log('Destroy rokuAdapter');
