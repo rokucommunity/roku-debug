@@ -1,7 +1,7 @@
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
-import { rokuDeploy, CompileError } from 'roku-deploy';
+import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError } from 'roku-deploy';
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
