@@ -530,7 +530,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const statusCode = e?.results?.response?.statusCode;
             const message = e.message as string;
             if (statusCode === 401) {
-
                 await this.shutdown(message, true);
                 throw e;
             }
@@ -1276,7 +1275,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         deferred.resolve();
     }
 
-    private async evaluateExpressionToTempVar(args: DebugProtocol.EvaluateArguments, variablePath: string[]): Promise< { evalArgs: DebugProtocol.EvaluateArguments; variablePath: string[] } > {
+    private async evaluateExpressionToTempVar(args: DebugProtocol.EvaluateArguments, variablePath: string[]): Promise<{ evalArgs: DebugProtocol.EvaluateArguments; variablePath: string[] }> {
         let returnVal = { evalArgs: args, variablePath };
         if (!variablePath && util.isAssignableExpression(args.expression)) {
             let varIndex = this.getNextVarIndex(args.frameId);
@@ -1544,7 +1543,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Called when the debugger is terminated. Feel free to call this as frequently as you want; we'll only run the shutdown process the first time, and return
      * the same promise on subsequent calls
      */
-    public async shutdown(errorMessage?: string, isModal?: boolean): Promise<void> {
+    public async shutdown(errorMessage?: string, modal = false): Promise<void> {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
             this.shutdownPromise = this._shutdown(errorMessage);
@@ -1554,7 +1553,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return this.shutdownPromise;
     }
 
-    private async _shutdown(errorMessage?: string, isModal?: boolean): Promise<void> {
+    private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
         try {
             this.componentLibraryServer?.stop();
 
@@ -1577,7 +1576,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //if there was an error message, display it to the user
             if (errorMessage) {
                 this.logger.error(errorMessage);
-                this.showPopupMessage(errorMessage, 'error', isModal);
+                this.showPopupMessage(errorMessage, 'error', modal);
             }
 
             this.logger.log('Destroy rokuAdapter');
