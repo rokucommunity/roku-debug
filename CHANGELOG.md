@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.13](https://github.com/rokucommunity/roku-debug/compare/v0.21.12...v0.21.13) - 2024-12-20
+### Added
+ - Add `$children` virtual variables for `roSGNode` ([#192](https://github.com/rokucommunity/roku-debug/pull/192))
+ - Check for two error types. Make sure we do not double display an error ([#204](https://github.com/rokucommunity/roku-debug/pull/204))
+ - Add the missing `Diagnostic` props to `BSDebugDiagnostic` ([#203](https://github.com/rokucommunity/roku-debug/pull/203))
+### Changed
+ - upgrade to [brighterscript@0.68.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0682---2024-12-06). Notable changes since 0.67.8:
+     - Add more convenience exports from vscode-languageserver ([brighterscript#1359](https://github.com/rokucommunity/brighterscript/pull/1359))
+     - Fix issues with the ast walkArray function ([brighterscript#1347](https://github.com/rokucommunity/brighterscript/pull/1347))
+ - upgrade to [roku-deploy@3.12.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3123---2024-12-06). Notable changes since 3.12.2:
+     - Fix issues with detecting "check for updates required" ([roku-deploy#181](https://github.com/rokucommunity/roku-deploy/pull/181))
+     - Identify when a 577 error is thrown, send a new developer friendly message ([roku-deploy#180](https://github.com/rokucommunity/roku-deploy/pull/180))
+### Fixed 
+ - Fix cli bug ([#201](https://github.com/rokucommunity/roku-debug/pull/201))
+
+
+
 ## [0.21.12](https://github.com/rokucommunity/roku-debug/compare/v0.21.11...v0.21.12) - 2024-10-18
 ### Changed
  - upgrade to [brighterscript@0.67.8](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0678---2024-10-18). Notable changes since 0.67.7:

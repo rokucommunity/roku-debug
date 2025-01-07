@@ -21,6 +21,7 @@ import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
+import { insertCustomVariables } from './customVariableUtils';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -620,6 +621,7 @@ export class DebugProtocolAdapter {
                 //this is the top-level container, so there are no parent keys to this entry
                 undefined
             );
+            await insertCustomVariables(this, expression, container);
             return container;
         }
     }
@@ -658,7 +660,7 @@ export class DebugProtocolAdapter {
      * @param name the name of this variable. For example, `alpha.beta.charlie`, this value would be `charlie`. For local vars, this is the root variable name (i.e. `alpha`)
      * @param parentEvaluateName the string used to derive the parent, _excluding_ this variable's name (i.e. `alpha.beta` or `alpha[0]`)
      */
-    private createEvaluateContainer(variable: Variable, name: string, parentEvaluateName: string) {
+    private createEvaluateContainer(variable: Variable, name: string | number, parentEvaluateName: string) {
         let value;
         let variableType = variable.type;
         if (variable.value === null) {
@@ -680,7 +682,7 @@ export class DebugProtocolAdapter {
         //build full evaluate name for this var. (i.e. `alpha["beta"]` + ["charlie"]` === `alpha["beta"]["charlie"]`)
         let evaluateName: string;
         if (!parentEvaluateName?.trim()) {
-            evaluateName = name;
+            evaluateName = name?.toString();
         } else if (typeof name === 'string') {
             evaluateName = `${parentEvaluateName}["${name}"]`;
         } else if (typeof name === 'number') {
@@ -688,7 +690,7 @@ export class DebugProtocolAdapter {
         }
 
         let container: EvaluateContainer = {
-            name: name ?? '',
+            name: name?.toString() ?? '',
             evaluateName: evaluateName ?? '',
             type: variableType ?? '',
             value: value ?? null,
@@ -707,7 +709,7 @@ export class DebugProtocolAdapter {
                 const childVariable = variable.children[i];
                 const childContainer = this.createEvaluateContainer(
                     childVariable,
-                    container.keyType === KeyType.integer ? i.toString() : childVariable.name,
+                    container.keyType === KeyType.integer ? i : childVariable.name,
                     container.evaluateName
                 );
                 container.children.push(childContainer);
