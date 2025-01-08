@@ -542,7 +542,9 @@ describe('DebugProtocolAdapter', function() {
                 container?.children.map(x => x.evaluateName)
             ).to.eql([
                 'person["name"]',
-                'person["age"]'
+                'person["age"]',
+                //For arrays or objects with children we add a $count property for the number of items or children
+                '2'
             ]);
             //the top level object should be an AA
             expect(container.type).to.eql(VariableType.AssociativeArray);
@@ -559,4 +561,61 @@ describe('DebugProtocolAdapter', function() {
             expect(container.children[1].children).to.eql([]);
         });
     });
+
+    it('creates evaluate container with keyType string', () => {
+        let container = adapter['createEvaluateContainer'](
+            {
+                isConst: false,
+                isContainer: true,
+                refCount: 1,
+                type: VariableType.AssociativeArray,
+                value: undefined,
+                childCount: 1,
+                keyType: VariableType.String,
+                name: 'm',
+                children: [{
+                    isConst: false,
+                    isContainer: true,
+                    refCount: 1,
+                    type: VariableType.AssociativeArray,
+                    value: undefined,
+                    childCount: 0,
+                    keyType: VariableType.String,
+                    name: 'child'
+                }]
+            },
+            'm',
+            undefined
+        );
+        expect(container.children[0].evaluateName).to.eql('m["child"]');
+    });
+
+    it('creates evaluate container with keyType integer', () => {
+        let container = adapter['createEvaluateContainer'](
+            {
+                isConst: false,
+                isContainer: true,
+                refCount: 1,
+                type: VariableType.AssociativeArray,
+                value: undefined,
+                childCount: 1,
+                keyType: VariableType.Integer,
+                name: 'm',
+                children: [{
+                    isConst: false,
+                    isContainer: true,
+                    refCount: 1,
+                    type: VariableType.AssociativeArray,
+                    value: undefined,
+                    childCount: 0,
+                    keyType: VariableType.Integer,
+                    name: 'child'
+                }]
+            },
+            'm',
+            undefined
+        );
+        expect(container.children[0].evaluateName).to.eql('m[0]');
+    });
+
 });

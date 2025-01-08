@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-useless-constructor */
-import type { DebugProtocol } from 'vscode-debugprotocol';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { ChanperfData } from '../ChanperfTracker';

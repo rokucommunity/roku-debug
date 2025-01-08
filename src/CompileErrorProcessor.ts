@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import type { Diagnostic } from 'vscode-languageserver-protocol/node';
 import { logger } from './logging';
+import type { DiagnosticTag, Range } from 'brighterscript';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 
 export class CompileErrorProcessor {
@@ -359,7 +359,37 @@ export class CompileErrorProcessor {
     }
 }
 
-export interface BSDebugDiagnostic extends Diagnostic {
+export interface BSDebugDiagnostic {
+    /**
+     * The diagnostic's message. It usually appears in the user interface
+     */
+    message: string;
+    /**
+     * The range at which the message applies
+     */
+    range: Range;
+    /**
+     * The diagnostic's code, which usually appear in the user interface.
+     */
+    code?: number | string;
+    /**
+     * An optional property to describe the error code.
+     * Requires the code field (above) to be present/not null.
+     *
+     * @since 3.16.0
+     */
+    codeDescription?: {
+        /**
+         * An URI to open with more information about the diagnostic error.
+         */
+        href: string;
+    };
+    /**
+     * A human-readable string describing the source of this
+     * diagnostic, e.g. 'typescript' or 'super lint'. It usually
+     * appears in the user interface.
+     */
+    source?: string;
     /**
      * Path to the file in question. When emitted from a Roku device, this will be a full pkgPath (i.e. `pkg:/source/main.brs`).
      * As it flows through the program, this may be modified to represent a source location (i.e. `C:/projects/app/source/main.brs`)
@@ -371,9 +401,41 @@ export interface BSDebugDiagnostic extends Diagnostic {
      */
     componentLibraryName?: string;
     /**
-     * The diagnostic's severity.
+     * The diagnostic's severity. Can be omitted. If omitted it is up to the
+     * client to interpret diagnostics as error, warning, info or hint.
      */
-    severity: DiagnosticSeverity;
+    severity?: DiagnosticSeverity;
+
+    /**
+     * Additional metadata about the diagnostic.
+     *
+     * @since 3.15.0
+     */
+    tags?: DiagnosticTag[];
+    /**
+     * An array of related diagnostic information, e.g. when symbol-names within
+     * a scope collide all definitions can be marked via this property.
+     */
+    relatedInformation?: Array<{
+        /**
+         * The location of this related diagnostic information.
+         */
+        location: {
+            uri: string;
+            range: Range;
+        };
+        /**
+         * The message of this related diagnostic information.
+         */
+        message: string;
+    }>;
+    /**
+     * A data entry field that is preserved between a `textDocument/publishDiagnostics`
+     * notification and `textDocument/codeAction` request.
+     *
+     * @since 3.16.0
+     */
+    data?: any;
 }
 
 export enum CompileStatus {
