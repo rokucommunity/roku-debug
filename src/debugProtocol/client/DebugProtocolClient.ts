@@ -1018,13 +1018,14 @@ export class DebugProtocolClient {
                 this.isStopped = true;
 
                 let eventName: 'runtime-error' | 'suspend';
-                if (update.data.stopReason === StopReason.RuntimeError) {
+                //TODO should caught runtime error remap to runtime error?
+                if (update.data.stopReason === StopReason.RuntimeError || update.data.stopReason === StopReason.CaughtRuntimeError) {
                     eventName = 'runtime-error';
                 } else {
                     eventName = 'suspend';
                 }
 
-                const isValidStopReason = [StopReason.RuntimeError, StopReason.Break, StopReason.StopStatement].includes(update.data.stopReason);
+                const isValidStopReason = [StopReason.RuntimeError, StopReason.Break, StopReason.StopStatement, StopReason.CaughtRuntimeError].includes(update.data.stopReason);
 
                 if (update instanceof AllThreadsStoppedUpdate && isValidStopReason) {
                     this.primaryThread = update.data.threadIndex;

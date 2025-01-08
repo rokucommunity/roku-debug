@@ -154,7 +154,11 @@ export enum StopReason {
     /**
      * Thread stopped because of an error during execution.
      */
-    RuntimeError = 'RuntimeError'
+    RuntimeError = 'RuntimeError',
+    /**
+     * Thread stopped because of a caught error during execution.
+     */
+    CaughtRuntimeError = 'CaughtRuntimeError'
 }
 /**
  * Only used for serializing/deserializing over the debug protocol. Use `StopReason` in your code.
@@ -165,7 +169,8 @@ export enum StopReasonCode {
     NormalExit = 2,
     StopStatement = 3,
     Break = 4,
-    RuntimeError = 5
+    RuntimeError = 5,
+    CaughtRuntimeError = 6
 }
 
 /**

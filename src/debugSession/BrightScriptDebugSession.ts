@@ -198,16 +198,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         response.body.exceptionBreakpointFilters = [{
             filter: 'caught',
             supportsCondition: true,
-            //TODO rewrite with the correct variable (`__brs_error__
-            conditionDescription: '_brserr.rethrown = true',
+            conditionDescription: '__brs_err__.rethrown = true',
             label: 'Caught Exceptions',
             description: `Breaks on all errors, even if they're caught later.`,
             default: false
         }, {
             filter: 'uncaught',
             supportsCondition: true,
-            //TODO rewrite with the correct variable (`__brs_error__
-            conditionDescription: '_brserr.rethrown = true',
+            conditionDescription: '__brs_err__.rethrown = true',
             label: 'Uncaught Exceptions',
             description: 'Breaks only on errors that are not handled.',
             default: true
@@ -1560,6 +1558,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.frameId = frameId;
             v.type = result.type;
             v.presentationHint = result.presentationHint ? { kind: result.presentationHint } : undefined;
+            if (v.name === '__brs_err__' || v.name === '__brs_errcond__') {
+                v.presentationHint = { kind: 'virtual' };
+            }
 
             if (result.children) {
                 let childVariables = [];
