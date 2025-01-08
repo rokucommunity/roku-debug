@@ -34,4 +34,36 @@ describe('AllThreadsStoppedUpdate', () => {
             stopReasonDetail: 'because' // 8 bytes
         });
     });
+
+    it('serializes and deserializes properly StopReason.CaughtRuntimeError', () => {
+        const command = AllThreadsStoppedUpdate.fromJson({
+            threadIndex: 1,
+            stopReason: StopReason.CaughtRuntimeError,
+            stopReasonDetail: 'because'
+        });
+
+        expect(command.data).to.eql({
+            packetLength: undefined,
+            requestId: 0,
+            errorCode: ErrorCode.OK,
+            updateType: UpdateType.AllThreadsStopped,
+
+            threadIndex: 1,
+            stopReason: StopReason.CaughtRuntimeError,
+            stopReasonDetail: 'because'
+        });
+
+        expect(
+            AllThreadsStoppedUpdate.fromBuffer(command.toBuffer()).data
+        ).to.eql({
+            packetLength: 29, // 4 bytes
+            requestId: 0, // 4 bytes
+            errorCode: ErrorCode.OK, // 4 bytes
+            updateType: UpdateType.AllThreadsStopped, // 4 bytes
+
+            threadIndex: 1, // 4 bytes
+            stopReason: StopReason.CaughtRuntimeError, // 1 bytes
+            stopReasonDetail: 'because' // 8 bytes
+        });
+    });
 });
