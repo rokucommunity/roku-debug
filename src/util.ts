@@ -471,8 +471,8 @@ class Util {
         return port;
     }
 
-    public isBrsExceptionsVariable(variableName: string) {
-        return variableName.startsWith('__brs_');
+    public isTransientVariable(variableName: string) {
+        return /^__brs_.*?__$/.test(variableName);
     }
 }
 
