@@ -6,7 +6,6 @@ import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousHistory, RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
-import type { SourceLocation } from '../managers/LocationManager';
 import { ErrorCode, PROTOCOL_ERROR_CODES, UpdateType } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
@@ -21,6 +20,7 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
+import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 import { insertCustomVariables } from './customVariableUtils';
 
 /**
@@ -144,6 +144,13 @@ export class DebugProtocolAdapter {
     }
 
     /**
+     * Does the current client support exception breakpoints? This value will be undefined if the client has not yet connected
+     */
+    public get supportsExceptionBreakpoints(): boolean | undefined {
+        return this.client?.supportsExceptionBreakpoints;
+    }
+
+    /**
      * The debugger needs to tell us when to be active (i.e. when the package was deployed)
      */
     public isActivated = false;
@@ -208,15 +215,30 @@ export class DebugProtocolAdapter {
         return this.client?.isStopped ?? false;
     }
 
+    private firstConnectDeferred = defer<void>();
+
+    /**
+     * Resolves when the first connection to the client is established
+     */
+    public onReady() {
+        return this.firstConnectDeferred.promise;
+    }
+
     /**
      * Connect to the telnet session. This should be called before the channel is launched.
      */
-    public async connect() {
+    public async connect(): Promise<void> {
         //Start processing telnet output to look for compile errors or the debugger prompt
         await this.processTelnetOutput();
 
-        this.on('waiting-for-debugger', () => {
-            void this.createDebugProtocolClient();
+        this.on('waiting-for-debugger', async () => { // eslint-disable-line @typescript-eslint/no-misused-promises
+            await this.createDebugProtocolClient();
+
+            //if this is the first time we are connecting, resolve the promise.
+            //(future events fire for "reconnect" situations, we don't need to resolve again for those)
+            if (!this.firstConnectDeferred.isCompleted) {
+                this.firstConnectDeferred.resolve();
+            }
         });
     }
 
@@ -837,6 +859,15 @@ export class DebugProtocolAdapter {
      */
     public clearChanperfHistory() {
         this.chanperfTracker.clearHistory();
+    }
+
+    public async setExceptionBreakpoints(filters: ExceptionBreakpoint[]) {
+        if (this.client?.supportsExceptionBreakpoints) {
+            //tell the client to set the exception breakpoints
+            const response = await this.client?.setExceptionBreakpoints(filters);
+            return response;
+        }
+        return undefined;
     }
 
     private syncBreakpointsPromise = Promise.resolve();

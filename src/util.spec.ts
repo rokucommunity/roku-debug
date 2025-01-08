@@ -433,4 +433,29 @@ describe('Util', () => {
             ).to.be.true;
         });
     });
+
+    describe('isTransientVariable', () => {
+        it('is transient', () => {
+            expect(util.isTransientVariable('__brs_err__')).to.be.true;
+            expect(util.isTransientVariable('__brs_errcond__')).to.be.true;
+            expect(util.isTransientVariable('__brs_cond__')).to.be.true;
+        });
+
+        it('is not transient', () => {
+            expect(util.isTransientVariable('brs_err')).to.be.false;
+            expect(util.isTransientVariable('brs_errcond')).to.be.false;
+            expect(util.isTransientVariable('brs_cond')).to.be.false;
+
+            expect(util.isTransientVariable('__brs_err')).to.be.false;
+            expect(util.isTransientVariable('__brs_errcond')).to.be.false;
+            expect(util.isTransientVariable('__brs_cond')).to.be.false;
+
+            expect(util.isTransientVariable('brs_err__')).to.be.false;
+            expect(util.isTransientVariable('brs_errcond__')).to.be.false;
+            expect(util.isTransientVariable('brs_cond__')).to.be.false;
+
+            expect(util.isTransientVariable('garbage')).to.be.false;
+        });
+
+    });
 });

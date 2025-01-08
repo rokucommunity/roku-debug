@@ -19,6 +19,8 @@ import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsReques
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { StackTraceRequest } from '../events/requests/StackTraceRequest';
 import { ThreadsRequest } from '../events/requests/ThreadsRequest';
+import type { ExceptionBreakpoint } from '../events/requests/SetExceptionBreakpointsRequest';
+import { SetExceptionBreakpointsRequest } from '../events/requests/SetExceptionBreakpointsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { AddBreakpointsRequest } from '../events/requests/AddBreakpointsRequest';
 import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditionalBreakpointsRequest';
@@ -32,6 +34,7 @@ import { CompileErrorUpdate } from '../events/updates/CompileErrorUpdate';
 import { GenericResponse } from '../events/responses/GenericResponse';
 import type { StackTraceResponse } from '../events/responses/StackTraceResponse';
 import { ThreadsResponse } from '../events/responses/ThreadsResponse';
+import { SetExceptionBreakpointsResponse } from '../events/responses/SetExceptionBreakpointsResponse';
 import type { Variable } from '../events/responses/VariablesResponse';
 import { VariablesResponse, VariableType } from '../events/responses/VariablesResponse';
 import { IOPortOpenedUpdate, isIOPortOpenedUpdate } from '../events/updates/IOPortOpenedUpdate';
@@ -43,6 +46,7 @@ import PluginInterface from '../PluginInterface';
 import type { VerifiedBreakpoint } from '../events/updates/BreakpointVerifiedUpdate';
 import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUpdate';
 import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
+import { ExceptionBreakpointErrorUpdate } from '../events/updates/ExceptionBreakpointErrorUpdate';
 
 export class DebugProtocolClient {
 
@@ -156,6 +160,10 @@ export class DebugProtocolClient {
         return semver.satisfies(this.protocolVersion, '>=3.3.0');
     }
 
+    public get supportsExceptionBreakpoints() {
+        return semver.satisfies(this.protocolVersion, '>=3.3.0');
+    }
+
     /**
      * Get a promise that resolves after an event occurs exactly once
      */
@@ -256,7 +264,7 @@ export class DebugProtocolClient {
             this.emit('data', data);
             //queue up processing the new data, chunk by chunk
             void this.bufferQueue.run(async () => {
-                this.buffer = Buffer.concat([this.buffer, data]);
+                this.buffer = Buffer.concat([this.buffer, data] as any[]);
                 while (this.buffer.length > 0 && await this.process()) {
                     //the loop condition is the actual work
                 }
@@ -292,15 +300,16 @@ export class DebugProtocolClient {
     /**
      * Send the initial handshake request, and wait for the handshake response
      */
-    public async sendHandshake() {
-        return this.processHandshakeRequest(
+    public async sendHandshake(): Promise<HandshakeV3Response | HandshakeResponse> {
+        const response = await this.processHandshakeRequest(
             HandshakeRequest.fromJson({
                 magic: DebugProtocolClient.DEBUGGER_MAGIC
             })
         );
+        return response;
     }
 
-    private async processHandshakeRequest(request: HandshakeRequest) {
+    private async processHandshakeRequest(request: HandshakeRequest): Promise<HandshakeV3Response | HandshakeResponse> {
         //send the magic, which triggers the debug session
         this.logger.log('Sending magic to server');
 
@@ -406,11 +415,12 @@ export class DebugProtocolClient {
     }
 
     public async threads() {
-        return this.processThreadsRequest(
+        const result = await this.processThreadsRequest(
             ThreadsRequest.fromJson({
                 requestId: this.requestIdSequence++
             })
         );
+        return result;
     }
     public async processThreadsRequest(request: ThreadsRequest) {
         if (this.isStopped) {
@@ -436,6 +446,15 @@ export class DebugProtocolClient {
         } else {
             this.logger.log('[processThreadsRequest] skipped because not stopped');
         }
+    }
+
+    public async setExceptionBreakpoints(filters: ExceptionBreakpoint[]): Promise<SetExceptionBreakpointsResponse> {
+        return this.processRequest<SetExceptionBreakpointsResponse>(
+            SetExceptionBreakpointsRequest.fromJson({
+                requestId: this.requestIdSequence++,
+                breakpoints: filters
+            })
+        );
     }
 
     /**
@@ -740,6 +759,7 @@ export class DebugProtocolClient {
             case AddConditionalBreakpointsRequest.name:
             case ExitChannelRequest.name:
             case ListBreakpointsRequest.name:
+            case SetExceptionBreakpointsRequest.name:
                 return this.sendRequest(request);
             default:
                 this.logger.log('Unknown request type. Sending anyway...', request);
@@ -939,6 +959,8 @@ export class DebugProtocolClient {
                 return StackTraceV3Response.fromBuffer(buffer);
             case Command.Threads:
                 return ThreadsResponse.fromBuffer(buffer);
+            case Command.SetExceptionBreakpoints:
+                return SetExceptionBreakpointsResponse.fromBuffer(buffer);
             default:
                 return undefined;
         }
@@ -958,9 +980,11 @@ export class DebugProtocolClient {
                 //TODO handle this
                 return IOPortOpenedUpdate.fromBuffer(buffer);
             case UpdateType.AllThreadsStopped:
-                return AllThreadsStoppedUpdate.fromBuffer(buffer);
+                const allThreadsStoppedResponse = AllThreadsStoppedUpdate.fromBuffer(buffer);
+                return allThreadsStoppedResponse;
             case UpdateType.ThreadAttached:
-                return ThreadAttachedUpdate.fromBuffer(buffer);
+                const threadAttachedResponse = ThreadAttachedUpdate.fromBuffer(buffer);
+                return threadAttachedResponse;
             case UpdateType.BreakpointError:
                 //we do nothing with breakpoint errors at this time.
                 return BreakpointErrorUpdate.fromBuffer(buffer);
@@ -976,6 +1000,10 @@ export class DebugProtocolClient {
                     this.emit('breakpoints-verified', response.data);
                 }
                 return response;
+            case UpdateType.ExceptionBreakpointError:
+                //we do nothing with exception breakpoint errors at this time.
+                const exceptionBreakpointErrorUpdate = ExceptionBreakpointErrorUpdate.fromBuffer(buffer);
+                return exceptionBreakpointErrorUpdate;
             default:
                 return undefined;
         }
@@ -997,13 +1025,14 @@ export class DebugProtocolClient {
                 this.isStopped = true;
 
                 let eventName: 'runtime-error' | 'suspend';
-                if (update.data.stopReason === StopReason.RuntimeError) {
+                //TODO should caught runtime error remap to runtime error?
+                if (update.data.stopReason === StopReason.RuntimeError || update.data.stopReason === StopReason.CaughtRuntimeError) {
                     eventName = 'runtime-error';
                 } else {
                     eventName = 'suspend';
                 }
 
-                const isValidStopReason = [StopReason.RuntimeError, StopReason.Break, StopReason.StopStatement].includes(update.data.stopReason);
+                const isValidStopReason = [StopReason.RuntimeError, StopReason.Break, StopReason.StopStatement, StopReason.CaughtRuntimeError].includes(update.data.stopReason);
 
                 if (update instanceof AllThreadsStoppedUpdate && isValidStopReason) {
                     this.primaryThread = update.data.threadIndex;

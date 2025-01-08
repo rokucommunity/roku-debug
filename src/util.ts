@@ -470,6 +470,10 @@ class Util {
         this.minPort = port + 1;
         return port;
     }
+
+    public isTransientVariable(variableName: string) {
+        return /^__brs_.*?__$/.test(variableName);
+    }
 }
 
 export function defer<T>() {

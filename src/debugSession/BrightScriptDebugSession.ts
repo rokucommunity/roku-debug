@@ -54,6 +54,7 @@ import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLeve
 import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
+import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 
 const diagnosticSource = 'roku-debug';
 
@@ -154,12 +155,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Get a promise that resolves when the roku adapter is ready to be used
      */
-    private getRokuAdapter() {
-        return this.rokuAdapterDeferred.promise;
+    private async getRokuAdapter() {
+        await this.rokuAdapterDeferred.promise;
+        await this.rokuAdapter.onReady();
+        return this.rokuAdapter;
     }
 
     private launchConfiguration: LaunchConfiguration;
     private initRequestArgs: DebugProtocol.InitializeRequestArguments;
+
+    private exceptionBreakpoints: ExceptionBreakpoint[] = [];
 
     /**
      * The 'initialize' request is the first request called by the frontend
@@ -168,10 +173,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
         this.initRequestArgs = args;
         this.logger.log('initializeRequest');
-        // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
-        // we request them early by sending an 'initializeRequest' to the frontend.
-        // The frontend will end the configuration sequence by calling 'configurationDone' request.
-        this.sendEvent(new InitializedEvent());
 
         response.body = response.body || {};
 
@@ -190,6 +191,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // This debug adapter supports conditional breakpoints
         response.body.supportsConditionalBreakpoints = true;
 
+        response.body.supportsExceptionFilterOptions = true;
+        response.body.supportsExceptionOptions = true;
+
+        //the list of exception breakpoints (we have to send them all the time, even if the device doesn't support them)
+        response.body.exceptionBreakpointFilters = [{
+            filter: 'caught',
+            supportsCondition: true,
+            conditionDescription: '__brs_err__.rethrown = true',
+            label: 'Caught Exceptions',
+            description: `Breaks on all errors, even if they're caught later.`,
+            default: false
+        }, {
+            filter: 'uncaught',
+            supportsCondition: true,
+            conditionDescription: '__brs_err__.rethrown = true',
+            label: 'Uncaught Exceptions',
+            description: 'Breaks only on errors that are not handled.',
+            default: true
+        }];
+
         // This debug adapter supports breakpoints that break execution after a specified number of hits
         response.body.supportsHitConditionalBreakpoints = true;
 
@@ -206,7 +227,58 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 )
             );
         });
+
+        // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
+        // we request them early by sending an 'initializeRequest' to the frontend.
+        // The frontend will end the configuration sequence by calling 'configurationDone' request.
+        this.sendEvent(new InitializedEvent());
+
         this.logger.log('initializeRequest finished');
+    }
+
+    protected async setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments) {
+        response.body ??= {};
+        try {
+
+            let filterOptions: ExceptionBreakpoint[];
+            if (args.filterOptions) {
+                filterOptions = args.filterOptions.map(x => ({
+                    filter: x.filterId as 'caught' | 'uncaught',
+                    conditionExpression: x.condition
+                }));
+            } else if (args.filters) {
+                filterOptions = args.filters.map(x => ({
+                    filter: x as 'caught' | 'uncaught'
+                }));
+            }
+            this.exceptionBreakpoints = filterOptions;
+
+            //ensure the rokuAdapter is loaded
+            await this.getRokuAdapter();
+
+            if (this.rokuAdapter.supportsExceptionBreakpoints) {
+                await this.rokuAdapter.setExceptionBreakpoints(filterOptions);
+                //if success
+                response.body.breakpoints = [
+                    { verified: true },
+                    { verified: true }
+                ];
+            } else {
+                response.body.breakpoints = [
+                    { verified: false },
+                    { verified: false }
+                ];
+            }
+        } catch (e) {
+            //if error (or not supported)
+            response.body.breakpoints = [
+                { verified: false },
+                { verified: false }
+            ];
+            this.logger.error('Failed to set exception breakpoints', e);
+        } finally {
+            this.sendResponse(response);
+        }
     }
 
     private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
@@ -383,6 +455,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
                     this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
+                    void this.rokuAdapter.once('connected').then(async () => {
+                        await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpoints);
+                    });
                 }
             });
 
@@ -1405,6 +1480,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //sync breakpoints
         await this.rokuAdapter?.syncBreakpoints();
+
         this.logger.info('received "suspend" event from adapter');
 
         //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
@@ -1482,6 +1558,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.frameId = frameId;
             v.type = result.type;
             v.presentationHint = result.presentationHint ? { kind: result.presentationHint } : undefined;
+            if (util.isTransientVariable(v.name)) {
+                v.presentationHint = { kind: 'virtual' };
+            }
 
             if (result.children) {
                 let childVariables = [];
