@@ -1558,7 +1558,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.frameId = frameId;
             v.type = result.type;
             v.presentationHint = result.presentationHint ? { kind: result.presentationHint } : undefined;
-            if (util.isBrsExceptionsVariable(v.name)) {
+            if (util.isTransientVariable(v.name)) {
                 v.presentationHint = { kind: 'virtual' };
             }
 
