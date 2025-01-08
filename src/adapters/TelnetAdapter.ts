@@ -632,7 +632,7 @@ export class TelnetAdapter {
             //the array/associative array print is a loop of every value, so handle that
             children = this.getForLoopPrintedChildren(expression, data);
             children.push({
-                name: '[[count]]',
+                name: '$count',
                 value: children.length.toString(),
                 type: 'integer',
                 highLevelType: HighLevelType.primative,
@@ -662,7 +662,7 @@ export class TelnetAdapter {
         //add a computed `[[children]]` property to allow expansion of node children
         if (lowerExpressionType === 'rosgnode') {
             let nodeChildren = <EvaluateContainer>{
-                name: '[[children]]',
+                name: '$children',
                 type: 'roArray',
                 highLevelType: 'array',
                 presentationHint: 'virtual',
@@ -677,12 +677,12 @@ export class TelnetAdapter {
             children.push({
                 //look up the name of the xml element
                 ...await this.getVariable(`${expression}.GetName()`),
-                name: '[[name]]',
+                name: '$name',
                 presentationHint: 'virtual'
             });
 
             children.push({
-                name: '[[attributes]]',
+                name: '$attributes',
                 type: 'roAssociativeArray',
                 highLevelType: HighLevelType.array,
                 evaluateName: `${expression}.GetAttributes()`,
@@ -692,7 +692,7 @@ export class TelnetAdapter {
 
             //add a computed `[[children]]` property to allow expansion of child elements
             children.push({
-                name: '[[children]]',
+                name: '$children',
                 type: 'roArray',
                 highLevelType: HighLevelType.array,
                 evaluateName: `${expression}.GetChildNodes()`,

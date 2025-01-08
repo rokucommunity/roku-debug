@@ -156,6 +156,10 @@ export class DebugProtocolClient {
         return semver.satisfies(this.protocolVersion, '>=3.2.0');
     }
 
+    public get supportsVirtualVariables() {
+        return semver.satisfies(this.protocolVersion, '>=3.3.0');
+    }
+
     public get supportsExceptionBreakpoints() {
         return semver.satisfies(this.protocolVersion, '>=3.3.0');
     }
@@ -493,10 +497,13 @@ export class DebugProtocolClient {
                 threadIndex: threadIndex,
                 stackFrameIndex: stackFrameIndex,
                 getChildKeys: true,
+                getVirtualKeys: this.supportsVirtualVariables,
                 variablePathEntries: variablePathEntries.map(x => ({
                     //remove leading and trailing quotes
                     name: x.replace(/^"/, '').replace(/"$/, ''),
-                    forceCaseInsensitive: !x.startsWith('"') && !x.endsWith('"')
+                    forceCaseInsensitive: !x.startsWith('"') && !x.endsWith('"'),
+                    //vars that start with `'$'` are virtual (AA keys will wrapped in quotes so would start with `"$`
+                    isVirtual: x.startsWith('$') // || x.startsWith('"$')
                 })),
                 //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
                 enableForceCaseInsensitivity: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0

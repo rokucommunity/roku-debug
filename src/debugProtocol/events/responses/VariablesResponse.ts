@@ -30,6 +30,7 @@ export class VariablesResponse implements ProtocolResponse {
             if (variable.isContainer && util.isNullish(variable.childCount) && !hasChildrenArray) {
                 throw new Error('Container variable must have one of these properties defined: childCount, children');
             }
+            variable.isVirtual ??= false;
         }
         return response;
     }
@@ -81,6 +82,7 @@ export class VariablesResponse implements ProtocolResponse {
         const isNameHere = (flags & VariableFlags.isNameHere) > 0;
         const isRefCounted = (flags & VariableFlags.isRefCounted) > 0;
         const isValueHere = (flags & VariableFlags.isValueHere) > 0;
+        variable.isVirtual = (flags & VariableFlags.isVirtual) > 0;
         const variableTypeCode = smartBuffer.readUInt8();
         variable.type = VariableTypeCode[variableTypeCode] as VariableType; // variable_type
 
@@ -185,6 +187,7 @@ export class VariablesResponse implements ProtocolResponse {
         flags |= Array.isArray(variable.children) ? 0 : VariableFlags.isChildKey;
         flags |= variable.isConst ? VariableFlags.isConst : 0;
         flags |= variable.isContainer ? VariableFlags.isContainer : 0;
+        flags |= variable.isVirtual ? VariableFlags.isVirtual : 0;
 
         const isNameHere = !util.isNullish(variable.name);
         flags |= isNameHere ? VariableFlags.isNameHere : 0;
@@ -312,7 +315,12 @@ export enum VariableFlags {
      * Value is container, key lookup is case sensitive
      * @since protocol 3.1.0
      */
-    isKeysCaseSensitive = 64
+    isKeysCaseSensitive = 64,
+    /**
+     * Indicates whether the associated variable is virtual or not.
+     * @since protocol 3.3.0
+     */
+    isVirtual = 128
 }
 
 /**
@@ -391,6 +399,10 @@ export interface Variable {
      * Is this variable a container var (i.e. an array or object with children)
      */
     isContainer: boolean;
+    /**
+     * Indicates whether the associated variable is virtual or not.
+     */
+    isVirtual?: boolean;
     /**
      * If the variable is a container, it will have child elements. this is the number of those children. If `.children` is set, this field will be set to undefined
      * (meaning it will be ignored during serialization)

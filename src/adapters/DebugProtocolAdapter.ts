@@ -683,6 +683,8 @@ export class DebugProtocolAdapter {
         let evaluateName: string;
         if (!parentEvaluateName?.trim()) {
             evaluateName = name?.toString();
+        } else if (variable.isVirtual) {
+            evaluateName = `${parentEvaluateName}.${name}`;
         } else if (typeof name === 'string') {
             evaluateName = `${parentEvaluateName}["${name}"]`;
         } else if (typeof name === 'number') {
@@ -715,6 +717,12 @@ export class DebugProtocolAdapter {
                 container.children.push(childContainer);
             }
         }
+
+        //show virtual variables in the UI
+        if (variable.isVirtual) {
+            container.presentationHint = 'virtual';
+        }
+
         return container;
     }
 

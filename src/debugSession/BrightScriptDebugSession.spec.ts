@@ -413,7 +413,7 @@ describe('BrightScriptDebugSession', () => {
                         variablesReference: 3
                     },
                     {
-                        name: '[[count]]',
+                        name: '$count',
                         value: '3',
                         variablesReference: 0
                     }

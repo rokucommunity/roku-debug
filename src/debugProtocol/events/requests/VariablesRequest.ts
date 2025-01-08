@@ -10,16 +10,19 @@ export class VariablesRequest implements ProtocolRequest {
         requestId: number;
         getChildKeys: boolean;
         enableForceCaseInsensitivity: boolean;
+        getVirtualKeys: boolean;
         threadIndex: number;
         stackFrameIndex: number;
         variablePathEntries: Array<{
             name: string;
             forceCaseInsensitive: boolean;
+            isVirtual: boolean;
         }>;
     }) {
         const request = new VariablesRequest();
         protocolUtil.loadJson(request, data);
         request.data.variablePathEntries ??= [];
+        request.data.includesVirtualPath = request.data.variablePathEntries.some((entry) => entry.isVirtual);
         // all variables will be case sensitive if the flag is disabled
         for (const entry of request.data.variablePathEntries) {
             if (request.data.enableForceCaseInsensitivity !== true) {
@@ -28,6 +31,9 @@ export class VariablesRequest implements ProtocolRequest {
                 //default any missing values to false
                 entry.forceCaseInsensitive ??= false;
             }
+
+            //default any missing values to false
+            entry.isVirtual ??= false;
         }
         return request;
     }
@@ -41,6 +47,8 @@ export class VariablesRequest implements ProtocolRequest {
 
             request.data.getChildKeys = !!(variableRequestFlags & VariableRequestFlag.GetChildKeys);
             request.data.enableForceCaseInsensitivity = !!(variableRequestFlags & VariableRequestFlag.CaseSensitivityOptions);
+            request.data.getVirtualKeys = !!(variableRequestFlags & VariableRequestFlag.GetVirtualKeys);
+            request.data.includesVirtualPath = !!(variableRequestFlags & VariableRequestFlag.VirtualPathIncluded);
             request.data.threadIndex = smartBuffer.readUInt32LE(); // thread_index
             request.data.stackFrameIndex = smartBuffer.readUInt32LE(); // stack_frame_index
             const variablePathLength = smartBuffer.readUInt32LE(); // variable_path_len
@@ -50,7 +58,8 @@ export class VariablesRequest implements ProtocolRequest {
                     request.data.variablePathEntries.push({
                         name: protocolUtil.readStringNT(smartBuffer), // variable_path_entries - optional
                         //by default, all variable lookups are case SENSITIVE
-                        forceCaseInsensitive: false
+                        forceCaseInsensitive: false,
+                        isVirtual: false
                     });
                 }
 
@@ -61,6 +70,13 @@ export class VariablesRequest implements ProtocolRequest {
                         request.data.variablePathEntries[i].forceCaseInsensitive = smartBuffer.readUInt8() === 0 ? false : true;
                     }
                 }
+
+                if (request.data.includesVirtualPath) {
+                    for (let i = 0; i < variablePathLength; i++) {
+                        //0 means this is not a virtual variable, 1 means it's a virtual variable and must be request as such when making a variables request
+                        request.data.variablePathEntries[i].isVirtual = smartBuffer.readUInt8() === 0 ? false : true;
+                    }
+                }
             }
         });
         return request;
@@ -68,11 +84,14 @@ export class VariablesRequest implements ProtocolRequest {
 
     public toBuffer(): Buffer {
         const smartBuffer = new SmartBuffer();
+        const includesVirtualPath = this.data.variablePathEntries.some((entry) => entry.isVirtual);
 
         //build the flags var
         let variableRequestFlags = 0;
         variableRequestFlags |= this.data.getChildKeys ? VariableRequestFlag.GetChildKeys : 0;
         variableRequestFlags |= this.data.enableForceCaseInsensitivity ? VariableRequestFlag.CaseSensitivityOptions : 0;
+        variableRequestFlags |= this.data.getVirtualKeys ? VariableRequestFlag.GetVirtualKeys : 0;
+        variableRequestFlags |= includesVirtualPath ? VariableRequestFlag.VirtualPathIncluded : 0;
 
         smartBuffer.writeUInt8(variableRequestFlags); // variable_request_flags
         smartBuffer.writeUInt32LE(this.data.threadIndex); // thread_index
@@ -85,6 +104,13 @@ export class VariablesRequest implements ProtocolRequest {
             for (const entry of this.data.variablePathEntries) {
                 //0 means case SENSITIVE lookup, 1 means force case INsensitive lookup
                 smartBuffer.writeUInt8(entry.forceCaseInsensitive !== true ? 0 : 1);
+            }
+
+        }
+
+        if (includesVirtualPath) {
+            for (const entry of this.data.variablePathEntries) {
+                smartBuffer.writeUInt8(entry.isVirtual !== true ? 0 : 1);
             }
         }
 
@@ -110,6 +136,16 @@ export class VariablesRequest implements ProtocolRequest {
         enableForceCaseInsensitivity: undefined as boolean,
 
         /**
+         * Indicates whether the VARIABLES response should include virtual keys for the requested path
+         */
+        getVirtualKeys: undefined as boolean,
+
+        /**
+         * Enables the client application to send path_is_virtual data
+         */
+        includesVirtualPath: undefined as boolean,
+
+        /**
          * The index of the thread containing the variable.
          */
         threadIndex: undefined as number,
@@ -128,6 +164,7 @@ export class VariablesRequest implements ProtocolRequest {
         variablePathEntries: undefined as Array<{
             name: string;
             forceCaseInsensitive: boolean;
+            isVirtual?: boolean;
         }>,
 
         //common props
@@ -138,6 +175,21 @@ export class VariablesRequest implements ProtocolRequest {
 }
 
 export enum VariableRequestFlag {
+    /**
+     * Indicates whether the VARIABLES response includes the child keys for container types like
+     * lists and associative arrays. If this is set to true (0x01), the VARIABLES response include the child keys.
+     */
     GetChildKeys = 1,
-    CaseSensitivityOptions = 2
+    /**
+     * Enables the client application to send path_force_case_insensitive data
+     */
+    CaseSensitivityOptions = 2,
+    /**
+     * Indicates whether the VARIABLES response should include virtual keys for the requested path
+     */
+    GetVirtualKeys = 4,
+    /**
+     * Enables the client application to send path_is_virtual data
+     */
+    VirtualPathIncluded = 8
 }
