@@ -470,6 +470,10 @@ class Util {
         this.minPort = port + 1;
         return port;
     }
+
+    public isBrsExceptionsVariable(variableName: string) {
+        return variableName.startsWith('__brs_');
+    }
 }
 
 export function defer<T>() {
