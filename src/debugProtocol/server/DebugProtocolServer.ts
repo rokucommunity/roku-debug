@@ -8,6 +8,7 @@ import { AddConditionalBreakpointsRequest } from '../events/requests/AddConditio
 import { ContinueRequest } from '../events/requests/ContinueRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
 import { ExitChannelRequest } from '../events/requests/ExitChannelRequest';
+import { SetExceptionBreakpointsRequest } from '../events/requests/SetExceptionBreakpointsRequest';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsRequest';
 import { RemoveBreakpointsRequest } from '../events/requests/RemoveBreakpointsRequest';
@@ -194,6 +195,8 @@ export class DebugProtocolServer {
                 return AddConditionalBreakpointsRequest.fromBuffer(buffer);
             case Command.ExitChannel:
                 return ExitChannelRequest.fromBuffer(buffer);
+            case Command.SetExceptionBreakpoints:
+                return SetExceptionBreakpointsRequest.fromBuffer(buffer);
         }
     }
 
