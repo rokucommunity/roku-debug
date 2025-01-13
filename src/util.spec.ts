@@ -201,41 +201,41 @@ describe('Util', () => {
         });
     });
 
-    describe('processResponseChunk', () => {
+    describe('handleLogFragments', () => {
         it('handles no new lines', () => {
             expect(
                 util.handleLogFragments('', 'new string')
-            ).to.eql({ toEmit: '', remaining: 'new string' });
+            ).to.eql({ completed: '', remaining: 'new string' });
         });
 
         it('handles single new line', () => {
             expect(
                 util.handleLogFragments('', 'new string\n')
-            ).to.eql({ toEmit: 'new string\n', remaining: '' });
+            ).to.eql({ completed: 'new string\n', remaining: '' });
         });
 
         it('handles multiple new lines', () => {
             expect(
                 util.handleLogFragments('', 'new string\none new\nline\n')
-            ).to.eql({ toEmit: 'new string\none new\nline\n', remaining: '' });
+            ).to.eql({ completed: 'new string\none new\nline\n', remaining: '' });
         });
 
         it('handles partial lines', () => {
             expect(
                 util.handleLogFragments('', 'new string\none new\nline')
-            ).to.eql({ toEmit: 'new string\none new\n', remaining: 'line' });
+            ).to.eql({ completed: 'new string\none new\n', remaining: 'line' });
         });
 
         it('handles partial lines and concat', () => {
             expect(
                 util.handleLogFragments('new', ' string\none new\nline')
-            ).to.eql({ toEmit: 'new string\none new\n', remaining: 'line' });
+            ).to.eql({ completed: 'new string\none new\n', remaining: 'line' });
         });
 
         it('handles partial lines, concat, and new lines in the existing somehow', () => {
             expect(
                 util.handleLogFragments('new\n', ' string\none new\nline')
-            ).to.eql({ toEmit: 'new\n string\none new\n', remaining: 'line' });
+            ).to.eql({ completed: 'new\n string\none new\n', remaining: 'line' });
         });
     });
 

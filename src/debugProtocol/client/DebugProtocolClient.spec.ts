@@ -1188,7 +1188,7 @@ describe('DebugProtocolClient', () => {
             socket.write('hello\nworld\n');
 
             const output = await ioOutputPromise;
-            expect(output).to.eql('hello\nworld');
+            expect(output).to.eql('hello\nworld\n');
         });
 
         it('handles partial lines', async () => {
@@ -1217,7 +1217,7 @@ describe('DebugProtocolClient', () => {
             await outputMonitors[0].promise;
             socket.write('world\n');
             await outputMonitors[1].promise;
-            expect(await outputPromise).to.eql('hello world');
+            expect(await outputPromise).to.eql('hello world\n');
         });
 
         it('handles failed update', async () => {
