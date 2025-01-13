@@ -670,7 +670,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         const lines = logOutput.split(/\r?\n/g);
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i];
-            line += i === lines.length - 1 ? '' : '\n';
+            if (i < lines.length - 1) {
+                line += '\n';
+            }
             this.sendEvent(new OutputEvent(line, 'stdout'));
             this.sendEvent(new LogOutputEvent(line));
         }
