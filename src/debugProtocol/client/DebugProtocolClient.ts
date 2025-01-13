@@ -1122,18 +1122,15 @@ export class DebugProtocolClient {
                     let lastPartialLine = '';
                     this.ioSocket.on('data', (buffer) => {
                         this.writeToBufferLog('io', buffer);
-                        let responseText = buffer.toString();
-                        if (!responseText.endsWith('\n')) {
-                            // buffer was split, save the partial line
-                            lastPartialLine += responseText;
-                        } else {
-                            if (lastPartialLine) {
-                                // there was leftover lines, join the partial lines back together
-                                responseText = lastPartialLine + responseText;
-                                lastPartialLine = '';
-                            }
+                        let logResult = util.handleLogFragments(lastPartialLine, buffer.toString());
+
+                        // Save any remaining partial line for the next event
+                        lastPartialLine = logResult.remaining;
+                        if (logResult.completed) {
                             // Emit the completed io string.
-                            this.emit('io-output', responseText.trim());
+                            this.emit('io-output', logResult.completed);
+                        } else {
+                            this.logger.debug('Buffer was split', lastPartialLine);
                         }
                     });
 

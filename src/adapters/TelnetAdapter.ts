@@ -274,11 +274,19 @@ export class TelnetAdapter {
             this.requestPipeline = new TelnetRequestPipeline(client);
             this.requestPipeline.connect();
 
+            let lastPartialLine = '';
             //forward all raw console output
             this.requestPipeline.on('console-output', (output) => {
                 this.processBreakpoints(output);
-                if (output) {
-                    this.emit('console-output', output);
+                let logResult = util.handleLogFragments(lastPartialLine, output);
+
+                // Save any remaining partial line for the next event
+                lastPartialLine = logResult.remaining;
+                if (logResult.completed) {
+                    // Emit the completed io string.
+                    this.emit('console-output', logResult.completed);
+                } else {
+                    this.logger.debug('Buffer was split', lastPartialLine);
                 }
             });
 
