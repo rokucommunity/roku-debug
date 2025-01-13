@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.14](https://github.com/rokucommunity/roku-debug/compare/v0.21.13...v0.21.14) - 2025-01-13
+### Added
+ - Support for virtual variables in the debug protocol (available starting in Roku OS 14.1.4) ([#199](https://github.com/rokucommunity/roku-debug/pull/199))
+ - Support for configuring breakpoints on caught and uncaught exceptions (available starting in Roku OS 14.1.4) ([#198](https://github.com/rokucommunity/roku-debug/pull/198))
+### Changed
+ - upgrade to [brighterscript@0.68.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0683---2025-01-13)
+
+
+
 ## [0.21.13](https://github.com/rokucommunity/roku-debug/compare/v0.21.12...v0.21.13) - 2024-12-20
 ### Added
  - Add `$children` virtual variables for `roSGNode` ([#192](https://github.com/rokucommunity/roku-debug/pull/192))
