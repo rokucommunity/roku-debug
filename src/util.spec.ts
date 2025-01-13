@@ -201,7 +201,7 @@ describe('Util', () => {
         });
     });
 
-    describe.only('processResponseChunk', () => {
+    describe('processResponseChunk', () => {
         it('handles no new lines', () => {
             expect(
                 util.handleLogFragments('', 'new string')
