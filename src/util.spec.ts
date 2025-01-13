@@ -9,6 +9,7 @@ import * as dedent from 'dedent';
 import { util } from './util';
 import { util as bscUtil } from 'brighterscript';
 import { createSandbox } from 'sinon';
+import { describe } from 'mocha';
 const sinon = createSandbox();
 
 beforeEach(() => {
@@ -197,6 +198,44 @@ describe('Util', () => {
         it('should return undefined when the manifest is not found', async () => {
             let manifestObject = await util.convertManifestToObject(filePath);
             assert.equal(manifestObject, undefined);
+        });
+    });
+
+    describe('handleLogFragments', () => {
+        it('handles no new lines', () => {
+            expect(
+                util.handleLogFragments('', 'new string')
+            ).to.eql({ completed: '', remaining: 'new string' });
+        });
+
+        it('handles single new line', () => {
+            expect(
+                util.handleLogFragments('', 'new string\n')
+            ).to.eql({ completed: 'new string\n', remaining: '' });
+        });
+
+        it('handles multiple new lines', () => {
+            expect(
+                util.handleLogFragments('', 'new string\none new\nline\n')
+            ).to.eql({ completed: 'new string\none new\nline\n', remaining: '' });
+        });
+
+        it('handles partial lines', () => {
+            expect(
+                util.handleLogFragments('', 'new string\none new\nline')
+            ).to.eql({ completed: 'new string\none new\n', remaining: 'line' });
+        });
+
+        it('handles partial lines and concat', () => {
+            expect(
+                util.handleLogFragments('new', ' string\none new\nline')
+            ).to.eql({ completed: 'new string\none new\n', remaining: 'line' });
+        });
+
+        it('handles partial lines, concat, and new lines in the existing somehow', () => {
+            expect(
+                util.handleLogFragments('new\n', ' string\none new\nline')
+            ).to.eql({ completed: 'new\n string\none new\n', remaining: 'line' });
         });
     });
 

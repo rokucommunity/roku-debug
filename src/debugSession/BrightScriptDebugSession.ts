@@ -668,8 +668,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private sendLogOutput(logOutput: string) {
         this.fileLoggingManager.writeRokuDeviceLog(logOutput);
         const lines = logOutput.split(/\r?\n/g);
-        for (let line of lines) {
-            line += '\n';
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
+            if (i < lines.length - 1) {
+                line += '\n';
+            }
             this.sendEvent(new OutputEvent(line, 'stdout'));
             this.sendEvent(new LogOutputEvent(line));
         }
