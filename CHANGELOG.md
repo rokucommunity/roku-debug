@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.15](https://github.com/rokucommunity/roku-debug/compare/v0.21.14...v0.21.15) - 2025-01-13
+### Fixed
+ - Better handling of split log messages ([#206](https://github.com/rokucommunity/roku-debug/pull/206))
+
+
+
 ## [0.21.14](https://github.com/rokucommunity/roku-debug/compare/v0.21.13...v0.21.14) - 2025-01-13
 ### Added
  - Support for virtual variables in the debug protocol (available starting in Roku OS 14.1.4) ([#199](https://github.com/rokucommunity/roku-debug/pull/199))
