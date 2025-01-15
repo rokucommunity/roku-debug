@@ -281,6 +281,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+    protected async uninitializeExceptionsBreakpointVariables() {
+        let brsErr = Object.values(this.variables).find((v) => v.name === '__brs_err__');
+        if (brsErr && brsErr.type !== VariableType.Uninitialized) {
+            // Assigning the variable to the function call results in it becoming unintialized
+            await this.rokuAdapter.evaluate(`__brs_err__ = [].clear()`, brsErr.frameId);
+        }
+    }
+
     private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
         this.logger.trace('[showPopupMessage]', severity, message);
         this.sendEvent(new PopupMessageEvent(message, severity, modal));
@@ -1073,6 +1081,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         this.logger.log('continueRequest');
+        await this.uninitializeExceptionsBreakpointVariables(); // call before clearState
+        this.clearState();
+
+        // The debug session ends after the next line. Do not put new work after this line.
         await this.rokuAdapter.continue();
         this.sendResponse(response);
     }
@@ -1111,6 +1123,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
+        await this.uninitializeExceptionsBreakpointVariables(); // call before clearState
+        this.clearState();
+
+        // The debug session ends after the next line. Do not put new work after this line.
         try {
             await this.rokuAdapter.stepOver(args.threadId);
             this.logger.info('[nextRequest] end');
@@ -1130,6 +1146,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
+        await this.uninitializeExceptionsBreakpointVariables(); // call before clearState
+        this.clearState();
+        // The debug session ends after the next line. Do not put new work after this line.
         await this.rokuAdapter.stepInto(args.threadId);
         this.sendResponse(response);
         this.logger.info('[stepInRequest] end');
@@ -1145,6 +1164,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
+        await this.uninitializeExceptionsBreakpointVariables(); // call before clearState
+        this.clearState();
+
+        // The debug session ends after the next line. Do not put new work after this line.
         await this.rokuAdapter.stepOut(args.threadId);
         this.sendResponse(response);
         this.logger.info('[stepOutRequest] end');
@@ -1217,6 +1240,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             let filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true ? childVariables.filter(
                 (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : childVariables;
+
+            filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true
+                ? childVariables.filter((child: AugmentedVariable) => !util.isTransientVariable(child.name) ||
+                    (child.name === '__brs_err__' && child.type !== VariableType.Uninitialized))
+                : childVariables;
 
             response.body = {
                 variables: filteredChildVariables
