@@ -156,6 +156,10 @@ export class DebugProtocolClient {
         return semver.satisfies(this.protocolVersion, '>=3.2.0');
     }
 
+    public get supportsVirtualVariables() {
+        return semver.satisfies(this.protocolVersion, '>=3.3.0');
+    }
+
     public get supportsExceptionBreakpoints() {
         return semver.satisfies(this.protocolVersion, '>=3.3.0');
     }
