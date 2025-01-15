@@ -474,6 +474,24 @@ class Util {
     public isTransientVariable(variableName: string) {
         return /^__brs_.*?__$/.test(variableName);
     }
+
+    public handleLogFragments(currentFragment: string, newFragment: string): { completed: string; remaining: string } {
+        let lastNewlineIndex = newFragment.lastIndexOf('\n');
+        if (lastNewlineIndex === -1) {
+            currentFragment += newFragment;
+            return {
+                completed: '',
+                remaining: newFragment
+            };
+        }
+
+        let toEmit = currentFragment + newFragment.substring(0, lastNewlineIndex + 1);
+        let remaining = newFragment.substring(lastNewlineIndex + 1);
+        return {
+            completed: toEmit,
+            remaining
+        };
+    }
 }
 
 export function defer<T>() {

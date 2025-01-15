@@ -409,21 +409,18 @@ export class DebugProtocolAdapter {
             this.compileClient.on('data', (buffer) => {
                 let responseText = buffer.toString();
                 this.logger.info('CompileClient received data', { responseText });
-                if (!responseText.endsWith('\n')) {
-                    this.logger.debug('Buffer was split');
-                    // buffer was split, save the partial line
-                    lastPartialLine += responseText;
-                } else {
-                    if (lastPartialLine) {
-                        this.logger.debug('Previous response was split, so merging last response with this one', { lastPartialLine, responseText });
-                        // there was leftover lines, join the partial lines back together
-                        responseText = lastPartialLine + responseText;
-                        lastPartialLine = '';
-                    }
+
+                let logResult = util.handleLogFragments(lastPartialLine, buffer.toString());
+
+                // Save any remaining partial line for the next event
+                lastPartialLine = logResult.remaining;
+                if (logResult.completed) {
                     // Emit the completed io string.
-                    this.findWaitForDebuggerPrompt(responseText.trim());
-                    this.compileErrorProcessor.processUnhandledLines(responseText.trim());
-                    this.emit('unhandled-console-output', responseText.trim());
+                    this.findWaitForDebuggerPrompt(logResult.completed);
+                    this.compileErrorProcessor.processUnhandledLines(logResult.completed);
+                    this.emit('unhandled-console-output', logResult.completed);
+                } else {
+                    this.logger.debug('Buffer was split', lastPartialLine);
                 }
             });
 
@@ -683,6 +680,8 @@ export class DebugProtocolAdapter {
         let evaluateName: string;
         if (!parentEvaluateName?.trim()) {
             evaluateName = name?.toString();
+        } else if (variable.isVirtual) {
+            evaluateName = `${parentEvaluateName}.${name}`;
         } else if (typeof name === 'string') {
             evaluateName = `${parentEvaluateName}["${name}"]`;
         } else if (typeof name === 'number') {
@@ -715,6 +714,12 @@ export class DebugProtocolAdapter {
                 container.children.push(childContainer);
             }
         }
+
+        //show virtual variables in the UI
+        if (variable.isVirtual) {
+            container.presentationHint = 'virtual';
+        }
+
         return container;
     }
 

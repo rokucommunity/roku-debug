@@ -281,6 +281,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+
     protected async uninitializeExceptionsBreakpointVariables() {
         let brsErr = Object.values(this.variables).find((v) => v.name === '__brs_err__');
         if (brsErr && brsErr.type !== VariableType.Uninitialized) {
@@ -676,8 +677,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private sendLogOutput(logOutput: string) {
         this.fileLoggingManager.writeRokuDeviceLog(logOutput);
         const lines = logOutput.split(/\r?\n/g);
-        for (let line of lines) {
-            line += '\n';
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
+            if (i < lines.length - 1) {
+                line += '\n';
+            }
             this.sendEvent(new OutputEvent(line, 'stdout'));
             this.sendEvent(new LogOutputEvent(line));
         }

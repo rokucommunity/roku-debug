@@ -491,10 +491,13 @@ export class DebugProtocolClient {
                 threadIndex: threadIndex,
                 stackFrameIndex: stackFrameIndex,
                 getChildKeys: true,
+                getVirtualKeys: this.supportsVirtualVariables,
                 variablePathEntries: variablePathEntries.map(x => ({
                     //remove leading and trailing quotes
                     name: x.replace(/^"/, '').replace(/"$/, ''),
-                    forceCaseInsensitive: !x.startsWith('"') && !x.endsWith('"')
+                    forceCaseInsensitive: !x.startsWith('"') && !x.endsWith('"'),
+                    //vars that start with `'$'` are virtual (AA keys will wrapped in quotes so would start with `"$`
+                    isVirtual: x.startsWith('$') // || x.startsWith('"$')
                 })),
                 //starting in protocol v3.1.0, it supports marking certain path items as case-insensitive (i.e. parts of DottedGet expressions)
                 enableForceCaseInsensitivity: semver.satisfies(this.protocolVersion, '>=3.1.0') && variablePathEntries.length > 0
@@ -1113,18 +1116,15 @@ export class DebugProtocolClient {
                     let lastPartialLine = '';
                     this.ioSocket.on('data', (buffer) => {
                         this.writeToBufferLog('io', buffer);
-                        let responseText = buffer.toString();
-                        if (!responseText.endsWith('\n')) {
-                            // buffer was split, save the partial line
-                            lastPartialLine += responseText;
-                        } else {
-                            if (lastPartialLine) {
-                                // there was leftover lines, join the partial lines back together
-                                responseText = lastPartialLine + responseText;
-                                lastPartialLine = '';
-                            }
+                        let logResult = util.handleLogFragments(lastPartialLine, buffer.toString());
+
+                        // Save any remaining partial line for the next event
+                        lastPartialLine = logResult.remaining;
+                        if (logResult.completed) {
                             // Emit the completed io string.
-                            this.emit('io-output', responseText.trim());
+                            this.emit('io-output', logResult.completed);
+                        } else {
+                            this.logger.debug('Buffer was split', lastPartialLine);
                         }
                     });
 

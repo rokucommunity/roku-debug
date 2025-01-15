@@ -9,6 +9,7 @@ import * as dedent from 'dedent';
 import { util } from './util';
 import { util as bscUtil } from 'brighterscript';
 import { createSandbox } from 'sinon';
+import { describe } from 'mocha';
 const sinon = createSandbox();
 
 beforeEach(() => {
@@ -200,6 +201,44 @@ describe('Util', () => {
         });
     });
 
+    describe('handleLogFragments', () => {
+        it('handles no new lines', () => {
+            expect(
+                util.handleLogFragments('', 'new string')
+            ).to.eql({ completed: '', remaining: 'new string' });
+        });
+
+        it('handles single new line', () => {
+            expect(
+                util.handleLogFragments('', 'new string\n')
+            ).to.eql({ completed: 'new string\n', remaining: '' });
+        });
+
+        it('handles multiple new lines', () => {
+            expect(
+                util.handleLogFragments('', 'new string\none new\nline\n')
+            ).to.eql({ completed: 'new string\none new\nline\n', remaining: '' });
+        });
+
+        it('handles partial lines', () => {
+            expect(
+                util.handleLogFragments('', 'new string\none new\nline')
+            ).to.eql({ completed: 'new string\none new\n', remaining: 'line' });
+        });
+
+        it('handles partial lines and concat', () => {
+            expect(
+                util.handleLogFragments('new', ' string\none new\nline')
+            ).to.eql({ completed: 'new string\none new\n', remaining: 'line' });
+        });
+
+        it('handles partial lines, concat, and new lines in the existing somehow', () => {
+            expect(
+                util.handleLogFragments('new\n', ' string\none new\nline')
+            ).to.eql({ completed: 'new\n string\none new\n', remaining: 'line' });
+        });
+    });
+
     describe('isPortInUse', () => {
         let otherServer: net.Server;
         let port: number;
@@ -275,6 +314,11 @@ describe('Util', () => {
             expect(util.getVariablePath(`a["something with a quote"].c`)).to.eql(['a', '"something with a quote"', 'c']);
             expect(util.getVariablePath(`m.global.initialInputEvent`)).to.eql(['m', 'global', 'initialInputEvent']);
             expect(util.getVariablePath(`m.["that"]`)).to.eql(['m', '"that"']);
+        });
+
+        it('detects valid virtual patterns', () => {
+            expect(util.getVariablePath('m["top"].$children')).to.eql(['m', '"top"', '$children']);
+            expect(util.getVariablePath('m["top"]["$children"]')).to.eql(['m', '"top"', '"$children"']);
         });
 
         it('rejects invalid patterns', () => {
