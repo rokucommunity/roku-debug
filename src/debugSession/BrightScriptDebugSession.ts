@@ -1468,8 +1468,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //anytime the adapter encounters an exception on the roku,
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('runtime-error', async (exception) => {
-            let rokuAdapter = await this.getRokuAdapter();
-            let threads = await rokuAdapter.getThreads();
+            await this.getRokuAdapter();
+            const threads = await this.setupSuspendedState();
             let threadId = threads[0]?.threadId;
             this.sendEvent(new StoppedEvent(StoppedEventReason.exception, threadId, exception.message));
         });
@@ -1486,11 +1486,35 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async onSuspend() {
+        const threads = await this.setupSuspendedState();
+        const activeThread = threads.find(x => x.isSelected);
+
+        //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
+        if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
+            this.entryBreakpointWasHandled = true;
+            //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
+            if (activeThread && !await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
+                this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
+                return this.rokuAdapter.continue();
+            }
+        }
+
+        const event: StoppedEvent = new StoppedEvent(
+            StoppedEventReason.breakpoint,
+            //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
+            activeThread?.threadId ?? 0,
+            '' //exception text
+        );
+        // Socket debugger will always stop all threads and supports multi thread inspection.
+        (event.body as any).allThreadsStopped = this.enableDebugProtocol;
+        this.sendEvent(event);
+    }
+
+    private async setupSuspendedState() {
         //clear the index for storing evalutated expressions
         this.evaluateVarIndexByFrameId.clear();
 
         const threads = await this.rokuAdapter.getThreads();
-        const activeThread = threads.find(x => x.isSelected);
 
         //TODO remove this once Roku fixes their threads off-by-one line number issues
         //look up the correct line numbers for each thread from the StackTrace
@@ -1523,27 +1547,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         this.logger.info('received "suspend" event from adapter');
 
-        //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
-        if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
-            this.entryBreakpointWasHandled = true;
-            //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
-            if (activeThread && !await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
-                this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
-                return this.rokuAdapter.continue();
-            }
-        }
-
         this.clearState();
-        const event: StoppedEvent = new StoppedEvent(
-            StoppedEventReason.breakpoint,
-            //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
-            activeThread?.threadId ?? 0,
-            '' //exception text
-        );
-        // Socket debugger will always stop all threads and supports multi thread inspection.
-        (event.body as any).allThreadsStopped = this.enableDebugProtocol;
-        this.sendEvent(event);
-
+        return threads;
     }
 
     private getVariableFromResult(result: EvaluateContainer, frameId: number) {
