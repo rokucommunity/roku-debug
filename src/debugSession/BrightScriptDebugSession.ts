@@ -282,7 +282,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
 
-    protected async uninitializeExceptionsBreakpointVariables() {
+    protected async setTransientsToInvalid() {
         let brsErr = Object.values(this.variables).find((v) => v.name === '__brs_err__');
         if (brsErr && brsErr.type !== VariableType.Uninitialized) {
             // Assigning the variable to the function call results in it becoming unintialized
@@ -1085,7 +1085,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         this.logger.log('continueRequest');
-        await this.uninitializeExceptionsBreakpointVariables(); // call before clearState
+        await this.setTransientsToInvalid(); // call before clearState
         this.clearState();
 
         // The debug session ends after the next line. Do not put new work after this line.
@@ -1127,7 +1127,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
-        await this.uninitializeExceptionsBreakpointVariables(); // call before clearState
+        await this.setTransientsToInvalid(); // call before clearState
         this.clearState();
 
         // The debug session ends after the next line. Do not put new work after this line.
@@ -1150,7 +1150,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
-        await this.uninitializeExceptionsBreakpointVariables(); // call before clearState
+        await this.setTransientsToInvalid(); // call before clearState
         this.clearState();
         // The debug session ends after the next line. Do not put new work after this line.
         await this.rokuAdapter.stepInto(args.threadId);
@@ -1168,7 +1168,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
-        await this.uninitializeExceptionsBreakpointVariables(); // call before clearState
+        await this.setTransientsToInvalid(); // call before clearState
         this.clearState();
 
         // The debug session ends after the next line. Do not put new work after this line.
@@ -1245,10 +1245,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true ? childVariables.filter(
                 (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : childVariables;
 
-            filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true
-                ? childVariables.filter((child: AugmentedVariable) => !util.isTransientVariable(child.name) ||
-                    (child.name === '__brs_err__' && child.type !== VariableType.Uninitialized))
-                : childVariables;
+            if (this.launchConfiguration.showHiddenVariables !== true) {
+                filteredChildVariables = childVariables.filter((child: AugmentedVariable) => {
+                    //A transient variable that we show when there is a value
+                    if (child.name === '__brs_err__' && child.type !== VariableType.Uninitialized) {
+                        return true;
+                    } else if (util.isTransientVariable(child.name)) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                });
+            }
 
             response.body = {
                 variables: filteredChildVariables
