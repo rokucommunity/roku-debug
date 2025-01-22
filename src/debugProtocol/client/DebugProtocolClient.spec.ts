@@ -163,10 +163,12 @@ describe('DebugProtocolClient', () => {
         client.primaryThread = 9;
 
         plugin.pushResponse(GenericV3Response.fromJson({} as any));
+
         await client.stepIn();
         expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(9);
         expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Line);
 
+        client.isStopped = true;
         plugin.pushResponse(GenericV3Response.fromJson({} as any));
         await client.stepIn(5);
         expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(5);
@@ -182,6 +184,7 @@ describe('DebugProtocolClient', () => {
         expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(9);
         expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Over);
 
+        client.isStopped = true;
         plugin.pushResponse(GenericV3Response.fromJson({} as any));
         await client.stepOver(5);
         expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(5);
@@ -197,6 +200,7 @@ describe('DebugProtocolClient', () => {
         expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(9);
         expect(plugin.getLatestRequest<StepRequest>().data.stepType).to.eql(StepType.Out);
 
+        client.isStopped = true;
         plugin.pushResponse(GenericV3Response.fromJson({} as any));
         await client.stepOut(5);
         expect(plugin.getLatestRequest<StepRequest>().data.threadIndex).to.eql(5);

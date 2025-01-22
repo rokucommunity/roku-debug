@@ -1246,7 +1246,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : childVariables;
 
             if (this.launchConfiguration.showHiddenVariables !== true) {
-                filteredChildVariables = childVariables.filter((child: AugmentedVariable) => {
+                filteredChildVariables = filteredChildVariables.filter((child: AugmentedVariable) => {
                     //A transient variable that we show when there is a value
                     if (child.name === '__brs_err__' && child.type !== VariableType.Uninitialized) {
                         return true;
