@@ -661,12 +661,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+    private pendingSendLogPromise = Promise.resolve();
+
     /**
      * Send log output to the "client" (i.e. vscode)
      * @param logOutput
      */
     private sendLogOutput(logOutput: string) {
         this.fileLoggingManager.writeRokuDeviceLog(logOutput);
+
         const lines = logOutput.split(/\r?\n/g);
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i];
@@ -676,6 +679,30 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.sendEvent(new OutputEvent(line, 'stdout'));
             this.sendEvent(new LogOutputEvent(line));
         }
+
+
+
+        // this.pendingSendLogPromise = this.pendingSendLogPromise.then(async () => {
+        //     const lines = logOutput.split(/\r?\n/g);
+        //     for (let i = 0; i < lines.length; i++) {
+        //         let line = lines[i];
+        //         if (i < lines.length - 1) {
+        //             line += '\n';
+        //         }
+        //         this.sendEvent(new OutputEvent(line, 'stdout'));
+        //         // TODO: scrape for PKG like and convert to file path from maps
+
+        //         let potentalPath = line.match(/(\/tmp\/pkg\/.*\.brs)/);
+        //         if (potentalPath) {
+        //             let originalLocation = await this.sourceMapManager.getOriginalLocation(potentalPath[1], potentalPath[2])
+        //             if (originalLocation) {
+        //                 // regex replace the path with the original location
+        //             }
+        //         }
+
+        //         this.sendEvent(new LogOutputEvent(line));
+        //     }
+        // });
     }
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
