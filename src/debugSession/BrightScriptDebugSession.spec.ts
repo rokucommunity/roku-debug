@@ -18,7 +18,7 @@ import { DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { ClientToServerCustomEventName, isCustomRequestEvent } from './Events';
+import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
 
 const sinon = sinonActual.createSandbox();
@@ -1162,6 +1162,173 @@ describe('BrightScriptDebugSession', () => {
                     namedVariables: 0
                 });
                 expect(getVarStub.calledWith('person.name', frameId, true));
+            });
+        });
+
+        describe('sendLogOutput', () => {
+
+            async function doTest(input: string, output: string, locations: Array<{ filePath: string; lineNumber: number; columnIndex?: number }>) {
+                const getSourceLocationStub = sinon.stub(session.projectManager, 'getSourceLocation').callsFake(() => {
+                    return Promise.resolve(locations.shift() as any);
+                });
+
+                const sendEventStub = sinon.stub(session, 'sendEvent');
+
+                await session['sendLogOutput'](input);
+
+                expect(
+                    sendEventStub.getCalls().filter(x => x.args[0] instanceof LogOutputEvent).map(call => call.args[0].body.line).join('')
+                ).to.eql(output);
+                sendEventStub.restore();
+                getSourceLocationStub.restore();
+            }
+
+            it('modifies pkg locations if found multiline', async () => {
+                await doTest(
+                    `{
+                        backtrace: "
+                            file/line: pkg:/components/services/NetworkBase.bs:251
+                            Function networkbase_runtaskthread() As Void
+
+                            file/line: pkg:/components/services/NetworkBase.bs:654
+                            Function networkbase_processresponse(message As Object) As Object
+
+                            file/line: pkg:/source/sgnode.bs:109
+                            Function sgnode_createnode(nodetype As String, fields As Dynamic) As Object"
+                        message: "Divide by Zero."
+                        number: 20
+                        rethrown: false
+                    }`,
+                    `{
+                        backtrace: "
+                            file/line: file://c:/project/components/services/NetworkBase.bs:260
+                            Function networkbase_runtaskthread() As Void
+
+                            file/line: file://c:/project/components/services/NetworkBase.bs:700
+                            Function networkbase_processresponse(message As Object) As Object
+
+                            file/line: file://c:/project/components/services/sgnode.bs:100
+                            Function sgnode_createnode(nodetype As String, fields As Dynamic) As Object"
+                        message: "Divide by Zero."
+                        number: 20
+                        rethrown: false
+                    }`,
+                    [
+                        { filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260 },
+                        { filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 700 },
+                        { filePath: `c:/project/components/services/sgnode.bs`, lineNumber: 100 }
+                    ]
+                );
+            });
+
+            it('modifies windows pkg locations with just line', async () => {
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs:251`,
+                    ` file://c:/project/components/services/NetworkBase.bs:260`,
+                    [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs(251)`,
+                    ` file://C:/project/components/services/NetworkBase.bs:260`,
+                    [{ filePath: `C:/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+                await doTest(
+                    ` ...rvices/NetworkBase.bs:251`,
+                    ` file://c:/project/components/services/NetworkBase.bs:260`,
+                    [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+                await doTest(
+                    ` ...rvices/NetworkBase.bs(251)`,
+                    ` file://c:/project/components/services/NetworkBase.bs:260`,
+                    [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+            });
+
+            it('modifies windows pkg locations with line and column', async () => {
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs:251:10`,
+                    ` file://c:/project/components/services/NetworkBase.bs:260:12`,
+                    [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs(251:10)`,
+                    ` file://C:/project/components/services/NetworkBase.bs:260:12`,
+                    [{ filePath: `C:/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+                await doTest(
+                    ` ...rvices/NetworkBase.bs:251:10`,
+                    ` file://c:/project/components/services/NetworkBase.bs:260:12`,
+                    [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+                await doTest(
+                    ` ...rvices/NetworkBase.bs(251:10)`,
+                    ` file://c:/project/components/services/NetworkBase.bs:260:12`,
+                    [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+            });
+
+            it('modifies mac/linx pkg locations with just line', async () => {
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs:251`,
+                    ` file://project/components/services/NetworkBase.bs:260`,
+                    [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs(251)`,
+                    ` file://project/components/services/NetworkBase.bs:260`,
+                    [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+                await doTest(
+                    ` ...rvices/NetworkBase.bs:251`,
+                    ` file://project/components/services/NetworkBase.bs:260`,
+                    [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+                await doTest(
+                    ` ...rvices/NetworkBase.bs(251)`,
+                    ` file://project/components/services/NetworkBase.bs:260`,
+                    [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+            });
+
+            it('modifies mac/linx pkg locations line and column', async () => {
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs:251:10`,
+                    ` file://project/components/services/NetworkBase.bs:260:12`,
+                    [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs(251:10)`,
+                    ` file://project/components/services/NetworkBase.bs:260:12`,
+                    [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+                await doTest(
+                    ` ...rvices/NetworkBase.bs:251:10`,
+                    ` file://project/components/services/NetworkBase.bs:260:12`,
+                    [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+                await doTest(
+                    ` ...rvices/NetworkBase.bs(251:10)`,
+                    ` file://project/components/services/NetworkBase.bs:260:12`,
+                    [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+            });
+
+            it('does not modify path', async () => {
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs`,
+                    ` pkg:/components/services/NetworkBase.bs`,
+                    [undefined]
+                );
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs:251`,
+                    ` pkg:/components/services/NetworkBase.bs:251`,
+                    [undefined]
+                );
+                await doTest(
+                    ` pkg:/components/services/NetworkBase.bs:251:10`,
+                    ` pkg:/components/services/NetworkBase.bs:251:10`,
+                    [undefined]
+                );
             });
         });
     });

@@ -662,7 +662,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private pendingSendLogPromise = Promise.resolve();
-    private deviceFilePathRegex = /(?:\s*)((?:\.\.\.|[A-Za-z_0-9]*pkg\:\/)[A-Za-z_0-9\/\.]+\.[A-Za-z_0-9\/]+\:(\d+))(?:\s*)/ig;
 
     /**
      * Send log output to the "client" (i.e. vscode)
@@ -679,18 +678,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     line += '\n';
                 }
 
-                let potentialPaths = line.matchAll(this.deviceFilePathRegex);
+                let potentialPaths = this.getPotentialPkgPaths(line);
                 for (let potentialPath of potentialPaths) {
-                    let originalLocation = await this.projectManager.getSourceLocation(potentialPath[1], parseInt(potentialPath[2]));
+                    let originalLocation = await this.projectManager.getSourceLocation(potentialPath.path, potentialPath.lineNumber, potentialPath.columnNumber);
                     if (originalLocation) {
                         let replacement: string;
                         if (originalLocation.filePath.startsWith('/')) {
-                            replacement = `file:/${originalLocation.filePath}`;
+                            replacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
                         } else {
-                            replacement = `file://${originalLocation.filePath}`;
+                            replacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
                         }
 
-                        line = line.replace(potentialPath[1], replacement);
+                        if (potentialPath.columnNumber !== undefined) {
+                            replacement += `:${originalLocation.columnIndex + 1}`;
+                        }
+
+                        line = line.replaceAll(potentialPath.fullMatch, replacement);
                     }
                 }
 
@@ -698,6 +701,46 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.sendEvent(new LogOutputEvent(line));
             }
         });
+        return this.pendingSendLogPromise;
+    }
+
+    // https://regex101.com/r/ixpQiq/1
+    private deviceFilePathRegex = /((?:\.\.\.|[A-Za-z_0-9]*pkg\:\/)[A-Za-z_0-9 \/\.]+\.[A-Za-z_0-9 \/]+)(?:(?:\:)(\d+)(?:\:(\d+))?|\((\d+)(?:\:(\d+))?\))/ig;
+
+    /**
+     * Extracts potential package paths from a given line of text.
+     *
+     * This method uses a regular expression to find matches in the provided line
+     * and returns an array of objects containing details about each match.
+     *
+     * @param input - The line of text to search for potential package paths.
+     * @returns An array of objects, each containing:
+     *   - `fullMatch`: The full matched string.
+     *   - `path`: The extracted path from the match.
+     *   - `lineNumber`: The line number extracted from the match.
+     *   - `columnNumber`: The column number extracted from the match, or `undefined` if not found.
+     */
+    private getPotentialPkgPaths(input: string): Array<{ fullMatch: string; path: string; lineNumber: number; columnNumber: number }> {
+        let matches = input.matchAll(this.deviceFilePathRegex);
+        let paths: ReturnType<BrightScriptDebugSession['getPotentialPkgPaths']> = [];
+        if (matches) {
+            for (let match of matches) {
+                let fullMatch = match[0];
+                let path = match[1];
+                let lineNumber = parseInt(match[2] ?? match[4]);
+                let columnNumber = parseInt(match[3] ?? match[5]);
+                if (isNaN(columnNumber)) {
+                    columnNumber = undefined;
+                }
+                paths.push({
+                    fullMatch: fullMatch,
+                    path: path,
+                    lineNumber: lineNumber,
+                    columnNumber: columnNumber
+                });
+            }
+        }
+        return paths;
     }
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
