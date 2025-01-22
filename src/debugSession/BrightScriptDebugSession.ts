@@ -281,6 +281,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+
+    protected async setTransientsToInvalid() {
+        let brsErr = Object.values(this.variables).find((v) => v.name === '__brs_err__');
+        if (brsErr && brsErr.type !== VariableType.Uninitialized) {
+            // Assigning the variable to the function call results in it becoming unintialized
+            await this.rokuAdapter.evaluate(`__brs_err__ = [].clear()`, brsErr.frameId);
+        }
+    }
+
     private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
         this.logger.trace('[showPopupMessage]', severity, message);
         this.sendEvent(new PopupMessageEvent(message, severity, modal));
@@ -1076,6 +1085,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         this.logger.log('continueRequest');
+        await this.setTransientsToInvalid(); // call before clearState
+        this.clearState();
+
+        // The debug session ends after the next line. Do not put new work after this line.
         await this.rokuAdapter.continue();
         this.sendResponse(response);
     }
@@ -1114,6 +1127,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
+        await this.setTransientsToInvalid(); // call before clearState
+        this.clearState();
+
+        // The debug session ends after the next line. Do not put new work after this line.
         try {
             await this.rokuAdapter.stepOver(args.threadId);
             this.logger.info('[nextRequest] end');
@@ -1133,6 +1150,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
+        await this.setTransientsToInvalid(); // call before clearState
+        this.clearState();
+        // The debug session ends after the next line. Do not put new work after this line.
         await this.rokuAdapter.stepInto(args.threadId);
         this.sendResponse(response);
         this.logger.info('[stepInRequest] end');
@@ -1148,6 +1168,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return;
         }
 
+        await this.setTransientsToInvalid(); // call before clearState
+        this.clearState();
+
+        // The debug session ends after the next line. Do not put new work after this line.
         await this.rokuAdapter.stepOut(args.threadId);
         this.sendResponse(response);
         this.logger.info('[stepOutRequest] end');
@@ -1220,6 +1244,19 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             let filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true ? childVariables.filter(
                 (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : childVariables;
+
+            if (this.launchConfiguration.showHiddenVariables !== true) {
+                filteredChildVariables = filteredChildVariables.filter((child: AugmentedVariable) => {
+                    //A transient variable that we show when there is a value
+                    if (child.name === '__brs_err__' && child.type !== VariableType.Uninitialized) {
+                        return true;
+                    } else if (util.isTransientVariable(child.name)) {
+                        return false;
+                    } else {
+                        return true;
+                    }
+                });
+            }
 
             response.body = {
                 variables: filteredChildVariables
@@ -1431,8 +1468,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //anytime the adapter encounters an exception on the roku,
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         this.rokuAdapter.on('runtime-error', async (exception) => {
-            let rokuAdapter = await this.getRokuAdapter();
-            let threads = await rokuAdapter.getThreads();
+            await this.getRokuAdapter();
+            const threads = await this.setupSuspendedState();
             let threadId = threads[0]?.threadId;
             this.sendEvent(new StoppedEvent(StoppedEventReason.exception, threadId, exception.message));
         });
@@ -1449,11 +1486,35 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async onSuspend() {
+        const threads = await this.setupSuspendedState();
+        const activeThread = threads.find(x => x.isSelected);
+
+        //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
+        if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
+            this.entryBreakpointWasHandled = true;
+            //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
+            if (activeThread && !await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
+                this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
+                return this.rokuAdapter.continue();
+            }
+        }
+
+        const event: StoppedEvent = new StoppedEvent(
+            StoppedEventReason.breakpoint,
+            //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
+            activeThread?.threadId ?? 0,
+            '' //exception text
+        );
+        // Socket debugger will always stop all threads and supports multi thread inspection.
+        (event.body as any).allThreadsStopped = this.enableDebugProtocol;
+        this.sendEvent(event);
+    }
+
+    private async setupSuspendedState() {
         //clear the index for storing evalutated expressions
         this.evaluateVarIndexByFrameId.clear();
 
         const threads = await this.rokuAdapter.getThreads();
-        const activeThread = threads.find(x => x.isSelected);
 
         //TODO remove this once Roku fixes their threads off-by-one line number issues
         //look up the correct line numbers for each thread from the StackTrace
@@ -1486,27 +1547,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         this.logger.info('received "suspend" event from adapter');
 
-        //if !stopOnEntry, and we haven't encountered a suspend yet, THIS is the entry breakpoint. auto-continue
-        if (!this.entryBreakpointWasHandled && !this.launchConfiguration.stopOnEntry) {
-            this.entryBreakpointWasHandled = true;
-            //if there's a user-defined breakpoint at this exact position, it needs to be handled like a regular breakpoint (i.e. suspend). So only auto-continue if there's no breakpoint here
-            if (activeThread && !await this.breakpointManager.lineHasBreakpoint(this.projectManager.getAllProjects(), activeThread.filePath, activeThread.lineNumber - 1)) {
-                this.logger.info('Encountered entry breakpoint and `stopOnEntry` is disabled. Continuing...');
-                return this.rokuAdapter.continue();
-            }
-        }
-
         this.clearState();
-        const event: StoppedEvent = new StoppedEvent(
-            StoppedEventReason.breakpoint,
-            //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
-            activeThread?.threadId ?? 0,
-            '' //exception text
-        );
-        // Socket debugger will always stop all threads and supports multi thread inspection.
-        (event.body as any).allThreadsStopped = this.enableDebugProtocol;
-        this.sendEvent(event);
-
+        return threads;
     }
 
     private getVariableFromResult(result: EvaluateContainer, frameId: number) {
