@@ -662,6 +662,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private pendingSendLogPromise = Promise.resolve();
+    private deviceFilePathRegex = /(?:\s*)((?:\.\.\.|[A-Za-z_0-9]*pkg\:\/)[A-Za-z_0-9\/\.]+\.[A-Za-z_0-9\/]+\:(\d+))(?:\s*)/ig;
 
     /**
      * Send log output to the "client" (i.e. vscode)
@@ -670,39 +671,33 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private sendLogOutput(logOutput: string) {
         this.fileLoggingManager.writeRokuDeviceLog(logOutput);
 
-        const lines = logOutput.split(/\r?\n/g);
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            if (i < lines.length - 1) {
-                line += '\n';
+        this.pendingSendLogPromise = this.pendingSendLogPromise.then(async () => {
+            const lines = logOutput.split(/\r?\n/g);
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                if (i < lines.length - 1) {
+                    line += '\n';
+                }
+
+                let potentialPaths = line.matchAll(this.deviceFilePathRegex);
+                for (let potentialPath of potentialPaths) {
+                    let originalLocation = await this.projectManager.getSourceLocation(potentialPath[1], parseInt(potentialPath[2]));
+                    if (originalLocation) {
+                        let replacement: string;
+                        if (originalLocation.filePath.startsWith('/')) {
+                            replacement = `file:/${originalLocation.filePath}`;
+                        } else {
+                            replacement = `file://${originalLocation.filePath}`;
+                        }
+
+                        line = line.replace(potentialPath[1], replacement);
+                    }
+                }
+
+                this.sendEvent(new OutputEvent(line, 'stdout'));
+                this.sendEvent(new LogOutputEvent(line));
             }
-            this.sendEvent(new OutputEvent(line, 'stdout'));
-            this.sendEvent(new LogOutputEvent(line));
-        }
-
-
-
-        // this.pendingSendLogPromise = this.pendingSendLogPromise.then(async () => {
-        //     const lines = logOutput.split(/\r?\n/g);
-        //     for (let i = 0; i < lines.length; i++) {
-        //         let line = lines[i];
-        //         if (i < lines.length - 1) {
-        //             line += '\n';
-        //         }
-        //         this.sendEvent(new OutputEvent(line, 'stdout'));
-        //         // TODO: scrape for PKG like and convert to file path from maps
-
-        //         let potentalPath = line.match(/(\/tmp\/pkg\/.*\.brs)/);
-        //         if (potentalPath) {
-        //             let originalLocation = await this.sourceMapManager.getOriginalLocation(potentalPath[1], potentalPath[2])
-        //             if (originalLocation) {
-        //                 // regex replace the path with the original location
-        //             }
-        //         }
-
-        //         this.sendEvent(new LogOutputEvent(line));
-        //     }
-        // });
+        });
     }
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
@@ -1667,6 +1662,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.componentLibraryServer?.stop();
 
             void this.rendezvousTracker?.destroy?.();
+
+            try {
+                this.sourceMapManager?.destroy?.();
+            } catch (e) {
+            }
 
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
