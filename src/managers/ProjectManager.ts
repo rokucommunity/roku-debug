@@ -105,8 +105,9 @@ export class ProjectManager {
     /**
      * @param debuggerPath
      * @param debuggerLineNumber - the 1-based line number from the debugger
+     * @param debuggerColumnNumber - the 1-based column number from the debugger
      */
-    public async getSourceLocation(debuggerPath: string, debuggerLineNumber: number) {
+    public async getSourceLocation(debuggerPath: string, debuggerLineNumber: number, debuggerColumnNumber = 1) {
         return this.sourceLocationCache.getOrAdd(`${debuggerPath}-${debuggerLineNumber}`, async () => {
             //get source location using
             let stagingFileInfo = await this.getStagingFileInfo(debuggerPath);
@@ -123,7 +124,7 @@ export class ProjectManager {
 
             let sourceLocation = await this.locationManager.getSourceLocation({
                 lineNumber: debuggerLineNumber,
-                columnIndex: 0,
+                columnIndex: debuggerColumnNumber - 1,
                 fileMappings: project.fileMappings,
                 rootDir: project.rootDir,
                 stagingFilePath: stagingFileInfo.absolutePath,
@@ -142,7 +143,7 @@ export class ProjectManager {
                 return {
                     filePath: stagingFileInfo.absolutePath,
                     lineNumber: sourceLocation?.lineNumber || debuggerLineNumber,
-                    columnIndex: 0
+                    columnIndex: debuggerColumnNumber - 1
                 } as SourceLocation;
             } else {
                 return sourceLocation;
