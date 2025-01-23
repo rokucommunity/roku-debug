@@ -1758,6 +1758,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             try {
                 this.sourceMapManager?.destroy?.();
             } catch (e) {
+                this.logger.error(e);
             }
 
             //if configured, delete the staging directory
