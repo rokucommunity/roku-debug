@@ -1183,6 +1183,10 @@ describe('BrightScriptDebugSession', () => {
                 getSourceLocationStub.restore();
             }
 
+            beforeEach(() => {
+                session['launchConfiguration'].enableConsolePkgToSourcePathConversion = true;
+            });
+
             it('modifies pkg locations if found multiline', async () => {
                 await doTest(
                     `{
@@ -1313,6 +1317,50 @@ describe('BrightScriptDebugSession', () => {
                 );
             });
 
+            it('supports device native backtrace object if seen in logs mac file paths', async () => {
+                await doTest(
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "pkg:/source/main.brs"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 9
+                    }
+                    some other logs`,
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "file://project/source/main.brs:20"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 9
+                    }
+                    some other logs`,
+                    [{ filePath: `/project/source/main.brs`, lineNumber: 20 }]
+                );
+            });
+
+            it('supports device native backtrace object if seen in logs windows file paths', async () => {
+                await doTest(
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "pkg:/source/main.brs"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 9
+                    }
+                    some other logs`,
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "file://C:/project/source/main.brs:20"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 9
+                    }
+                    some other logs`,
+                    [{ filePath: `C:/project/source/main.brs`, lineNumber: 20 }]
+                );
+            });
+
             it('does not modify path', async () => {
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs`,
@@ -1327,6 +1375,25 @@ describe('BrightScriptDebugSession', () => {
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs:251:10`,
                     ` pkg:/components/services/NetworkBase.bs:251:10`,
+                    [undefined]
+                );
+                await doTest(
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "pkg:/source/main.brs"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 9
+                    }
+                    some other logs`,
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "pkg:/source/main.brs"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 9
+                    }
+                    some other logs`,
                     [undefined]
                 );
             });
