@@ -411,11 +411,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //pass along the console output
             if (this.launchConfiguration.consoleOutput === 'full') {
                 this.rokuAdapter.on('console-output', (data) => {
-                    this.sendLogOutput(data);
+                    void this.sendLogOutput(data);
                 });
             } else {
                 this.rokuAdapter.on('unhandled-console-output', (data) => {
-                    this.sendLogOutput(data);
+                    void this.sendLogOutput(data);
                 });
             }
 
