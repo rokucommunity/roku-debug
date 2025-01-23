@@ -672,8 +672,6 @@ export class DebugProtocolAdapter {
             //subtyped objects can only have string values
             let parts = (variable.value as string).split('; ');
             (variableType as string) = `${parts[0]} (${parts[1]})`;
-        } else if (variableType === VariableType.AssociativeArray) {
-            variableType = VariableType.AssociativeArray;
         }
 
         //build full evaluate name for this var. (i.e. `alpha["beta"]` + ["charlie"]` === `alpha["beta"]["charlie"]`)
