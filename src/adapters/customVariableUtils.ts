@@ -25,6 +25,32 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                     container.children.push(nodeChildren);
                 }
 
+                if (!container.children.some(child => child.name === '$parent')) {
+                    let nodeParent = <EvaluateContainer>{
+                        name: '$parent',
+                        type: 'roSGNode',
+                        highLevelType: 'object',
+                        keyType: KeyType.string,
+                        presentationHint: 'virtual',
+                        evaluateName: `${expression}.getParent()`,
+                        children: []
+                    };
+                    container.children.push(nodeParent);
+                }
+
+                if (!container.children.some(child => child.name === '$threadinfo')) {
+                    let threadInfo = <EvaluateContainer>{
+                        name: '$threadinfo',
+                        type: 'roAssociativeArray',
+                        highLevelType: 'object',
+                        keyType: KeyType.string,
+                        presentationHint: 'virtual',
+                        evaluateName: `${expression}.threadInfo()`,
+                        children: []
+                    };
+                    container.children.push(threadInfo);
+                }
+            }
 
             if (container.elementCount > 0 || container.type === 'Array') {
                 if (!container.children.some(child => child.name === '$count')) {
