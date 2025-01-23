@@ -697,10 +697,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             line = line.replaceAll(potentialPath.fullMatch, replacement);
                         }
                     }
-
-                    this.sendEvent(new OutputEvent(line, 'stdout'));
-                    this.sendEvent(new LogOutputEvent(line));
                 }
+                this.sendEvent(new OutputEvent(line, 'stdout'));
+                this.sendEvent(new LogOutputEvent(line));
             }
         });
         return this.pendingSendLogPromise;
