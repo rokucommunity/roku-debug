@@ -1191,7 +1191,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //ensure the rokuAdapter is loaded
             await this.getRokuAdapter();
 
-            let childVariables: AugmentedVariable[] = [];
+            let updatedVariables: AugmentedVariable[] = [];
             //wait for any `evaluate` commands to finish so we have a higher likely hood of being at a debugger prompt
             await this.evaluateRequestPromise;
             if (this.rokuAdapter?.isAtDebuggerPrompt !== true) {
@@ -1211,10 +1211,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: varName, frameId: -1 }, util.getVariablePath(varName));
                         let result = await this.rokuAdapter.getVariable(evalArgs.expression, -1);
                         let tempVar = this.getVariableFromResult(result, -1);
-                        childVariables.push(tempVar);
+                        updatedVariables.push(tempVar);
                     }
                 } else {
-                    childVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
+                    updatedVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
                 }
             } else {
                 //find the variable with this reference
@@ -1231,22 +1231,39 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
                     let tempVar = this.getVariableFromResult(result, v.frameId);
                     tempVar.frameId = v.frameId;
+
+                    // Merge the resulting updates together
                     v.childVariables = tempVar.childVariables;
+                    v.value = tempVar.value;
+                    v.type = tempVar.type;
+
+                    if (v?.presentationHint?.lazy) {
+                        updatedVariables = [v];
+                    } else {
+                        updatedVariables = v.childVariables;
+                    }
+
+                    if (v?.presentationHint) {
+                        v.presentationHint.lazy = tempVar.presentationHint?.lazy;
+                    } else {
+                        v.presentationHint = tempVar.presentationHint;
+                    }
+                } else {
+                    updatedVariables = v.childVariables;
                 }
-                childVariables = v.childVariables;
             }
 
             //if the variable is an array, send only the requested range
-            if (Array.isArray(childVariables) && args.filter === 'indexed') {
+            if (Array.isArray(updatedVariables) && args.filter === 'indexed') {
                 //only send the variable range requested by the debugger
-                childVariables = childVariables.slice(args.start, args.start + args.count);
+                updatedVariables = updatedVariables.slice(args.start, args.start + args.count);
             }
 
-            let filteredChildVariables = this.launchConfiguration.showHiddenVariables !== true ? childVariables.filter(
-                (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : childVariables;
+            let filteredUpdatedVariables = this.launchConfiguration.showHiddenVariables !== true ? updatedVariables.filter(
+                (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : updatedVariables;
 
             if (this.launchConfiguration.showHiddenVariables !== true) {
-                filteredChildVariables = filteredChildVariables.filter((child: AugmentedVariable) => {
+                filteredUpdatedVariables = filteredUpdatedVariables.filter((child: AugmentedVariable) => {
                     //A transient variable that we show when there is a value
                     if (child.name === '__brs_err__' && child.type !== VariableType.Uninitialized) {
                         return true;
@@ -1259,7 +1276,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             response.body = {
-                variables: filteredChildVariables
+                variables: filteredUpdatedVariables
             };
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });
@@ -1576,7 +1593,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     } else {
                         value = `${result.value}`;
                     }
-                    v = new Variable(result.name, value);
+                    v = new Variable(result.name, value, refId);
                 }
                 this.variables[refId] = v;
             } else {
@@ -1602,7 +1619,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.evaluateName = result.evaluateName;
             v.frameId = frameId;
             v.type = result.type;
-            v.presentationHint = result.presentationHint ? { kind: result.presentationHint } : undefined;
+            v.presentationHint = result.presentationHint ? { kind: result.presentationHint, lazy: result.lazy } : undefined;
             if (util.isTransientVariable(v.name)) {
                 v.presentationHint = { kind: 'virtual' };
             }

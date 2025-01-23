@@ -68,6 +68,83 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                     container.children.push(nodeCount);
                 }
             }
+
+            if (container.type === 'Object' && container.value === 'roUrlTransfer') {
+                if (!container.children.some(child => child.name === '$url')) {
+                    let url = <EvaluateContainer>{
+                        name: '$url',
+                        type: 'String',
+                        highLevelType: undefined,
+                        keyType: undefined,
+                        presentationHint: 'virtual',
+                        evaluateName: `${expression}.getUrl()`,
+                        elementCount: undefined,
+                        lazy: true,
+                        children: []
+                    };
+                    container.children.push(url);
+                }
+                if (!container.children.some(child => child.name === '$useragent')) {
+                    let url = <EvaluateContainer>{
+                        name: '$useragent',
+                        type: 'String',
+                        highLevelType: undefined,
+                        keyType: undefined,
+                        presentationHint: 'virtual',
+                        evaluateName: `${expression}.GetUserAgent()`,
+                        elementCount: undefined,
+                        lazy: true,
+                        children: []
+                    };
+                    container.children.push(url);
+                }
+
+                if (!container.children.some(child => child.name === '$failurereason')) {
+                    let url = <EvaluateContainer>{
+                        name: '$failurereason',
+                        type: 'String',
+                        highLevelType: undefined,
+                        keyType: undefined,
+                        presentationHint: 'virtual',
+                        evaluateName: `${expression}.GetFailureReason()`,
+                        elementCount: undefined,
+                        lazy: true,
+                        children: []
+                    };
+                    container.children.push(url);
+                }
+
+                if (!container.children.some(child => child.name === '$request')) {
+                    let url = <EvaluateContainer>{
+                        name: '$request',
+                        type: 'String',
+                        highLevelType: undefined,
+                        keyType: undefined,
+                        presentationHint: 'virtual',
+                        evaluateName: `${expression}.GetRequest()`,
+                        elementCount: undefined,
+                        lazy: true,
+                        children: []
+                    };
+                    container.children.push(url);
+                }
+
+                if (!container.children.some(child => child.name === '$identity')) {
+                    let url = <EvaluateContainer>{
+                        name: '$identity',
+                        type: 'Integer',
+                        highLevelType: undefined,
+                        keyType: undefined,
+                        presentationHint: 'virtual',
+                        evaluateName: `${expression}.GetIdentity()`,
+                        value: undefined,
+                        elementCount: undefined,
+                        lazy: true,
+                        children: []
+                    };
+                    container.children.push(url);
+                }
+            }
         }
     } catch (e) {
         // Error inserting custom variables. We don't want to cause issues with real variables so just move on for now.

@@ -686,6 +686,10 @@ export class DebugProtocolAdapter {
             evaluateName = `${parentEvaluateName}[${name}]`;
         }
 
+        if (variableType === VariableType.Object && variable.value === 'roUrlTransfer') {
+            variable.keyType = VariableType.String;
+        }
+
         let container: EvaluateContainer = {
             name: name?.toString() ?? '',
             evaluateName: evaluateName ?? '',
@@ -988,6 +992,7 @@ export interface EvaluateContainer {
     elementCount: number;
     highLevelType: HighLevelType;
     children: EvaluateContainer[];
+    lazy?: boolean;
     presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
