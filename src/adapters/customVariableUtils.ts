@@ -8,33 +8,43 @@ import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAda
  * to look up the data for the custom variables.
  */
 export async function insertCustomVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer): Promise<void> {
-    if (semver.satisfies(adapter?.activeProtocolVersion, '<3.3.0')) {
-        if (container?.value?.startsWith('roSGNode')) {
-            let nodeChildren = <EvaluateContainer>{
-                name: '$children',
-                type: 'roArray',
-                highLevelType: 'array',
-                keyType: KeyType.integer,
-                presentationHint: 'virtual',
-                evaluateName: `${expression}.getChildren(-1, 0)`,
-                children: []
-            };
-            container.children.push(nodeChildren);
+    try {
+        // Added natively as of 3.3.0
+        if (semver.satisfies(adapter?.activeProtocolVersion, '<3.3.0')) {
+            if (container?.type?.startsWith('roSGNode')) {
+                if (!container.children.some(child => child.name === '$children')) {
+                    let nodeChildren = <EvaluateContainer>{
+                        name: '$children',
+                        type: 'roArray',
+                        highLevelType: 'array',
+                        keyType: KeyType.integer,
+                        presentationHint: 'virtual',
+                        evaluateName: `${expression}.getChildren(-1, 0)`,
+                        children: []
+                    };
+                    container.children.push(nodeChildren);
+                }
+
+
+            if (container.elementCount > 0 || container.type === 'Array') {
+                if (!container.children.some(child => child.name === '$count')) {
+                    let nodeCount = <EvaluateContainer>{
+                        name: '$count',
+                        type: 'Integer',
+                        highLevelType: undefined,
+                        keyType: undefined,
+                        presentationHint: 'virtual',
+                        evaluateName: container.elementCount.toString(),
+                        value: container.elementCount.toString(),
+                        elementCount: undefined,
+                        children: []
+                    };
+                    container.children.push(nodeCount);
+                }
+            }
         }
-        if (container.elementCount > 0 || container.type === 'Array') {
-            let nodeCount = <EvaluateContainer>{
-                name: '$count',
-                evaluateName: container.elementCount.toString(),
-                type: 'number',
-                highLevelType: undefined,
-                keyType: undefined,
-                presentationHint: 'virtual',
-                value: container.elementCount.toString(),
-                elementCount: undefined,
-                children: []
-            };
-            container.children.push(nodeCount);
-        }
+    } catch (e) {
+        // Error inserting custom variables. We don't want to cause issues with real variables so just move on for now.
     }
     await Promise.resolve();
 }
