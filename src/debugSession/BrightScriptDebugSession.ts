@@ -678,27 +678,29 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     line += '\n';
                 }
 
-                let potentialPaths = this.getPotentialPkgPaths(line);
-                for (let potentialPath of potentialPaths) {
-                    let originalLocation = await this.projectManager.getSourceLocation(potentialPath.path, potentialPath.lineNumber, potentialPath.columnNumber);
-                    if (originalLocation) {
-                        let replacement: string;
-                        if (originalLocation.filePath.startsWith('/')) {
-                            replacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
-                        } else {
-                            replacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
-                        }
+                if (this.launchConfiguration.enableConsolePkgToSourcePathConversion) {
+                    let potentialPaths = this.getPotentialPkgPaths(line);
+                    for (let potentialPath of potentialPaths) {
+                        let originalLocation = await this.projectManager.getSourceLocation(potentialPath.path, potentialPath.lineNumber, potentialPath.columnNumber);
+                        if (originalLocation) {
+                            let replacement: string;
+                            if (originalLocation.filePath.startsWith('/')) {
+                                replacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                            } else {
+                                replacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                            }
 
-                        if (potentialPath.columnNumber !== undefined) {
-                            replacement += `:${originalLocation.columnIndex + 1}`;
-                        }
+                            if (potentialPath.columnNumber !== undefined) {
+                                replacement += `:${originalLocation.columnIndex + 1}`;
+                            }
 
-                        line = line.replaceAll(potentialPath.fullMatch, replacement);
+                            line = line.replaceAll(potentialPath.fullMatch, replacement);
+                        }
                     }
-                }
 
-                this.sendEvent(new OutputEvent(line, 'stdout'));
-                this.sendEvent(new LogOutputEvent(line));
+                    this.sendEvent(new OutputEvent(line, 'stdout'));
+                    this.sendEvent(new LogOutputEvent(line));
+                }
             }
         });
         return this.pendingSendLogPromise;

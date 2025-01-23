@@ -222,6 +222,22 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     enableSourceMaps?: boolean;
 
     /**
+     * If true, then any pkg path found in the device logs will be converted to a source location leveraging source maps if available
+     *
+     * Supported formats:
+     * - pkg:/source/main.brs:10
+     * - pkg:/source/main.brs(10)
+     * - pkg:/source/main.brs:10:20
+     * - pkg:/source/main.brs(10:20)
+     * - ...ce/main.brs:10
+     * - ...ce/main.brs(10)
+     * - ...ce/main.brs:10:20
+     * - ...ce/main.brs(10:20)
+     * @default true
+     */
+    enableConsolePkgToSourcePathConversion?: boolean;
+
+    /**
      * The port that should be used when installing the package. Defaults to 80.
      * This is mainly useful for things like emulators that use alternate ports,
      * or when publishing through some type of port forwarding configuration.
