@@ -1238,6 +1238,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v.type = tempVar.type;
 
                     if (v?.presentationHint?.lazy) {
+                        // If this was a lazy variable we need to set the ref to 0
+                        // so it does not look expandable in the Ui and we should
+                        // return the variable that was lazily updated as the results
+                        // of the variables request
                         v.variablesReference = 0;
                         updatedVariables = [v];
                     } else {
@@ -1588,8 +1592,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                 } else {
                     if (result.evaluateNow && !result.lazy) {
+                        // We should not wait to resolve this variable later. Fetch, store, and merge the results right away.
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: result.evaluateName, frameId: frameId }, util.getVariablePath(result.evaluateName));
-                        console.log(evalArgs);
                         let newResult = await this.rokuAdapter.getVariable(evalArgs.expression, frameId);
                         result.children = newResult.children;
                         result.value = newResult.value;
@@ -1604,6 +1608,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     } else {
                         value = `${result.value}`;
                     }
+                    // If the variable is lazy we must assign a refId to inform the system
+                    // to request this variable again in the future for value resolution
                     v = new Variable(result.name, value, result?.lazy ? refId : 0);
                 }
                 this.variables[refId] = v;

@@ -673,6 +673,8 @@ export class DebugProtocolAdapter {
             let parts = (variable.value as string).split('; ');
             (variableType as string) = `${parts[0]} (${parts[1]})`;
         } else if (variableType === VariableType.Object) {
+            // We want the type to reflect `roAppInfo` or `roDeviceInfo` for example in the UI
+            // so set the type to be the value from the device
             variableType = value;
         }
 
