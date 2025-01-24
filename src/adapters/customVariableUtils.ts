@@ -9,7 +9,7 @@ import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAda
  */
 export async function insertCustomVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer): Promise<void> {
     if (semver.satisfies(adapter?.activeProtocolVersion, '<3.3.0')) {
-        if (container?.value?.startsWith('roSGNode')) {
+        if (container?.type?.startsWith('roSGNode')) {
             let nodeChildren = <EvaluateContainer>{
                 name: '$children',
                 type: 'roArray',
