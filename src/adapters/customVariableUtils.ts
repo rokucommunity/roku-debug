@@ -108,6 +108,178 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 children: []
             });
         }
+
+        if (container.type === 'roDateTime') {
+            pushCustomVariableToContainer(container, {
+                name: '$timezoneoffset',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetTimeZoneOffset()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$seconds',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.AsSeconds()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$secondslong',
+                type: VariableType.LongInteger,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.AsSecondsLong()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$iso',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.ToISOString()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$datelocalized',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.asDateStringLoc("full")`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$timelocalized',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.asTimeStringLoc("short")`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$date',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.AsDateStringNoParam()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$year',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetYear()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$month',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetMonth()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$dayofmonth',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetDayOfMonth()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$hours',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetHours()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$minutes',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetMinutes()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$seconds',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetSeconds()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$milliseconds',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetMilliseconds()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$lastdayofmonth',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetLastDayOfMonth()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$dayofweek',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetDayOfWeek()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$weekday',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetWeekday()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+        }
     } catch (e) {
         // Error inserting custom variables. We don't want to cause issues with real variables so just move on for now.
     }
@@ -119,7 +291,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
  */
 export function overrideKeyTypesForCustomVariables(adapter: DebugProtocolAdapter, container: EvaluateContainer) {
     if (!container.keyType) {
-        if (['roUrlTransfer'].includes(container.type)) {
+        if (['roUrlTransfer', 'roDateTime'].includes(container.type)) {
             container.keyType = KeyType.string;
         }
     }
