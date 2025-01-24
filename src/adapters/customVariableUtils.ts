@@ -784,6 +784,38 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 children: []
             });
         }
+
+        if (container.type === 'roAudioMetadata') {
+            pushCustomVariableToContainer(container, {
+                name: '$tags',
+                type: VariableType.AssociativeArray,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetTags()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$audioproperties',
+                type: VariableType.AssociativeArray,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetAudioProperties()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$coverart',
+                type: VariableType.AssociativeArray,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetCoverArt()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+        }
     } catch (e) {
         // Error inserting custom variables. We don't want to cause issues with real variables so just move on for now.
     }
@@ -798,6 +830,7 @@ export function overrideKeyTypesForCustomVariables(adapter: DebugProtocolAdapter
         if ([
             'roAppInfo',
             'roAppManager',
+            'roAudioMetadata',
             'roUrlTransfer',
             'roDateTime',
             'roDeviceInfo'
