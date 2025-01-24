@@ -21,7 +21,7 @@ import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
-import { insertCustomVariables } from './customVariableUtils';
+import { insertCustomVariables, overrideKeyTypesForCustomVariables } from './customVariableUtils';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -688,10 +688,6 @@ export class DebugProtocolAdapter {
             evaluateName = `${parentEvaluateName}[${name}]`;
         }
 
-        if (variableType === VariableType.Object && variable.value === 'roUrlTransfer') {
-            variable.keyType = VariableType.String;
-        }
-
         let container: EvaluateContainer = {
             name: name?.toString() ?? '',
             evaluateName: evaluateName ?? '',
@@ -704,6 +700,10 @@ export class DebugProtocolAdapter {
             //non object/array variables still need to have an empty `children` array to help upstream logic. The `keyType` being null is how we know it doesn't actually have children
             children: []
         };
+
+        // In preparation for adding custom variables some variables need to be marked
+        // as keyable/container like even thought they are not on device.
+        overrideKeyTypesForCustomVariables(this, container);
 
         //recursively generate children containers
         if ([KeyType.integer, KeyType.string].includes(container.keyType) && Array.isArray(variable.children)) {

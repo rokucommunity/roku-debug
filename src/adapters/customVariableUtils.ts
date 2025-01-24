@@ -124,6 +124,20 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
     await Promise.resolve();
 }
 
+/**
+ * Override the key types in preparation for custom variables if required.
+ */
+export function overrideKeyTypesForCustomVariables(adapter: DebugProtocolAdapter, container: EvaluateContainer) {
+    if (!container.keyType) {
+        if (['roUrlTransfer'].includes(container.type)) {
+            container.keyType = KeyType.string;
+        }
+    }
+}
+
+/**
+ * Push a custom variable to the container if it doesn't already exist.
+ */
 function pushCustomVariableToContainer(container: EvaluateContainer, customVariable: EvaluateContainer) {
     if (!container.children.some(child => child.name === customVariable.name)) {
         container.children.push(customVariable);
