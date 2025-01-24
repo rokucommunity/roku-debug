@@ -101,7 +101,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 type: VariableType.Integer,
                 presentationHint: 'virtual',
                 evaluateName: `${expression}.GetIdentity()`,
-                evaluateNow: true,
+                lazy: true,
                 value: '',
                 children: []
             });
