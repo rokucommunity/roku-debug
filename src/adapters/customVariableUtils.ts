@@ -2,20 +2,21 @@ import * as semver from 'semver';
 import { KeyType } from './DebugProtocolAdapter';
 import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAdapter';
 import { HighLevelType } from '../interfaces';
+import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 
 /**
  * Insert custom variables into the `EvaluateContainer`. Most of these are for compatibility with older versions of the BrightScript debug protocol,
  * but occasionally can be for adding new functionality for properties that don't exist in the debug protocol. Some of these will run `evaluate` commands
  * to look up the data for the custom variables.
  */
-export async function insertCustomVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer): Promise<void> {
+export async function insertCustomVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     try {
         // Added natively as of 3.3.0
         if (semver.satisfies(adapter?.activeProtocolVersion, '<3.3.0')) {
             if (container?.type?.startsWith('roSGNode')) {
                 pushCustomVariableToContainer(container, {
                     name: '$children',
-                    type: 'roArray',
+                    type: VariableType.Array,
                     highLevelType: HighLevelType.array,
                     keyType: KeyType.integer,
                     presentationHint: 'virtual',
@@ -35,7 +36,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
 
                 pushCustomVariableToContainer(container, {
                     name: '$threadinfo',
-                    type: 'roAssociativeArray',
+                    type: VariableType.AssociativeArray,
                     highLevelType: HighLevelType.object,
                     keyType: KeyType.string,
                     presentationHint: 'virtual',
@@ -47,7 +48,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             if (container.elementCount > 0 || container.type === 'Array') {
                 pushCustomVariableToContainer(container, {
                     name: '$count',
-                    type: 'Integer',
+                    type: VariableType.Integer,
                     highLevelType: undefined,
                     keyType: undefined,
                     presentationHint: 'virtual',
@@ -57,63 +58,67 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 });
             }
 
-            if (container.type === 'Object' && container.value === 'roUrlTransfer') {
+            if (container.type === 'roUrlTransfer') {
                 pushCustomVariableToContainer(container, {
                     name: '$url',
-                    type: 'String',
+                    type: VariableType.String,
                     highLevelType: undefined,
                     keyType: undefined,
                     presentationHint: 'virtual',
                     evaluateName: `${expression}.getUrl()`,
                     lazy: true,
+                    value: '',
                     children: []
                 });
 
                 pushCustomVariableToContainer(container, {
                     name: '$useragent',
-                    type: 'String',
+                    type: VariableType.String,
                     highLevelType: undefined,
                     keyType: undefined,
                     presentationHint: 'virtual',
                     evaluateName: `${expression}.GetUserAgent()`,
                     lazy: true,
+                    value: '',
                     children: []
                 });
 
                 pushCustomVariableToContainer(container, {
                     name: '$failurereason',
-                    type: 'String',
+                    type: VariableType.String,
                     highLevelType: undefined,
                     keyType: undefined,
                     presentationHint: 'virtual',
                     evaluateName: `${expression}.GetFailureReason()`,
                     elementCount: undefined,
                     lazy: true,
+                    value: '',
                     children: []
                 });
 
                 pushCustomVariableToContainer(container, {
                     name: '$request',
-                    type: 'String',
+                    type: VariableType.String,
                     highLevelType: undefined,
                     keyType: undefined,
                     presentationHint: 'virtual',
                     evaluateName: `${expression}.GetRequest()`,
                     elementCount: undefined,
                     lazy: true,
+                    value: '',
                     children: []
                 });
 
                 pushCustomVariableToContainer(container, {
                     name: '$identity',
-                    type: 'Function',
+                    type: VariableType.Integer,
                     highLevelType: undefined,
                     keyType: undefined,
-                    presentationHint: 'method',
+                    presentationHint: 'virtual',
                     evaluateName: `${expression}.GetIdentity()`,
-                    value: undefined,
                     elementCount: undefined,
-                    lazy: true,
+                    evaluateNow: true,
+                    value: '',
                     children: []
                 });
             }
