@@ -987,10 +987,10 @@ export interface EvaluateContainer {
     name: string;
     evaluateName: string;
     type: string;
-    value: string;
+    value?: any;
     keyType?: KeyType;
-    elementCount: number;
-    highLevelType: HighLevelType;
+    elementCount?: number;
+    highLevelType?: HighLevelType;
     children: EvaluateContainer[];
     lazy?: boolean;
     presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
