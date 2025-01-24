@@ -700,6 +700,90 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 children: []
             });
         }
+
+        if (container.type === 'roAppInfo') {
+            pushCustomVariableToContainer(container, {
+                name: '$id',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetID()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$dev',
+                type: VariableType.Boolean,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.IsDev()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$version',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetVersion()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$title',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetTitle()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$devid',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetDevID()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+        }
+
+        if (container.type === 'roAppManager') {
+            pushCustomVariableToContainer(container, {
+                name: '$uptime',
+                type: VariableType.String,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetUptime().TotalMilliseconds()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$screensavertimeout',
+                type: VariableType.Integer,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetScreensaverTimeout()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+
+            pushCustomVariableToContainer(container, {
+                name: '$lastexitinfo',
+                type: VariableType.AssociativeArray,
+                presentationHint: 'virtual',
+                evaluateName: `${expression}.GetLastExitInfo()`,
+                lazy: true,
+                value: '',
+                children: []
+            });
+        }
     } catch (e) {
         // Error inserting custom variables. We don't want to cause issues with real variables so just move on for now.
     }
@@ -711,7 +795,13 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
  */
 export function overrideKeyTypesForCustomVariables(adapter: DebugProtocolAdapter, container: EvaluateContainer) {
     if (!container.keyType) {
-        if (['roUrlTransfer', 'roDateTime', 'roDeviceInfo'].includes(container.type)) {
+        if ([
+            'roAppInfo',
+            'roAppManager',
+            'roUrlTransfer',
+            'roDateTime',
+            'roDeviceInfo'
+        ].includes(container.type)) {
             container.keyType = KeyType.string;
         }
     }
