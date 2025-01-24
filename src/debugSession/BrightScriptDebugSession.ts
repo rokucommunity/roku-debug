@@ -1238,8 +1238,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v.type = tempVar.type;
 
                     if (v?.presentationHint?.lazy) {
+                        v.variablesReference = 0;
                         updatedVariables = [v];
                     } else {
+                        v.childVariables = tempVar.childVariables;
                         updatedVariables = v.childVariables;
                     }
 
@@ -1593,7 +1595,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     } else {
                         value = `${result.value}`;
                     }
-                    v = new Variable(result.name, value, refId);
+                    v = new Variable(result.name, value, result?.lazy ? refId : 0);
                 }
                 this.variables[refId] = v;
             } else {
@@ -1608,10 +1610,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v = new Variable(result.name, result.type, refId, 0, result.children?.length ?? 0);
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'function') {
-                    v = new Variable(result.name, result.value);
+                    v = new Variable(result.name, `${result.value}`);
                 } else {
                     //all other cases, but mostly for HighLevelType.unknown
-                    v = new Variable(result.name, result.value);
+                    v = new Variable(result.name, `${result.value}`);
                 }
             }
 
