@@ -1051,7 +1051,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     if (!result) {
                         throw new Error(`Could not get scopes`);
                     }
-                    v = this.getVariableFromResult(result, args.frameId);
+                    v = await this.getVariableFromResult(result, args.frameId);
                     //TODO - testing something, remove later
                     // eslint-disable-next-line camelcase
                     v.request_seq = response.request_seq;
@@ -1210,7 +1210,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     for (const varName of vars) {
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: varName, frameId: -1 }, util.getVariablePath(varName));
                         let result = await this.rokuAdapter.getVariable(evalArgs.expression, -1);
-                        let tempVar = this.getVariableFromResult(result, -1);
+                        let tempVar = await this.getVariableFromResult(result, -1);
                         updatedVariables.push(tempVar);
                     }
                 } else {
@@ -1229,7 +1229,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 if (v.childVariables.length === 0) {
                     let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
                     let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
-                    let tempVar = this.getVariableFromResult(result, v.frameId);
+                    let tempVar = await this.getVariableFromResult(result, v.frameId);
                     tempVar.frameId = v.frameId;
 
                     // Merge the resulting updates together
@@ -1356,7 +1356,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             throw new Error('Error: unable to evaluate expression');
                         }
 
-                        v = this.getVariableFromResult(result, evalArgs.frameId);
+                        v = await this.getVariableFromResult(result, evalArgs.frameId);
                         //TODO - testing something, remove later
                         // eslint-disable-next-line camelcase
                         v.request_seq = response.request_seq;
@@ -1570,7 +1570,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return threads;
     }
 
-    private getVariableFromResult(result: EvaluateContainer, frameId: number) {
+    private async getVariableFromResult(result: EvaluateContainer, frameId: number) {
         let v: AugmentedVariable;
 
         if (result) {
@@ -1587,6 +1587,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         v = new Variable(result.name, result.type, refId, 0, result.elementCount);
                     }
                 } else {
+                    if (result.evaluateNow && !result.lazy) {
+                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: result.evaluateName, frameId: frameId }, util.getVariablePath(result.evaluateName));
+                        console.log(evalArgs);
+                        let newResult = await this.rokuAdapter.getVariable(evalArgs.expression, frameId);
+                        result.children = newResult.children;
+                        result.value = newResult.value;
+                        result.evaluateNow = false;
+                    }
+
                     let value: string;
                     if (result.type === VariableType.Invalid) {
                         value = result.value ?? 'Invalid';
@@ -1629,7 +1638,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (result.children) {
                 let childVariables = [];
                 for (let childContainer of result.children) {
-                    let childVar = this.getVariableFromResult(childContainer, frameId);
+                    let childVar = await this.getVariableFromResult(childContainer, frameId);
                     childVariables.push(childVar);
                 }
                 v.childVariables = childVariables;
