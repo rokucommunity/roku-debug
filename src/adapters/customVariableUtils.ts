@@ -49,8 +49,6 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 pushCustomVariableToContainer(container, {
                     name: '$count',
                     type: VariableType.Integer,
-                    highLevelType: undefined,
-                    keyType: undefined,
                     presentationHint: 'virtual',
                     evaluateName: container.elementCount.toString(),
                     value: container.elementCount.toString(),
@@ -63,8 +61,6 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             pushCustomVariableToContainer(container, {
                 name: '$url',
                 type: VariableType.String,
-                highLevelType: undefined,
-                keyType: undefined,
                 presentationHint: 'virtual',
                 evaluateName: `${expression}.getUrl()`,
                 lazy: true,
@@ -75,8 +71,6 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             pushCustomVariableToContainer(container, {
                 name: '$useragent',
                 type: VariableType.String,
-                highLevelType: undefined,
-                keyType: undefined,
                 presentationHint: 'virtual',
                 evaluateName: `${expression}.GetUserAgent()`,
                 lazy: true,
@@ -87,11 +81,8 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             pushCustomVariableToContainer(container, {
                 name: '$failurereason',
                 type: VariableType.String,
-                highLevelType: undefined,
-                keyType: undefined,
                 presentationHint: 'virtual',
                 evaluateName: `${expression}.GetFailureReason()`,
-                elementCount: undefined,
                 lazy: true,
                 value: '',
                 children: []
@@ -100,11 +91,8 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             pushCustomVariableToContainer(container, {
                 name: '$request',
                 type: VariableType.String,
-                highLevelType: undefined,
-                keyType: undefined,
                 presentationHint: 'virtual',
                 evaluateName: `${expression}.GetRequest()`,
-                elementCount: undefined,
                 lazy: true,
                 value: '',
                 children: []
@@ -113,11 +101,8 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             pushCustomVariableToContainer(container, {
                 name: '$identity',
                 type: VariableType.Integer,
-                highLevelType: undefined,
-                keyType: undefined,
                 presentationHint: 'virtual',
                 evaluateName: `${expression}.GetIdentity()`,
-                elementCount: undefined,
                 evaluateNow: true,
                 value: '',
                 children: []
