@@ -2,8 +2,8 @@ import { VariableType } from '../../debugProtocol/events/responses/VariablesResp
 import type { DebugProtocolAdapter, EvaluateContainer } from '../DebugProtocolAdapter';
 import { pushCustomVariableToContainer } from './interfaces';
 
-// https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifxmlelement.md
-export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
+// https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifxmllist.md
+export function pushIfXMLListVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$attributes',
         type: VariableType.Object,

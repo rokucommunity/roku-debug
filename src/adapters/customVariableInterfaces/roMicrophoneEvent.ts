@@ -2,7 +2,7 @@ import { VariableType } from '../../debugProtocol/events/responses/VariablesResp
 import type { DebugProtocolAdapter, EvaluateContainer } from '../DebugProtocolAdapter';
 import { pushCustomVariableToContainer } from './interfaces';
 
-// https://developer.roku.com/en-ca/docs/references/brightscript/events/roinputevent.md
+// https://developer.roku.com/en-ca/docs/references/brightscript/events/romicrophoneevent.md
 export function pushRoMicrophoneEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$recordingdone',

@@ -57,6 +57,7 @@ import { pushIfToStrVariables } from './ifToStr';
 import { pushIfUrlTransferVariables } from './ifUrlTransfer';
 import { pushIfVideoPlayerVariables } from './ifVideoPlayer';
 import { pushIfXMLElementVariables } from './ifXMLElement';
+import { pushIfXMLListVariables } from './ifXMLList';
 import { pushRoAppMemoryNotificationEventVariables } from './roAppMemoryNotificationEvent';
 import { pushRoAudioPlayerEventVariables } from './roAudioPlayerEvent';
 import { pushRoCECStatusEventVariables } from './roCECStatusEvent';
@@ -160,6 +161,7 @@ export {
     pushIfUrlTransferVariables,
     pushIfVideoPlayerVariables,
     pushIfXMLElementVariables,
+    pushIfXMLListVariables,
 
     pushRoAppMemoryNotificationEventVariables,
     pushRoAudioPlayerEventVariables,
