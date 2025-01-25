@@ -1232,27 +1232,43 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let tempVar = await this.getVariableFromResult(result, v.frameId);
                     tempVar.frameId = v.frameId;
 
+                    // Determine if the variable has changed
+                    let didVariableChange = v.type !== tempVar.type;
+                    // let didVariableChange = v.type !== tempVar.type || v.value !== tempVar.value;
+
                     // Merge the resulting updates together
                     v.childVariables = tempVar.childVariables;
                     v.value = tempVar.value;
                     v.type = tempVar.type;
 
                     if (v?.presentationHint?.lazy) {
-                        // If this was a lazy variable we need to set the ref to 0
-                        // so it does not look expandable in the Ui and we should
-                        // return the variable that was lazily updated as the results
-                        // of the variables request
-                        v.variablesReference = 0;
+                        // If this was a lazy variable we need to respond with the updated variable and not the children
                         updatedVariables = [v];
                     } else {
-                        v.childVariables = tempVar.childVariables;
                         updatedVariables = v.childVariables;
+                    }
+
+                    // If the variable has no children, set the reference to 0
+                    // so it does not look expandable in the Ui
+                    if (v.childVariables.length === 0) {
+                        v.variablesReference = 0;
                     }
 
                     if (v?.presentationHint) {
                         v.presentationHint.lazy = tempVar.presentationHint?.lazy;
                     } else {
                         v.presentationHint = tempVar.presentationHint;
+                    }
+
+                    if (didVariableChange) {
+                        // If data about the variable it self changed, ignoring children, we need to send a stopped event to trigger the UI to update
+                        // We must also complete the initial request so the debugger knows to move on.
+                        response.body = { variables: [] };
+                        if (v?.presentationHint?.lazy) {
+                            response.body.variables.push(v);
+                        }
+                        this.sendResponse(response);
+                        return this.sendEvent(new StoppedEvent('variableChange', this.rokuAdapter.currentThreadId));
                     }
                 } else {
                     updatedVariables = v.childVariables;
