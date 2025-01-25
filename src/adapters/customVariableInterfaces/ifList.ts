@@ -9,7 +9,6 @@ export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: s
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetTail()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -19,7 +18,6 @@ export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: s
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetHead()`,
-        lazy: true,
         value: '',
         children: []
     });

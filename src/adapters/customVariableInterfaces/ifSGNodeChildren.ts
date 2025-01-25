@@ -6,7 +6,7 @@ import { pushCustomVariableToContainer } from './interfaces';
 export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$parent',
-        type: VariableType.AssociativeArray,
+        type: VariableType.SubtypedObject,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getParent()`,
         value: '',
@@ -33,7 +33,7 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
 
     pushCustomVariableToContainer(container, {
         name: '$scene',
-        type: VariableType.Object,
+        type: VariableType.SubtypedObject,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getScene()`,
         value: '',

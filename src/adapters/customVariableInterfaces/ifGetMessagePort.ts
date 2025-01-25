@@ -9,7 +9,7 @@ export function pushIfGetMessagePortVariables(adapter: DebugProtocolAdapter, exp
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMessagePort()`,
-        lazy: true,
+        evaluateNow: true,
         value: '',
         children: []
     });

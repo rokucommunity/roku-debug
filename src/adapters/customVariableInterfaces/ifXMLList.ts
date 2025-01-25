@@ -28,7 +28,6 @@ export function pushIfXMLListVariables(adapter: DebugProtocolAdapter, expression
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildElements()`,
-        lazy: true,
         value: '',
         children: []
     });

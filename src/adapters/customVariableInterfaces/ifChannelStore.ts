@@ -19,7 +19,6 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetUserRegionData()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -29,7 +28,6 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChannelCred()`,
-        lazy: true,
         value: '',
         children: []
     });

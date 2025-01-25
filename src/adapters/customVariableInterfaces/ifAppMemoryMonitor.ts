@@ -8,7 +8,7 @@ export function pushIfAppMemoryMonitorVariables(adapter: DebugProtocolAdapter, e
         name: '$memorylimitpercent',
         type: VariableType.Integer,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.GetMemoryLimitPercent`,
+        evaluateName: `${expression}.GetMemoryLimitPercent()`,
         lazy: true,
         value: '',
         children: []
@@ -29,7 +29,6 @@ export function pushIfAppMemoryMonitorVariables(adapter: DebugProtocolAdapter, e
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChannelMemoryLimit()`,
-        lazy: true,
         value: '',
         children: []
     });

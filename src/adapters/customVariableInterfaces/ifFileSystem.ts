@@ -9,7 +9,6 @@ export function pushIfFileSystemVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetVolumeList()`,
-        lazy: true,
         value: '',
         children: []
     });

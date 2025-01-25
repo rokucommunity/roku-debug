@@ -6,10 +6,10 @@ import { pushCustomVariableToContainer } from './interfaces';
 export function pushIfMessagePortVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$peekmessage',
-        type: VariableType.Array,
+        type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.PeekMessage()`,
-        lazy: true,
+        evaluateNow: true,
         value: '',
         children: []
     });

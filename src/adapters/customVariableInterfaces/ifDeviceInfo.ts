@@ -39,7 +39,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetModelDetails()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -59,7 +58,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetOSVersion()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -169,7 +167,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDrmInfoEx()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -198,7 +195,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         name: '$clockvalid',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.GetClockFormat()`,
+        evaluateName: `${expression}.IsClockValid()`,
         lazy: true,
         value: '',
         children: []
@@ -269,7 +266,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetIPAddrs()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -279,7 +275,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetConnectionInfo()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -319,7 +314,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDisplaySize()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -339,7 +333,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDisplayProperties()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -349,7 +342,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSupportedGraphicsResolutions()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -359,7 +351,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetUIResolution()`,
-        lazy: true,
         value: '',
         children: []
     });

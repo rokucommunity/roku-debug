@@ -9,7 +9,6 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetBitmap()`,
-        lazy: true,
         value: '',
         children: []
     });

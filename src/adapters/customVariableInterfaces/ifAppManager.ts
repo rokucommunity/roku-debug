@@ -29,7 +29,6 @@ export function pushIfAppManagerVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetLastExitInfo()`,
-        lazy: true,
         value: '',
         children: []
     });

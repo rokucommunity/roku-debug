@@ -9,7 +9,6 @@ export function pushIfListToArrayVariables(adapter: DebugProtocolAdapter, expres
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.ToArray()`,
-        lazy: true,
         value: '',
         children: []
     });

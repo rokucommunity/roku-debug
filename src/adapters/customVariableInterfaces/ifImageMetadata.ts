@@ -9,7 +9,6 @@ export function pushIfImageMetadataVariables(adapter: DebugProtocolAdapter, expr
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMetadata()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -19,7 +18,6 @@ export function pushIfImageMetadataVariables(adapter: DebugProtocolAdapter, expr
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetThumbnail()`,
-        lazy: true,
         value: '',
         children: []
     });

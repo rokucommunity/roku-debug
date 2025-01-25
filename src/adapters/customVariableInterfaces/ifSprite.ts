@@ -78,7 +78,6 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetData()`,
-        lazy: true,
         value: '',
         children: []
     });

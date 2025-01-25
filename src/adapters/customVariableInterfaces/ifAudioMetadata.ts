@@ -9,7 +9,6 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetTags()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -19,7 +18,6 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAudioProperties()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -29,7 +27,6 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCoverArt()`,
-        lazy: true,
         value: '',
         children: []
     });

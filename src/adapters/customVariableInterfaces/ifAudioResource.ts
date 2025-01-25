@@ -29,7 +29,6 @@ export function pushIfAudioResourceVariables(adapter: DebugProtocolAdapter, expr
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMetaData()`,
-        lazy: true,
         value: '',
         children: []
     });

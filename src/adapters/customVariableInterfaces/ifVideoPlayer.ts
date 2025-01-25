@@ -28,7 +28,6 @@ export function pushIfVideoPlayerVariables(adapter: DebugProtocolAdapter, expres
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCaptionRenderer()`,
-        lazy: true,
         value: '',
         children: []
     });

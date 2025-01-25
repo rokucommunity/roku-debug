@@ -9,7 +9,6 @@ export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expressio
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMessagePort()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -19,7 +18,6 @@ export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expressio
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getGlobalNode()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -29,7 +27,6 @@ export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expressio
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetScene()`,
-        lazy: true,
         value: '',
         children: []
     });

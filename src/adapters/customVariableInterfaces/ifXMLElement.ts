@@ -9,7 +9,6 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetBody()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -48,7 +47,6 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildElements()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -58,7 +56,6 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildNodes()`,
-        lazy: true,
         value: '',
         children: []
     });

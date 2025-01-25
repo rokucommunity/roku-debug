@@ -19,7 +19,6 @@ export function pushIfRegistryVariables(adapter: DebugProtocolAdapter, expressio
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSectionList()`,
-        lazy: true,
         value: '',
         children: []
     });

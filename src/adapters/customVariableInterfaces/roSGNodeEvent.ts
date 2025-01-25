@@ -29,7 +29,6 @@ export function pushRoSGNodeEventVariables(adapter: DebugProtocolAdapter, expres
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getRoSGNode()`,
-        lazy: true,
         value: '',
         children: []
     });

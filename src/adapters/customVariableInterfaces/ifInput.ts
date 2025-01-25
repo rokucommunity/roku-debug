@@ -9,7 +9,6 @@ export function pushIfInputVariables(adapter: DebugProtocolAdapter, expression: 
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMessagePort()`,
-        lazy: true,
         value: '',
         children: []
     });
