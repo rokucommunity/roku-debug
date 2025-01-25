@@ -662,7 +662,7 @@ export class DebugProtocolAdapter {
         let variableType = variable.type;
         if (variable.value === null) {
             value = 'roInvalid';
-        } else if (variableType === 'String') {
+        } else if (variableType === VariableType.String) {
             value = `\"${variable.value}\"`;
         } else {
             value = variable.value;
@@ -671,7 +671,7 @@ export class DebugProtocolAdapter {
         if (variableType === VariableType.SubtypedObject) {
             //subtyped objects can only have string values
             let parts = (variable.value as string).split('; ');
-            (variableType as string) = `${parts[0]} (${parts[1]})`;
+            (variableType as string) = parts[0];
         } else if (variableType === VariableType.Object) {
             // We want the type to reflect `roAppInfo` or `roDeviceInfo` for example in the UI
             // so set the type to be the value from the device
