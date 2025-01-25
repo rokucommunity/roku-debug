@@ -75,6 +75,7 @@ import { pushRoTextToSpeechEventVariables } from './roTextToSpeechEvent';
 import { pushRoTextureRequestEventVariables } from './roTextureRequestEvent';
 import { pushRoUniversalControlEventVariables } from './roUniversalControlEvent';
 import { pushRoUrlEventVariables } from './roUrlEvent';
+import { pushRoVideoPlayerEventVariables } from './roVideoPlayerEvent';
 
 // For debugging this can be flipped to true to force all custom variables to be loaded right away.
 // Useful for spotting issues with a specific custom variable.
@@ -179,5 +180,6 @@ export {
     pushRoTextToSpeechEventVariables,
     pushRoTextureRequestEventVariables,
     pushRoUniversalControlEventVariables,
-    pushRoUrlEventVariables
+    pushRoUrlEventVariables,
+    pushRoVideoPlayerEventVariables
 };
