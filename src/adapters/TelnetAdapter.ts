@@ -73,6 +73,10 @@ export class TelnetAdapter {
 
     public supportsExceptionBreakpoints = false;
 
+    public get currentThreadId(): number {
+        return 0;
+    }
+
     public once(eventName: 'app-ready'): Promise<void>;
     public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: string) {
