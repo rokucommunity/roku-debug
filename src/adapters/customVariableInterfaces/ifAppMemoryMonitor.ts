@@ -1,0 +1,36 @@
+import { VariableType } from '../../debugProtocol/events/responses/VariablesResponse';
+import type { DebugProtocolAdapter, EvaluateContainer } from '../DebugProtocolAdapter';
+import { pushCustomVariableToContainer } from './interfaces';
+
+// https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifappmemorymonitor.md
+export function pushIfAppMemoryMonitorVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
+    pushCustomVariableToContainer(container, {
+        name: '$memorylimitpercent',
+        type: VariableType.Integer,
+        presentationHint: 'virtual',
+        evaluateName: `${expression}.GetMemoryLimitPercent`,
+        lazy: true,
+        value: '',
+        children: []
+    });
+
+    pushCustomVariableToContainer(container, {
+        name: '$channelavailablememory',
+        type: VariableType.Integer,
+        presentationHint: 'virtual',
+        evaluateName: `${expression}.GetChannelAvailableMemory()`,
+        lazy: true,
+        value: '',
+        children: []
+    });
+
+    pushCustomVariableToContainer(container, {
+        name: '$channelmemorylimit',
+        type: VariableType.AssociativeArray,
+        presentationHint: 'virtual',
+        evaluateName: `${expression}.GetChannelMemoryLimit()`,
+        lazy: true,
+        value: '',
+        children: []
+    });
+}
