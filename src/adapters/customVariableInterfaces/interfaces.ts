@@ -91,7 +91,7 @@ function pushCustomVariableToContainer(container: EvaluateContainer, customVaria
             customVariable.evaluateNow = true;
         }
 
-        if (customVariable.type === VariableType.AssociativeArray || customVariable.type === VariableType.Object) {
+        if (customVariable.type === VariableType.AssociativeArray || customVariable.type === VariableType.Object || customVariable.type === VariableType.SubtypedObject) {
             customVariable.highLevelType = HighLevelType.object;
             customVariable.keyType = KeyType.string;
         } else if (customVariable.type === VariableType.Array) {
