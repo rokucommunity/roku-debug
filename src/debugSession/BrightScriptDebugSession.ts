@@ -3,6 +3,9 @@ import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError } from 'roku-deploy';
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
+import type {
+    CompletionItem
+} from '@vscode/debugadapter';
 import {
     BreakpointEvent,
     DebugSession as BaseDebugSession,
@@ -216,6 +219,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         // This debug adapter supports log points by interpreting the 'logMessage' attribute of the SourceBreakpoint
         response.body.supportsLogPoints = true;
+
+        response.body.supportsCompletionsRequest = true;
 
         this.sendResponse(response);
 
@@ -1409,6 +1414,113 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
         return returnVal;
     }
+
+    protected completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments, request?: DebugProtocol.Request) {
+        this.logger.log('completionsRequest', args, request);
+        this.sendEvent(new LogOutputEvent(`completionsRequest: ${args.text}`));
+        this.sendEvent(new OutputEvent(`completionsRequest: ${args.text}\n`, 'stderr'));
+
+        try {
+            if (!args.text.trim() || (args.column !== args.text.length + 1)) {
+                response.body = {
+                    targets: []
+                };
+                return this.sendResponse(response);
+            }
+            let variablePath: string[] = [];
+            if (args.text.endsWith('.')) {
+                variablePath = util.getVariablePath(args.text.slice(0, -1));
+            } else {
+                variablePath = util.getVariablePath(args.text);
+            }
+
+            let completions: CompletionItem[] = [];
+            if (variablePath) {
+                let parentVariablePath: string[];
+                // If the last character is a period, then pull completions for the parent variable before the period
+                if (args.text.endsWith('.')) {
+                    parentVariablePath = variablePath;
+                } else {
+                    parentVariablePath = variablePath.slice(0, variablePath.length - 1);
+                }
+
+                if (parentVariablePath.length === 0) {
+                    parentVariablePath = [''];
+                }
+                let parentVariable = this.findVariableByPath(Object.values(this.variables), parentVariablePath, args.frameId);
+
+                if (parentVariable) {
+                    let possibleVariables: AugmentedVariable[] = [];
+                    if (args.text.endsWith('.')) {
+                        possibleVariables = parentVariable.childVariables;
+                    } else {
+                        possibleVariables = parentVariable.childVariables.filter((v) => v.name.startsWith(variablePath[variablePath.length - 1]));
+                    }
+
+                    completions = possibleVariables.map((v) => {
+                        if (args.text.endsWith('.')) {
+                            return {
+                                label: v.name,
+                                type: 'variable',
+                                start: args.column - 1,
+                                length: 1
+                            };
+                        } else {
+                            return {
+                                label: v.name,
+                                type: 'variable',
+                                start: args.text.length - variablePath[variablePath.length - 1].length,
+                                length: variablePath[variablePath.length - 1].length
+                            };
+                        }
+                    });
+                }
+            }
+
+            // let completions: any = [{
+            //     label: 'item1',
+            //     type: 'variable'
+            // }, {
+            //     label: 'item2',
+            //     type: 'variable'
+            // }, {
+            //     label: 'item3',
+            //     type: 'variable'
+            // }];
+
+            this.sendEvent(new LogOutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}`));
+            this.sendEvent(new OutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}\n`, 'stderr'));
+
+            response.body = {
+                targets: completions
+            };
+        } catch (error) {
+            this.sendEvent(new LogOutputEvent(`text: ${args.text} | ${error}`));
+            this.sendEvent(new OutputEvent(`text: ${args.text} | ${error}\n`, 'stderr'));
+            this.logger.error('Error during completionsRequest', error, { args });
+        }
+        this.sendResponse(response);
+    }
+
+    private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {
+        let current: AugmentedVariable = null;
+        for (const name of path) {
+            // Find the object matching the current name in the data
+            current = (Array.isArray(variables) ? variables : current?.childVariables)?.find(obj => {
+                return obj.name === name && obj.frameId === frameId;
+            });
+
+            // If no match is found, return null
+            if (!current) {
+                return null;
+            }
+
+            // Move to the children for the next iteration
+            variables = current.childVariables;
+        }
+        return current;
+    }
+
 
     /**
      * Called when the host stops debugging
