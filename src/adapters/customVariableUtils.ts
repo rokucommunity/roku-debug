@@ -4,7 +4,7 @@ import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAda
 import { HighLevelType } from '../interfaces';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 
-import * as customVariables from './customVariableInterfaces/interfaces';
+import * as customVariables from './customVariables';
 
 // List of Roku object types that can have custom variables added to them.
 // If the type is commented out, it means ether there is no custom variables
