@@ -6,18 +6,20 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$tail',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetTail()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$head',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetHead()`,
+        lazy: true,
         value: '',
         children: []
     });

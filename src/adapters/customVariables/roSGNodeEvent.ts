@@ -6,7 +6,7 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushRoSGNodeEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$data',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.getData()`,
         lazy: true,
@@ -26,9 +26,10 @@ export function pushRoSGNodeEventVariables(adapter: DebugProtocolAdapter, expres
 
     pushCustomVariableToContainer(container, {
         name: '$roSGNode',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.getRoSGNode()`,
+        lazy: true,
         value: '',
         children: []
     });

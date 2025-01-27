@@ -26,7 +26,7 @@ export function pushIfTimeSpanVariables(adapter: DebugProtocolAdapter, expressio
 
     pushCustomVariableToContainer(container, {
         name: '$totalMicroseconds',
-        type: VariableType.LongInteger,
+        type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.TotalMicroseconds()`,
         lazy: true,

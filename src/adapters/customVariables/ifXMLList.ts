@@ -6,9 +6,10 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfXMLListVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$attributes',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAttributes()`,
+        lazy: true,
         value: '',
         children: []
     });
@@ -25,9 +26,10 @@ export function pushIfXMLListVariables(adapter: DebugProtocolAdapter, expression
 
     pushCustomVariableToContainer(container, {
         name: '$childElements',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildElements()`,
+        lazy: true,
         value: '',
         children: []
     });

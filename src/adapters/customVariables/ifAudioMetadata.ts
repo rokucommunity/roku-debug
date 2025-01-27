@@ -6,27 +6,30 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$tags',
-        type: VariableType.AssociativeArray,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetTags()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$audioProperties',
-        type: VariableType.AssociativeArray,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAudioProperties()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$coverArt',
-        type: VariableType.AssociativeArray,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCoverArt()`,
+        lazy: true,
         value: '',
         children: []
     });

@@ -6,9 +6,10 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfFileSystemVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$volumeList',
-        type: VariableType.Array,
+        type: VariableType.List,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetVolumeList()`,
+        lazy: true,
         value: '',
         children: []
     });

@@ -6,27 +6,30 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$address',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAddress()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$sendToAddress',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSendToAddress()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$receivedFromAddress',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetReceivedFromAddress()`,
+        lazy: true,
         value: '',
         children: []
     });

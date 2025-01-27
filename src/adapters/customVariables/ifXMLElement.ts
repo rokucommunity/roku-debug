@@ -6,18 +6,20 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$body',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetBody()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$attributes',
-        type: VariableType.AssociativeArray,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAttributes()`,
+        lazy: true,
         value: '',
         children: []
     });
@@ -44,18 +46,20 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
 
     pushCustomVariableToContainer(container, {
         name: '$childElements',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildElements()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$childNodes',
-        type: VariableType.Array,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildNodes()`,
+        lazy: true,
         value: '',
         children: []
     });

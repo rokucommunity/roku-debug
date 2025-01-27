@@ -16,7 +16,7 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
 
     pushCustomVariableToContainer(container, {
         name: '$availableLanguages',
-        type: VariableType.Array,
+        type: VariableType.List,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAvailableLanguages()`,
         value: '',
@@ -35,7 +35,7 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
 
     pushCustomVariableToContainer(container, {
         name: '$availableVoices',
-        type: VariableType.Array,
+        type: VariableType.List,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAvailableVoices()`,
         value: '',

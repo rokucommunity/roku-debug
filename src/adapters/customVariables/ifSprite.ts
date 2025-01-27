@@ -66,27 +66,30 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
 
     pushCustomVariableToContainer(container, {
         name: '$region',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetRegion()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$data',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetData()`,
+        lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$collision',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.CheckCollision()`,
+        lazy: true,
         value: '',
         children: []
     });

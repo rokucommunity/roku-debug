@@ -6,9 +6,10 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$messagePort',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMessagePort()`,
+        lazy: true,
         value: '',
         children: []
     });

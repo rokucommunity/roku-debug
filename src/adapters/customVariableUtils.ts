@@ -33,7 +33,7 @@ enum RokuObjectTypes {
     // roDsa = 'roDsa',
     // roEVPCipher = 'roEVPCipher',
     // roEVPDigest = 'roEVPDigest',
-    roFileSystem = 'roFileSystem',
+    roFilesystem = 'roFilesystem',
     // roFloat = 'roFloat',
     roFont = 'roFont',
     roFontRegistry = 'roFontRegistry',
@@ -46,6 +46,7 @@ enum RokuObjectTypes {
     // roInt = 'roInt',
     // roInvalid = 'roInvalid',
     roList = 'roList',
+    List = 'List',
     // roLocalization = 'roLocalization',
     // roLongInteger = 'roLongInteger',
     roMessagePort = 'roMessagePort',
@@ -210,7 +211,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             //     break;
             // case RokuObjectTypes.roEVPDigest:
             //     break;
-            case RokuObjectTypes.roFileSystem:
+            case RokuObjectTypes.roFilesystem:
                 customVariables.pushIfFileSystemVariables(adapter, expression, container);
                 customVariables.pushIfGetMessagePortVariables(adapter, expression, container);
                 break;
@@ -250,6 +251,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             //     customVariables.pushIfToStrVariables(adapter, expression, container);
             //     break;
             case RokuObjectTypes.roList:
+            case RokuObjectTypes.List:
                 customVariables.pushIfListToArrayVariables(adapter, expression, container);
                 customVariables.pushIfEnumVariables(adapter, expression, container);
                 break;

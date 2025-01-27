@@ -6,7 +6,7 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfRegistrySectionVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$keyList',
-        type: VariableType.Array,
+        type: VariableType.List,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetKeyList()`,
         value: '',

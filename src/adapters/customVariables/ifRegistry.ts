@@ -16,7 +16,7 @@ export function pushIfRegistryVariables(adapter: DebugProtocolAdapter, expressio
 
     pushCustomVariableToContainer(container, {
         name: '$sectionList',
-        type: VariableType.Array,
+        type: VariableType.List,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSectionList()`,
         value: '',

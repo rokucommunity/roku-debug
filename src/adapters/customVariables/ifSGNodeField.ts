@@ -6,10 +6,9 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfSGNodeFieldVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$fieldTypes',
-        type: VariableType.String,
+        type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getFieldTypes()`,
-        lazy: true,
         value: '',
         children: []
     });

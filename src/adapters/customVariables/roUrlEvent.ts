@@ -65,7 +65,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
 
     pushCustomVariableToContainer(container, {
         name: '$responseHeadersArray',
-        type: VariableType.AssociativeArray,
+        type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetResponseHeadersArray()`,
         value: '',

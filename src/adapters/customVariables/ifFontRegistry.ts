@@ -6,7 +6,7 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$families',
-        type: VariableType.Array,
+        type: VariableType.List,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetFamilies()`,
         value: '',
@@ -18,6 +18,7 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDefaultFont()`,
+        lazy: true,
         value: '',
         children: []
     });
