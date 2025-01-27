@@ -1230,13 +1230,30 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 logger.log('variable', v);
                 //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
                 if (v.childVariables.length === 0 || v.isResolved) {
-                    let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
-                    let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
-                    let tempVar = await this.getVariableFromResult(result, v.frameId);
-                    tempVar.frameId = v.frameId;
+                    let tempVar: AugmentedVariable;
+                    // Evaluate the variable
+                    try {
+                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
+                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
+                        tempVar = await this.getVariableFromResult(result, v.frameId);
+                        tempVar.frameId = v.frameId;
+                        // Determine if the variable has changed
+                        didVariableChange = v.type !== tempVar.type;
+                    } catch (error) {
+                        if (v.presentationHint.lazy) {
+                            logger.error('Error getting variables', error);
+                            tempVar = new Variable('Error', `❌ Error: ${error.message}`);
+                            tempVar.type = '';
+                            tempVar.childVariables = [];
+                            didVariableChange = true;
+                            response.success = false;
+                            response.message = error.message;
+                        } else {
+                            // Rethrow as for non-lazy vars we do not need to respond with a fake error variable
+                            throw error;
+                        }
+                    }
 
-                    // Determine if the variable has changed
-                    didVariableChange = v.type !== tempVar.type;
                     frameId = v.frameId;
 
                     // Merge the resulting updates together
@@ -1246,7 +1263,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     if (v?.presentationHint?.lazy || v.isResolved) {
                         // If this was a lazy variable we need to respond with the updated variable and not the children
-                        updatedVariables = [v];
+                        if (v.isResolved && v.childVariables.length > 0) {
+                            updatedVariables = v.childVariables;
+                        } else {
+                            updatedVariables = [v];
+                        }
                         v.isResolved = true;
                     } else {
                         updatedVariables = v.childVariables;
@@ -1408,7 +1429,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                     //if the adapter captured output (probably only telnet), print it to the vscode debug console
                     if (typeof commandResults.message === 'string') {
-                        this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
+                        this.logger.debug('evaluateRequest', { commandResults });
+                        if (args.context === 'repl') {
+                            this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
+                        }
                     }
 
                     if (this.enableDebugProtocol || (typeof commandResults.message !== 'string')) {
