@@ -1627,15 +1627,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (this.enableDebugProtocol) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
                 if (result.keyType) {
+                    let value = `${result.value ?? result.type}`;
                     // check to see if this is an dictionary or a list
                     if (result.keyType === 'Integer') {
                         // list type
-                        v = new Variable(result.name, result.type, refId, result.elementCount, 0);
+                        v = new Variable(result.name, value, refId, result.elementCount, 0);
                         this.variables[refId] = v;
                     } else if (result.keyType === 'String') {
                         // dictionary type
-                        v = new Variable(result.name, result.type, refId, 0, result.elementCount);
+                        v = new Variable(result.name, value, refId, 0, result.elementCount);
                     }
+                    v.type = result.type;
                 } else {
                     if (result.evaluateNow && !result.lazy) {
                         // We should not wait to resolve this variable later. Fetch, store, and merge the results right away.
