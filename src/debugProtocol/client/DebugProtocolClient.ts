@@ -401,10 +401,8 @@ export class DebugProtocolClient {
             this.isStopped = false;
             let stepResult = await this.sendRequest<GenericResponse>(request);
             if (stepResult.data.errorCode === ErrorCode.OK) {
-                this.isStopped = true;
-                //TODO this is not correct. Do we get a new threads event after a step? Perhaps that should be what triggers the event instead of us?
-                this.emit('suspend', stepResult as AllThreadsStoppedUpdate);
-            } else {
+                //Step command received and will recieve a separate update when threads have reattached
+            } else if (stepResult.data.errorCode === ErrorCode.CANT_CONTINUE) {
                 // there is a CANT_CONTINUE error code but we can likely treat all errors like a CANT_CONTINUE
                 this.emit('cannot-continue');
             }
@@ -1222,8 +1220,8 @@ export class DebugProtocolClient {
             this.logger.log('[destroy] controlSocket is: ', this.controlSocketClosed.isResolved ? 'closed' : 'not closed');
 
             //destroy the controlSocket
-            this.controlSocket.removeAllListeners();
-            this.controlSocket.destroy();
+            this.controlSocket?.removeAllListeners();
+            this.controlSocket?.destroy();
             this.controlSocket = undefined;
             this.isDestroyingControlSocket = false;
         }

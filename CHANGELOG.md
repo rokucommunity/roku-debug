@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.16](https://github.com/rokucommunity/roku-debug/compare/v0.21.15...v0.21.16) - 2025-01-22
+### Changed
+ - Uninitialize __brs_err__ when stepping or continuing ([#207](https://github.com/rokucommunity/roku-debug/pull/207))
+ - upgrade to [brighterscript@0.68.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0684---2025-01-22)
+ - upgrade to [roku-deploy@3.12.4](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3124---2025-01-22). Notable changes since 3.12.3:
+     - fixed an issue with 577 error codes ([roku-deploy#182](https://github.com/rokucommunity/roku-deploy/pull/182))
+
+
+
 ## [0.21.15](https://github.com/rokucommunity/roku-debug/compare/v0.21.14...v0.21.15) - 2025-01-13
 ### Fixed
  - Better handling of split log messages ([#206](https://github.com/rokucommunity/roku-debug/pull/206))

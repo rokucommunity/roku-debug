@@ -1,6 +1,6 @@
 {
     "name": "roku-debug",
-    "version": "0.21.15",
+    "version": "0.21.16",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
@@ -100,7 +100,7 @@
         "@types/request": "^2.48.8",
         "@vscode/debugadapter": "^1.68.0",
         "@vscode/debugprotocol": "^1.68.0",
-        "brighterscript": "^0.68.3",
+        "brighterscript": "^0.68.4",
         "dateformat": "^4.6.3",
         "debounce": "^1.2.1",
         "eol": "^0.9.1",
@@ -113,7 +113,7 @@
         "postman-request": "^2.88.1-postman.40",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
-        "roku-deploy": "^3.12.3",
+        "roku-deploy": "^3.12.4",
         "semver": "^7.5.4",
         "serialize-error": "^8.1.0",
         "smart-buffer": "^4.2.0",
