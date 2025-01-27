@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/iffont.md
 export function pushIfFontVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$onelineheight',
+        name: '$oneLineHeight',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetOneLineHeight()`,
@@ -35,7 +35,7 @@ export function pushIfFontVariables(adapter: DebugProtocolAdapter, expression: s
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$maxadvance',
+        name: '$maxAdvance',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMaxAdvance()`,

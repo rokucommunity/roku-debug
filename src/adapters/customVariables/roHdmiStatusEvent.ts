@@ -5,10 +5,10 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/rohdmistatusevent.md
 export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$hdmistatus',
+        name: '$isHdmiStatus',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isHdmiStatus()`,
+        evaluateName: `${expression}.IsHdmiStatus()`,
         lazy: true,
         value: '',
         children: []

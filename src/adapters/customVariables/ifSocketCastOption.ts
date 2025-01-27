@@ -15,7 +15,7 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$multicastloop',
+        name: '$multicastLoop',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMulticastLoop()`,
@@ -25,7 +25,7 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$multicastttl',
+        name: '$multicastTTL',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMulticastTTL()`,

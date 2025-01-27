@@ -14,7 +14,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$sendtoaddress',
+        name: '$sendToAddress',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSendToAddress()`,
@@ -23,7 +23,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$receivedfromaddress',
+        name: '$receivedFromAddress',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetReceivedFromAddress()`,
@@ -32,7 +32,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$countrcvbuf',
+        name: '$countRcvBuf',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCountRcvBuf()`,
@@ -42,7 +42,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$countsendbuf',
+        name: '$countSendBuf',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCountSendBuf()`,

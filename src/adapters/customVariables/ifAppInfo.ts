@@ -15,7 +15,7 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$dev',
+        name: '$isDev',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsDev()`,
@@ -45,7 +45,7 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$devid',
+        name: '$devID',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDevID()`,

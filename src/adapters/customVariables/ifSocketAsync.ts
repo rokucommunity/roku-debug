@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocketasync.md
 export function pushIfSocketAsyncVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$readable',
+        name: '$isReadable',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsReadable()`,
@@ -15,7 +15,7 @@ export function pushIfSocketAsyncVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$writable',
+        name: '$isWritable',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsWritable()`,
@@ -25,7 +25,7 @@ export function pushIfSocketAsyncVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$exception',
+        name: '$isException',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsException()`,

@@ -15,7 +15,7 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$hostname',
+        name: '$hostName',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetHostName()`,
@@ -35,7 +35,7 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$addressvalid',
+        name: '$isAddressValid',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsAddressValid()`,

@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifmessageport.md
 export function pushIfMessagePortVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$peekmessage',
+        name: '$peekMessage',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.PeekMessage()`,

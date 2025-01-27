@@ -5,10 +5,10 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/roinputevent.md
 export function pushRoInputEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$input',
+        name: '$isInput',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isInput()`,
+        evaluateName: `${expression}.IsInput()`,
         lazy: true,
         value: '',
         children: []

@@ -35,7 +35,7 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$drawableflag',
+        name: '$drawableFlag',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDrawableFlag()`,
@@ -45,7 +45,7 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$memberflags',
+        name: '$memberFlags',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMemberFlags()`,
@@ -55,7 +55,7 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$collidableflags',
+        name: '$collidableFlags',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCollidableFlags()`,
@@ -92,7 +92,7 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$multiplecollisions',
+        name: '$multipleCollisions',
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.CheckMultipleCollisions()`,

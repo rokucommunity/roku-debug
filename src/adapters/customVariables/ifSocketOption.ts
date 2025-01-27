@@ -15,7 +15,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$reuseaddr',
+        name: '$reuseAddr',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetReuseAddr()`,
@@ -25,7 +25,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$oobinline',
+        name: '$oobInline',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetOOBInline()`,
@@ -35,7 +35,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$sendbuf',
+        name: '$sendBuf',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSendBuf()`,
@@ -45,7 +45,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$rcvbuf',
+        name: '$rcvBuf',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetRcvBuf()`,
@@ -55,7 +55,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$sendtimeout',
+        name: '$sendTimeout',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSendTimeout()`,
@@ -65,7 +65,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$receivetimeout',
+        name: '$receiveTimeout',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetReceiveTimeout()`,

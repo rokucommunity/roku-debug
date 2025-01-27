@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/iftexttospeech.md
 export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$enabled',
+        name: '$isEnabled',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsEnabled()`,
@@ -15,7 +15,7 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$availablelanguages',
+        name: '$availableLanguages',
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAvailableLanguages()`,
@@ -34,7 +34,7 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$availablevoices',
+        name: '$availableVoices',
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAvailableVoices()`,

@@ -25,7 +25,7 @@ export function pushRoUniversalControlEventVariables(adapter: DebugProtocolAdapt
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$remoteid',
+        name: '$remoteID',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetRemoteID()`,
@@ -45,7 +45,7 @@ export function pushRoUniversalControlEventVariables(adapter: DebugProtocolAdapt
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$press',
+        name: '$isPress',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsPress()`,

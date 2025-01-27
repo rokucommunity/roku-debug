@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocketconnectionoption.md
 export function pushIfSocketConnectionOptionVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$keepalive',
+        name: '$keepAlive',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetKeepAlive()`,
@@ -25,7 +25,7 @@ export function pushIfSocketConnectionOptionVariables(adapter: DebugProtocolAdap
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$maxseg',
+        name: '$maxSeg',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMaxSeg()`,
@@ -35,7 +35,7 @@ export function pushIfSocketConnectionOptionVariables(adapter: DebugProtocolAdap
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$nodelay',
+        name: '$noDelay',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetNoDelay()`,

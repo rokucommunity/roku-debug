@@ -5,20 +5,20 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/rofilesystemevent.md
 export function pushRoFileSystemEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$storagedeviceadded',
+        name: '$isStorageDeviceAdded',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isStorageDeviceAdded()`,
+        evaluateName: `${expression}.IsStorageDeviceAdded()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$storagedeviceremoved',
+        name: '$isStorageDeviceRemoved',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isStorageDeviceRemoved()`,
+        evaluateName: `${expression}.IsStorageDeviceRemoved()`,
         lazy: true,
         value: '',
         children: []

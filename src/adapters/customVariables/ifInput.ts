@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifinput.md
 export function pushIfInputVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$messageport',
+        name: '$messagePort',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMessagePort()`,

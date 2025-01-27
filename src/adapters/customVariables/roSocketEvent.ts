@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/rosocketevent.md
 export function pushRoSocketEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$socketid',
+        name: '$socketID',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSocketID()`,

@@ -22,7 +22,7 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$childcount',
+        name: '$childCount',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getChildCount()`,
@@ -60,7 +60,7 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     // });
 
     // pushCustomVariableToContainer(container, {
-    //     name: '$rootsmeta',
+    //     name: '$rootsMeta',
     //     type: VariableType.Object,
     //     presentationHint: 'virtual',
     //     evaluateName: `${expression}.getRootsMeta()`,
@@ -69,7 +69,7 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     // });
 
     // pushCustomVariableToContainer(container, {
-    //     name: '$allmeta',
+    //     name: '$allMeta',
     //     type: VariableType.Object,
     //     presentationHint: 'virtual',
     //     evaluateName: `${expression}.getAllMeta()`,

@@ -10,7 +10,7 @@ const forceLoad = false;
  * Push a custom variable to the container if it doesn't already exist.
  */
 export function pushCustomVariableToContainer(container: EvaluateContainer, customVariable: EvaluateContainer) {
-    if (!container.children.some(child => child.name === customVariable.name && child.presentationHint === customVariable.presentationHint)) {
+    if (!container.children.some(child => child.name.toLowerCase() === customVariable.name.toLowerCase() && child.presentationHint === customVariable.presentationHint)) {
         if (forceLoad && customVariable.type !== VariableType.Array && customVariable.type !== VariableType.AssociativeArray) {
             customVariable.lazy = false;
             customVariable.evaluateNow = true;

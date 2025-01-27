@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifaudioresource.md
 export function pushIfAudioResourceVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$playing',
+        name: '$isPlaying',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsPlaying()`,
@@ -15,7 +15,7 @@ export function pushIfAudioResourceVariables(adapter: DebugProtocolAdapter, expr
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$maxsimulstreams',
+        name: '$maxSimulStreams',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.MaxSimulStreams()`,

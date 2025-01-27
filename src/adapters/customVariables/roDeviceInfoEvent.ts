@@ -5,20 +5,20 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/rodeviceinfoevent.md
 export function pushRoDeviceInfoEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$statusmessage',
+        name: '$isStatusMessage',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isStatusMessage()`,
+        evaluateName: `${expression}.IsStatusMessage()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$captionmodechanged',
+        name: '$isCaptionModeChanged',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isCaptionModeChanged()`,
+        evaluateName: `${expression}.IsCaptionModeChanged()`,
         lazy: true,
         value: '',
         children: []

@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifregistry.md
 export function pushIfRegistryVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$spaceavailable',
+        name: '$spaceAvailable',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSpaceAvailable()`,
@@ -15,7 +15,7 @@ export function pushIfRegistryVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$sectionlist',
+        name: '$sectionList',
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSectionList()`,

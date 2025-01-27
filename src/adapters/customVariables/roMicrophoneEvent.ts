@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/romicrophoneevent.md
 export function pushRoMicrophoneEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$recordingdone',
+        name: '$isRecordingDone',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsRecordingDone()`,
@@ -15,7 +15,7 @@ export function pushRoMicrophoneEventVariables(adapter: DebugProtocolAdapter, ex
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$recordinginfo',
+        name: '$isRecordingInfo',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsRecordingInfo()`,

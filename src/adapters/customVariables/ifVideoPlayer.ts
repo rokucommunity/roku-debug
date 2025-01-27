@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifvideoplayer.md
 export function pushIfVideoPlayerVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$playbackduration',
+        name: '$playbackDuration',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetPlaybackDuration()`,
@@ -15,7 +15,7 @@ export function pushIfVideoPlayerVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$audiotracks',
+        name: '$audioTracks',
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAudioTracks()`,
@@ -24,7 +24,7 @@ export function pushIfVideoPlayerVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$captionrenderer',
+        name: '$captionRenderer',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCaptionRenderer()`,

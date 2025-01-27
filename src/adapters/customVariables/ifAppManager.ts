@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/docs/references/brightscript/interfaces/ifappmanager.md
 export function pushIfAppManagerVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$uptime',
+        name: '$upTime',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetUptime().TotalMilliseconds()`,
@@ -15,7 +15,7 @@ export function pushIfAppManagerVariables(adapter: DebugProtocolAdapter, express
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$screensavertimeout',
+        name: '$screenSaverTimeout',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetScreensaverTimeout()`,
@@ -25,7 +25,7 @@ export function pushIfAppManagerVariables(adapter: DebugProtocolAdapter, express
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$lastexitinfo',
+        name: '$lastExitInfo',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetLastExitInfo()`,

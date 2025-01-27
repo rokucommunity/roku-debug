@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsgnodefocus.md
 export function pushIfSGNodeFocusVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$hasfocus',
+        name: '$hasFocus',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.hasFocus()`,
@@ -15,10 +15,10 @@ export function pushIfSGNodeFocusVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$infocuschain',
+        name: '$isInFocusChain',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isInFocusChain()`,
+        evaluateName: `${expression}.IsInFocusChain()`,
         lazy: true,
         value: '',
         children: []

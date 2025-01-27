@@ -14,7 +14,7 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$defaultfont',
+        name: '$defaultFont',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDefaultFont()`,
@@ -23,7 +23,7 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$defaultfontsize',
+        name: '$defaultFontSize',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDefaultFontSize()`,

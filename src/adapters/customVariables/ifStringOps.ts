@@ -45,7 +45,7 @@ export function pushIfStringOpsVariables(adapter: DebugProtocolAdapter, expressi
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$entityencode',
+        name: '$entityEncode',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetEntityEncode()`,
@@ -75,7 +75,7 @@ export function pushIfStringOpsVariables(adapter: DebugProtocolAdapter, expressi
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$encodeuri',
+        name: '$encodeUri',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.EncodeUri()`,
@@ -85,7 +85,7 @@ export function pushIfStringOpsVariables(adapter: DebugProtocolAdapter, expressi
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$decodeuri',
+        name: '$decodeUri',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.DecodeUri()`,
@@ -95,7 +95,7 @@ export function pushIfStringOpsVariables(adapter: DebugProtocolAdapter, expressi
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$encodeuricomponent',
+        name: '$encodeUriComponent',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.EncodeUriComponent()`,
@@ -105,7 +105,7 @@ export function pushIfStringOpsVariables(adapter: DebugProtocolAdapter, expressi
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$decodeuricomponent',
+        name: '$decodeUriComponent',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.DecodeUriComponent()`,

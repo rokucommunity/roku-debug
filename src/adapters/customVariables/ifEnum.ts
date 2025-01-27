@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifenum.md
 export function pushIfEnumVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$next',
+        name: '$isNext',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsNext()`,
@@ -15,7 +15,7 @@ export function pushIfEnumVariables(adapter: DebugProtocolAdapter, expression: s
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$empty',
+        name: '$isEmpty',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsEmpty()`,

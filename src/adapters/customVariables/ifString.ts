@@ -15,7 +15,7 @@ export function pushIfStringVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$empty',
+        name: '$isEmpty',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsEmpty()`,

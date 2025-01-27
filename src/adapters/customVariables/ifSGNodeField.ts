@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsgnodefield.md
 export function pushIfSGNodeFieldVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$fieldtypes',
+        name: '$fieldTypes',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getFieldTypes()`,
@@ -15,7 +15,7 @@ export function pushIfSGNodeFieldVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$threadinfo',
+        name: '$threadInfo',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.threadInfo()`,

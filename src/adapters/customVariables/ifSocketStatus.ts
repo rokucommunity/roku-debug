@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocketstatus.md
 export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$eagain',
+        name: '$eAgain',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eAgain()`,
@@ -15,7 +15,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$ealready',
+        name: '$eAlready',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eAlready()`,
@@ -25,7 +25,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$ebadaddr',
+        name: '$eBadAddr',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eBadAddr()`,
@@ -35,7 +35,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$edestaddrreq',
+        name: '$eDestAddrReq',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eDestAddrReq()`,
@@ -45,7 +45,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$ehostunreach',
+        name: '$eHostUnreach',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eHostUnreach()`,
@@ -55,7 +55,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$einvalid',
+        name: '$eInvalid',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eInvalid()`,
@@ -65,7 +65,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$einprogress',
+        name: '$eInProgress',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eInProgress()`,
@@ -75,7 +75,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$ewouldblock',
+        name: '$eWouldBlock',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eWouldBlock()`,
@@ -85,7 +85,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$esuccess',
+        name: '$eSuccess',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eSuccess()`,
@@ -95,7 +95,7 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$eok',
+        name: '$eOK',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eOK()`,

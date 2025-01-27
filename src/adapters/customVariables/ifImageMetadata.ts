@@ -23,7 +23,7 @@ export function pushIfImageMetadataVariables(adapter: DebugProtocolAdapter, expr
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$rawexif',
+        name: '$rawExif',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetRawExif()`,

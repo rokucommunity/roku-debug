@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifbytearray.md
 export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$hexstring',
+        name: '$hexString',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.ToHexString()`,
@@ -15,7 +15,7 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$base64string',
+        name: '$base64String',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.ToBase64String()`,
@@ -25,7 +25,7 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$asciistring',
+        name: '$asciiString',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.ToAsciiString()`,
@@ -45,7 +45,7 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$littleendiancpu',
+        name: '$littleEndianCPU',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsLittleEndianCPU()`,

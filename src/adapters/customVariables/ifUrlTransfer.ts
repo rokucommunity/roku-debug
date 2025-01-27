@@ -15,7 +15,7 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$useragent',
+        name: '$userAgent',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetUserAgent()`,
@@ -25,7 +25,7 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$failurereason',
+        name: '$failureReason',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetFailureReason()`,

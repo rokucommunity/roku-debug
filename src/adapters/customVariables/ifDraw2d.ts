@@ -25,7 +25,7 @@ export function pushIfDraw2DVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$alphaenable',
+        name: '$alphaEnable',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAlphaEnable()`,

@@ -14,7 +14,7 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$audioproperties',
+        name: '$audioProperties',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetAudioProperties()`,
@@ -23,7 +23,7 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$coverart',
+        name: '$coverArt',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCoverArt()`,

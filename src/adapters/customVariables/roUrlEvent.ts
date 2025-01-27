@@ -15,7 +15,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$responsecode',
+        name: '$responseCode',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetResponseCode()`,
@@ -25,7 +25,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$failurereason',
+        name: '$failureReason',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetFailureReason()`,
@@ -45,7 +45,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$responseheaders',
+        name: '$responseHeaders',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetResponseHeaders()`,
@@ -54,7 +54,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$targetipaddress',
+        name: '$targetIpAddress',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetTargetIpAddress()`,
@@ -64,7 +64,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$responseheadersarray',
+        name: '$responseHeadersArray',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetResponseHeadersArray()`,

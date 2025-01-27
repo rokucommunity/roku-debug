@@ -74,7 +74,7 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$pretranslationx',
+        name: '$pretranslationX',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetPretranslationX()`,
@@ -84,7 +84,7 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$pretranslationy',
+        name: '$pretranslationY',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetPretranslationY()`,
@@ -94,7 +94,7 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$scalemode',
+        name: '$scaleMode',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetScaleMode()`,
@@ -104,7 +104,7 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$collisiontype',
+        name: '$collisionType',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetCollisionType()`,

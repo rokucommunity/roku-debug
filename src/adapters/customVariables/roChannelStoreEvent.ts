@@ -6,10 +6,10 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
 
     pushCustomVariableToContainer(container, {
-        name: '$requestsucceeded',
+        name: '$isRequestSucceeded',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isRequestSucceeded()`,
+        evaluateName: `${expression}.IsRequestSucceeded()`,
         lazy: true,
         value: '',
         children: []
@@ -25,10 +25,10 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$requestfailed',
+        name: '$isRequestFailed',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isRequestFailed()`,
+        evaluateName: `${expression}.IsRequestFailed()`,
         lazy: true,
         value: '',
         children: []
@@ -45,7 +45,7 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$statusmessage',
+        name: '$statusMessage',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetStatusMessage()`,
@@ -55,10 +55,10 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$requestinterrupted',
+        name: '$isRequestInterrupted',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isRequestInterrupted()`,
+        evaluateName: `${expression}.IsRequestInterrupted()`,
         lazy: true,
         value: 0,
         children: []

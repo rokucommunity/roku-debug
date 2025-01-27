@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocketconnection.md
 export function pushIfSocketConnectionVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$listening',
+        name: '$isListening',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsListening()`,
@@ -15,7 +15,7 @@ export function pushIfSocketConnectionVariables(adapter: DebugProtocolAdapter, e
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$connected',
+        name: '$isConnected',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.IsConnected()`,

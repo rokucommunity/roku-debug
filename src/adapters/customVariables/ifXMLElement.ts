@@ -43,7 +43,7 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$childelements',
+        name: '$childElements',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildElements()`,
@@ -52,7 +52,7 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$childnodes',
+        name: '$childNodes',
         type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildNodes()`,

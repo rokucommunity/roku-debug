@@ -24,7 +24,7 @@ export function pushIfXMLListVariables(adapter: DebugProtocolAdapter, expression
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$childelements',
+        name: '$childElements',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChildElements()`,

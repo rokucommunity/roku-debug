@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocketconnectionstatus.md
 export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$econnaborted',
+        name: '$eConnaborted',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eConnAborted()`,
@@ -15,7 +15,7 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$econnrefused',
+        name: '$eConnrefused',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eConnRefused()`,
@@ -25,7 +25,7 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$econnreset',
+        name: '$eConnReset',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eConnReset()`,
@@ -35,7 +35,7 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$eisconn',
+        name: '$eIsConn',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eIsConn()`,
@@ -45,7 +45,7 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$enotconn',
+        name: '$eNotConn',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
         evaluateName: `${expression}.eNotConn()`,

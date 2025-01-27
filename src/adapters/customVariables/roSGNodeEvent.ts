@@ -25,7 +25,7 @@ export function pushRoSGNodeEventVariables(adapter: DebugProtocolAdapter, expres
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$rosgnode',
+        name: '$roSGNode',
         type: VariableType.Object,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getRoSGNode()`,

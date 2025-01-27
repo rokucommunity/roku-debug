@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsgnodeboundingrect.md
 export function pushIfSGNodeBoundingRectVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$boundingrect',
+        name: '$boundingRect',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.boundingRect()`,
@@ -14,7 +14,7 @@ export function pushIfSGNodeBoundingRectVariables(adapter: DebugProtocolAdapter,
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$localboundingrect',
+        name: '$localBoundingRect',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.localBoundingRect()`,
@@ -23,7 +23,7 @@ export function pushIfSGNodeBoundingRectVariables(adapter: DebugProtocolAdapter,
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$sceneboundingrect',
+        name: '$sceneBoundingRect',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.sceneBoundingRect()`,

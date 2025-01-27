@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/docs/references/brightscript/interfaces/ifdatetime.md
 export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
-        name: '$timezoneoffset',
+        name: '$timeZoneOffset',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetTimeZoneOffset()`,
@@ -25,7 +25,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$secondslong',
+        name: '$secondsLong',
         type: VariableType.LongInteger,
         presentationHint: 'virtual',
         evaluateName: `${expression}.AsSecondsLong()`,
@@ -45,7 +45,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$datelocalized',
+        name: '$dateLocalized',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.asDateStringLoc("full")`,
@@ -55,7 +55,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$timelocalized',
+        name: '$timeLocalized',
         type: VariableType.String,
         presentationHint: 'virtual',
         evaluateName: `${expression}.asTimeStringLoc("short")`,
@@ -95,7 +95,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$dayofmonth',
+        name: '$dayOfMonth',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDayOfMonth()`,
@@ -145,7 +145,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$lastdayofmonth',
+        name: '$lastDayOfMonth',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetLastDayOfMonth()`,
@@ -155,7 +155,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$dayofweek',
+        name: '$dayOfWeek',
         type: VariableType.Integer,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDayOfWeek()`,

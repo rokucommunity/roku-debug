@@ -15,7 +15,7 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$userregiondata',
+        name: '$userRegionData',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetUserRegionData()`,
@@ -24,7 +24,7 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$channelcred',
+        name: '$channelCred',
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChannelCred()`,

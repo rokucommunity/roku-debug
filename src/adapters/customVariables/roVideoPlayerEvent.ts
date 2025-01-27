@@ -6,30 +6,30 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushRoVideoPlayerEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
 
     pushCustomVariableToContainer(container, {
-        name: '$paused',
+        name: '$isPaused',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isPaused()`,
+        evaluateName: `${expression}.IsPaused()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$listitemselected',
+        name: '$isListItemSelected',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isListItemSelected()`,
+        evaluateName: `${expression}.IsListItemSelected()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$formatDetected',
+        name: '$isFormatDetected',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isFormatDetected()`,
+        evaluateName: `${expression}.IsFormatDetected()`,
         lazy: true,
         value: '',
         children: []
@@ -55,10 +55,10 @@ export function pushRoVideoPlayerEventVariables(adapter: DebugProtocolAdapter, e
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$requestfailed',
+        name: '$isRequestFailed',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isRequestFailed()`,
+        evaluateName: `${expression}.IsRequestFailed()`,
         lazy: true,
         value: '',
         children: []
@@ -75,110 +75,110 @@ export function pushRoVideoPlayerEventVariables(adapter: DebugProtocolAdapter, e
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$segmentdownloadstarted',
+        name: '$isSegmentDownloadStarted',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isSegmentDownloadStarted()`,
+        evaluateName: `${expression}.IsSegmentDownloadStarted()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$streamstarted',
+        name: '$isStreamStarted',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isStreamStarted()`,
+        evaluateName: `${expression}.IsStreamStarted()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$statusmessage',
+        name: '$isStatusMessage',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isStatusMessage()`,
+        evaluateName: `${expression}.IsStatusMessage()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$fullresult',
+        name: '$isFullResult',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isFullResult()`,
+        evaluateName: `${expression}.IsFullResult()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$resumed',
+        name: '$isResumed',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isResumed()`,
+        evaluateName: `${expression}.IsResumed()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$captionmodechanged',
+        name: '$isCaptionModeChanged',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isCaptionModeChanged()`,
+        evaluateName: `${expression}.IsCaptionModeChanged()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$timedmetadata',
+        name: '$isTimedMetaData',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isTimedMetaData()`,
+        evaluateName: `${expression}.IsTimedMetaData()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$playbackposition',
+        name: '$isPlaybackPosition',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isPlaybackPosition()`,
+        evaluateName: `${expression}.IsPlaybackPosition()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$streamsegmentinfo',
+        name: '$isStreamSegmentInfo',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isStreamSegmentInfo()`,
+        evaluateName: `${expression}.IsStreamSegmentInfo()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$downloadsegmentinfo',
+        name: '$isDownloadSegmentInfo',
         type: VariableType.Integer,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isDownloadSegmentInfo()`,
+        evaluateName: `${expression}.IsDownloadSegmentInfo()`,
         lazy: true,
         value: '',
         children: []
     });
 
     pushCustomVariableToContainer(container, {
-        name: '$requestsucceeded',
+        name: '$isRequestSucceeded',
         type: VariableType.Boolean,
         presentationHint: 'virtual',
-        evaluateName: `${expression}.isRequestSucceeded()`,
+        evaluateName: `${expression}.IsRequestSucceeded()`,
         lazy: true,
         value: '',
         children: []
