@@ -1366,7 +1366,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
 
                 //is at debugger prompt
-            } else {
+            } else if (args.expression.trim()) {
                 let { evalArgs, variablePath } = await this.evaluateExpressionToTempVar(args, util.getVariablePath(args.expression));
 
                 //if we found a variable path (e.g. ['a', 'b', 'c']) then do a variable lookup because it's faster and more widely supported than `evaluate`
@@ -1401,7 +1401,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let commandResults = await this.rokuAdapter.evaluate(evalArgs.expression, evalArgs.frameId);
 
                     commandResults.message = util.trimDebugPrompt(commandResults.message);
-                    if (args.context !== 'watch') {
+                    if (args.context === 'repl') {
                         //clear variable cache since this action could have side-effects
                         this.clearState();
                         this.sendInvalidatedEvent(null, evalArgs.frameId);
