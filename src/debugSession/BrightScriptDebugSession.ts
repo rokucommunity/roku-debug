@@ -55,6 +55,7 @@ import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
+import { debounce } from 'debounce';
 
 const diagnosticSource = 'roku-debug';
 
@@ -1185,6 +1186,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
         const logger = this.logger.createLogger('[variablesRequest]');
+        let didVariableChange = false;
+        let frameId: number = null;
         try {
             logger.log('begin', { args });
 
@@ -1225,25 +1228,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     return this.sendResponse(response);
                 }
                 logger.log('variable', v);
-                //query for child vars if we haven't done it yet.
-                if (v.childVariables.length === 0) {
+                //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
+                if (v.childVariables.length === 0 || v.isResolved) {
                     let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
                     let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
                     let tempVar = await this.getVariableFromResult(result, v.frameId);
                     tempVar.frameId = v.frameId;
 
                     // Determine if the variable has changed
-                    let didVariableChange = v.type !== tempVar.type;
-                    // let didVariableChange = v.type !== tempVar.type || v.value !== tempVar.value;
+                    didVariableChange = v.type !== tempVar.type;
+                    frameId = v.frameId;
 
                     // Merge the resulting updates together
                     v.childVariables = tempVar.childVariables;
                     v.value = tempVar.value;
                     v.type = tempVar.type;
 
-                    if (v?.presentationHint?.lazy) {
+                    if (v?.presentationHint?.lazy || v.isResolved) {
                         // If this was a lazy variable we need to respond with the updated variable and not the children
                         updatedVariables = [v];
+                        v.isResolved = true;
                     } else {
                         updatedVariables = v.childVariables;
                     }
@@ -1260,45 +1264,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         v.presentationHint = tempVar.presentationHint;
                     }
 
-                    if (didVariableChange) {
-                        // If data about the variable it self changed, ignoring children, we need to send a stopped event to trigger the UI to update
-                        // We must also complete the initial request so the debugger knows to move on.
-                        response.body = { variables: [] };
-                        if (v?.presentationHint?.lazy) {
-                            response.body.variables.push(v);
-                        }
-                        this.sendResponse(response);
-                        return this.sendEvent(new StoppedEvent('variableChange', this.rokuAdapter.currentThreadId));
-                    }
                 } else {
                     updatedVariables = v.childVariables;
                 }
             }
 
-            //if the variable is an array, send only the requested range
-            if (Array.isArray(updatedVariables) && args.filter === 'indexed') {
-                //only send the variable range requested by the debugger
-                updatedVariables = updatedVariables.slice(args.start, args.start + args.count);
-            }
-
-            let filteredUpdatedVariables = this.launchConfiguration.showHiddenVariables !== true ? updatedVariables.filter(
-                (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : updatedVariables;
-
-            if (this.launchConfiguration.showHiddenVariables !== true) {
-                filteredUpdatedVariables = filteredUpdatedVariables.filter((child: AugmentedVariable) => {
-                    //A transient variable that we show when there is a value
-                    if (child.name === '__brs_err__' && child.type !== VariableType.Uninitialized) {
-                        return true;
-                    } else if (util.isTransientVariable(child.name)) {
-                        return false;
-                    } else {
-                        return true;
-                    }
-                });
-            }
-
             response.body = {
-                variables: filteredUpdatedVariables
+                variables: this.filterVariablesUpdates(updatedVariables, args)
             };
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });
@@ -1308,6 +1280,40 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             logger.info('end', { response });
         }
         this.sendResponse(response);
+        if (didVariableChange) {
+            this.debounceSendInvalidatedEvent(null, frameId);
+        }
+    }
+
+    private debounceSendInvalidatedEvent = debounce((threadId: number, frameId: number) => {
+        this.sendInvalidatedEvent(threadId, frameId);
+    }, 50);
+
+
+    private filterVariablesUpdates(updatedVariables: Array<AugmentedVariable>, args: DebugProtocol.VariablesArguments): Array<AugmentedVariable> {
+        //if the variable is an array, send only the requested range
+        if (Array.isArray(updatedVariables) && args.filter === 'indexed') {
+            //only send the variable range requested by the debugger
+            updatedVariables = updatedVariables.slice(args.start, args.start + args.count);
+        }
+
+        let filteredUpdatedVariables = this.launchConfiguration.showHiddenVariables !== true ? updatedVariables.filter(
+            (child: AugmentedVariable) => !child.name.startsWith(this.tempVarPrefix)) : updatedVariables;
+
+        if (this.launchConfiguration.showHiddenVariables !== true) {
+            filteredUpdatedVariables = filteredUpdatedVariables.filter((child: AugmentedVariable) => {
+                //A transient variable that we show when there is a value
+                if (child.name === '__brs_err__' && child.type !== VariableType.Uninitialized) {
+                    return true;
+                } else if (util.isTransientVariable(child.name)) {
+                    return false;
+                } else {
+                    return true;
+                }
+            });
+        }
+
+        return filteredUpdatedVariables;
     }
 
     private evaluateRequestPromise = Promise.resolve();
@@ -1435,7 +1441,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let varIndex = this.getNextVarIndex(args.frameId);
             let arrayVarName = this.tempVarPrefix + 'eval';
             if (varIndex === 0) {
-                const response = await this.rokuAdapter.evaluate(`${arrayVarName} = []`, args.frameId);
+                const response = await this.rokuAdapter.evaluate(`if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []`, args.frameId);
                 console.log(response);
             }
             let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
@@ -1658,13 +1664,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             if (result.children) {
-                let childVariables = [];
-                for (let childContainer of result.children) {
-                    let childVar = await this.getVariableFromResult(childContainer, frameId);
-                    childVariables.push(childVar);
-                }
-                v.childVariables = childVariables;
+                v.childVariables = await Promise.all(result.children.map(async (childContainer) => {
+                    return this.getVariableFromResult(childContainer, frameId);
+                }));
             }
+
             // if the var is an array and debugProtocol is enabled, include the array size
             if (this.enableDebugProtocol && v.type === VariableType.Array) {
                 v.value = `${v.type}(${result.elementCount})` as any;
@@ -1782,4 +1786,8 @@ interface AugmentedVariable extends DebugProtocol.Variable {
     // eslint-disable-next-line camelcase
     request_seq?: number;
     frameId?: number;
+    /**
+     * only used for lazy variables
+     */
+    isResolved?: boolean;
 }
