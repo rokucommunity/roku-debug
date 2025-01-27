@@ -19,7 +19,7 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetUserRegionData()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -28,7 +28,7 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChannelCred()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

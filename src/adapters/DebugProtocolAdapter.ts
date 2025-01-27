@@ -676,10 +676,13 @@ export class DebugProtocolAdapter {
             //subtyped objects can only have string values
             let parts = (variable.value as string).split('; ');
             (variableType as string) = parts[0];
-        } else if (variableType === VariableType.Object) {
+        } else if (variableType === VariableType.Object || variableType === VariableType.Interface) {
             // We want the type to reflect `roAppInfo` or `roDeviceInfo` for example in the UI
             // so set the type to be the value from the device
             variableType = value;
+        } else if (variableType === VariableType.AssociativeArray) {
+            // We want the type to reflect `function` in the UI
+            value = VariableType.AssociativeArray;
         }
 
         //build full evaluate name for this var. (i.e. `alpha["beta"]` + ["charlie"]` === `alpha["beta"]["charlie"]`)

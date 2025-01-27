@@ -40,7 +40,7 @@ enum RokuObjectTypes {
     // roFunction = 'roFunction',
     roHdmiStatus = 'roHdmiStatus',
     // roHMAC = 'roHMAC',
-    roHttpAgent = 'roHttpAgent',
+    // roHttpAgent = 'roHttpAgent',
     roImageMetadata = 'roImageMetadata',
     roInput = 'roInput',
     // roInt = 'roInt',
@@ -104,39 +104,6 @@ enum RokuObjectTypes {
  */
 export async function insertCustomVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     try {
-        // Added natively as of 3.3.0
-        if (semver.satisfies(adapter?.activeProtocolVersion, '<3.3.0')) {
-            if (container?.type?.startsWith('roSGNode')) {
-                customVariables.pushCustomVariableToContainer(container, {
-                    name: '$children',
-                    type: VariableType.Array,
-                    keyType: KeyType.integer,
-                    presentationHint: 'virtual',
-                    evaluateName: `${expression}.getChildren(-1, 0)`,
-                    children: []
-                });
-
-                customVariables.pushCustomVariableToContainer(container, {
-                    name: '$parent',
-                    type: 'roSGNode',
-                    highLevelType: HighLevelType.object,
-                    keyType: KeyType.string,
-                    presentationHint: 'virtual',
-                    evaluateName: `${expression}.getParent()`,
-                    children: []
-                });
-
-                customVariables.pushCustomVariableToContainer(container, {
-                    name: '$threadinfo',
-                    type: VariableType.AssociativeArray,
-                    keyType: KeyType.string,
-                    presentationHint: 'virtual',
-                    evaluateName: `${expression}.threadInfo()`,
-                    children: []
-                });
-            }
-        }
-
         switch (container.type) {
             case RokuObjectTypes.roAppInfo:
                 customVariables.pushIfAppInfoVariables(adapter, expression, container);
@@ -235,9 +202,9 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 break;
             // case RokuObjectTypes.roHMAC:
             //     break;
-            case RokuObjectTypes.roHttpAgent:
-                customVariables.pushIfHttpAgentVariables(adapter, expression, container);
-                break;
+            // case RokuObjectTypes.roHttpAgent:
+            //     customVariables.pushIfHttpAgentVariables(adapter, expression, container);
+            //     break;
             case RokuObjectTypes.roImageMetadata:
                 customVariables.pushIfImageMetadataVariables(adapter, expression, container);
                 break;
@@ -294,13 +261,11 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 customVariables.pushIfGetMessagePortVariables(adapter, expression, container);
                 break;
             case RokuObjectTypes.roSGNode:
-                if (semver.satisfies(adapter?.activeProtocolVersion, '<3.3.0')) {
-                    customVariables.pushIfSGNodeChildrenVariables(adapter, expression, container);
-                    customVariables.pushIfSGNodeFieldVariables(adapter, expression, container);
-                    customVariables.pushIfSGNodeDictVariables(adapter, expression, container);
-                    customVariables.pushIfSGNodeBoundingRectVariables(adapter, expression, container);
-                    customVariables.pushIfSGNodeHttpAgentAccessVariables(adapter, expression, container);
-                }
+                customVariables.pushIfSGNodeChildrenVariables(adapter, expression, container);
+                customVariables.pushIfSGNodeFieldVariables(adapter, expression, container);
+                customVariables.pushIfSGNodeDictVariables(adapter, expression, container);
+                customVariables.pushIfSGNodeBoundingRectVariables(adapter, expression, container);
+                customVariables.pushIfSGNodeHttpAgentAccessVariables(adapter, expression, container);
                 break;
             case RokuObjectTypes.roSGScreen:
                 customVariables.pushIfSGScreenVariables(adapter, expression, container);

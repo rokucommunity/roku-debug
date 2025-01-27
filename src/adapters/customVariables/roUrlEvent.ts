@@ -49,7 +49,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetResponseHeaders()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 

@@ -29,7 +29,7 @@ export function pushRoTextToSpeechEventVariables(adapter: DebugProtocolAdapter, 
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

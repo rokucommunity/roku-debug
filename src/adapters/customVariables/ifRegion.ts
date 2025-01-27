@@ -6,9 +6,10 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$bitmap',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetBitmap()`,
+        lazy: true,
         value: '',
         children: []
     });

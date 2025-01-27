@@ -19,7 +19,7 @@ export function pushRoInputEventVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

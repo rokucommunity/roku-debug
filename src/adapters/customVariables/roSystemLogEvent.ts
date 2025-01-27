@@ -9,7 +9,7 @@ export function pushRoSystemLogEventVariables(adapter: DebugProtocolAdapter, exp
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

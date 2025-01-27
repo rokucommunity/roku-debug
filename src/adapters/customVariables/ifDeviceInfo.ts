@@ -39,7 +39,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetModelDetails()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -58,7 +58,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetOSVersion()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -167,7 +167,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDrmInfoEx()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -266,7 +266,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetIPAddrs()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -275,7 +275,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetConnectionInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -314,7 +314,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDisplaySize()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -324,7 +324,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetVideoMode()`,
         lazy: true,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -333,16 +333,16 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetDisplayProperties()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
     pushCustomVariableToContainer(container, {
         name: '$supportedGraphicsResolutions',
-        type: VariableType.AssociativeArray,
+        type: VariableType.Array,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetSupportedGraphicsResolutions()`,
-        value: '',
+        value: VariableType.Array,
         children: []
     });
 
@@ -351,7 +351,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetUIResolution()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 

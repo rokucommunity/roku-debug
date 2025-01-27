@@ -38,7 +38,7 @@ export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, ex
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

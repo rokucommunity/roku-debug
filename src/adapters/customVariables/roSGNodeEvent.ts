@@ -49,7 +49,7 @@ export function pushRoSGNodeEventVariables(adapter: DebugProtocolAdapter, expres
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

@@ -29,7 +29,7 @@ export function pushIfAudioResourceVariables(adapter: DebugProtocolAdapter, expr
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetMetaData()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

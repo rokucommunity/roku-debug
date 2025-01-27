@@ -43,36 +43,40 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     // Should be add these? They might cause more harm then good?
     // pushCustomVariableToContainer(container, {
     //     name: '$all',
-    //     type: VariableType.Object,
+    //     type: '',
     //     presentationHint: 'virtual',
     //     evaluateName: `${expression}.getAll()`,
+    //     lazy: true,
     //     value: '',
     //     children: []
     // });
 
     // pushCustomVariableToContainer(container, {
     //     name: '$roots',
-    //     type: VariableType.Object,
+    //     type: '',
     //     presentationHint: 'virtual',
     //     evaluateName: `${expression}.getRoots()`,
+    //     lazy: true,
     //     value: '',
     //     children: []
     // });
 
     // pushCustomVariableToContainer(container, {
     //     name: '$rootsMeta',
-    //     type: VariableType.Object,
+    //     type: '',
     //     presentationHint: 'virtual',
     //     evaluateName: `${expression}.getRootsMeta()`,
+    //     lazy: true,
     //     value: '',
     //     children: []
     // });
 
     // pushCustomVariableToContainer(container, {
     //     name: '$allMeta',
-    //     type: VariableType.Object,
+    //     type: '',
     //     presentationHint: 'virtual',
     //     evaluateName: `${expression}.getAllMeta()`,
+    //     lazy: true,
     //     value: '',
     //     children: []
     // });

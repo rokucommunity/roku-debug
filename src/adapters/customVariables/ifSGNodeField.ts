@@ -9,7 +9,7 @@ export function pushIfSGNodeFieldVariables(adapter: DebugProtocolAdapter, expres
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.getFieldTypes()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
@@ -18,6 +18,7 @@ export function pushIfSGNodeFieldVariables(adapter: DebugProtocolAdapter, expres
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.threadInfo()`,
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

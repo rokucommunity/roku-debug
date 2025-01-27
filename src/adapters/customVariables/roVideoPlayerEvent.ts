@@ -50,7 +50,7 @@ export function pushRoVideoPlayerEventVariables(adapter: DebugProtocolAdapter, e
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 

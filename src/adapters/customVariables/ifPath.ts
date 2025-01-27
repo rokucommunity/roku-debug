@@ -19,7 +19,7 @@ export function pushIfPathVariables(adapter: DebugProtocolAdapter, expression: s
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.Split()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

@@ -9,7 +9,7 @@ export function pushRoAppMemoryNotificationEventVariables(adapter: DebugProtocol
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

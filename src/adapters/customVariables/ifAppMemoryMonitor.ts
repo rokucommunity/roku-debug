@@ -29,7 +29,7 @@ export function pushIfAppMemoryMonitorVariables(adapter: DebugProtocolAdapter, e
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetChannelMemoryLimit()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

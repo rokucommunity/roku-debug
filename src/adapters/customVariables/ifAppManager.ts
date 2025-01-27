@@ -29,7 +29,7 @@ export function pushIfAppManagerVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetLastExitInfo()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 }

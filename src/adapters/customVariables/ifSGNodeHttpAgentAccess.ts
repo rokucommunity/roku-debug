@@ -6,9 +6,10 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfSGNodeHttpAgentAccessVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(container, {
         name: '$httpAgent',
-        type: VariableType.Object,
+        type: '',
         presentationHint: 'virtual',
         evaluateName: `${expression}.getHttpAgent()`,
+        lazy: true,
         value: '',
         children: []
     });

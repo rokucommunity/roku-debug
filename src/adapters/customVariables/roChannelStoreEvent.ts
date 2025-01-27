@@ -20,7 +20,7 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
         type: VariableType.AssociativeArray,
         presentationHint: 'virtual',
         evaluateName: `${expression}.GetResponse()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 
