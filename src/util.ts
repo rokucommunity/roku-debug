@@ -478,10 +478,9 @@ class Util {
     public handleLogFragments(currentFragment: string, newFragment: string): { completed: string; remaining: string } {
         let lastNewlineIndex = newFragment.lastIndexOf('\n');
         if (lastNewlineIndex === -1) {
-            currentFragment += newFragment;
             return {
                 completed: '',
-                remaining: newFragment
+                remaining: currentFragment + newFragment
             };
         }
 

@@ -237,6 +237,14 @@ describe('Util', () => {
                 util.handleLogFragments('new\n', ' string\none new\nline')
             ).to.eql({ completed: 'new\n string\none new\n', remaining: 'line' });
         });
+
+        it('handles when no newlines are found and concats the two stings into remaining', () => {
+            let currentLeftover = `some new logs `;
+            let newLogs = `that are still not complete and need to be concatenated`;
+            expect(
+                util.handleLogFragments(currentLeftover, newLogs)
+            ).to.eql({ completed: '', remaining: currentLeftover + newLogs });
+        });
     });
 
     describe('isPortInUse', () => {
