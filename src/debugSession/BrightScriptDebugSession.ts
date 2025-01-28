@@ -1334,6 +1334,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } else {
                     updatedVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
                 }
+                this.variables[args.variablesReference] = new Variable('', '', args.variablesReference, 0, updatedVariables.length);
+                this.variables[args.variablesReference].childVariables = updatedVariables;
             } else {
                 //find the variable with this reference
                 let v = this.variables[args.variablesReference];
