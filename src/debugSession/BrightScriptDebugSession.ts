@@ -345,6 +345,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.brightScriptConsolePort ??= 8085;
         config.stagingDir ??= config.stagingFolderPath;
         config.emitChannelPublishedEvent ??= true;
+        config.rewriteDevicePathsInLogs ??= true;
         return config;
     }
 
@@ -420,11 +421,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //pass along the console output
             if (this.launchConfiguration.consoleOutput === 'full') {
                 this.rokuAdapter.on('console-output', (data) => {
-                    this.sendLogOutput(data);
+                    void this.sendLogOutput(data);
                 });
             } else {
                 this.rokuAdapter.on('unhandled-console-output', (data) => {
-                    this.sendLogOutput(data);
+                    void this.sendLogOutput(data);
                 });
             }
 
@@ -670,21 +671,135 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+    private pendingSendLogPromise = Promise.resolve();
+
     /**
      * Send log output to the "client" (i.e. vscode)
      * @param logOutput
      */
     private sendLogOutput(logOutput: string) {
         this.fileLoggingManager.writeRokuDeviceLog(logOutput);
-        const lines = logOutput.split(/\r?\n/g);
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            if (i < lines.length - 1) {
-                line += '\n';
+
+        this.pendingSendLogPromise = this.pendingSendLogPromise.then(async () => {
+            logOutput = await this.convertBacktracePaths(logOutput);
+
+            const lines = logOutput.split(/\r?\n/g);
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                if (i < lines.length - 1) {
+                    line += '\n';
+                }
+
+                if (this.launchConfiguration.rewriteDevicePathsInLogs) {
+                    let potentialPaths = this.getPotentialPkgPaths(line);
+                    for (let potentialPath of potentialPaths) {
+                        let originalLocation = await this.projectManager.getSourceLocation(potentialPath.path, potentialPath.lineNumber, potentialPath.columnNumber);
+                        if (originalLocation) {
+                            let replacement: string;
+                            if (originalLocation.filePath.startsWith('/')) {
+                                replacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                            } else {
+                                replacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                            }
+
+                            if (potentialPath.columnNumber !== undefined) {
+                                replacement += `:${originalLocation.columnIndex + 1}`;
+                            }
+
+                            line = line.replaceAll(potentialPath.fullMatch, replacement);
+                        }
+                    }
+                }
+                this.sendEvent(new OutputEvent(line, 'stdout'));
+                this.sendEvent(new LogOutputEvent(line));
             }
-            this.sendEvent(new OutputEvent(line, 'stdout'));
-            this.sendEvent(new LogOutputEvent(line));
+        });
+        return this.pendingSendLogPromise;
+    }
+
+    /**
+     * Extracts potential package paths from a given line of text.
+     *
+     * This method uses a regular expression to find matches in the provided line
+     * and returns an array of objects containing details about each match.
+     *
+     * @param input - The line of text to search for potential package paths.
+     * @returns An array of objects, each containing:
+     *   - `fullMatch`: The full matched string.
+     *   - `path`: The extracted path from the match.
+     *   - `lineNumber`: The line number extracted from the match.
+     *   - `columnNumber`: The column number extracted from the match, or `undefined` if not found.
+     */
+    private getPotentialPkgPaths(input: string): Array<{ fullMatch: string; path: string; lineNumber: number; columnNumber: number }> {
+        // https://regex101.com/r/ixpQiq/1
+        let matches = input.matchAll(/((?:\.\.\.|[A-Za-z_0-9]*pkg\:\/)[A-Za-z_0-9 \/\.]+\.[A-Za-z_0-9 \/]+)(?:(?:\:)(\d+)(?:\:(\d+))?|\((\d+)(?:\:(\d+))?\))/ig);
+        let paths: ReturnType<BrightScriptDebugSession['getPotentialPkgPaths']> = [];
+        if (matches) {
+            for (let match of matches) {
+                let fullMatch = match[0];
+                let path = match[1];
+                let lineNumber = parseInt(match[2] ?? match[4]);
+                let columnNumber = parseInt(match[3] ?? match[5]);
+                if (isNaN(columnNumber)) {
+                    columnNumber = undefined;
+                }
+                paths.push({
+                    fullMatch: fullMatch,
+                    path: path,
+                    lineNumber: lineNumber,
+                    columnNumber: columnNumber
+                });
+            }
         }
+        return paths;
+    }
+
+    /**
+     * Converts the filename property in backtrace objects in the given input string to source paths if found
+     */
+    private async convertBacktracePaths(input: string) {
+        if (!this.launchConfiguration.rewriteDevicePathsInLogs) {
+            return input;
+        }
+        // Why does this not work? It should work, but it doesn't. I'm not sure why.
+        // let matches = input.matchAll(this.deviceBacktraceObjectRegex);
+
+        // https://regex101.com/r/y1koaV/1
+        let deviceBacktraceObjectRegex = /{\s+filename:\s+"([A-Za-z0-9_\.\/\:]+)"\s+function\:\s+".+"\s+(line_number\:\s+(\d+))\s+}/gi;
+        let matches = [];
+        let match = deviceBacktraceObjectRegex.exec(input);
+        while (match) {
+            matches.push(match);
+            match = deviceBacktraceObjectRegex.exec(input);
+        }
+
+        if (matches) {
+            for (let match of matches) {
+                let fullMatch = match[0] as string;
+                let filePath = match[1] as string;
+                let fullLineNumber = match[2] as string;
+                let lineNumber = parseInt(match[3] as string);
+                let originalLocation = await this.projectManager.getSourceLocation(filePath, lineNumber);
+                if (originalLocation) {
+                    let fileReplacement: string;
+                    if (originalLocation.filePath.startsWith('/')) {
+                        fileReplacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                    } else {
+                        fileReplacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                    }
+
+                    let lineNumberReplacement = fullLineNumber.replace(lineNumber.toString(), originalLocation.lineNumber.toString());
+
+                    // replace the full backtrace object with the an updated version so we don't modify other parts of the log output that might contain the same file path
+                    let completeReplacement = fullMatch.replace(filePath, fileReplacement);
+                    completeReplacement = completeReplacement.replace(fullLineNumber, lineNumberReplacement);
+                    input = input.replaceAll(fullMatch, completeReplacement);
+                }
+
+            }
+        }
+
+        return input;
     }
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
@@ -1682,6 +1797,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.componentLibraryServer?.stop();
 
             void this.rendezvousTracker?.destroy?.();
+
+            try {
+                this.sourceMapManager?.destroy?.();
+            } catch (e) {
+                this.logger.error(e);
+            }
 
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
