@@ -753,9 +753,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return paths;
     }
 
-    // https://regex101.com/r/Gl87iT/1
-    private deviceBacktraceObjectRegex = /{\s+filename:\s+"([A-Za-z0-9_\.\/\:]+)"\s+function\:\s+".+"\s+line_number\:\s+(\d+)\s+}/gi;
-
     /**
      * Converts the filename property in backtrace objects in the given input string to source paths if found
      */
@@ -766,30 +763,35 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // Why does this not work? It should work, but it doesn't. I'm not sure why.
         // let matches = input.matchAll(this.deviceBacktraceObjectRegex);
 
-        this.deviceBacktraceObjectRegex.lastIndex = 0;
+        // https://regex101.com/r/y1koaV/1
+        let deviceBacktraceObjectRegex = /{\s+filename:\s+"([A-Za-z0-9_\.\/\:]+)"\s+function\:\s+".+"\s+(line_number\:\s+(\d+))\s+}/gi;
         let matches = [];
-        let match = this.deviceBacktraceObjectRegex.exec(input);
+        let match = deviceBacktraceObjectRegex.exec(input);
         while (match) {
             matches.push(match);
-            match = this.deviceBacktraceObjectRegex.exec(input);
+            match = deviceBacktraceObjectRegex.exec(input);
         }
 
         if (matches) {
             for (let match of matches) {
                 let fullMatch = match[0] as string;
                 let filePath = match[1] as string;
-                let lineNumber = parseInt(match[2] as string);
+                let fullLineNumber = match[2] as string;
+                let lineNumber = parseInt(match[3] as string);
                 let originalLocation = await this.projectManager.getSourceLocation(filePath, lineNumber);
                 if (originalLocation) {
-                    let replacement: string;
+                    let fileReplacement: string;
                     if (originalLocation.filePath.startsWith('/')) {
-                        replacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                        fileReplacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
                     } else {
-                        replacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                        fileReplacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
                     }
 
+                    let lineNumberReplacement = fullLineNumber.replace(lineNumber.toString(), originalLocation.lineNumber.toString());
+
                     // replace the full backtrace object with the an updated version so we don't modify other parts of the log output that might contain the same file path
-                    let completeReplacement = fullMatch.replace(filePath, replacement);
+                    let completeReplacement = fullMatch.replace(filePath, fileReplacement);
+                    completeReplacement = completeReplacement.replace(fullLineNumber, lineNumberReplacement);
                     input = input.replaceAll(fullMatch, completeReplacement);
                 }
 

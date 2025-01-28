@@ -1332,7 +1332,7 @@ describe('BrightScriptDebugSession', () => {
                     {
                         filename: "file://project/source/main.brs:20"
                         function: "main(inputarguments As Object) As Void"
-                        line_number: 9
+                        line_number: 20
                     }
                     some other logs`,
                     [{ filePath: `/project/source/main.brs`, lineNumber: 20 }]
@@ -1354,7 +1354,7 @@ describe('BrightScriptDebugSession', () => {
                     {
                         filename: "file://C:/project/source/main.brs:20"
                         function: "main(inputarguments As Object) As Void"
-                        line_number: 9
+                        line_number: 20
                     }
                     some other logs`,
                     [{ filePath: `C:/project/source/main.brs`, lineNumber: 20 }]
