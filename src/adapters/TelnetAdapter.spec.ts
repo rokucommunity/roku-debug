@@ -1,10 +1,10 @@
 import { expect } from 'chai';
-import type { EvaluateContainer } from './TelnetAdapter';
 import { TelnetAdapter } from './TelnetAdapter';
 import * as dedent from 'dedent';
 import { HighLevelType } from '../interfaces';
 import { RendezvousTracker } from '../RendezvousTracker';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
+import type { EvaluateContainer } from './DebugProtocolAdapter';
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;

@@ -386,13 +386,14 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
         }
 
         // catch all for adding a count
-        if (container.elementCount > 0 || container.type === 'Array') {
+        if (container.children.length > 0 || container.type === 'Array') {
+            let count = container.children.filter((child) => child.presentationHint !== 'virtual').length;
             customVariables.pushCustomVariableToContainer(container, {
                 name: '$count',
                 type: VariableType.Integer,
                 presentationHint: 'virtual',
-                evaluateName: container.elementCount.toString(),
-                value: container.elementCount.toString(),
+                evaluateName: count.toString(),
+                value: count.toString(),
                 children: []
             });
         }

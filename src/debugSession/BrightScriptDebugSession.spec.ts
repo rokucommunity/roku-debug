@@ -7,7 +7,7 @@ import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
 import { DebugSession } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
-import type { EvaluateContainer, StackFrame } from '../adapters/TelnetAdapter';
+import type { StackFrame } from '../adapters/TelnetAdapter';
 import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { defer, util } from '../util';
 import { HighLevelType } from '../interfaces';
@@ -20,6 +20,7 @@ import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
 import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
+import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;

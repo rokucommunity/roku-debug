@@ -1301,7 +1301,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public async variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) {
         const logger = this.logger.createLogger('[variablesRequest]');
-        let didVariableChange = false;
+        let sendInvalidatedEvent = false;
         let frameId: number = null;
         try {
             logger.log('begin', { args });
@@ -1353,14 +1353,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         tempVar = await this.getVariableFromResult(result, v.frameId);
                         tempVar.frameId = v.frameId;
                         // Determine if the variable has changed
-                        didVariableChange = v.type !== tempVar.type;
+                        sendInvalidatedEvent = v.type !== tempVar.type;
                     } catch (error) {
                         if (v.presentationHint?.lazy) {
                             logger.error('Error getting variables', error);
                             tempVar = new Variable('Error', `❌ Error: ${error.message}`);
                             tempVar.type = '';
                             tempVar.childVariables = [];
-                            didVariableChange = true;
+                            sendInvalidatedEvent = true;
                             response.success = false;
                             response.message = error.message;
                         } else {
@@ -1406,7 +1406,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             response.body = {
-                variables: this.filterVariablesUpdates(updatedVariables, args)
+                variables: this.filterVariablesUpdates(updatedVariables, args, this.variables[args.variablesReference])
             };
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });
@@ -1416,7 +1416,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             logger.info('end', { response });
         }
         this.sendResponse(response);
-        if (didVariableChange) {
+        if (sendInvalidatedEvent) {
             this.debounceSendInvalidatedEvent(null, frameId);
         }
     }
@@ -1426,11 +1426,30 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }, 50);
 
 
-    private filterVariablesUpdates(updatedVariables: Array<AugmentedVariable>, args: DebugProtocol.VariablesArguments): Array<AugmentedVariable> {
+    private filterVariablesUpdates(updatedVariables: Array<AugmentedVariable>, args: DebugProtocol.VariablesArguments, v: DebugProtocol.Variable): Array<AugmentedVariable> {
+        if (!updatedVariables || !v) {
+            return [];
+        }
+
+        let start = args.start ?? 0;
+
         //if the variable is an array, send only the requested range
         if (Array.isArray(updatedVariables) && args.filter === 'indexed') {
             //only send the variable range requested by the debugger
-            updatedVariables = updatedVariables.slice(args.start, args.start + args.count);
+            if (!args.count) {
+                updatedVariables = updatedVariables.slice(0, v.indexedVariables);
+            } else {
+                updatedVariables = updatedVariables.slice(start, start + args.count);
+            }
+        }
+
+        if (Array.isArray(updatedVariables) && args.filter === 'named') {
+            //only send the variable range requested by the debugger
+            if (!args.count) {
+                updatedVariables = updatedVariables.slice(v.indexedVariables);
+            } else {
+                updatedVariables = updatedVariables.slice(start + v.indexedVariables, start + v.indexedVariables + args.count);
+            }
         }
 
         let filteredUpdatedVariables = this.launchConfiguration.showHiddenVariables !== true ? updatedVariables.filter(
@@ -1751,7 +1770,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         result.type = newResult.type;
                         result.highLevelType = newResult.highLevelType;
                         result.keyType = newResult.keyType;
-                        result.elementCount = newResult.elementCount;
+                        result.indexedVariables = newResult.indexedVariables;
+                        result.namedVariables = newResult.namedVariables;
                     } catch (error) {
                         logger.error('Error getting variables', error);
                         result.children = [];
@@ -1759,7 +1779,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         result.type = '';
                         result.highLevelType = undefined;
                         result.keyType = undefined;
-                        result.elementCount = 0;
                     }
                 }
 
@@ -1768,11 +1787,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     // check to see if this is an dictionary or a list
                     if (result.keyType === 'Integer') {
                         // list type
-                        v = new Variable(result.name, value, refId, result.elementCount, 0);
+                        v = new Variable(result.name, value, refId, result.indexedVariables, result.namedVariables);
                         this.variables[refId] = v;
                     } else if (result.keyType === 'String') {
                         // dictionary type
-                        v = new Variable(result.name, value, refId, 0, result.elementCount);
+                        v = new Variable(result.name, value, refId, result.indexedVariables, result.namedVariables);
                     }
                     v.type = result.type;
                 } else {
@@ -1828,7 +1847,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // if the var is an array and debugProtocol is enabled, include the array size
             if (this.enableDebugProtocol && v.type === VariableType.Array) {
-                v.value = `${v.type}(${result.elementCount})` as any;
+                // TODO: lbah grekjnl
+                // v.value = `${v.type}(${result.elementCount})` as any;
             }
         }
         return v;

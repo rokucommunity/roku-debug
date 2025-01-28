@@ -607,7 +607,7 @@ export class DebugProtocolAdapter {
     /**
      * Get the variable for the specified expression.
      */
-    public async getVariable(expression: string, frameId: number) {
+    public async getVariable(expression: string, frameId: number): Promise<EvaluateContainer> {
         const response = await this.getVariablesResponse(expression, frameId);
 
         if (Array.isArray(response?.data?.variables)) {
@@ -619,6 +619,7 @@ export class DebugProtocolAdapter {
                 undefined
             );
             await insertCustomVariables(this, expression, container);
+            container.namedVariables = container.children.length - container.indexedVariables;
             return container;
         }
     }
@@ -647,6 +648,8 @@ export class DebugProtocolAdapter {
                 //there's no parent path
                 undefined
             );
+            container.indexedVariables = 0;
+            container.namedVariables = container.children.length;
             return container;
         }
     }
@@ -657,7 +660,7 @@ export class DebugProtocolAdapter {
      * @param name the name of this variable. For example, `alpha.beta.charlie`, this value would be `charlie`. For local vars, this is the root variable name (i.e. `alpha`)
      * @param parentEvaluateName the string used to derive the parent, _excluding_ this variable's name (i.e. `alpha.beta` or `alpha[0]`)
      */
-    private createEvaluateContainer(variable: Variable, name: string | number, parentEvaluateName: string) {
+    private createEvaluateContainer(variable: Variable, name: string | number, parentEvaluateName: string): EvaluateContainer {
         let value;
         let variableType = variable.type;
         if (variable.value === null) {
@@ -701,7 +704,6 @@ export class DebugProtocolAdapter {
             highLevelType: undefined,
             //non object/array variables don't have a key type
             keyType: variable.keyType as unknown as KeyType,
-            elementCount: variable.childCount ?? variable.children?.length ?? undefined,
             //non object/array variables still need to have an empty `children` array to help upstream logic. The `keyType` being null is how we know it doesn't actually have children
             children: []
         };
@@ -713,11 +715,18 @@ export class DebugProtocolAdapter {
         //recursively generate children containers
         if ([KeyType.integer, KeyType.string].includes(container.keyType) && Array.isArray(variable.children)) {
             container.children = [];
+
+            container.namedVariables = 0;
+            container.indexedVariables = 0;
+
             for (let i = 0; i < variable.children.length; i++) {
                 const childVariable = variable.children[i];
+                if (childVariable.name === undefined) {
+                    container.indexedVariables++;
+                }
                 const childContainer = this.createEvaluateContainer(
                     childVariable,
-                    container.keyType === KeyType.integer ? i : childVariable.name,
+                    container.keyType === KeyType.integer && !childVariable.isVirtual ? i : childVariable.name,
                     container.evaluateName
                 );
                 container.children.push(childContainer);
@@ -996,7 +1005,8 @@ export interface EvaluateContainer {
     type: string;
     value?: any;
     keyType?: KeyType;
-    elementCount?: number;
+    namedVariables?: number;
+    indexedVariables?: number;
     highLevelType?: HighLevelType;
     children: EvaluateContainer[];
     isCustom?: boolean;

@@ -14,7 +14,7 @@ import { logger } from '../logging';
 import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces';
 import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
-import type { DebugProtocolAdapter } from './DebugProtocolAdapter';
+import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAdapter';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 
 /**
@@ -907,7 +907,6 @@ export class TelnetAdapter {
                         type: '<ERROR>',
                         highLevelType: HighLevelType.uninitialized,
                         evaluateName: undefined,
-                        elementCount: -1,
                         value: '<ERROR>',
                         keyType: KeyType.legacy,
                         children: []
@@ -1113,18 +1112,6 @@ export interface StackFrame {
 
 export enum EventName {
     suspend = 'suspend'
-}
-
-export interface EvaluateContainer {
-    name: string;
-    evaluateName: string;
-    type: string;
-    value: string;
-    keyType: KeyType;
-    elementCount: number;
-    highLevelType: HighLevelType;
-    children: EvaluateContainer[];
-    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
 export enum KeyType {
