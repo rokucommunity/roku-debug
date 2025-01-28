@@ -716,9 +716,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return this.pendingSendLogPromise;
     }
 
-    // https://regex101.com/r/ixpQiq/1
-    private deviceFilePathRegex = /((?:\.\.\.|[A-Za-z_0-9]*pkg\:\/)[A-Za-z_0-9 \/\.]+\.[A-Za-z_0-9 \/]+)(?:(?:\:)(\d+)(?:\:(\d+))?|\((\d+)(?:\:(\d+))?\))/ig;
-
     /**
      * Extracts potential package paths from a given line of text.
      *
@@ -733,7 +730,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      *   - `columnNumber`: The column number extracted from the match, or `undefined` if not found.
      */
     private getPotentialPkgPaths(input: string): Array<{ fullMatch: string; path: string; lineNumber: number; columnNumber: number }> {
-        let matches = input.matchAll(this.deviceFilePathRegex);
+        // https://regex101.com/r/ixpQiq/1
+        let matches = input.matchAll(/((?:\.\.\.|[A-Za-z_0-9]*pkg\:\/)[A-Za-z_0-9 \/\.]+\.[A-Za-z_0-9 \/]+)(?:(?:\:)(\d+)(?:\:(\d+))?|\((\d+)(?:\:(\d+))?\))/ig);
         let paths: ReturnType<BrightScriptDebugSession['getPotentialPkgPaths']> = [];
         if (matches) {
             for (let match of matches) {
