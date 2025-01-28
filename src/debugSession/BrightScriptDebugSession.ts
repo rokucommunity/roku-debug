@@ -345,6 +345,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.brightScriptConsolePort ??= 8085;
         config.stagingDir ??= config.stagingFolderPath;
         config.emitChannelPublishedEvent ??= true;
+        config.rewriteDevicePathsInLogs ??= true;
         return config;
     }
 
@@ -689,7 +690,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     line += '\n';
                 }
 
-                if (this.launchConfiguration.enableConsolePkgToSourcePathConversion) {
+                if (this.launchConfiguration.rewriteDevicePathsInLogs) {
                     let potentialPaths = this.getPotentialPkgPaths(line);
                     for (let potentialPath of potentialPaths) {
                         let originalLocation = await this.projectManager.getSourceLocation(potentialPath.path, potentialPath.lineNumber, potentialPath.columnNumber);
@@ -757,7 +758,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Converts the filename property in backtrace objects in the given input string to source paths if found
      */
     private async convertBacktracePaths(input: string) {
-        if (!this.launchConfiguration.enableConsolePkgToSourcePathConversion) {
+        if (!this.launchConfiguration.rewriteDevicePathsInLogs) {
             return input;
         }
         // Why does this not work? It should work, but it doesn't. I'm not sure why.

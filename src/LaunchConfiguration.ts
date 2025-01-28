@@ -235,7 +235,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * - ...ce/main.brs(10:20)
      * @default true
      */
-    enableConsolePkgToSourcePathConversion?: boolean;
+    rewriteDevicePathsInLogs?: boolean;
 
     /**
      * The port that should be used when installing the package. Defaults to 80.

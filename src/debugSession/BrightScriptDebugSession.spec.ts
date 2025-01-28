@@ -1184,7 +1184,7 @@ describe('BrightScriptDebugSession', () => {
             }
 
             beforeEach(() => {
-                session['launchConfiguration'].enableConsolePkgToSourcePathConversion = true;
+                session['launchConfiguration'].rewriteDevicePathsInLogs = true;
             });
 
             it('modifies pkg locations if found multiline', async () => {
