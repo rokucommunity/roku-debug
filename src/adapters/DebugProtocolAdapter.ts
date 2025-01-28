@@ -150,10 +150,6 @@ export class DebugProtocolAdapter {
         return this.client?.supportsExceptionBreakpoints;
     }
 
-    public get currentThreadId(): number {
-        return this.client?.primaryThread;
-    }
-
     /**
      * The debugger needs to tell us when to be active (i.e. when the package was deployed)
      */
