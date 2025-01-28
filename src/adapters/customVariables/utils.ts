@@ -11,10 +11,11 @@ const forceLoad = false;
  */
 export function pushCustomVariableToContainer(container: EvaluateContainer, customVariable: EvaluateContainer) {
     if (!container.children.some(child => child.name.toLowerCase() === customVariable.name.toLowerCase() && child.presentationHint === customVariable.presentationHint)) {
-        if (forceLoad && customVariable.type !== VariableType.Array && customVariable.type !== VariableType.AssociativeArray) {
+        if (forceLoad) {
             customVariable.lazy = false;
-            customVariable.evaluateNow = true;
         }
+
+        customVariable.isCustom = true;
 
         if (customVariable.type === VariableType.AssociativeArray || customVariable.type === VariableType.Object || customVariable.type === VariableType.SubtypedObject) {
             customVariable.highLevelType = HighLevelType.object;

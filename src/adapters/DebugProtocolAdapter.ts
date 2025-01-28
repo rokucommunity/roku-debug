@@ -1003,8 +1003,8 @@ export interface EvaluateContainer {
     elementCount?: number;
     highLevelType?: HighLevelType;
     children: EvaluateContainer[];
+    isCustom?: boolean;
     lazy?: boolean;
-    evaluateNow?: boolean;
     presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 

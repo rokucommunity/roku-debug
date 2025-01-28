@@ -1240,7 +1240,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         // Determine if the variable has changed
                         didVariableChange = v.type !== tempVar.type;
                     } catch (error) {
-                        if (v.presentationHint.lazy) {
+                        if (v.presentationHint?.lazy) {
                             logger.error('Error getting variables', error);
                             tempVar = new Variable('Error', `❌ Error: ${error.message}`);
                             tempVar.type = '';
@@ -1620,12 +1620,34 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return threads;
     }
 
-    private async getVariableFromResult(result: EvaluateContainer, frameId: number) {
+    private async getVariableFromResult(result: EvaluateContainer, frameId: number, maxDepth = 1) {
         let v: AugmentedVariable;
 
         if (result) {
             if (this.enableDebugProtocol) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
+                if (result.isCustom && !result.lazy) {
+                    try {
+                        // We should not wait to resolve this variable later. Fetch, store, and merge the results right away.
+                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: result.evaluateName, frameId: frameId }, util.getVariablePath(result.evaluateName));
+                        let newResult = await this.rokuAdapter.getVariable(evalArgs.expression, frameId);
+                        result.children = newResult.children;
+                        result.value = newResult.value;
+                        result.type = newResult.type;
+                        result.highLevelType = newResult.highLevelType;
+                        result.keyType = newResult.keyType;
+                        result.elementCount = newResult.elementCount;
+                    } catch (error) {
+                        logger.error('Error getting variables', error);
+                        result.children = [];
+                        result.value = `❌ Error: ${error.message}`;
+                        result.type = '';
+                        result.highLevelType = undefined;
+                        result.keyType = undefined;
+                        result.elementCount = 0;
+                    }
+                }
+
                 if (result.keyType) {
                     let value = `${result.value ?? result.type}`;
                     // check to see if this is an dictionary or a list
@@ -1639,14 +1661,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                     v.type = result.type;
                 } else {
-                    if (result.evaluateNow && !result.lazy) {
-                        // We should not wait to resolve this variable later. Fetch, store, and merge the results right away.
-                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: result.evaluateName, frameId: frameId }, util.getVariablePath(result.evaluateName));
-                        let newResult = await this.rokuAdapter.getVariable(evalArgs.expression, frameId);
-                        result.children = newResult.children;
-                        result.value = newResult.value;
-                        result.evaluateNow = false;
-                    }
 
                     let value: string;
                     if (result.type === VariableType.Invalid) {
@@ -1689,10 +1703,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 v.presentationHint = { kind: 'virtual' };
             }
 
-            if (result.children) {
+            if (result.children && maxDepth > 0) {
                 v.childVariables = await Promise.all(result.children.map(async (childContainer) => {
-                    return this.getVariableFromResult(childContainer, frameId);
+                    return this.getVariableFromResult(childContainer, frameId, maxDepth - 1);
                 }));
+            } else {
+                v.childVariables = [];
             }
 
             // if the var is an array and debugProtocol is enabled, include the array size
