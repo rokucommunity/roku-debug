@@ -47,6 +47,8 @@ export class SourceMapManager {
                 } catch (e) {
                     this.logger.error(`Error loading or parsing source map for '${sourceMapPath}'`, e);
                 }
+            } else {
+                this.cache[key] = null;
             }
         }
         return this.cache[key];
@@ -88,36 +90,44 @@ export class SourceMapManager {
         let sourceMapPath = `${filePath}.map`;
 
         //if we have a source map, use it
-        if (await fsExtra.pathExists(sourceMapPath)) {
-            let parsedSourceMap = await this.getSourceMap(sourceMapPath);
-            if (parsedSourceMap) {
-                let position = await SourceMapConsumer.with(parsedSourceMap, null, (consumer) => {
-                    return consumer.originalPositionFor({
-                        line: currentLineNumber,
-                        column: currentColumnIndex,
-                        bias: SourceMapConsumer.LEAST_UPPER_BOUND
-                    });
-                });
-                if (position?.source) {
-                    return {
-                        columnIndex: position.column,
-                        lineNumber: position.line,
-                        filePath: position.source
-                    };
-                }
-                //if the sourcemap didn't find a valid mapped location,
-                //try to fallback to the first source referenced in the map
-                if (parsedSourceMap.sources?.[0]) {
-                    return {
-                        columnIndex: currentColumnIndex,
-                        lineNumber: currentLineNumber,
-                        filePath: parsedSourceMap.sources[0]
-                    };
-                } else {
-                    return undefined;
-                }
+        let parsedSourceMap = await this.getSourceMap(sourceMapPath);
+        if (parsedSourceMap) {
+            const consumer = await this.getSourceMapConsumer(sourceMapPath, parsedSourceMap);
+            let position = consumer.originalPositionFor({
+                line: currentLineNumber,
+                column: currentColumnIndex,
+                bias: SourceMapConsumer.LEAST_UPPER_BOUND
+            });
+            if (position?.source) {
+                return {
+                    columnIndex: position.column,
+                    lineNumber: position.line,
+                    filePath: position.source
+                };
+            }
+            //if the sourcemap didn't find a valid mapped location,
+            //try to fallback to the first source referenced in the map
+            if (parsedSourceMap.sources?.[0]) {
+                return {
+                    columnIndex: currentColumnIndex,
+                    lineNumber: currentLineNumber,
+                    filePath: parsedSourceMap.sources[0]
+                };
+            } else {
+                return undefined;
             }
         }
+    }
+
+    private sourceMapConsumerCache: Record<string, SourceMapConsumer> = {};
+
+    private async getSourceMapConsumer(sourceMapPath: string, parsedSourceMap: RawSourceMap) {
+        let consumer = this.sourceMapConsumerCache[sourceMapPath];
+        if (!consumer) {
+            consumer = await new SourceMapConsumer(parsedSourceMap);
+            this.sourceMapConsumerCache[sourceMapPath] = consumer;
+        }
+        return consumer;
     }
 
     /**
@@ -158,5 +168,13 @@ export class SourceMapManager {
             }
         }));
         return locations;
+    }
+
+    public destroy() {
+        // Clean up all source map consumers
+        for (let key in this.sourceMapConsumerCache) {
+            let consumer = this.sourceMapConsumerCache[key];
+            consumer?.destroy?.();
+        }
     }
 }
