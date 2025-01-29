@@ -704,6 +704,8 @@ export class DebugProtocolAdapter {
             highLevelType: undefined,
             //non object/array variables don't have a key type
             keyType: variable.keyType as unknown as KeyType,
+            namedVariables: 0,
+            indexedVariables: 0,
             //non object/array variables still need to have an empty `children` array to help upstream logic. The `keyType` being null is how we know it doesn't actually have children
             children: []
         };
@@ -711,6 +713,16 @@ export class DebugProtocolAdapter {
         // In preparation for adding custom variables some variables need to be marked
         // as keyable/container like even thought they are not on device.
         overrideKeyTypesForCustomVariables(this, container);
+
+        if (container.keyType === KeyType.integer) {
+            container.indexedVariables = variable.childCount ?? variable.children?.length ?? undefined;
+            // We do not know how many named variables there are, if any, so we will always tell the DAP client to ask for them
+            container.namedVariables = 1;
+        } else if (container.keyType === KeyType.string) {
+            // container.namedVariables = variable.childCount ?? variable.children?.length ?? undefined;
+            // Force one so DAP client always asks for all named vars
+            container.namedVariables = 1;
+        }
 
         //recursively generate children containers
         if ([KeyType.integer, KeyType.string].includes(container.keyType) && Array.isArray(variable.children)) {

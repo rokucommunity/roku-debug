@@ -1377,6 +1377,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v.childVariables = tempVar.childVariables;
                     v.value = tempVar.value;
                     v.type = tempVar.type;
+                    v.indexedVariables = tempVar.indexedVariables;
+                    v.namedVariables = tempVar.namedVariables;
 
                     if (v?.presentationHint?.lazy || v.isResolved) {
                         // If this was a lazy variable we need to respond with the updated variable and not the children
@@ -1446,12 +1448,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         if (Array.isArray(updatedVariables) && args.filter === 'named') {
-            //only send the variable range requested by the debugger
-            if (!args.count) {
-                updatedVariables = updatedVariables.slice(v.indexedVariables);
-            } else {
-                updatedVariables = updatedVariables.slice(start + v.indexedVariables, start + v.indexedVariables + args.count);
-            }
+            // We currently do not support named variable paging so we always send all named variables
+            updatedVariables = updatedVariables.slice(v.indexedVariables);
         }
 
         let filteredUpdatedVariables = this.launchConfiguration.showHiddenVariables !== true ? updatedVariables.filter(
@@ -1786,14 +1784,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 if (result.keyType) {
                     let value = `${result.value ?? result.type}`;
+                    let indexedVariables = result.indexedVariables;
+                    let namedVariables = result.namedVariables;
+
+                    if (indexedVariables === undefined || namedVariables === undefined) {
+                        // If either indexed or named variables are undefined, we should tell the debugger to ask for everything
+                        // by supplying undefined values for both
+                        indexedVariables = undefined;
+                        namedVariables = undefined;
+                    }
+
                     // check to see if this is an dictionary or a list
                     if (result.keyType === 'Integer') {
                         // list type
-                        v = new Variable(result.name, value, refId, result.indexedVariables, result.namedVariables);
-                        this.variables[refId] = v;
+                        v = new Variable(result.name, value, refId, indexedVariables, namedVariables);
                     } else if (result.keyType === 'String') {
                         // dictionary type
-                        v = new Variable(result.name, value, refId, result.indexedVariables, result.namedVariables);
+                        v = new Variable(result.name, value, refId, indexedVariables, namedVariables);
                     }
                     v.type = result.type;
                 } else {
