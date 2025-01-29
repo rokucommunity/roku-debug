@@ -1026,6 +1026,7 @@ export interface EvaluateContainer {
     highLevelType?: HighLevelType;
     children: EvaluateContainer[];
     isCustom?: boolean;
+    evaluateNow?: boolean;
     presentationHint?: DebugProtocol.VariablePresentationHint;
 }
 

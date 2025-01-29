@@ -1760,7 +1760,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (result) {
             if (this.enableDebugProtocol) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
-                if (result.isCustom && !result.presentationHint?.lazy) {
+                if (result.isCustom && !result.presentationHint?.lazy && result.evaluateNow) {
                     try {
                         // We should not wait to resolve this variable later. Fetch, store, and merge the results right away.
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: result.evaluateName, frameId: frameId }, util.getVariablePath(result.evaluateName));
