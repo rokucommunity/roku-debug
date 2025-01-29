@@ -98,6 +98,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public logger = logger.createLogger(`[session]`);
 
+    private readonly isWindowsPlatform = process.platform.startsWith('win');
+
     /**
      * A sequence used to help identify log statements for requests
      */
@@ -697,12 +699,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         let originalLocation = await this.projectManager.getSourceLocation(potentialPath.path, potentialPath.lineNumber, potentialPath.columnNumber);
                         if (originalLocation) {
                             let replacement: string;
-                            if (originalLocation.filePath.startsWith('/')) {
-                                replacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
-                            } else {
-                                replacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                            replacement = originalLocation.filePath.replaceAll(' ', '%20');
+                            if (replacement !== originalLocation.filePath) {
+                                if (this.isWindowsPlatform) {
+                                    replacement = `vscode://file/${replacement}`;
+                                } else {
+                                    replacement = `file://${replacement}`;
+                                }
                             }
-
+                            replacement += `:${originalLocation.lineNumber}`;
                             if (potentialPath.columnNumber !== undefined) {
                                 replacement += `:${originalLocation.columnIndex + 1}`;
                             }
@@ -765,8 +770,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // Why does this not work? It should work, but it doesn't. I'm not sure why.
         // let matches = input.matchAll(this.deviceBacktraceObjectRegex);
 
-        // https://regex101.com/r/y1koaV/1
-        let deviceBacktraceObjectRegex = /{\s+filename:\s+"([A-Za-z0-9_\.\/\:]+)"\s+function\:\s+".+"\s+(line_number\:\s+(\d+))\s+}/gi;
+        // https://regex101.com/r/y1koaV/2
+        let deviceBacktraceObjectRegex = /{\s+filename:\s+"([A-Za-z0-9_\.\/\: ]+)"\s+function\:\s+".+"\s+(line_number\:\s+(\d+))\s+}/gi;
         let matches = [];
         let match = deviceBacktraceObjectRegex.exec(input);
         while (match) {
@@ -783,11 +788,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 let originalLocation = await this.projectManager.getSourceLocation(filePath, lineNumber);
                 if (originalLocation) {
                     let fileReplacement: string;
-                    if (originalLocation.filePath.startsWith('/')) {
-                        fileReplacement = `file:/${originalLocation.filePath}:${originalLocation.lineNumber}`;
-                    } else {
-                        fileReplacement = `file://${originalLocation.filePath}:${originalLocation.lineNumber}`;
+                    fileReplacement = originalLocation.filePath.replaceAll(' ', '%20');
+                    if (fileReplacement !== originalLocation.filePath) {
+                        if (this.isWindowsPlatform) {
+                            fileReplacement = `vscode://file/${fileReplacement}`;
+                        } else {
+                            fileReplacement = `file://${fileReplacement}`;
+                        }
                     }
+                    fileReplacement += `:${originalLocation.lineNumber}`;
 
                     let lineNumberReplacement = fullLineNumber.replace(lineNumber.toString(), originalLocation.lineNumber.toString());
 

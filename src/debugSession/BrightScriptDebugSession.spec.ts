@@ -1188,14 +1188,15 @@ describe('BrightScriptDebugSession', () => {
                 session['launchConfiguration'].rewriteDevicePathsInLogs = true;
             });
 
-            it('modifies pkg locations if found multiline', async () => {
+            it('modifies pkg locations if found multiline windows', async () => {
+                (session as any).isWindowsPlatform = true;
                 await doTest(
                     `{
                         backtrace: "
                             file/line: pkg:/components/services/NetworkBase.bs:251
                             Function networkbase_runtaskthread() As Void
 
-                            file/line: pkg:/components/services/NetworkBase.bs:654
+                            file/line: pkg:/components/services/Network Base.bs:654
                             Function networkbase_processresponse(message As Object) As Object
 
                             file/line: pkg:/source/sgnode.bs:109
@@ -1206,13 +1207,13 @@ describe('BrightScriptDebugSession', () => {
                     }`,
                     `{
                         backtrace: "
-                            file/line: file://c:/project/components/services/NetworkBase.bs:260
+                            file/line: c:/project/components/services/NetworkBase.bs:260
                             Function networkbase_runtaskthread() As Void
 
-                            file/line: file://c:/project/components/services/NetworkBase.bs:700
+                            file/line: vscode://file/c:/project/components/services/Network%20Base.bs:700
                             Function networkbase_processresponse(message As Object) As Object
 
-                            file/line: file://c:/project/components/services/sgnode.bs:100
+                            file/line: c:/project/components/services/sgnode.bs:100
                             Function sgnode_createnode(nodetype As String, fields As Dynamic) As Object"
                         message: "Divide by Zero."
                         number: 20
@@ -1220,105 +1221,169 @@ describe('BrightScriptDebugSession', () => {
                     }`,
                     [
                         { filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260 },
-                        { filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 700 },
+                        { filePath: `c:/project/components/services/Network Base.bs`, lineNumber: 700 },
                         { filePath: `c:/project/components/services/sgnode.bs`, lineNumber: 100 }
                     ]
                 );
             });
 
+            it('modifies pkg locations if found multiline mac/linx', async () => {
+                (session as any).isWindowsPlatform = false;
+                await doTest(
+                    `{
+                        backtrace: "
+                            file/line: pkg:/components/services/NetworkBase.bs:251
+                            Function networkbase_runtaskthread() As Void
+
+                            file/line: pkg:/components/services/Network Base.bs:654
+                            Function networkbase_processresponse(message As Object) As Object
+
+                            file/line: pkg:/source/sgnode.bs:109
+                            Function sgnode_createnode(nodetype As String, fields As Dynamic) As Object"
+                        message: "Divide by Zero."
+                        number: 20
+                        rethrown: false
+                    }`,
+                    `{
+                        backtrace: "
+                            file/line: /project/components/services/NetworkBase.bs:260
+                            Function networkbase_runtaskthread() As Void
+
+                            file/line: file:///project/components/services/Network%20Base.bs:700
+                            Function networkbase_processresponse(message As Object) As Object
+
+                            file/line: /project/components/services/sgnode.bs:100
+                            Function sgnode_createnode(nodetype As String, fields As Dynamic) As Object"
+                        message: "Divide by Zero."
+                        number: 20
+                        rethrown: false
+                    }`,
+                    [
+                        { filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 },
+                        { filePath: `/project/components/services/Network Base.bs`, lineNumber: 700 },
+                        { filePath: `/project/components/services/sgnode.bs`, lineNumber: 100 }
+                    ]
+                );
+            });
+
             it('modifies windows pkg locations with just line', async () => {
+                (session as any).isWindowsPlatform = true;
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs:251`,
-                    ` file://c:/project/components/services/NetworkBase.bs:260`,
+                    ` c:/project/components/services/NetworkBase.bs:260`,
                     [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
                 );
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs(251)`,
-                    ` file://C:/project/components/services/NetworkBase.bs:260`,
+                    ` C:/project/components/services/NetworkBase.bs:260`,
                     [{ filePath: `C:/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
                 );
                 await doTest(
                     ` ...rvices/NetworkBase.bs:251`,
-                    ` file://c:/project/components/services/NetworkBase.bs:260`,
+                    ` c:/project/components/services/NetworkBase.bs:260`,
                     [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
                 );
                 await doTest(
                     ` ...rvices/NetworkBase.bs(251)`,
-                    ` file://c:/project/components/services/NetworkBase.bs:260`,
+                    ` c:/project/components/services/NetworkBase.bs:260`,
                     [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+                await doTest(
+                    ` ...rvices/Network Base.bs(251)`,
+                    ` vscode://file/c:/project/components/services/Network%20Base.bs:260`,
+                    [{ filePath: `c:/project/components/services/Network Base.bs`, lineNumber: 260 }]
                 );
             });
 
             it('modifies windows pkg locations with line and column', async () => {
+                (session as any).isWindowsPlatform = true;
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs:251:10`,
-                    ` file://c:/project/components/services/NetworkBase.bs:260:12`,
+                    ` c:/project/components/services/NetworkBase.bs:260:12`,
                     [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
                 );
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs(251:10)`,
-                    ` file://C:/project/components/services/NetworkBase.bs:260:12`,
+                    ` C:/project/components/services/NetworkBase.bs:260:12`,
                     [{ filePath: `C:/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
                 );
                 await doTest(
                     ` ...rvices/NetworkBase.bs:251:10`,
-                    ` file://c:/project/components/services/NetworkBase.bs:260:12`,
+                    ` c:/project/components/services/NetworkBase.bs:260:12`,
                     [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
                 );
                 await doTest(
                     ` ...rvices/NetworkBase.bs(251:10)`,
-                    ` file://c:/project/components/services/NetworkBase.bs:260:12`,
+                    ` c:/project/components/services/NetworkBase.bs:260:12`,
                     [{ filePath: `c:/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+                await doTest(
+                    ` ...rvices/Network Base.bs(251:10)`,
+                    ` vscode://file/c:/project/components/services/Network%20Base.bs:260:12`,
+                    [{ filePath: `c:/project/components/services/Network Base.bs`, lineNumber: 260, columnIndex: 11 }]
                 );
             });
 
             it('modifies mac/linx pkg locations with just line', async () => {
+                (session as any).isWindowsPlatform = false;
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs:251`,
-                    ` file://project/components/services/NetworkBase.bs:260`,
+                    ` /project/components/services/NetworkBase.bs:260`,
                     [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
                 );
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs(251)`,
-                    ` file://project/components/services/NetworkBase.bs:260`,
+                    ` /project/components/services/NetworkBase.bs:260`,
                     [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
                 );
                 await doTest(
                     ` ...rvices/NetworkBase.bs:251`,
-                    ` file://project/components/services/NetworkBase.bs:260`,
+                    ` /project/components/services/NetworkBase.bs:260`,
                     [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
                 );
                 await doTest(
                     ` ...rvices/NetworkBase.bs(251)`,
-                    ` file://project/components/services/NetworkBase.bs:260`,
+                    ` /project/components/services/NetworkBase.bs:260`,
                     [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260 }]
+                );
+                await doTest(
+                    ` ...rvices/Network Base.bs(251)`,
+                    ` file:///project/components/services/Network%20Base.bs:260`,
+                    [{ filePath: `/project/components/services/Network Base.bs`, lineNumber: 260 }]
                 );
             });
 
             it('modifies mac/linx pkg locations line and column', async () => {
+                (session as any).isWindowsPlatform = false;
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs:251:10`,
-                    ` file://project/components/services/NetworkBase.bs:260:12`,
+                    ` /project/components/services/NetworkBase.bs:260:12`,
                     [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
                 );
                 await doTest(
                     ` pkg:/components/services/NetworkBase.bs(251:10)`,
-                    ` file://project/components/services/NetworkBase.bs:260:12`,
+                    ` /project/components/services/NetworkBase.bs:260:12`,
                     [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
                 );
                 await doTest(
                     ` ...rvices/NetworkBase.bs:251:10`,
-                    ` file://project/components/services/NetworkBase.bs:260:12`,
+                    ` /project/components/services/NetworkBase.bs:260:12`,
                     [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
                 );
                 await doTest(
                     ` ...rvices/NetworkBase.bs(251:10)`,
-                    ` file://project/components/services/NetworkBase.bs:260:12`,
+                    ` /project/components/services/NetworkBase.bs:260:12`,
                     [{ filePath: `/project/components/services/NetworkBase.bs`, lineNumber: 260, columnIndex: 11 }]
+                );
+                await doTest(
+                    ` ...rvices/Network Base.bs(251:10)`,
+                    ` file:///project/components/services/Network%20Base.bs:260:12`,
+                    [{ filePath: `/project/components/services/Network Base.bs`, lineNumber: 260, columnIndex: 11 }]
                 );
             });
 
             it('supports device native backtrace object if seen in logs mac file paths', async () => {
+                (session as any).isWindowsPlatform = false;
                 await doTest(
                     `some other logs
                     <Component: roAssociativeArray> =
@@ -1331,7 +1396,7 @@ describe('BrightScriptDebugSession', () => {
                     `some other logs
                     <Component: roAssociativeArray> =
                     {
-                        filename: "file://project/source/main.brs:20"
+                        filename: "/project/source/main.brs:20"
                         function: "main(inputarguments As Object) As Void"
                         line_number: 20
                     }
@@ -1340,7 +1405,31 @@ describe('BrightScriptDebugSession', () => {
                 );
             });
 
+            it('supports device native backtrace object if seen in logs mac file paths with spaces', async () => {
+                (session as any).isWindowsPlatform = false;
+                await doTest(
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "pkg:/source/main file.brs"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 9
+                    }
+                    some other logs`,
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "file:///project/source/main%20file.brs:20"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 20
+                    }
+                    some other logs`,
+                    [{ filePath: `/project/source/main file.brs`, lineNumber: 20 }]
+                );
+            });
+
             it('supports device native backtrace object if seen in logs windows file paths', async () => {
+                (session as any).isWindowsPlatform = true;
                 await doTest(
                     `some other logs
                     <Component: roAssociativeArray> =
@@ -1353,12 +1442,35 @@ describe('BrightScriptDebugSession', () => {
                     `some other logs
                     <Component: roAssociativeArray> =
                     {
-                        filename: "file://C:/project/source/main.brs:20"
+                        filename: "C:/project/source/main.brs:20"
                         function: "main(inputarguments As Object) As Void"
                         line_number: 20
                     }
                     some other logs`,
                     [{ filePath: `C:/project/source/main.brs`, lineNumber: 20 }]
+                );
+            });
+
+            it('supports device native backtrace object if seen in logs windows file paths with spaces', async () => {
+                (session as any).isWindowsPlatform = true;
+                await doTest(
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "pkg:/source/main file.brs"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 9
+                    }
+                    some other logs`,
+                    `some other logs
+                    <Component: roAssociativeArray> =
+                    {
+                        filename: "vscode://file/C:/project/source/main%20file.brs:20"
+                        function: "main(inputarguments As Object) As Void"
+                        line_number: 20
+                    }
+                    some other logs`,
+                    [{ filePath: `C:/project/source/main file.brs`, lineNumber: 20 }]
                 );
             });
 
