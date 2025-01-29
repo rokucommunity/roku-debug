@@ -7,9 +7,8 @@ export function pushIfAppManagerVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$upTime',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetUptime().TotalMilliseconds()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfAppManagerVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$screenSaverTimeout',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetScreensaverTimeout()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,7 +25,7 @@ export function pushIfAppManagerVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$lastExitInfo',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetLastExitInfo()`,
         value: VariableType.AssociativeArray,
         children: []

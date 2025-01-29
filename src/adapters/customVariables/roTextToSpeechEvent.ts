@@ -7,9 +7,8 @@ export function pushRoTextToSpeechEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$data',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetData()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoTextToSpeechEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$index',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetIndex()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,7 +25,7 @@ export function pushRoTextToSpeechEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$info',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetInfo()`,
         value: VariableType.AssociativeArray,
         children: []

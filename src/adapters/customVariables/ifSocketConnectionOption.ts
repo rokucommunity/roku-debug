@@ -7,9 +7,8 @@ export function pushIfSocketConnectionOptionVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$keepAlive',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetKeepAlive()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketConnectionOptionVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$linger',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetLinger()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSocketConnectionOptionVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$maxSeg',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMaxSeg()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSocketConnectionOptionVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$noDelay',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetNoDelay()`,
-        lazy: true,
         value: '',
         children: []
     });

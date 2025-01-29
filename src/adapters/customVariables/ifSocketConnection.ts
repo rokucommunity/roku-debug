@@ -7,9 +7,8 @@ export function pushIfSocketConnectionVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isListening',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsListening()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketConnectionVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isConnected',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsConnected()`,
-        lazy: true,
         value: '',
         children: []
     });

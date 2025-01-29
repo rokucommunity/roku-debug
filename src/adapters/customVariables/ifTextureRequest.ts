@@ -7,9 +7,8 @@ export function pushIfTextureRequestVariables(adapter: DebugProtocolAdapter, exp
     pushCustomVariableToContainer(container, {
         name: '$id',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetId()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfTextureRequestVariables(adapter: DebugProtocolAdapter, exp
     pushCustomVariableToContainer(container, {
         name: '$state',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetState()`,
-        lazy: true,
         value: '',
         children: []
     });

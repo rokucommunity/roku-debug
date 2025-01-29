@@ -7,9 +7,8 @@ export function pushIfSGNodeHttpAgentAccessVariables(adapter: DebugProtocolAdapt
     pushCustomVariableToContainer(container, {
         name: '$httpAgent',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.getHttpAgent()`,
-        lazy: true,
         value: '',
         children: []
     });

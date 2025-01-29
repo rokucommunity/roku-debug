@@ -7,9 +7,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$bitmap',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetBitmap()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$x',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetX()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$y',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetY()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$width',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetWidth()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$height',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetHeight()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +52,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$wrap',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetWrap()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -67,9 +61,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$time',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetTime()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -77,9 +70,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$pretranslationX',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetPretranslationX()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -87,9 +79,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$pretranslationY',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetPretranslationY()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -97,9 +88,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$scaleMode',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetScaleMode()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -107,9 +97,8 @@ export function pushIfRegionVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$collisionType',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCollisionType()`,
-        lazy: true,
         value: '',
         children: []
     });

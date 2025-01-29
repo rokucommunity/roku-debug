@@ -7,9 +7,8 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$ttl',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetTTL()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$reuseAddr',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetReuseAddr()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$oobInline',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetOOBInline()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$sendBuf',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetSendBuf()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$rcvBuf',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetRcvBuf()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +52,8 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$sendTimeout',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetSendTimeout()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -67,9 +61,8 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$receiveTimeout',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetReceiveTimeout()`,
-        lazy: true,
         value: '',
         children: []
     });

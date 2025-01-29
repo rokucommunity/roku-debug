@@ -7,9 +7,8 @@ export function pushIfMessagePortVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$peekMessage',
         type: VariableType.Object,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.PeekMessage()`,
-        lazy: true,
         value: '',
         children: []
     });

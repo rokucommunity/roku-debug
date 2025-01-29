@@ -7,9 +7,8 @@ export function pushRoTextureRequestEventVariables(adapter: DebugProtocolAdapter
     pushCustomVariableToContainer(container, {
         name: '$id',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetId()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoTextureRequestEventVariables(adapter: DebugProtocolAdapter
     pushCustomVariableToContainer(container, {
         name: '$state',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetState()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushRoTextureRequestEventVariables(adapter: DebugProtocolAdapter
     pushCustomVariableToContainer(container, {
         name: '$uri',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetURI()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -38,7 +35,7 @@ export function pushRoTextureRequestEventVariables(adapter: DebugProtocolAdapter
     pushCustomVariableToContainer(container, {
         name: '$bitmap',
         type: VariableType.Object,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetBitmap()`,
         value: '',
         children: []

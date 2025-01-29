@@ -7,9 +7,8 @@ export function pushIfToStrVariables(adapter: DebugProtocolAdapter, expression: 
     pushCustomVariableToContainer(container, {
         name: '$str',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.ToStr()`,
-        lazy: true,
         value: '',
         children: []
     });

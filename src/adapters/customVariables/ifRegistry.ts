@@ -7,9 +7,8 @@ export function pushIfRegistryVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$spaceAvailable',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetSpaceAvailable()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,7 +16,7 @@ export function pushIfRegistryVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$sectionList',
         type: VariableType.List,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetSectionList()`,
         value: '',
         children: []

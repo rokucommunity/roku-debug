@@ -7,9 +7,8 @@ export function pushIfProgramGuideVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$version',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetVersion()`,
-        lazy: true,
         value: '',
         children: []
     });

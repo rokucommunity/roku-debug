@@ -7,9 +7,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isListItemSelected',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsListItemSelected()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isStatusMessage',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsStatusMessage()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isFullResult',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsFullResult()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isPaused',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsPaused()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isResumed',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsResumed()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +52,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isPartialResult',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsPartialResult()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -67,9 +61,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isRequestFailed',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsRequestFailed()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -77,9 +70,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isTimedMetaData',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsTimedMetaData()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -87,9 +79,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$isRequestSucceeded',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsRequestSucceeded()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -97,9 +88,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$message',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMessage()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -107,7 +97,7 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$info',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetInfo()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -116,9 +106,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$formatDetected',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsFormatDetected()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -126,9 +115,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$segmentDownloadStarted',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsSegmentDownloadStarted()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -136,9 +124,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$streamSegmentInfo',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsStreamSegmentInfo()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -146,9 +133,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$index',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetIndex()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -156,9 +142,8 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$downloadSegmentInfo',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsDownloadSegmentInfo()`,
-        lazy: true,
         value: '',
         children: []
     });

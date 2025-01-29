@@ -10,9 +10,12 @@ const forceLoad = false;
  * Push a custom variable to the container if it doesn't already exist.
  */
 export function pushCustomVariableToContainer(container: EvaluateContainer, customVariable: EvaluateContainer) {
-    if (!container.children.some(child => child.name.toLowerCase() === customVariable.name.toLowerCase() && child.presentationHint === customVariable.presentationHint)) {
+    if (!container.children.some(child => child.name.toLowerCase() === customVariable.name.toLowerCase() && child.presentationHint?.kind === customVariable.presentationHint?.kind)) {
         if (forceLoad) {
-            customVariable.lazy = false;
+            if (!customVariable.presentationHint) {
+                customVariable.presentationHint = {};
+            }
+            customVariable.presentationHint.lazy = false;
         }
 
         customVariable.isCustom = true;

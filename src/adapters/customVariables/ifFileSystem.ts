@@ -7,9 +7,8 @@ export function pushIfFileSystemVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$volumeList',
         type: VariableType.List,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetVolumeList()`,
-        lazy: true,
         value: '',
         children: []
     });

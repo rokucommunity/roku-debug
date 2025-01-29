@@ -7,9 +7,8 @@ export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$isHdmiStatus',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsHdmiStatus()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$message',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMessage()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,7 +25,7 @@ export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$index',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetIndex()`,
         value: 0,
         children: []
@@ -36,7 +34,7 @@ export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$info',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetInfo()`,
         value: VariableType.AssociativeArray,
         children: []

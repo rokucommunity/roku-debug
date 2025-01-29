@@ -7,7 +7,7 @@ export function pushIfSGNodeBoundingRectVariables(adapter: DebugProtocolAdapter,
     pushCustomVariableToContainer(container, {
         name: '$boundingRect',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.boundingRect()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -16,7 +16,7 @@ export function pushIfSGNodeBoundingRectVariables(adapter: DebugProtocolAdapter,
     pushCustomVariableToContainer(container, {
         name: '$localBoundingRect',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.localBoundingRect()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -25,7 +25,7 @@ export function pushIfSGNodeBoundingRectVariables(adapter: DebugProtocolAdapter,
     pushCustomVariableToContainer(container, {
         name: '$sceneBoundingRect',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.sceneBoundingRect()`,
         value: VariableType.AssociativeArray,
         children: []

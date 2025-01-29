@@ -7,9 +7,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$timeZoneOffset',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetTimeZoneOffset()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$seconds',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.AsSeconds()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$secondsLong',
         type: VariableType.LongInteger,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.AsSecondsLong()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$iso',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.ToISOString()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$dateLocalized',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.asDateStringLoc("full")`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +52,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$timeLocalized',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.asTimeStringLoc("short")`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -67,9 +61,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$date',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.AsDateStringNoParam()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -77,9 +70,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$year',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetYear()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -87,9 +79,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$month',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMonth()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -97,9 +88,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$dayOfMonth',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDayOfMonth()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -107,9 +97,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$hours',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetHours()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -117,9 +106,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$minutes',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMinutes()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -127,9 +115,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$seconds',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetSeconds()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -137,9 +124,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$milliseconds',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMilliseconds()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -147,9 +133,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$lastDayOfMonth',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetLastDayOfMonth()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -157,9 +142,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$dayOfWeek',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDayOfWeek()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -167,9 +151,8 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$weekday',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetWeekday()`,
-        lazy: true,
         value: '',
         children: []
     });

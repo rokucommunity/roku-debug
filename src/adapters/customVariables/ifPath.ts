@@ -7,9 +7,8 @@ export function pushIfPathVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$isValid',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsValid()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,7 +16,7 @@ export function pushIfPathVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$split',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.Split()`,
         value: VariableType.AssociativeArray,
         children: []

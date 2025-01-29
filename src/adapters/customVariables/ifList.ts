@@ -7,9 +7,8 @@ export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$tail',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetTail()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$head',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetHead()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$count',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.Count()`,
-        lazy: true,
         value: '',
         children: []
     });

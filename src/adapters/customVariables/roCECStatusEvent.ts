@@ -7,9 +7,8 @@ export function pushRoCECStatusEventVariables(adapter: DebugProtocolAdapter, exp
     pushCustomVariableToContainer(container, {
         name: '$message',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMessage()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,7 +16,7 @@ export function pushRoCECStatusEventVariables(adapter: DebugProtocolAdapter, exp
     pushCustomVariableToContainer(container, {
         name: '$index',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetIndex()`,
         value: 0,
         children: []
@@ -26,7 +25,7 @@ export function pushRoCECStatusEventVariables(adapter: DebugProtocolAdapter, exp
     pushCustomVariableToContainer(container, {
         name: '$info',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetInfo()`,
         value: VariableType.AssociativeArray,
         children: []

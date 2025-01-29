@@ -7,9 +7,8 @@ export function pushIfXMLListVariables(adapter: DebugProtocolAdapter, expression
     pushCustomVariableToContainer(container, {
         name: '$attributes',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetAttributes()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfXMLListVariables(adapter: DebugProtocolAdapter, expression
     pushCustomVariableToContainer(container, {
         name: '$text',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetText()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfXMLListVariables(adapter: DebugProtocolAdapter, expression
     pushCustomVariableToContainer(container, {
         name: '$childElements',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetChildElements()`,
-        lazy: true,
         value: '',
         children: []
     });

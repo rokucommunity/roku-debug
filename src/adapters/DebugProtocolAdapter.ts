@@ -22,6 +22,7 @@ import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 import { insertCustomVariables, overrideKeyTypesForCustomVariables } from './customVariableUtils';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -747,7 +748,10 @@ export class DebugProtocolAdapter {
 
         //show virtual variables in the UI
         if (variable.isVirtual) {
-            container.presentationHint = 'virtual';
+            if (!container.presentationHint) {
+                container.presentationHint = {};
+            }
+            container.presentationHint.kind = 'virtual';
         }
 
         return container;
@@ -1022,8 +1026,7 @@ export interface EvaluateContainer {
     highLevelType?: HighLevelType;
     children: EvaluateContainer[];
     isCustom?: boolean;
-    lazy?: boolean;
-    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
+    presentationHint?: DebugProtocol.VariablePresentationHint;
 }
 
 export enum KeyType {

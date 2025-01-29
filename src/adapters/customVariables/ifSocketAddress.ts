@@ -7,9 +7,8 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$address',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetAddress()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$hostName',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetHostName()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$port',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetPort()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$isAddressValid',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsAddressValid()`,
-        lazy: true,
         value: '',
         children: []
     });

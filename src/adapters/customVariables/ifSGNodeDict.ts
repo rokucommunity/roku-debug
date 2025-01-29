@@ -7,9 +7,8 @@ export function pushIfSGNodeDictVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$subtype',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.subtype()`,
-        lazy: true,
         value: '',
         children: []
     });

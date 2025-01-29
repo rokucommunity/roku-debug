@@ -7,9 +7,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$model',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetModel()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$modelDisplayName',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetModelDisplayName()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$modelType',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetModelType()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,7 +34,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$modelDetails',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetModelDetails()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -46,9 +43,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$friendlyName',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetFriendlyName()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -56,7 +52,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$osVersion',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetOSVersion()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -65,9 +61,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$rida',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetRIDA()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -75,9 +70,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$isRIDADisabled',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsRIDADisabled()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -85,9 +79,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$channelClientId',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetChannelClientId()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -95,9 +88,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$userCountryCode',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetUserCountryCode()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -105,9 +97,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$randomUUID',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetRandomUUID()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -115,9 +106,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$timeZone',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetTimeZone()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -125,9 +115,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$currentLocale',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCurrentLocale()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -135,9 +124,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$countryCode',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCountryCode()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -145,9 +133,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$preferredCaptionLanguage',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetPreferredCaptionLanguage()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -155,9 +142,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$timeSinceLastKeypress',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.TimeSinceLastKeypress()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -165,7 +151,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$drmInfoEx',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetDrmInfoEx()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -174,9 +160,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$captionsMode',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCaptionsMode()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -184,9 +169,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$clockFormat',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetClockFormat()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -194,9 +178,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$isClockValid',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsClockValid()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -204,9 +187,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$generalMemoryLevel',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetGeneralMemoryLevel()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -214,9 +196,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$isStoreDemoMode',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsStoreDemoMode()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -224,9 +205,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$linkStatus',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetLinkStatus()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -234,9 +214,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$connectionType',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetConnectionType()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -244,9 +223,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$internetStatus',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetInternetStatus()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -254,9 +232,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$externalIp',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetExternalIp()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -264,7 +241,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$ipAddrs',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetIPAddrs()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -273,7 +250,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$connectionInfo',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetConnectionInfo()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -282,9 +259,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$displayType',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDisplayType()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -292,9 +268,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$displayMode',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDisplayMode()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -302,9 +277,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$displayAspectRatio',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDisplayAspectRatio()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -312,7 +286,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$displaySize',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetDisplaySize()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -321,9 +295,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$videoMode',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetVideoMode()`,
-        lazy: true,
         value: VariableType.AssociativeArray,
         children: []
     });
@@ -331,7 +304,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$displayProperties',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetDisplayProperties()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -340,7 +313,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$supportedGraphicsResolutions',
         type: VariableType.Array,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetSupportedGraphicsResolutions()`,
         value: VariableType.Array,
         children: []
@@ -349,7 +322,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$uiResolution',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetUIResolution()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -358,9 +331,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$graphicsPlatform',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetGraphicsPlatform()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -368,9 +340,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$audioOutputChannel',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetAudioOutputChannel()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -378,9 +349,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$isPassThruCodecActive',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsPassthruCodecActive()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -388,9 +358,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$soundEffectsVolume',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetSoundEffectsVolume()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -398,9 +367,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$isAudioGuideEnabled',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsAudioGuideEnabled()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -408,9 +376,8 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$isAutoplayEnabled',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsAutoplayEnabled()`,
-        lazy: true,
         value: '',
         children: []
     });

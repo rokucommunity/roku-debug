@@ -7,9 +7,8 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$identity',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetIdentity()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,7 +16,7 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$userRegionData',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetUserRegionData()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -26,7 +25,7 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$channelCred',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetChannelCred()`,
         value: VariableType.AssociativeArray,
         children: []

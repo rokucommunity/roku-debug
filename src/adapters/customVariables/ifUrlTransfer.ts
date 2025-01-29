@@ -7,9 +7,8 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$url',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.getUrl()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$userAgent',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetUserAgent()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$failureReason',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetFailureReason()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$request',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetRequest()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$identity',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetIdentity()`,
-        lazy: true,
         value: '',
         children: []
     });

@@ -8,9 +8,8 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$isRequestSucceeded',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsRequestSucceeded()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -18,7 +17,7 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$response',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetResponse()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -27,9 +26,8 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$isRequestFailed',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsRequestFailed()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +35,8 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$status',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetStatus()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +44,8 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$statusMessage',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetStatusMessage()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +53,8 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     pushCustomVariableToContainer(container, {
         name: '$isRequestInterrupted',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsRequestInterrupted()`,
-        lazy: true,
         value: 0,
         children: []
     });

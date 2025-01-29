@@ -7,9 +7,8 @@ export function pushIfEnumVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$isNext',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsNext()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfEnumVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$isEmpty',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsEmpty()`,
-        lazy: true,
         value: '',
         children: []
     });

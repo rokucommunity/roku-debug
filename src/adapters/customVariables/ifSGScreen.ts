@@ -7,9 +7,8 @@ export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$messagePort',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMessagePort()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,7 +16,7 @@ export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$globalNode',
         type: VariableType.Object,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.getGlobalNode()`,
         value: '',
         children: []
@@ -26,7 +25,7 @@ export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$scene',
         type: VariableType.Object,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetScene()`,
         value: '',
         children: []

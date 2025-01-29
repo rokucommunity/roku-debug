@@ -7,9 +7,8 @@ export function pushIfStringVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$string',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetString()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfStringVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$isEmpty',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsEmpty()`,
-        lazy: true,
         value: '',
         children: []
     });

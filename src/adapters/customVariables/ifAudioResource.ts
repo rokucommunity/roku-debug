@@ -7,9 +7,8 @@ export function pushIfAudioResourceVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$isPlaying',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsPlaying()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfAudioResourceVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$maxSimulStreams',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.MaxSimulStreams()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,7 +25,7 @@ export function pushIfAudioResourceVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$metadata',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetMetaData()`,
         value: VariableType.AssociativeArray,
         children: []

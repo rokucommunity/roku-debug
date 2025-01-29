@@ -7,7 +7,7 @@ export function pushIfListToArrayVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$array',
         type: VariableType.Array,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.ToArray()`,
         value: '',
         children: []

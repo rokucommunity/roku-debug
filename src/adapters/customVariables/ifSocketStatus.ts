@@ -7,9 +7,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eAgain',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eAgain()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eAlready',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eAlready()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eBadAddr',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eBadAddr()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eDestAddrReq',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eDestAddrReq()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eHostUnreach',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eHostUnreach()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +52,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eInvalid',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eInvalid()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -67,9 +61,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eInProgress',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eInProgress()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -77,9 +70,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eWouldBlock',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eWouldBlock()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -87,9 +79,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eSuccess',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eSuccess()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -97,9 +88,8 @@ export function pushIfSocketStatusVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$eOK',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eOK()`,
-        lazy: true,
         value: '',
         children: []
     });

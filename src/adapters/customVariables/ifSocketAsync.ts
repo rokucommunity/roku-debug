@@ -7,9 +7,8 @@ export function pushIfSocketAsyncVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$isReadable',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsReadable()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketAsyncVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$isWritable',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsWritable()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSocketAsyncVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$isException',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsException()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSocketAsyncVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$id',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetID()`,
-        lazy: true,
         value: '',
         children: []
     });

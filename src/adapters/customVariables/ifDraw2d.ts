@@ -7,9 +7,8 @@ export function pushIfDraw2DVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$width',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetWidth()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfDraw2DVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$height',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetHeight()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfDraw2DVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$alphaEnable',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetAlphaEnable()`,
-        lazy: true,
         value: '',
         children: []
     });

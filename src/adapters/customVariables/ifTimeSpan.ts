@@ -7,9 +7,8 @@ export function pushIfTimeSpanVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$totalMilliseconds',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.TotalMilliseconds()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfTimeSpanVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$totalSeconds',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.TotalSeconds()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfTimeSpanVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$totalMicroseconds',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.TotalMicroseconds()`,
-        lazy: true,
         value: '',
         children: []
     });

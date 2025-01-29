@@ -7,9 +7,8 @@ export function pushIfVideoPlayerVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$playbackDuration',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetPlaybackDuration()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,7 +16,7 @@ export function pushIfVideoPlayerVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$audioTracks',
         type: VariableType.Array,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetAudioTracks()`,
         value: '',
         children: []
@@ -26,7 +25,7 @@ export function pushIfVideoPlayerVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$captionRenderer',
         type: 'roCaptionRenderer',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetCaptionRenderer()`,
         value: '',
         children: []

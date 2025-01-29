@@ -7,9 +7,8 @@ export function pushRoSGScreenEventVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$isScreenClosed',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsScreenClosed()`,
-        lazy: true,
         value: '',
         children: []
     });

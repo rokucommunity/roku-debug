@@ -7,9 +7,8 @@ export function pushIfCECStatusVariables(adapter: DebugProtocolAdapter, expressi
     pushCustomVariableToContainer(container, {
         name: '$isActiveSource',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsActiveSource()`,
-        lazy: true,
         value: '',
         children: []
     });

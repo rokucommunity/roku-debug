@@ -7,7 +7,7 @@ export function pushIfSGNodeFieldVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$fieldTypes',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.getFieldTypes()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -16,7 +16,7 @@ export function pushIfSGNodeFieldVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$threadInfo',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.threadInfo()`,
         value: VariableType.AssociativeArray,
         children: []

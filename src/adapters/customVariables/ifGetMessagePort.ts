@@ -7,9 +7,8 @@ export function pushIfGetMessagePortVariables(adapter: DebugProtocolAdapter, exp
     pushCustomVariableToContainer(container, {
         name: '$messagePort',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMessagePort()`,
-        lazy: true,
         value: '',
         children: []
     });

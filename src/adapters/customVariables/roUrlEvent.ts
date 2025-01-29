@@ -7,9 +7,8 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$int',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetInt()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$responseCode',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetResponseCode()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$failureReason',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetFailureReason()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$string',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetString()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,7 +43,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$responseHeaders',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetResponseHeaders()`,
         value: VariableType.AssociativeArray,
         children: []
@@ -56,9 +52,8 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$targetIpAddress',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetTargetIpAddress()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -66,7 +61,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
     pushCustomVariableToContainer(container, {
         name: '$responseHeadersArray',
         type: VariableType.Array,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetResponseHeadersArray()`,
         value: '',
         children: []

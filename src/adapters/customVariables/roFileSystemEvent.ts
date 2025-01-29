@@ -7,9 +7,8 @@ export function pushRoFileSystemEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$isStorageDeviceAdded',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsStorageDeviceAdded()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoFileSystemEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$isStorageDeviceRemoved',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsStorageDeviceRemoved()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushRoFileSystemEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$message',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMessage()`,
-        lazy: true,
         value: '',
         children: []
     });

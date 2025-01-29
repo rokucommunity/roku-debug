@@ -7,9 +7,8 @@ export function pushIfImageMetadataVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$metadata',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMetadata()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfImageMetadataVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$thumbnail',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetThumbnail()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfImageMetadataVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$rawExif',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetRawExif()`,
-        lazy: true,
         value: '',
         children: []
     });

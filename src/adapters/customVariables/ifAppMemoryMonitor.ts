@@ -7,9 +7,8 @@ export function pushIfAppMemoryMonitorVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$memoryLimitPercent',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMemoryLimitPercent()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfAppMemoryMonitorVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$channelAvailableMemory',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetChannelAvailableMemory()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,7 +25,7 @@ export function pushIfAppMemoryMonitorVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$channelMemoryLimit',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetChannelMemoryLimit()`,
         value: VariableType.AssociativeArray,
         children: []

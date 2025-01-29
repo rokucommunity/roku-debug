@@ -7,9 +7,8 @@ export function pushRoMicrophoneEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$isRecordingDone',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsRecordingDone()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoMicrophoneEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$isRecordingInfo',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsRecordingInfo()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,7 +25,7 @@ export function pushRoMicrophoneEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$info',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetInfo()`,
         value: VariableType.AssociativeArray,
         children: []

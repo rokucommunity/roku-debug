@@ -7,9 +7,8 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
     pushCustomVariableToContainer(container, {
         name: '$hexString',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.ToHexString()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
     pushCustomVariableToContainer(container, {
         name: '$base64String',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.ToBase64String()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
     pushCustomVariableToContainer(container, {
         name: '$asciiString',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.ToAsciiString()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
     pushCustomVariableToContainer(container, {
         name: '$crc32',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCRC32()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
     pushCustomVariableToContainer(container, {
         name: '$littleEndianCPU',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsLittleEndianCPU()`,
-        lazy: true,
         value: '',
         children: []
     });

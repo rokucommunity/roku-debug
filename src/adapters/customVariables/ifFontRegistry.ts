@@ -7,7 +7,7 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$families',
         type: VariableType.List,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetFamilies()`,
         value: '',
         children: []
@@ -16,9 +16,8 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$defaultFont',
         type: VariableType.Object,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDefaultFont()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -26,9 +25,8 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$defaultFontSize',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDefaultFontSize()`,
-        lazy: true,
         value: '',
         children: []
     });

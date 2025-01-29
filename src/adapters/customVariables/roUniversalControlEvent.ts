@@ -7,9 +7,8 @@ export function pushRoUniversalControlEventVariables(adapter: DebugProtocolAdapt
     pushCustomVariableToContainer(container, {
         name: '$int',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetInt()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoUniversalControlEventVariables(adapter: DebugProtocolAdapt
     pushCustomVariableToContainer(container, {
         name: '$key',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetKey()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushRoUniversalControlEventVariables(adapter: DebugProtocolAdapt
     pushCustomVariableToContainer(container, {
         name: '$remoteID',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetRemoteID()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushRoUniversalControlEventVariables(adapter: DebugProtocolAdapt
     pushCustomVariableToContainer(container, {
         name: '$id',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetID()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushRoUniversalControlEventVariables(adapter: DebugProtocolAdapt
     pushCustomVariableToContainer(container, {
         name: '$isPress',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsPress()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +52,8 @@ export function pushRoUniversalControlEventVariables(adapter: DebugProtocolAdapt
     pushCustomVariableToContainer(container, {
         name: '$char',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetChar()`,
-        lazy: true,
         value: '',
         children: []
     });

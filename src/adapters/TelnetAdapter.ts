@@ -686,7 +686,7 @@ export class TelnetAdapter {
                 //look up the name of the xml element
                 ...await this.getVariable(`${expression}.GetName()`),
                 name: '$name',
-                presentationHint: 'virtual'
+                presentationHint: { kind: 'virtual' }
             });
 
             children.push({

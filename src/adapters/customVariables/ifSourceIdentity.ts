@@ -7,9 +7,8 @@ export function pushIfSourceIdentityVariables(adapter: DebugProtocolAdapter, exp
     pushCustomVariableToContainer(container, {
         name: '$sourceIdentity',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetSourceIdentity()`,
-        lazy: true,
         value: '',
         children: []
     });

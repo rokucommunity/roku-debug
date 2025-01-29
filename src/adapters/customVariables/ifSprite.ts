@@ -7,9 +7,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$x',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetX()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$y',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetY()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$z',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetZ()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$drawableFlag',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDrawableFlag()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$memberFlags',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMemberFlags()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +52,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$collidableFlags',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCollidableFlags()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -67,9 +61,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$region',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetRegion()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -77,9 +70,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$data',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetData()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -87,9 +79,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$collision',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.CheckCollision()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -97,7 +88,7 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$multipleCollisions',
         type: VariableType.Array,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.CheckMultipleCollisions()`,
         value: '',
         children: []

@@ -7,9 +7,8 @@ export function pushRoSocketEventVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(container, {
         name: '$socketID',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetSocketID()`,
-        lazy: true,
         value: '',
         children: []
     });

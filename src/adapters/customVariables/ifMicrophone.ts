@@ -7,9 +7,8 @@ export function pushIfMicrophoneVariables(adapter: DebugProtocolAdapter, express
     pushCustomVariableToContainer(container, {
         name: '$canRecord',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.CanRecord()`,
-        lazy: true,
         value: '',
         children: []
     });

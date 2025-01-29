@@ -7,9 +7,8 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$address',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetAddress()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$sendToAddress',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetSendToAddress()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$receivedFromAddress',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetReceivedFromAddress()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$countRcvBuf',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCountRcvBuf()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$countSendBuf',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCountSendBuf()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -57,9 +52,8 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
     pushCustomVariableToContainer(container, {
         name: '$status',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.Status()`,
-        lazy: true,
         value: '',
         children: []
     });

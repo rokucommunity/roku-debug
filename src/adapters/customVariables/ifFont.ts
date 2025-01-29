@@ -7,9 +7,8 @@ export function pushIfFontVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$oneLineHeight',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetOneLineHeight()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfFontVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$ascent',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetAscent()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfFontVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$descent',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDescent()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfFontVariables(adapter: DebugProtocolAdapter, expression: s
     pushCustomVariableToContainer(container, {
         name: '$maxAdvance',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMaxAdvance()`,
-        lazy: true,
         value: '',
         children: []
     });

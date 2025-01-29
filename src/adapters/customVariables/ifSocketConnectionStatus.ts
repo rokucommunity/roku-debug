@@ -7,9 +7,8 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$eConnaborted',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eConnAborted()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$eConnrefused',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eConnRefused()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$eConnReset',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eConnReset()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$eIsConn',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eIsConn()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfSocketConnectionStatusVariables(adapter: DebugProtocolAdap
     pushCustomVariableToContainer(container, {
         name: '$eNotConn',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.eNotConn()`,
-        lazy: true,
         value: '',
         children: []
     });

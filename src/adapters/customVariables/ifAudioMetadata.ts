@@ -7,9 +7,8 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$tags',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetTags()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$audioProperties',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetAudioProperties()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
     pushCustomVariableToContainer(container, {
         name: '$coverArt',
         type: '',
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCoverArt()`,
-        lazy: true,
         value: '',
         children: []
     });

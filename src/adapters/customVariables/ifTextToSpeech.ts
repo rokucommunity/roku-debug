@@ -7,9 +7,8 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$isEnabled',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsEnabled()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,7 +16,7 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$availableLanguages',
         type: VariableType.List,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetAvailableLanguages()`,
         value: '',
         children: []
@@ -26,9 +25,8 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$language',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetLanguage()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -36,7 +34,7 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$availableVoices',
         type: VariableType.List,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetAvailableVoices()`,
         value: '',
         children: []
@@ -45,9 +43,8 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$voice',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetVoice()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -55,9 +52,8 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$volume',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetVolume()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -65,9 +61,8 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$rate',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetRate()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -75,9 +70,8 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(container, {
         name: '$pitch',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetPitch()`,
-        lazy: true,
         value: '',
         children: []
     });

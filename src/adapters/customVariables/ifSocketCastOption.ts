@@ -7,9 +7,8 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$broadcast',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetBroadcast()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$multicastLoop',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMulticastLoop()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$multicastTTL',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetMulticastTTL()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
     pushCustomVariableToContainer(container, {
         name: '$id',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetID()`,
-        lazy: true,
         value: '',
         children: []
     });

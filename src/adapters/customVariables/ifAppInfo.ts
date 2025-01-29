@@ -7,9 +7,8 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
     pushCustomVariableToContainer(container, {
         name: '$id',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetID()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
     pushCustomVariableToContainer(container, {
         name: '$isDev',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsDev()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,9 +25,8 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
     pushCustomVariableToContainer(container, {
         name: '$version',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetVersion()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -37,9 +34,8 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
     pushCustomVariableToContainer(container, {
         name: '$title',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetTitle()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -47,9 +43,8 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
     pushCustomVariableToContainer(container, {
         name: '$devID',
         type: VariableType.String,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetDevID()`,
-        lazy: true,
         value: '',
         children: []
     });

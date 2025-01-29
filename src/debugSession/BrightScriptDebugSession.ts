@@ -1760,7 +1760,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (result) {
             if (this.enableDebugProtocol) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
-                if (result.isCustom && !result.lazy) {
+                if (result.isCustom && !result.presentationHint?.lazy) {
                     try {
                         // We should not wait to resolve this variable later. Fetch, store, and merge the results right away.
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: result.evaluateName, frameId: frameId }, util.getVariablePath(result.evaluateName));
@@ -1815,7 +1815,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                     // If the variable is lazy we must assign a refId to inform the system
                     // to request this variable again in the future for value resolution
-                    v = new Variable(result.name, value, result?.lazy ? refId : 0);
+                    v = new Variable(result.name, value, result?.presentationHint?.lazy ? refId : 0);
                 }
                 this.variables[refId] = v;
             } else {
@@ -1845,7 +1845,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.evaluateName = result.evaluateName;
             v.frameId = frameId;
             v.type = result.type;
-            v.presentationHint = result.presentationHint ? { kind: result.presentationHint, lazy: result.lazy } : undefined;
+            v.presentationHint = result.presentationHint ? { kind: result.presentationHint?.kind, lazy: result.presentationHint?.lazy } : undefined;
             if (util.isTransientVariable(v.name)) {
                 v.presentationHint = { kind: 'virtual' };
             }

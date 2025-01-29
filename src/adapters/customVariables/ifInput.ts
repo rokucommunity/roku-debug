@@ -7,7 +7,7 @@ export function pushIfInputVariables(adapter: DebugProtocolAdapter, expression: 
     pushCustomVariableToContainer(container, {
         name: '$messagePort',
         type: VariableType.Object,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetMessagePort()`,
         value: '',
         children: []

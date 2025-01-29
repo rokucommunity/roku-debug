@@ -7,9 +7,8 @@ export function pushRoDeviceInfoEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$isStatusMessage',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsStatusMessage()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -17,9 +16,8 @@ export function pushRoDeviceInfoEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$isCaptionModeChanged',
         type: VariableType.Boolean,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsCaptionModeChanged()`,
-        lazy: true,
         value: '',
         children: []
     });
@@ -27,7 +25,7 @@ export function pushRoDeviceInfoEventVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$info',
         type: VariableType.AssociativeArray,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetInfo()`,
         value: VariableType.AssociativeArray,
         children: []

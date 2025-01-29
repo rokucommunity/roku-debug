@@ -7,7 +7,7 @@ export function pushIfRegistrySectionVariables(adapter: DebugProtocolAdapter, ex
     pushCustomVariableToContainer(container, {
         name: '$keyList',
         type: VariableType.List,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetKeyList()`,
         value: '',
         children: []
