@@ -672,7 +672,7 @@ export class TelnetAdapter {
             let nodeChildren = <EvaluateContainer>{
                 name: '$children',
                 type: 'roArray',
-                highLevelType: 'array',
+                highLevelType: HighLevelType.array,
                 presentationHint: 'virtual',
                 evaluateName: `${expression}.getChildren(-1, 0)`,
                 children: []
@@ -804,9 +804,8 @@ export class TelnetAdapter {
             }
 
             const objectType = this.getObjectType(line);
-            const isRoSGNode = objectType?.startsWith('roSGNode');
             //handle collections
-            if (['roList', 'roArray', 'roAssociativeArray', 'roByteArray'].includes(objectType) || isRoSGNode) {
+            if (this.isScrapableContainObject(objectType)) {
                 let collectionEnd: ')' | ']' | '}';
                 if (line.includes('<Component: roList>')) {
                     collectionEnd = ')';
@@ -820,7 +819,7 @@ export class TelnetAdapter {
                     collectionEnd = ']';
                     child.highLevelType = HighLevelType.array;
                     child.type = this.getObjectType(line);
-                } else if (line.includes('<Component: roAssociativeArray>') || isRoSGNode) {
+                } else if (line.includes('<Component: roAssociativeArray>') || objectType?.startsWith('roSGNode')) {
                     collectionEnd = '}';
                     child.highLevelType = HighLevelType.object;
                     child.type = this.getObjectType(line);
@@ -882,6 +881,12 @@ export class TelnetAdapter {
             return PrimativeType.float;
         }
 
+    }
+
+    public isScrapableContainObject(objectType: string) {
+        const isRoSGNode = objectType?.startsWith('roSGNode');
+        //handle collections
+        return (['roList', 'roArray', 'roAssociativeArray', 'roByteArray'].includes(objectType) || isRoSGNode);
     }
 
     private getObjectChildren(expression: string, data: string): EvaluateContainer[] {

@@ -1826,7 +1826,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v = new Variable(result.name, result.type, refId, result.children?.length ?? 0, 0);
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'object') {
-                    let refId = this.getEvaluateRefId(result.evaluateName, frameId);
+                    let refId: number;
+                    //handle collections
+                    if ((this.rokuAdapter as TelnetAdapter).isScrapableContainObject(result.type)) {
+                        refId = this.getEvaluateRefId(result.evaluateName, frameId);
+                    }
                     v = new Variable(result.name, result.type, refId, 0, result.children?.length ?? 0);
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'function') {
