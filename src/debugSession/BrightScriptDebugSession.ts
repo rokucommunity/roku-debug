@@ -1522,6 +1522,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 //is at debugger prompt
             } else if (args.expression.trim()) {
+                // We trim and check that the expression is not an empty string so that we do not send empty expressions to the Roku
+                // This happens mostly when hovering over leading whitespace in the editor
+
                 let { evalArgs, variablePath } = await this.evaluateExpressionToTempVar(args, util.getVariablePath(args.expression));
 
                 //if we found a variable path (e.g. ['a', 'b', 'c']) then do a variable lookup because it's faster and more widely supported than `evaluate`
