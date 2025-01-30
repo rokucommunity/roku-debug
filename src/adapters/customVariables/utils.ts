@@ -3,10 +3,6 @@ import { HighLevelType } from '../../interfaces';
 import type { DebugProtocolAdapter } from '../DebugProtocolAdapter';
 import { KeyType, type EvaluateContainer } from '../DebugProtocolAdapter';
 
-// For debugging this can be flipped to true to force all custom variables to be loaded right away.
-// Useful for spotting issues with a specific custom variable.
-const autoResolveVirtualVariables = true;
-
 /**
  * Push a custom variable to the container if it doesn't already exist.
  */
