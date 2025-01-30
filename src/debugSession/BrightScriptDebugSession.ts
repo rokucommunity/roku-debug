@@ -1601,13 +1601,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (!variablePath && util.isAssignableExpression(args.expression)) {
             let varIndex = this.getNextVarIndex(args.frameId);
             let arrayVarName = this.tempVarPrefix + 'eval';
+            let command = '';
             if (varIndex === 0) {
-                const response = await this.rokuAdapter.evaluate(`if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []`, args.frameId);
-                console.log(response);
+                command += `if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []\n`;
             }
             let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
             returnVal.evalArgs.expression = `${arrayVarName}[${varIndex}]`;
-            let commandResults = await this.rokuAdapter.evaluate(statement, args.frameId);
+            command += statement;
+            let commandResults = await this.rokuAdapter.evaluate(command, args.frameId);
             if (commandResults.type === 'error') {
                 throw new Error(commandResults.message);
             }
