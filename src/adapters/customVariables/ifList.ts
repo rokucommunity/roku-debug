@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/iflist.md
 export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$tail',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: s
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$head',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfListVariables(adapter: DebugProtocolAdapter, expression: s
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$count',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },

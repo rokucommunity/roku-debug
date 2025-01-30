@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/rourlevent.md
 export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$int',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$responseCode',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$failureReason',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$string',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -40,7 +40,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$responseHeaders',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -49,7 +49,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$targetIpAddress',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -58,7 +58,7 @@ export function pushRoUrlEventVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$responseHeadersArray',
         type: VariableType.Array,
         presentationHint: { kind: 'virtual' },

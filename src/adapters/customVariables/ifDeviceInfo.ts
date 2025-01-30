@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/docs/references/brightscript/interfaces/ifdeviceinfo.md
 export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$model',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$modelDisplayName',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$modelType',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$modelDetails',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -40,7 +40,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$friendlyName',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -49,7 +49,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$osVersion',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -58,7 +58,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$rida',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -67,7 +67,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isRIDADisabled',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -76,7 +76,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$channelClientId',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -85,7 +85,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$userCountryCode',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -94,7 +94,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$randomUUID',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -103,7 +103,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$timeZone',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -112,7 +112,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$currentLocale',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -121,7 +121,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$countryCode',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -130,7 +130,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$preferredCaptionLanguage',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -139,7 +139,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$timeSinceLastKeypress',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -148,7 +148,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$drmInfoEx',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -157,7 +157,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$captionsMode',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -166,7 +166,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$clockFormat',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -175,7 +175,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isClockValid',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -184,7 +184,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$generalMemoryLevel',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -193,7 +193,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isStoreDemoMode',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -202,7 +202,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$linkStatus',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -211,7 +211,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$connectionType',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -220,7 +220,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$internetStatus',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -229,7 +229,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$externalIp',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -238,7 +238,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$ipAddrs',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -247,7 +247,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$connectionInfo',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -256,7 +256,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$displayType',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -265,7 +265,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$displayMode',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -274,7 +274,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$displayAspectRatio',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -283,7 +283,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$displaySize',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -292,7 +292,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$videoMode',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -301,7 +301,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$displayProperties',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -310,7 +310,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$supportedGraphicsResolutions',
         type: VariableType.Array,
         presentationHint: { kind: 'virtual' },
@@ -319,7 +319,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$uiResolution',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -328,7 +328,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$graphicsPlatform',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -337,7 +337,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$audioOutputChannel',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -346,7 +346,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isPassThruCodecActive',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -355,7 +355,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$soundEffectsVolume',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -364,7 +364,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isAudioGuideEnabled',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -373,7 +373,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isAutoplayEnabled',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },

@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocketaddress.md
 export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$address',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$hostName',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$port',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfSocketAddressVariables(adapter: DebugProtocolAdapter, expr
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isAddressValid',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },

@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifbytearray.md
 export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$hexString',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$base64String',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$asciiString',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$crc32',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -40,7 +40,7 @@ export function pushIfByteArrayVariables(adapter: DebugProtocolAdapter, expressi
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$littleEndianCPU',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },

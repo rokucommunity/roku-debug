@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/docs/references/brightscript/interfaces/ifurltransfer.md
 export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$url',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$userAgent',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$failureReason',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$request',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -40,7 +40,7 @@ export function pushIfUrlTransferVariables(adapter: DebugProtocolAdapter, expres
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$identity',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },

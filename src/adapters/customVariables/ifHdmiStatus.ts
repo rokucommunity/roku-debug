@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/docs/references/brightscript/interfaces/ifhdmistatus.md
 export function pushIfHdmiStatusVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isConnected',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfHdmiStatusVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$hdcpVersion',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfHdmiStatusVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isHdcp1_4Active',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfHdmiStatusVariables(adapter: DebugProtocolAdapter, express
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isHdcp2_2Active',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },

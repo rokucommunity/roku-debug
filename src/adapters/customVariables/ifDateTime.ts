@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/docs/references/brightscript/interfaces/ifdatetime.md
 export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$timeZoneOffset',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$seconds',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$secondsLong',
         type: VariableType.LongInteger,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$iso',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -40,7 +40,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$dateLocalized',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -49,7 +49,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$timeLocalized',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -58,7 +58,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$date',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -67,7 +67,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$year',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -76,7 +76,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$month',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -85,7 +85,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$dayOfMonth',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -94,7 +94,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$hours',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -103,7 +103,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$minutes',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -112,7 +112,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$seconds',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -121,7 +121,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$milliseconds',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -130,7 +130,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$lastDayOfMonth',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -139,7 +139,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$dayOfWeek',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -148,7 +148,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$weekday',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },

@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/docs/references/brightscript/interfaces/ifaudiometadata.md
 export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$tags',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$audioProperties',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfAudioMetadataVariables(adapter: DebugProtocolAdapter, expr
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$coverArt',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },

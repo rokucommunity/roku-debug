@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/roappmemorynotificationevent.md
 export function pushRoAppMemoryNotificationEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$info',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },

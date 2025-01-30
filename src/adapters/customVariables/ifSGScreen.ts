@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsgscreen.md
 export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$messagePort',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$globalNode',
         type: VariableType.Object,
         presentationHint: { kind: 'virtual' },
@@ -22,7 +22,7 @@ export function pushIfSGScreenVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$scene',
         type: VariableType.Object,
         presentationHint: { kind: 'virtual' },

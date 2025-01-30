@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifchannelstore.md
 export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$identity',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$userRegionData',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -22,7 +22,7 @@ export function pushIfChannelStoreVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$channelCred',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },

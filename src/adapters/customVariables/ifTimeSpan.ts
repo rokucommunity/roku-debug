@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/iftimespan.md
 export function pushIfTimeSpanVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$totalMilliseconds',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfTimeSpanVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$totalSeconds',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfTimeSpanVariables(adapter: DebugProtocolAdapter, expressio
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$totalMicroseconds',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },

@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/docs/references/brightscript/interfaces/ifappinfo.md
 export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$id',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isDev',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$version',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$title',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -40,7 +40,7 @@ export function pushIfAppInfoVariables(adapter: DebugProtocolAdapter, expression
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$devID',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },

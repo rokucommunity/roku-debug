@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/iffontregistry.md
 export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$families',
         type: VariableType.List,
         presentationHint: { kind: 'virtual' },
@@ -13,7 +13,7 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$defaultFont',
         type: VariableType.Object,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$defaultFontSize',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },

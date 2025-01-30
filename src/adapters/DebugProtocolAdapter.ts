@@ -378,6 +378,13 @@ export class DebugProtocolAdapter {
         return semver.satisfies(this.deviceInfo.brightscriptDebuggerVersion, '>=3.1.0');
     }
 
+    /**
+     * Determines if the current version of the debug protocol supports emitting compile error updates.
+     */
+    public get autoResolveVirtualVariables() {
+        return this.options.autoResolveVirtualVariables;
+    }
+
     private processingTelnetOutput = false;
     public async processTelnetOutput() {
         if (this.processingTelnetOutput) {

@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocketcastoption.md
 export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$broadcast',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$multicastLoop',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$multicastTTL',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfSocketCastOptionVariables(adapter: DebugProtocolAdapter, e
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$id',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },

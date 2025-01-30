@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/rohdmistatusevent.md
 export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isHdmiStatus',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, ex
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$message',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, ex
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$index',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual' },
@@ -31,7 +31,7 @@ export function pushRoHdmiStatusEventVariables(adapter: DebugProtocolAdapter, ex
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$info',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },

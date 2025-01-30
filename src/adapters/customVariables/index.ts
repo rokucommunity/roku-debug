@@ -3,6 +3,7 @@ import { pushCustomVariableToContainer } from './utils';
 import { pushIfAppInfoVariables } from './ifAppInfo';
 import { pushIfAppManagerVariables } from './ifAppManager';
 import { pushIfAppMemoryMonitorVariables } from './ifAppMemoryMonitor';
+import { pushIfArrayVariables } from './ifArray';
 import { pushIfAudioMetadataVariables } from './ifAudioMetadata';
 import { pushIfAudioResourceVariables } from './ifAudioResource';
 import { pushIfByteArrayVariables } from './ifByteArray';
@@ -83,6 +84,7 @@ export {
     pushIfAppInfoVariables,
     pushIfAppManagerVariables,
     pushIfAppMemoryMonitorVariables,
+    pushIfArrayVariables,
     pushIfAudioMetadataVariables,
     pushIfAudioResourceVariables,
     pushIfByteArrayVariables,

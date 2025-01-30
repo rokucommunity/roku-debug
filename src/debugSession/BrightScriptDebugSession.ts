@@ -347,6 +347,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.stagingDir ??= config.stagingFolderPath;
         config.emitChannelPublishedEvent ??= true;
         config.rewriteDevicePathsInLogs ??= true;
+        config.autoResolveVirtualVariables ??= true;
         return config;
     }
 
@@ -1617,6 +1618,63 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return returnVal;
     }
 
+    private async bulkEvaluateExpressionToTempVar(frameId: number, argsArray: Array<DebugProtocol.EvaluateArguments>, variablePathArray: Array<string[]>): Promise<{ evaluations: Array<{ evalArgs: DebugProtocol.EvaluateArguments; variablePath: string[] }>; bulkVarName: string }> {
+        let results = {
+            evaluations: [],
+            bulkVarName: ''
+        };
+        let storedVariables = [];
+        let command = '';
+        for (let i = 0; i < argsArray.length; i++) {
+            let args = argsArray[i];
+            let variablePath = variablePathArray[i];
+            let returnVal = { evalArgs: args, variablePath };
+            if (!variablePath && util.isAssignableExpression(args.expression)) {
+                let varIndex = this.getNextVarIndex(frameId);
+                let arrayVarName = this.tempVarPrefix + 'eval';
+                if (varIndex === 0) {
+                    command += `if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []\n`;
+                }
+                let statement = `try\n`;
+                statement += `${arrayVarName}[${varIndex}] = ${args.expression}\n`;
+                statement += `catch ${this.tempVarPrefix}_error\n`;
+                statement += `${arrayVarName}[${varIndex}] = "❌ Error: " + ${this.tempVarPrefix}_error.message\n`;
+                statement += `end try\n`;
+                returnVal.evalArgs.expression = `${arrayVarName}[${varIndex}]`;
+                command += statement;
+
+                storedVariables.push(`${arrayVarName}[${varIndex}]`);
+
+                returnVal.variablePath = [arrayVarName, varIndex.toString()];
+            }
+
+            results.evaluations[i] = returnVal;
+        }
+
+        if (command) {
+
+            // create a bulk container for the command results
+            let varIndex = this.getNextVarIndex(frameId);
+            let arrayVarName = this.tempVarPrefix + 'eval';
+            let bulkContainerStatement = `${arrayVarName}[${varIndex}] = [\n`;
+            for (let storedVariable of storedVariables) {
+                bulkContainerStatement += `${storedVariable},\n`;
+            }
+            bulkContainerStatement += `]`;
+
+            command += bulkContainerStatement;
+
+            results.bulkVarName = `${arrayVarName}[${varIndex}]`;
+
+            let commandResults = await this.rokuAdapter.evaluate(command, frameId);
+            if (commandResults.type === 'error') {
+                throw new Error(commandResults.message);
+            }
+        }
+
+        return results;
+    }
+
     /**
      * Called when the host stops debugging
      * @param response
@@ -1855,9 +1913,51 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             if (result.children && maxDepth > 0) {
-                v.childVariables = await Promise.all(result.children.map(async (childContainer) => {
-                    return this.getVariableFromResult(childContainer, frameId, maxDepth - 1);
-                }));
+                if (!v.childVariables) {
+                    v.childVariables = [];
+                }
+
+                if (this.enableDebugProtocol) {
+                    let indexMappedChildren = await Promise.all(
+                        result.children.map(async (child, index) => {
+                            let remapped = { child: child, index: index, evaluate: !!(child.isCustom && !child.presentationHint?.lazy && child.evaluateNow) };
+                            if (!remapped.evaluate) {
+                                v.childVariables[index] = await this.getVariableFromResult(child, frameId, maxDepth - 1);
+                            }
+                            return remapped;
+                        })
+                    );
+
+                    let childrenToEvaluate = indexMappedChildren.filter(x => x.evaluate);
+                    let evaluateArgsArray = childrenToEvaluate.map(x => {
+                        return { expression: x.child.evaluateName, frameId: frameId };
+                    });
+
+                    let variablePathArray = childrenToEvaluate.map(x => {
+                        return util.getVariablePath(x.child.evaluateName);
+                    });
+
+                    let bulkEvaluations = await this.bulkEvaluateExpressionToTempVar(frameId, evaluateArgsArray, variablePathArray);
+                    if (bulkEvaluations.bulkVarName) {
+                        let newResults = await this.rokuAdapter.getVariable(bulkEvaluations.bulkVarName, frameId);
+                        await Promise.all(childrenToEvaluate.map(async (mappedChild, index) => {
+                            let newResult = newResults.children[index];
+                            mappedChild.child.children = newResult.children;
+                            mappedChild.child.value = newResult.value;
+                            mappedChild.child.type = newResult.type;
+                            mappedChild.child.highLevelType = newResult.highLevelType;
+                            mappedChild.child.keyType = newResult.keyType;
+                            mappedChild.child.indexedVariables = newResult.indexedVariables;
+                            mappedChild.child.namedVariables = newResult.namedVariables;
+                            mappedChild.child.evaluateNow = false;
+                            v.childVariables[mappedChild.index] = await this.getVariableFromResult(mappedChild.child, frameId, maxDepth - 1);
+                        }));
+                    }
+                } else {
+                    v.childVariables = await Promise.all(result.children.map(async (childContainer) => {
+                        return this.getVariableFromResult(childContainer, frameId, maxDepth - 1);
+                    }));
+                }
             } else {
                 v.childVariables = [];
             }

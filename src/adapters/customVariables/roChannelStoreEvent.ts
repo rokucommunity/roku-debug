@@ -5,7 +5,7 @@ import { pushCustomVariableToContainer } from './utils';
 // https://developer.roku.com/en-ca/docs/references/brightscript/events/rochannelstoreevent.md
 export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isRequestSucceeded',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -14,7 +14,7 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$response',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },
@@ -23,7 +23,7 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isRequestFailed',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -32,7 +32,7 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$status',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -41,7 +41,7 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$statusMessage',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -50,7 +50,7 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$isRequestInterrupted',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },

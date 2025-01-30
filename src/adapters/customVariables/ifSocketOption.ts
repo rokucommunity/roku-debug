@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocketoption.md
 export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$ttl',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$reuseAddr',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$oobInline',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$sendBuf',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -40,7 +40,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$rcvBuf',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -49,7 +49,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$sendTimeout',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -58,7 +58,7 @@ export function pushIfSocketOptionVariables(adapter: DebugProtocolAdapter, expre
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$receiveTimeout',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },

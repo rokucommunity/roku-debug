@@ -4,7 +4,7 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsocket.md
 export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$address',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },
@@ -13,7 +13,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$sendToAddress',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },
@@ -22,7 +22,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$receivedFromAddress',
         type: '',
         presentationHint: { kind: 'virtual', lazy: true },
@@ -31,7 +31,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$countRcvBuf',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -40,7 +40,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$countSendBuf',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
@@ -49,7 +49,7 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$status',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
