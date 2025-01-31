@@ -33,7 +33,7 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     pushCustomVariableToContainer(adapter, container, {
         name: '$scene',
         type: VariableType.SubtypedObject,
-        presentationHint: { kind: 'virtual' },
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.getScene()`,
         value: '',
         children: []
