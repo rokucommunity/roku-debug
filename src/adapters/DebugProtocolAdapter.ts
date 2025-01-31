@@ -682,7 +682,12 @@ export class DebugProtocolAdapter {
         if (variableType === VariableType.SubtypedObject) {
             //subtyped objects can only have string values
             let parts = (variable.value as string).split('; ');
+            // Pull the primary type from the value.
             (variableType as string) = parts[0];
+
+            // Format the value to be more readable in the UI.
+            // Example: `roSGNode; Group` = `roSGNode (Group)`
+            (value as string) = `${parts[0]} (${parts[1]})`;
         } else if (variableType === VariableType.Object || variableType === VariableType.Interface) {
             // We want the type to reflect `roAppInfo` or `roDeviceInfo` for example in the UI
             // so set the type to be the value from the device
