@@ -142,6 +142,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             case RokuObjectTypes.roByteArray:
                 customVariables.pushIfByteArrayVariables(adapter, expression, container);
                 customVariables.pushIfEnumVariables(adapter, expression, container);
+                customVariables.pushIfArrayVariables(adapter, expression, container);
                 break;
             case RokuObjectTypes.roCECStatus:
                 customVariables.pushIfCECStatusVariables(adapter, expression, container);
@@ -221,6 +222,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             case RokuObjectTypes.List:
                 customVariables.pushIfListToArrayVariables(adapter, expression, container);
                 customVariables.pushIfEnumVariables(adapter, expression, container);
+                customVariables.pushIfArrayVariables(adapter, expression, container);
                 break;
             // case RokuObjectTypes.roLocalization:
             //     break;
@@ -324,6 +326,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 customVariables.pushIfListVariables(adapter, expression, container);
                 customVariables.pushIfXMLListVariables(adapter, expression, container);
                 customVariables.pushIfListToArrayVariables(adapter, expression, container);
+                customVariables.pushIfArrayVariables(adapter, expression, container);
                 break;
 
             // EVENTS
@@ -386,12 +389,12 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
         }
 
         // catch all for adding a count
-        if (container.children.length > 0 || container.type === 'Array') {
-            let count = container.children.filter((child) => child.presentationHint !== 'virtual').length;
-            customVariables.pushCustomVariableToContainer(container, {
+        if (container.type === VariableType.Array || container.type === VariableType.AssociativeArray) {
+            let count = container.children.filter((child) => child.presentationHint?.kind !== 'virtual').length;
+            customVariables.pushCustomVariableToContainer(adapter, container, {
                 name: '$count',
                 type: VariableType.Integer,
-                presentationHint: 'virtual',
+                presentationHint: { kind: 'virtual' },
                 evaluateName: count.toString(),
                 value: count.toString(),
                 children: []

@@ -349,6 +349,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.stagingDir ??= config.stagingFolderPath;
         config.emitChannelPublishedEvent ??= true;
         config.rewriteDevicePathsInLogs ??= true;
+        config.autoResolveVirtualVariables ??= false;
         return config;
     }
 
@@ -1357,16 +1358,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
                 if (v.childVariables.length === 0 || v.isResolved) {
                     let tempVar: AugmentedVariable;
-                    // Evaluate the variable
-                    try {
-                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
-                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
-                        tempVar = await this.getVariableFromResult(result, v.frameId);
-                        tempVar.frameId = v.frameId;
-                        // Determine if the variable has changed
-                        sendInvalidatedEvent = v.type !== tempVar.type;
-                    } catch (error) {
-                        if (v.presentationHint?.lazy) {
+                    if (!v.isResolved) {
+                        // Evaluate the variable
+                        try {
+                            let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
+                            let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
+                            tempVar = await this.getVariableFromResult(result, v.frameId);
+                            tempVar.frameId = v.frameId;
+                            // Determine if the variable has changed
+                            sendInvalidatedEvent = v.type !== tempVar.type || v.indexedVariables !== tempVar.indexedVariables;
+                        } catch (error) {
                             logger.error('Error getting variables', error);
                             tempVar = new Variable('Error', `❌ Error: ${error.message}`);
                             tempVar.type = '';
@@ -1374,20 +1375,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             sendInvalidatedEvent = true;
                             response.success = false;
                             response.message = error.message;
-                        } else {
-                            // Rethrow as for non-lazy vars we do not need to respond with a fake error variable
-                            throw error;
                         }
+
+                        // Merge the resulting updates together
+                        v.childVariables = tempVar.childVariables;
+                        v.value = tempVar.value;
+                        v.type = tempVar.type;
+                        v.indexedVariables = tempVar.indexedVariables;
+                        v.namedVariables = tempVar.namedVariables;
                     }
-
                     frameId = v.frameId;
-
-                    // Merge the resulting updates together
-                    v.childVariables = tempVar.childVariables;
-                    v.value = tempVar.value;
-                    v.type = tempVar.type;
-                    v.indexedVariables = tempVar.indexedVariables;
-                    v.namedVariables = tempVar.namedVariables;
 
                     if (v?.presentationHint?.lazy || v.isResolved) {
                         // If this was a lazy variable we need to respond with the updated variable and not the children
@@ -1407,6 +1404,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         v.variablesReference = 0;
                     }
 
+                    // If the variable was resolve in the past we may not have fetched a new temp var
+                    tempVar ??= v;
                     if (v?.presentationHint) {
                         v.presentationHint.lazy = tempVar.presentationHint?.lazy;
                     } else {
@@ -1531,6 +1530,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 //is at debugger prompt
             } else if (args.expression.trim()) {
+                // We trim and check that the expression is not an empty string so that we do not send empty expressions to the Roku
+                // This happens mostly when hovering over leading whitespace in the editor
+
                 let { evalArgs, variablePath } = await this.evaluateExpressionToTempVar(args, util.getVariablePath(args.expression));
 
                 //if we found a variable path (e.g. ['a', 'b', 'c']) then do a variable lookup because it's faster and more widely supported than `evaluate`
@@ -1566,14 +1568,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     commandResults.message = util.trimDebugPrompt(commandResults.message);
                     if (args.context === 'repl') {
-                        //clear variable cache since this action could have side-effects
+                        // Clear variable cache since this action could have side-effects
+                        // Only do this for REPL requests as hovers and watches should not clear the cache
                         this.clearState();
                         this.sendInvalidatedEvent(null, evalArgs.frameId);
                     }
-                    //if the adapter captured output (probably only telnet), print it to the vscode debug console
+
+                    // If the adapter captured output (probably only telnet), log the results
                     if (typeof commandResults.message === 'string') {
                         this.logger.debug('evaluateRequest', { commandResults });
                         if (args.context === 'repl') {
+                            // If the command was a repl command, send the output to the debug console for the developer as well
+                            // We limit this to repl only so you don't get extra logs when hovering over variables ro running watches
                             this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
                         }
                     }
@@ -1607,19 +1613,72 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (!variablePath && util.isAssignableExpression(args.expression)) {
             let varIndex = this.getNextVarIndex(args.frameId);
             let arrayVarName = this.tempVarPrefix + 'eval';
+            let command = '';
             if (varIndex === 0) {
-                const response = await this.rokuAdapter.evaluate(`if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []`, args.frameId);
-                console.log(response);
+                command += `if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []\n`;
             }
             let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
             returnVal.evalArgs.expression = `${arrayVarName}[${varIndex}]`;
-            let commandResults = await this.rokuAdapter.evaluate(statement, args.frameId);
+            command += statement;
+            let commandResults = await this.rokuAdapter.evaluate(command, args.frameId);
             if (commandResults.type === 'error') {
                 throw new Error(commandResults.message);
             }
             returnVal.variablePath = [arrayVarName, varIndex.toString()];
         }
         return returnVal;
+    }
+
+    private async bulkEvaluateExpressionToTempVar(frameId: number, argsArray: Array<DebugProtocol.EvaluateArguments>, variablePathArray: Array<string[]>): Promise<{ evaluations: Array<{ evalArgs: DebugProtocol.EvaluateArguments; variablePath: string[] }>; bulkVarName: string }> {
+        let results = {
+            evaluations: [],
+            bulkVarName: ''
+        };
+        let storedVariables = [];
+        let command = '';
+        for (let i = 0; i < argsArray.length; i++) {
+            let args = argsArray[i];
+            let variablePath = variablePathArray[i];
+            let returnVal = { evalArgs: args, variablePath };
+            if (!variablePath && util.isAssignableExpression(args.expression)) {
+                let varIndex = this.getNextVarIndex(frameId);
+                let arrayVarName = this.tempVarPrefix + 'eval';
+                if (varIndex === 0) {
+                    command += `if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []\n`;
+                }
+                let statement = `${arrayVarName}[${varIndex}] = ${args.expression}\n`;
+                returnVal.evalArgs.expression = `${arrayVarName}[${varIndex}]`;
+                command += statement;
+
+                storedVariables.push(`${arrayVarName}[${varIndex}]`);
+                returnVal.variablePath = [arrayVarName, varIndex.toString()];
+            }
+
+            results.evaluations[i] = returnVal;
+        }
+
+        if (command) {
+
+            // create a bulk container for the command results
+            let varIndex = this.getNextVarIndex(frameId);
+            let arrayVarName = this.tempVarPrefix + 'eval';
+            let bulkContainerStatement = `${arrayVarName}[${varIndex}] = [\n`;
+            for (let storedVariable of storedVariables) {
+                bulkContainerStatement += `${storedVariable},\n`;
+            }
+            bulkContainerStatement += `]`;
+
+            command += bulkContainerStatement;
+
+            results.bulkVarName = `${arrayVarName}[${varIndex}]`;
+
+            let commandResults = await this.rokuAdapter.evaluate(command, frameId);
+            if (commandResults.type === 'error') {
+                throw new Error(commandResults.message);
+            }
+        }
+
+        return results;
     }
 
     /**
@@ -1769,25 +1828,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (result) {
             if (this.enableDebugProtocol) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
-                if (result.isCustom && !result.lazy) {
+                if (result.isCustom && !result.presentationHint?.lazy && result.evaluateNow) {
                     try {
                         // We should not wait to resolve this variable later. Fetch, store, and merge the results right away.
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: result.evaluateName, frameId: frameId }, util.getVariablePath(result.evaluateName));
                         let newResult = await this.rokuAdapter.getVariable(evalArgs.expression, frameId);
-                        result.children = newResult.children;
-                        result.value = newResult.value;
-                        result.type = newResult.type;
-                        result.highLevelType = newResult.highLevelType;
-                        result.keyType = newResult.keyType;
-                        result.indexedVariables = newResult.indexedVariables;
-                        result.namedVariables = newResult.namedVariables;
+                        this.mergeEvaluateContainers(result, newResult);
                     } catch (error) {
                         logger.error('Error getting variables', error);
-                        result.children = [];
-                        result.value = `❌ Error: ${error.message}`;
-                        result.type = '';
-                        result.highLevelType = undefined;
-                        result.keyType = undefined;
+                        this.mergeEvaluateContainers(result, {
+                            name: result.name,
+                            evaluateName: result.evaluateName,
+                            children: [],
+                            value: `❌ Error: ${error.message}`,
+                            type: '',
+                            highLevelType: undefined,
+                            keyType: undefined
+                        });
                     }
                 }
 
@@ -1824,7 +1881,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                     // If the variable is lazy we must assign a refId to inform the system
                     // to request this variable again in the future for value resolution
-                    v = new Variable(result.name, value, result?.lazy ? refId : 0);
+                    v = new Variable(result.name, value, result?.presentationHint?.lazy ? refId : 0);
                 }
                 this.variables[refId] = v;
             } else {
@@ -1854,14 +1911,49 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             v.evaluateName = result.evaluateName;
             v.frameId = frameId;
             v.type = result.type;
-            v.presentationHint = result.presentationHint ? { kind: result.presentationHint, lazy: result.lazy } : undefined;
+            v.presentationHint = result.presentationHint ? { kind: result.presentationHint?.kind, lazy: result.presentationHint?.lazy } : undefined;
             if (util.isTransientVariable(v.name)) {
                 v.presentationHint = { kind: 'virtual' };
             }
 
             if (result.children && maxDepth > 0) {
-                v.childVariables = await Promise.all(result.children.map(async (childContainer) => {
-                    return this.getVariableFromResult(childContainer, frameId, maxDepth - 1);
+                if (!v.childVariables) {
+                    v.childVariables = [];
+                }
+
+                // Create a mapping of the children to their index so we can evaluate them in bulk
+                let indexMappedChildren = result.children.map((child, index) => {
+                    let remapped = { child: child, index: index, evaluate: !!(child.isCustom && !child.presentationHint?.lazy && child.evaluateNow) };
+                    return remapped;
+                });
+                if (this.enableDebugProtocol) {
+                    let childrenToEvaluate = indexMappedChildren.filter(x => x.evaluate);
+                    let evaluateArgsArray = childrenToEvaluate.map(x => {
+                        return { expression: x.child.evaluateName, frameId: frameId };
+                    });
+
+                    let variablePathArray = childrenToEvaluate.map(x => {
+                        return util.getVariablePath(x.child.evaluateName);
+                    });
+
+                    try {
+                        let bulkEvaluations = await this.bulkEvaluateExpressionToTempVar(frameId, evaluateArgsArray, variablePathArray);
+                        if (bulkEvaluations.bulkVarName) {
+                            let newResults = await this.rokuAdapter.getVariable(bulkEvaluations.bulkVarName, frameId);
+                            childrenToEvaluate.map((mappedChild, index) => {
+                                let newResult = newResults.children[index];
+                                this.mergeEvaluateContainers(mappedChild.child, newResult);
+                                mappedChild.child.evaluateNow = false;
+                                return mappedChild;
+                            });
+                        }
+                    } catch (error) {
+                        this.logger.error('Error getting bulk variables, will fall back to var by var lookups', error);
+                    }
+                }
+                // If bulk evaluations failed, there is fall back logic in `getVariableFromResult` to do individual evaluations
+                v.childVariables = await Promise.all(indexMappedChildren.map(async (mappedChild) => {
+                    return this.getVariableFromResult(mappedChild.child, frameId, maxDepth - 1);
                 }));
             } else {
                 v.childVariables = [];
@@ -1869,13 +1961,29 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // if the var is an array and debugProtocol is enabled, include the array size
             if (this.enableDebugProtocol && v.type === VariableType.Array) {
-                // TODO: lbah grekjnl
-                // v.value = `${v.type}(${result.elementCount})` as any;
+                if (isNaN(result.indexedVariables)) {
+                    v.value = v.type;
+                } else {
+                    v.value = `${v.type}(${result.indexedVariables})`;
+                }
             }
         }
         return v;
     }
 
+    /**
+     * Helper function to merge the results of an evaluate call into an existing EvaluateContainer
+     * Used primarily for custom variables
+     */
+    private mergeEvaluateContainers(original: EvaluateContainer, updated: EvaluateContainer) {
+        original.children = updated.children;
+        original.value = updated.value;
+        original.type = updated.type;
+        original.highLevelType = updated.highLevelType;
+        original.keyType = updated.keyType;
+        original.indexedVariables = updated.indexedVariables;
+        original.namedVariables = updated.namedVariables;
+    }
 
     private getEvaluateRefId(expression: string, frameId: number) {
         let evaluateRefId = `${expression}-${frameId}`;

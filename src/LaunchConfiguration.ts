@@ -159,10 +159,15 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      */
     deepLinkUrl?: string;
 
-    /*
+    /**
      * Enables automatic population of the debug variable panel on a breakpoint or runtime errors.
      */
     enableVariablesPanel: boolean;
+
+    /**
+     * Enables automatic population of the virtual variables.
+     */
+    autoResolveVirtualVariables: boolean;
 
     /**
      * If true, will attempt to skip false breakpoints created by the micro debugger, which are particularly prevalent for SG apps with multiple run loops.

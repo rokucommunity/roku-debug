@@ -22,6 +22,7 @@ import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 import { insertCustomVariables, overrideKeyTypesForCustomVariables } from './customVariableUtils';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -377,6 +378,13 @@ export class DebugProtocolAdapter {
         return semver.satisfies(this.deviceInfo.brightscriptDebuggerVersion, '>=3.1.0');
     }
 
+    /**
+     * Indicate if virtual variables should be auto resolved when they are encountered.
+     */
+    public get autoResolveVirtualVariables() {
+        return this.options.autoResolveVirtualVariables;
+    }
+
     private processingTelnetOutput = false;
     public async processTelnetOutput() {
         if (this.processingTelnetOutput) {
@@ -674,7 +682,12 @@ export class DebugProtocolAdapter {
         if (variableType === VariableType.SubtypedObject) {
             //subtyped objects can only have string values
             let parts = (variable.value as string).split('; ');
+            // Pull the primary type from the value.
             (variableType as string) = parts[0];
+
+            // Format the value to be more readable in the UI.
+            // Example: `roSGNode; Group` = `roSGNode (Group)`
+            (value as string) = `${parts[0]}(${parts[1]})`;
         } else if (variableType === VariableType.Object || variableType === VariableType.Interface) {
             // We want the type to reflect `roAppInfo` or `roDeviceInfo` for example in the UI
             // so set the type to be the value from the device
@@ -747,7 +760,10 @@ export class DebugProtocolAdapter {
 
         //show virtual variables in the UI
         if (variable.isVirtual) {
-            container.presentationHint = 'virtual';
+            if (!container.presentationHint) {
+                container.presentationHint = {};
+            }
+            container.presentationHint.kind = 'virtual';
         }
 
         return container;
@@ -1022,8 +1038,8 @@ export interface EvaluateContainer {
     highLevelType?: HighLevelType;
     children: EvaluateContainer[];
     isCustom?: boolean;
-    lazy?: boolean;
-    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
+    evaluateNow?: boolean;
+    presentationHint?: DebugProtocol.VariablePresentationHint;
 }
 
 export enum KeyType {

@@ -4,37 +4,36 @@ import { pushCustomVariableToContainer } from './utils';
 
 // https://developer.roku.com/en-ca/docs/references/brightscript/interfaces/ifsgnodechildren.md
 export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$parent',
         type: VariableType.SubtypedObject,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.getParent()`,
         value: '',
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$children',
         type: VariableType.Array,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.getChildren(-1, 0)`,
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$childCount',
         type: VariableType.Integer,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.getChildCount()`,
-        lazy: true,
         value: '',
         children: []
     });
 
-    pushCustomVariableToContainer(container, {
+    pushCustomVariableToContainer(adapter, container, {
         name: '$scene',
         type: VariableType.SubtypedObject,
-        presentationHint: 'virtual',
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.getScene()`,
         value: '',
         children: []
@@ -44,9 +43,8 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     // pushCustomVariableToContainer(container, {
     //     name: '$all',
     //     type: '',
-    //     presentationHint: 'virtual',
+    //     presentationHint: { kind: 'virtual', lazy: true },
     //     evaluateName: `${expression}.getAll()`,
-    //     lazy: true,
     //     value: '',
     //     children: []
     // });
@@ -54,9 +52,8 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     // pushCustomVariableToContainer(container, {
     //     name: '$roots',
     //     type: '',
-    //     presentationHint: 'virtual',
+    //     presentationHint: { kind: 'virtual', lazy: true },
     //     evaluateName: `${expression}.getRoots()`,
-    //     lazy: true,
     //     value: '',
     //     children: []
     // });
@@ -64,9 +61,8 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     // pushCustomVariableToContainer(container, {
     //     name: '$rootsMeta',
     //     type: '',
-    //     presentationHint: 'virtual',
+    //     presentationHint: { kind: 'virtual', lazy: true },
     //     evaluateName: `${expression}.getRootsMeta()`,
-    //     lazy: true,
     //     value: '',
     //     children: []
     // });
@@ -74,9 +70,8 @@ export function pushIfSGNodeChildrenVariables(adapter: DebugProtocolAdapter, exp
     // pushCustomVariableToContainer(container, {
     //     name: '$allMeta',
     //     type: '',
-    //     presentationHint: 'virtual',
+    //     presentationHint: { kind: 'virtual', lazy: true },
     //     evaluateName: `${expression}.getAllMeta()`,
-    //     lazy: true,
     //     value: '',
     //     children: []
     // });

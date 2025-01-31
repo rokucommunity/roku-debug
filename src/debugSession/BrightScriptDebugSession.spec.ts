@@ -115,6 +115,7 @@ describe('BrightScriptDebugSession', () => {
             getVariable: () => { },
             getScopeVariables: (a) => { },
             setExceptionBreakpoints: (a) => { },
+            isScrapableContainObject: () => { },
             getThreads: () => {
                 return [];
             },
@@ -264,16 +265,14 @@ describe('BrightScriptDebugSession', () => {
                 {} as DebugProtocol.EvaluateResponse,
                 { context: 'repl', expression: '2+3', frameId: 1 } as DebugProtocol.EvaluateArguments
             );
-            expect(stub.getCall(0).firstArg).to.eql(`if type(${session.tempVarPrefix}eval) = "<uninitialized>" then ${session.tempVarPrefix}eval = []`);
-            expect(stub.getCall(1).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 1+2`);
-            expect(stub.getCall(2).firstArg).to.eql(`${session.tempVarPrefix}eval[1] = 2+3`);
+            expect(stub.getCall(0).firstArg).to.eql(`if type(${session.tempVarPrefix}eval) = "<uninitialized>" then ${session.tempVarPrefix}eval = []\n${session.tempVarPrefix}eval[0] = 1+2`);
+            expect(stub.getCall(1).firstArg).to.eql(`${session.tempVarPrefix}eval[1] = 2+3`);
             await session['onSuspend']();
             await session.evaluateRequest(
                 {} as DebugProtocol.EvaluateResponse,
                 { context: 'repl', expression: '3+4', frameId: 1 } as DebugProtocol.EvaluateArguments
             );
-            expect(stub.getCall(3).firstArg).to.eql(`if type(${session.tempVarPrefix}eval) = "<uninitialized>" then ${session.tempVarPrefix}eval = []`);
-            expect(stub.getCall(4).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 3+4`);
+            expect(stub.getCall(2).firstArg).to.eql(`if type(${session.tempVarPrefix}eval) = "<uninitialized>" then ${session.tempVarPrefix}eval = []\n${session.tempVarPrefix}eval[0] = 3+4`);
         });
 
         it('can assign to a variable', async () => {
@@ -315,14 +314,12 @@ describe('BrightScriptDebugSession', () => {
                 {} as DebugProtocol.EvaluateResponse,
                 { context: 'repl', expression: '1+2', frameId: 1 } as DebugProtocol.EvaluateArguments
             );
-            expect(stub.getCall(0).firstArg).to.eql(`if type(${session.tempVarPrefix}eval) = "<uninitialized>" then ${session.tempVarPrefix}eval = []`);
-            expect(stub.getCall(1).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 1+2`);
+            expect(stub.getCall(0).firstArg).to.eql(`if type(${session.tempVarPrefix}eval) = "<uninitialized>" then ${session.tempVarPrefix}eval = []\n${session.tempVarPrefix}eval[0] = 1+2`);
             await session.evaluateRequest(
                 {} as DebugProtocol.EvaluateResponse,
                 { context: 'repl', expression: '2+3', frameId: 2 } as DebugProtocol.EvaluateArguments
             );
-            expect(stub.getCall(2).firstArg).to.eql(`if type(${session.tempVarPrefix}eval) = "<uninitialized>" then ${session.tempVarPrefix}eval = []`);
-            expect(stub.getCall(3).firstArg).to.eql(`${session.tempVarPrefix}eval[0] = 2+3`);
+            expect(stub.getCall(1).firstArg).to.eql(`if type(${session.tempVarPrefix}eval) = "<uninitialized>" then ${session.tempVarPrefix}eval = []\n${session.tempVarPrefix}eval[0] = 2+3`);
         });
     });
 
@@ -712,6 +709,8 @@ describe('BrightScriptDebugSession', () => {
                 //shouldn't actually process the children
                 children: [getBooleanEvaluateContainer('someObject.isAlive', 'true'), getBooleanEvaluateContainer('someObject.ownsHouse', 'false')]
             };
+            sinon.stub(rokuAdapter, 'isScrapableContainObject').returns(true);
+
             //adapter has to be at prompt for evaluates to work
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
