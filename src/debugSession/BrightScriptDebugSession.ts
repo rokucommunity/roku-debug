@@ -1359,18 +1359,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             // Determine if the variable has changed
                             sendInvalidatedEvent = v.type !== tempVar.type || v.indexedVariables !== tempVar.indexedVariables;
                         } catch (error) {
-                            if (v.presentationHint?.lazy) {
-                                logger.error('Error getting variables', error);
-                                tempVar = new Variable('Error', `❌ Error: ${error.message}`);
-                                tempVar.type = '';
-                                tempVar.childVariables = [];
-                                sendInvalidatedEvent = true;
-                                response.success = false;
-                                response.message = error.message;
-                            } else {
-                                // Rethrow as for non-lazy vars we do not need to respond with a fake error variable
-                                throw error;
-                            }
+                            logger.error('Error getting variables', error);
+                            tempVar = new Variable('Error', `❌ Error: ${error.message}`);
+                            tempVar.type = '';
+                            tempVar.childVariables = [];
+                            sendInvalidatedEvent = true;
+                            response.success = false;
+                            response.message = error.message;
                         }
 
                         // Merge the resulting updates together
