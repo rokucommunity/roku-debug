@@ -14,7 +14,7 @@ import { logger } from '../logging';
 import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces';
 import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
-import type { DebugProtocolAdapter } from './DebugProtocolAdapter';
+import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAdapter';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 
 /**
@@ -645,10 +645,10 @@ export class TelnetAdapter {
                 type: 'integer',
                 highLevelType: HighLevelType.primative,
                 evaluateName: children.length.toString(),
-                presentationHint: 'virtual',
+                presentationHint: { kind: 'virtual' },
                 keyType: KeyType.legacy,
                 children: undefined
-            } as EvaluateContainer);
+            });
         } else if (highLevelType === HighLevelType.object) {
             children = this.getObjectChildren(expression, data.trim());
         } else if (highLevelType === HighLevelType.unknown) {
@@ -657,23 +657,23 @@ export class TelnetAdapter {
         }
 
         if (['rostring', 'roint', 'rointeger', 'rolonginteger', 'rofloat', 'rodouble', 'roboolean', 'rointrinsicdouble'].includes(lowerExpressionType)) {
-            return {
+            return <EvaluateContainer>{
                 name: expression,
                 value: util.removeTrailingNewline(data),
                 type: expressionType,
                 highLevelType: HighLevelType.primative,
                 evaluateName: expression,
                 children: []
-            } as EvaluateContainer;
+            };
         }
 
         //add a computed `[[children]]` property to allow expansion of node children
         if (lowerExpressionType === 'rosgnode') {
-            let nodeChildren = <EvaluateContainer>{
+            let nodeChildren: EvaluateContainer = {
                 name: '$children',
                 type: 'roArray',
-                highLevelType: 'array',
-                presentationHint: 'virtual',
+                highLevelType: HighLevelType.array,
+                presentationHint: { kind: 'virtual' },
                 evaluateName: `${expression}.getChildren(-1, 0)`,
                 children: []
             };
@@ -686,7 +686,7 @@ export class TelnetAdapter {
                 //look up the name of the xml element
                 ...await this.getVariable(`${expression}.GetName()`),
                 name: '$name',
-                presentationHint: 'virtual'
+                presentationHint: { kind: 'virtual' }
             });
 
             children.push({
@@ -694,9 +694,9 @@ export class TelnetAdapter {
                 type: 'roAssociativeArray',
                 highLevelType: HighLevelType.array,
                 evaluateName: `${expression}.GetAttributes()`,
-                presentationHint: 'virtual',
+                presentationHint: { kind: 'virtual' },
                 children: []
-            } as EvaluateContainer);
+            });
 
             //add a computed `[[children]]` property to allow expansion of child elements
             children.push({
@@ -704,10 +704,9 @@ export class TelnetAdapter {
                 type: 'roArray',
                 highLevelType: HighLevelType.array,
                 evaluateName: `${expression}.GetChildNodes()`,
-                presentationHint: 'virtual',
+                presentationHint: { kind: 'virtual' },
                 children: []
-
-            } as EvaluateContainer);
+            });
         }
 
         //if this item is an array or a list, add the item count to the end of the type
@@ -733,7 +732,7 @@ export class TelnetAdapter {
      * As such, we need to iterate over every printed result to produce the children array
      */
     private getForLoopPrintedChildren(expression: string, data: string) {
-        let children = [] as EvaluateContainer[];
+        let children: EvaluateContainer[] = [];
         let lines = data.split(/\r?\n/g);
         //if there are no lines, this is an empty object/array
         if (lines.length === 1 && lines[0].trim() === '') {
@@ -804,9 +803,8 @@ export class TelnetAdapter {
             }
 
             const objectType = this.getObjectType(line);
-            const isRoSGNode = objectType?.startsWith('roSGNode');
             //handle collections
-            if (['roList', 'roArray', 'roAssociativeArray', 'roByteArray'].includes(objectType) || isRoSGNode) {
+            if (this.isScrapableContainObject(objectType)) {
                 let collectionEnd: ')' | ']' | '}';
                 if (line.includes('<Component: roList>')) {
                     collectionEnd = ')';
@@ -820,7 +818,7 @@ export class TelnetAdapter {
                     collectionEnd = ']';
                     child.highLevelType = HighLevelType.array;
                     child.type = this.getObjectType(line);
-                } else if (line.includes('<Component: roAssociativeArray>') || isRoSGNode) {
+                } else if (line.includes('<Component: roAssociativeArray>') || objectType?.startsWith('roSGNode')) {
                     collectionEnd = '}';
                     child.highLevelType = HighLevelType.object;
                     child.type = this.getObjectType(line);
@@ -884,6 +882,12 @@ export class TelnetAdapter {
 
     }
 
+    public isScrapableContainObject(objectType: string) {
+        const isRoSGNode = objectType?.startsWith('roSGNode');
+        //handle collections
+        return (['roList', 'roArray', 'roAssociativeArray', 'roByteArray'].includes(objectType) || isRoSGNode);
+    }
+
     private getObjectChildren(expression: string, data: string): EvaluateContainer[] {
         try {
             let children: EvaluateContainer[] = [];
@@ -907,7 +911,6 @@ export class TelnetAdapter {
                         type: '<ERROR>',
                         highLevelType: HighLevelType.uninitialized,
                         evaluateName: undefined,
-                        elementCount: -1,
                         value: '<ERROR>',
                         keyType: KeyType.legacy,
                         children: []
@@ -1113,18 +1116,6 @@ export interface StackFrame {
 
 export enum EventName {
     suspend = 'suspend'
-}
-
-export interface EvaluateContainer {
-    name: string;
-    evaluateName: string;
-    type: string;
-    value: string;
-    keyType: KeyType;
-    elementCount: number;
-    highLevelType: HighLevelType;
-    children: EvaluateContainer[];
-    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
 }
 
 export enum KeyType {
