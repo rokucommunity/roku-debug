@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.18](https://github.com/rokucommunity/roku-debug/compare/v0.21.17...v0.21.18) - 2025-01-31
+### Fixed
+ - Fix ecp limited crash ([#215](https://github.com/rokucommunity/roku-debug/pull/215))
+
+
+
 ## [0.21.17](https://github.com/rokucommunity/roku-debug/compare/v0.21.16...v0.21.17) - 2025-01-31
 ### Added
  - Add support for custom variables ([#209](https://github.com/rokucommunity/roku-debug/pull/209))
