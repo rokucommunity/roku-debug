@@ -379,7 +379,7 @@ export class DebugProtocolAdapter {
     }
 
     /**
-     * Determines if the current version of the debug protocol supports emitting compile error updates.
+     * Indicate if virtual variables should be auto resolved when they are encountered.
      */
     public get autoResolveVirtualVariables() {
         return this.options.autoResolveVirtualVariables;
