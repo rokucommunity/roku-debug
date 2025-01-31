@@ -1349,37 +1349,38 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
                 if (v.childVariables.length === 0 || v.isResolved) {
                     let tempVar: AugmentedVariable;
-                    // Evaluate the variable
-                    try {
-                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
-                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
-                        tempVar = await this.getVariableFromResult(result, v.frameId);
-                        tempVar.frameId = v.frameId;
-                        // Determine if the variable has changed
-                        sendInvalidatedEvent = v.type !== tempVar.type;
-                    } catch (error) {
-                        if (v.presentationHint?.lazy) {
-                            logger.error('Error getting variables', error);
-                            tempVar = new Variable('Error', `❌ Error: ${error.message}`);
-                            tempVar.type = '';
-                            tempVar.childVariables = [];
-                            sendInvalidatedEvent = true;
-                            response.success = false;
-                            response.message = error.message;
-                        } else {
-                            // Rethrow as for non-lazy vars we do not need to respond with a fake error variable
-                            throw error;
+                    if (!v.isResolved) {
+                        // Evaluate the variable
+                        try {
+                            let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
+                            let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
+                            tempVar = await this.getVariableFromResult(result, v.frameId);
+                            tempVar.frameId = v.frameId;
+                            // Determine if the variable has changed
+                            sendInvalidatedEvent = v.type !== tempVar.type;
+                        } catch (error) {
+                            if (v.presentationHint?.lazy) {
+                                logger.error('Error getting variables', error);
+                                tempVar = new Variable('Error', `❌ Error: ${error.message}`);
+                                tempVar.type = '';
+                                tempVar.childVariables = [];
+                                sendInvalidatedEvent = true;
+                                response.success = false;
+                                response.message = error.message;
+                            } else {
+                                // Rethrow as for non-lazy vars we do not need to respond with a fake error variable
+                                throw error;
+                            }
                         }
+
+                        // Merge the resulting updates together
+                        v.childVariables = tempVar.childVariables;
+                        v.value = tempVar.value;
+                        v.type = tempVar.type;
+                        v.indexedVariables = tempVar.indexedVariables;
+                        v.namedVariables = tempVar.namedVariables;
                     }
-
                     frameId = v.frameId;
-
-                    // Merge the resulting updates together
-                    v.childVariables = tempVar.childVariables;
-                    v.value = tempVar.value;
-                    v.type = tempVar.type;
-                    v.indexedVariables = tempVar.indexedVariables;
-                    v.namedVariables = tempVar.namedVariables;
 
                     if (v?.presentationHint?.lazy || v.isResolved) {
                         // If this was a lazy variable we need to respond with the updated variable and not the children
@@ -1399,6 +1400,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         v.variablesReference = 0;
                     }
 
+                    // If the variable was resolve in the past we may not have fetched a new temp var
+                    tempVar ??= v;
                     if (v?.presentationHint) {
                         v.presentationHint.lazy = tempVar.presentationHint?.lazy;
                     } else {
