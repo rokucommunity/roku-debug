@@ -1949,8 +1949,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // if the var is an array and debugProtocol is enabled, include the array size
             if (this.enableDebugProtocol && v.type === VariableType.Array) {
-                // TODO: lbah grekjnl
-                // v.value = `${v.type}(${result.elementCount})` as any;
+                v.value = `${v.type}(${result.indexedVariables ?? '?'})` as any;
             }
         }
         return v;
