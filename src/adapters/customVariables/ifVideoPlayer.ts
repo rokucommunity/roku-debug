@@ -25,7 +25,7 @@ export function pushIfVideoPlayerVariables(adapter: DebugProtocolAdapter, expres
     pushCustomVariableToContainer(adapter, container, {
         name: '$captionRenderer',
         type: 'roCaptionRenderer',
-        presentationHint: { kind: 'virtual' },
+        presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetCaptionRenderer()`,
         value: '',
         children: []

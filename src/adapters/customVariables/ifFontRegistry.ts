@@ -16,7 +16,7 @@ export function pushIfFontRegistryVariables(adapter: DebugProtocolAdapter, expre
     pushCustomVariableToContainer(adapter, container, {
         name: '$defaultFont',
         type: VariableType.Object,
-        presentationHint: { kind: 'virtual', lazy: true },
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetDefaultFont()`,
         value: '',
         children: []

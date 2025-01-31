@@ -15,10 +15,10 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
 
     pushCustomVariableToContainer(adapter, container, {
         name: '$attributes',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.AssociativeArray,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetAttributes()`,
-        value: '',
+        value: VariableType.AssociativeArray,
         children: []
     });
 

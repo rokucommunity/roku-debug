@@ -9,7 +9,7 @@ export function pushIfRegistrySectionVariables(adapter: DebugProtocolAdapter, ex
         type: VariableType.List,
         presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetKeyList()`,
-        value: '',
+        value: VariableType.List,
         children: []
     });
 }

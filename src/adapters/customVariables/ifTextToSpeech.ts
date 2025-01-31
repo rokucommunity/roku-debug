@@ -18,7 +18,7 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
         type: VariableType.List,
         presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetAvailableLanguages()`,
-        value: '',
+        value: VariableType.List,
         children: []
     });
 
@@ -36,7 +36,7 @@ export function pushIfTextToSpeechVariables(adapter: DebugProtocolAdapter, expre
         type: VariableType.List,
         presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetAvailableVoices()`,
-        value: '',
+        value: VariableType.List,
         children: []
     });
 
