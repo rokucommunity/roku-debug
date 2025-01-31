@@ -1357,7 +1357,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             tempVar = await this.getVariableFromResult(result, v.frameId);
                             tempVar.frameId = v.frameId;
                             // Determine if the variable has changed
-                            sendInvalidatedEvent = v.type !== tempVar.type;
+                            sendInvalidatedEvent = v.type !== tempVar.type || v.indexedVariables !== tempVar.indexedVariables;
                         } catch (error) {
                             if (v.presentationHint?.lazy) {
                                 logger.error('Error getting variables', error);
