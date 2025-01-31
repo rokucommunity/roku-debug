@@ -297,7 +297,7 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.GetVideoMode()`,
-        value: VariableType.AssociativeArray,
+        value: '',
         children: []
     });
 
