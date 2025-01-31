@@ -405,7 +405,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 util.log(`Connecting to Roku via telnet at ${this.launchConfiguration.host}:${this.launchConfiguration.brightScriptConsolePort}`);
             }
 
-            await this.initRendezvousTracking();
+            //activate rendezvous tracking (if enabled). Log the error and move on if it crashes, this shouldn't bring down the session.
+            try {
+                await this.initRendezvousTracking();
+            } catch (e) {
+                this.logger.error('Failed to initialize rendezvous tracking', e);
+            }
 
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();

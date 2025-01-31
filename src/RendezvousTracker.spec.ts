@@ -5,6 +5,7 @@ import type { RendezvousHistory } from './RendezvousTracker';
 import { RendezvousTracker } from './RendezvousTracker';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
 import type { LaunchConfiguration } from './LaunchConfiguration';
+import { util } from './util';
 
 describe('BrightScriptFileUtils ', () => {
     let rendezvousTracker: RendezvousTracker;
@@ -380,6 +381,35 @@ describe('BrightScriptFileUtils ', () => {
             sinon.stub(rendezvousTracker, 'getEcpRendezvous').returns(Promise.resolve({ 'trackingEnabled': true, 'items': [{ 'id': '1403', 'startTime': '97771301', 'endTime': '97771319', 'lineNumber': '11', 'file': 'pkg:/components/Tasks/GetSubReddit.brs' }, { 'id': '1404', 'startTime': '97771322', 'endTime': '97771322', 'lineNumber': '15', 'file': 'pkg:/components/Tasks/GetSubReddit.brs' }] }));
             await rendezvousTracker.pingEcpRendezvous();
             expect(rendezvousTracker['rendezvousHistory']).to.eql({ 'hitCount': 2, 'occurrences': { 'pkg:/components/Tasks/GetSubReddit.brs': { 'occurrences': { '11': { 'clientLineNumber': 11, 'clientPath': '/components/Tasks/GetSubReddit.brs', 'hitCount': 1, 'totalTime': 0.018, 'type': 'lineInfo' }, '15': { 'clientLineNumber': 15, 'clientPath': '/components/Tasks/GetSubReddit.brs', 'hitCount': 1, 'totalTime': 0, 'type': 'lineInfo' } }, 'hitCount': 2, 'totalTime': 0.018, 'type': 'fileInfo', 'zeroCostHitCount': 1 } }, 'totalTime': 0.018, 'type': 'historyInfo', 'zeroCostHitCount': 1 });
+        });
+    });
+
+    describe('toggleEcpRendezvousTracking', () => {
+        async function doTest(statusCode: number, expectedValue: boolean) {
+            const stub = sinon.stub(util, 'httpPost').returns(Promise.resolve({ statusCode: statusCode } as any));
+            expect(
+                await rendezvousTracker.toggleEcpRendezvousTracking('track')
+            ).to.eq(expectedValue);
+            expect(
+                await rendezvousTracker.toggleEcpRendezvousTracking('untrack')
+            ).to.eql(expectedValue);
+            stub.restore();
+        }
+
+        it('returns true for 200 response code', async () => {
+            await doTest(200, true);
+            await doTest(202, true);
+            await doTest(205, true);
+            await doTest(299, true);
+        });
+
+        it('returns true for 200 response code', async () => {
+            await doTest(0, false);
+            await doTest(100, false);
+            await doTest(301, false);
+            await doTest(401, false);
+            await doTest(404, false);
+            await doTest(500, false);
         });
     });
 

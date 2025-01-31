@@ -38,7 +38,7 @@ export class RendezvousTracker {
      * Determine if the current Roku device supports the ECP rendezvous tracking feature
      */
     public get doesHostSupportEcpRendezvousTracking() {
-        let softwareVersion = this.deviceInfo?.softwareVersion;
+        let softwareVersion: string = this.deviceInfo?.softwareVersion ?? '0.0.0';
         if (!semver.valid(softwareVersion)) {
             softwareVersion = '0.0.0';
         }
@@ -170,6 +170,7 @@ export class RendezvousTracker {
             // Toggle ECP tracking off and on to clear the log and then continue tracking
             let untrack = await this.toggleEcpRendezvousTracking('untrack');
             let track = await this.toggleEcpRendezvousTracking('track');
+
             const isEcpTrackingEnabled = untrack && track && await this.getIsEcpRendezvousTrackingEnabled();
             if (isEcpTrackingEnabled) {
                 this.logger.info('ECP tracking is enabled');
@@ -239,7 +240,7 @@ export class RendezvousTracker {
 
     /**
      * Enable/Disable ECP Rendezvous tracking on the Roku device
-     * @returns true if successful, false if there was an issue setting the value
+     * @returns true if the request succeeded, false if there was an issue setting the value, and does _not_ indicate the final enabled/disabled state of the setting.
      */
     public async toggleEcpRendezvousTracking(toggle: 'track' | 'untrack'): Promise<boolean> {
         try {
@@ -249,7 +250,8 @@ export class RendezvousTracker {
                 //not sure if we need this, but it works...so probably better to just leave it here
                 { body: '' }
             );
-            return true;
+            //this was successful if we got a 200 level status code (200-299)
+            return response.statusCode >= 200 && response.statusCode < 300;
         } catch (e) {
             return false;
         }
