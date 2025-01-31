@@ -1822,20 +1822,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         // We should not wait to resolve this variable later. Fetch, store, and merge the results right away.
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: result.evaluateName, frameId: frameId }, util.getVariablePath(result.evaluateName));
                         let newResult = await this.rokuAdapter.getVariable(evalArgs.expression, frameId);
-                        result.children = newResult.children;
-                        result.value = newResult.value;
-                        result.type = newResult.type;
-                        result.highLevelType = newResult.highLevelType;
-                        result.keyType = newResult.keyType;
-                        result.indexedVariables = newResult.indexedVariables;
-                        result.namedVariables = newResult.namedVariables;
+                        this.mergeEvaluateContainers(result, newResult);
                     } catch (error) {
                         logger.error('Error getting variables', error);
-                        result.children = [];
-                        result.value = `❌ Error: ${error.message}`;
-                        result.type = '';
-                        result.highLevelType = undefined;
-                        result.keyType = undefined;
+                        this.mergeEvaluateContainers(result, {
+                            name: result.name,
+                            evaluateName: result.evaluateName,
+                            children: [],
+                            value: `❌ Error: ${error.message}`,
+                            type: '',
+                            highLevelType: undefined,
+                            keyType: undefined
+                        });
                     }
                 }
 
@@ -1932,13 +1930,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             let newResults = await this.rokuAdapter.getVariable(bulkEvaluations.bulkVarName, frameId);
                             childrenToEvaluate.map((mappedChild, index) => {
                                 let newResult = newResults.children[index];
-                                mappedChild.child.children = newResult.children;
-                                mappedChild.child.value = newResult.value;
-                                mappedChild.child.type = newResult.type;
-                                mappedChild.child.highLevelType = newResult.highLevelType;
-                                mappedChild.child.keyType = newResult.keyType;
-                                mappedChild.child.indexedVariables = newResult.indexedVariables;
-                                mappedChild.child.namedVariables = newResult.namedVariables;
+                                this.mergeEvaluateContainers(mappedChild.child, newResult);
                                 mappedChild.child.evaluateNow = false;
                                 return mappedChild;
                             });
@@ -1964,6 +1956,19 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return v;
     }
 
+    /**
+     * Helper function to merge the results of an evaluate call into an existing EvaluateContainer
+     * Used primarily for custom variables
+     */
+    private mergeEvaluateContainers(original: EvaluateContainer, updated: EvaluateContainer) {
+        original.children = updated.children;
+        original.value = updated.value;
+        original.type = updated.type;
+        original.highLevelType = updated.highLevelType;
+        original.keyType = updated.keyType;
+        original.indexedVariables = updated.indexedVariables;
+        original.namedVariables = updated.namedVariables;
+    }
 
     private getEvaluateRefId(expression: string, frameId: number) {
         let evaluateRefId = `${expression}-${frameId}`;
