@@ -687,7 +687,7 @@ export class DebugProtocolAdapter {
 
             // Format the value to be more readable in the UI.
             // Example: `roSGNode; Group` = `roSGNode (Group)`
-            (value as string) = `${parts[0]} (${parts[1]})`;
+            (value as string) = `${parts[0]}(${parts[1]})`;
         } else if (variableType === VariableType.Object || variableType === VariableType.Interface) {
             // We want the type to reflect `roAppInfo` or `roDeviceInfo` for example in the UI
             // so set the type to be the value from the device

@@ -1561,14 +1561,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     commandResults.message = util.trimDebugPrompt(commandResults.message);
                     if (args.context === 'repl') {
-                        //clear variable cache since this action could have side-effects
+                        // Clear variable cache since this action could have side-effects
+                        // Only do this for REPL requests as hovers and watches should not clear the cache
                         this.clearState();
                         this.sendInvalidatedEvent(null, evalArgs.frameId);
                     }
-                    //if the adapter captured output (probably only telnet), print it to the vscode debug console
+
+                    // If the adapter captured output (probably only telnet), log the results
                     if (typeof commandResults.message === 'string') {
                         this.logger.debug('evaluateRequest', { commandResults });
                         if (args.context === 'repl') {
+                            // If the command was a repl command, send the output to the debug console for the developer as well
+                            // We limit this to repl only so you don't get extra logs when hovering over variables ro running watches
                             this.sendEvent(new OutputEvent(commandResults.message, commandResults.type === 'error' ? 'stderr' : 'stdio'));
                         }
                     }
@@ -1910,6 +1914,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v.childVariables = [];
                 }
 
+                // Create a mapping of the children to their index so we can evaluate them in bulk
                 let indexMappedChildren = result.children.map((child, index) => {
                     let remapped = { child: child, index: index, evaluate: !!(child.isCustom && !child.presentationHint?.lazy && child.evaluateNow) };
                     return remapped;
@@ -1949,7 +1954,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // if the var is an array and debugProtocol is enabled, include the array size
             if (this.enableDebugProtocol && v.type === VariableType.Array) {
-                v.value = `${v.type}(${result.indexedVariables ?? '?'})` as any;
+                if (isNaN(result.indexedVariables)) {
+                    v.value = v.type;
+                } else {
+                    v.value = `${v.type}(${result.indexedVariables})`;
+                }
             }
         }
         return v;
