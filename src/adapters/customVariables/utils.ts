@@ -21,7 +21,7 @@ export function pushCustomVariableToContainer(adapter: DebugProtocolAdapter, con
         if (customVariable.type === VariableType.AssociativeArray || customVariable.type === VariableType.Object || customVariable.type === VariableType.SubtypedObject) {
             customVariable.highLevelType = HighLevelType.object;
             customVariable.keyType = KeyType.string;
-        } else if (customVariable.type === VariableType.Array) {
+        } else if (customVariable.type === VariableType.Array || customVariable.type === VariableType.List) {
             customVariable.highLevelType = HighLevelType.array;
             customVariable.keyType = KeyType.integer;
         }
