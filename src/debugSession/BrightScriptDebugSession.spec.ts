@@ -115,6 +115,7 @@ describe('BrightScriptDebugSession', () => {
             getVariable: () => { },
             getScopeVariables: (a) => { },
             setExceptionBreakpoints: (a) => { },
+            isScrapableContainObject: () => { },
             getThreads: () => {
                 return [];
             },
@@ -708,6 +709,8 @@ describe('BrightScriptDebugSession', () => {
                 //shouldn't actually process the children
                 children: [getBooleanEvaluateContainer('someObject.isAlive', 'true'), getBooleanEvaluateContainer('someObject.ownsHouse', 'false')]
             };
+            sinon.stub(rokuAdapter, 'isScrapableContainObject').returns(true);
+
             //adapter has to be at prompt for evaluates to work
             rokuAdapter.isAtDebuggerPrompt = true;
             void session.evaluateRequest(<any>{}, { context: 'hover', expression: expression });
