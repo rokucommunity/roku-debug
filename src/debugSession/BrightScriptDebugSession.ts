@@ -1799,18 +1799,21 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             break;
                     }
 
+                    parentComponentType = parentComponentType.toLowerCase();
+
 
                     let componentInterfaces = [];
 
-                    // Add parent component function completions
-                    let parentComponent = components[parentVariable.type.toLowerCase()];
+                    // Add parent component function completions based on it's interfaces
+                    let parentComponent = components[parentComponentType];
                     if (parentComponent) {
                         parentComponent.interfaces.forEach((i) => {
                             componentInterfaces.push(interfaces[i.name.toLowerCase()]);
                         });
                     }
 
-                    let parentInterface = interfaces[parentVariable.type.toLowerCase()];
+                    // If the parent variable is an actual interface we need to look it up
+                    let parentInterface = interfaces[parentComponentType];
                     if (parentInterface) {
                         componentInterfaces.push(parentInterface);
                     }
