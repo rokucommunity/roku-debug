@@ -159,10 +159,15 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      */
     deepLinkUrl?: string;
 
-    /*
+    /**
      * Enables automatic population of the debug variable panel on a breakpoint or runtime errors.
      */
     enableVariablesPanel: boolean;
+
+    /**
+     * Enables automatic population of the virtual variables.
+     */
+    autoResolveVirtualVariables: boolean;
 
     /**
      * If true, will attempt to skip false breakpoints created by the micro debugger, which are particularly prevalent for SG apps with multiple run loops.
@@ -220,6 +225,22 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * If true, then any source maps found will be used to convert a debug location back to a source location
      */
     enableSourceMaps?: boolean;
+
+    /**
+     * If true, then any pkg path found in the device logs will be converted to a source location leveraging source maps if available
+     *
+     * Supported formats:
+     * - pkg:/source/main.brs:10
+     * - pkg:/source/main.brs(10)
+     * - pkg:/source/main.brs:10:20
+     * - pkg:/source/main.brs(10:20)
+     * - ...ce/main.brs:10
+     * - ...ce/main.brs(10)
+     * - ...ce/main.brs:10:20
+     * - ...ce/main.brs(10:20)
+     * @default true
+     */
+    rewriteDevicePathsInLogs?: boolean;
 
     /**
      * The port that should be used when installing the package. Defaults to 80.

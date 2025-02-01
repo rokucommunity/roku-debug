@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.18](https://github.com/rokucommunity/roku-debug/compare/v0.21.17...v0.21.18) - 2025-01-31
+### Fixed
+ - Fix ecp limited crash ([#215](https://github.com/rokucommunity/roku-debug/pull/215))
+
+
+
+## [0.21.17](https://github.com/rokucommunity/roku-debug/compare/v0.21.16...v0.21.17) - 2025-01-31
+### Added
+ - Add support for custom variables ([#209](https://github.com/rokucommunity/roku-debug/pull/209))
+ - Convert pkg path to file system path in logs ([#208](https://github.com/rokucommunity/roku-debug/pull/208))
+### Fixed
+ - Fixed file path and unusable link issues on windows ([#213](https://github.com/rokucommunity/roku-debug/pull/213))
+ - Fixed a bug where some logs could get lost by the debugger ([#212](https://github.com/rokucommunity/roku-debug/pull/212))
+ - Fixed issue looking up primitive variables on hover ([#210](https://github.com/rokucommunity/roku-debug/pull/210))
+
+
+
 ## [0.21.16](https://github.com/rokucommunity/roku-debug/compare/v0.21.15...v0.21.16) - 2025-01-22
 ### Changed
  - Uninitialize __brs_err__ when stepping or continuing ([#207](https://github.com/rokucommunity/roku-debug/pull/207))

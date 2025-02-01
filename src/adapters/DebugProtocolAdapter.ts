@@ -21,7 +21,8 @@ import type { TelnetAdapter } from './TelnetAdapter';
 import type { DeviceInfo } from 'roku-deploy';
 import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsResponse';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
-import { insertCustomVariables } from './customVariableUtils';
+import { insertCustomVariables, overrideKeyTypesForCustomVariables } from './customVariableUtils';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -377,6 +378,13 @@ export class DebugProtocolAdapter {
         return semver.satisfies(this.deviceInfo.brightscriptDebuggerVersion, '>=3.1.0');
     }
 
+    /**
+     * Indicate if virtual variables should be auto resolved when they are encountered.
+     */
+    public get autoResolveVirtualVariables() {
+        return this.options.autoResolveVirtualVariables;
+    }
+
     private processingTelnetOutput = false;
     public async processTelnetOutput() {
         if (this.processingTelnetOutput) {
@@ -607,7 +615,7 @@ export class DebugProtocolAdapter {
     /**
      * Get the variable for the specified expression.
      */
-    public async getVariable(expression: string, frameId: number) {
+    public async getVariable(expression: string, frameId: number): Promise<EvaluateContainer> {
         const response = await this.getVariablesResponse(expression, frameId);
 
         if (Array.isArray(response?.data?.variables)) {
@@ -619,6 +627,7 @@ export class DebugProtocolAdapter {
                 undefined
             );
             await insertCustomVariables(this, expression, container);
+            container.namedVariables = container.children.length - container.indexedVariables;
             return container;
         }
     }
@@ -647,6 +656,8 @@ export class DebugProtocolAdapter {
                 //there's no parent path
                 undefined
             );
+            container.indexedVariables = 0;
+            container.namedVariables = container.children.length;
             return container;
         }
     }
@@ -657,12 +668,12 @@ export class DebugProtocolAdapter {
      * @param name the name of this variable. For example, `alpha.beta.charlie`, this value would be `charlie`. For local vars, this is the root variable name (i.e. `alpha`)
      * @param parentEvaluateName the string used to derive the parent, _excluding_ this variable's name (i.e. `alpha.beta` or `alpha[0]`)
      */
-    private createEvaluateContainer(variable: Variable, name: string | number, parentEvaluateName: string) {
+    private createEvaluateContainer(variable: Variable, name: string | number, parentEvaluateName: string): EvaluateContainer {
         let value;
         let variableType = variable.type;
         if (variable.value === null) {
             value = 'roInvalid';
-        } else if (variableType === 'String') {
+        } else if (variableType === VariableType.String) {
             value = `\"${variable.value}\"`;
         } else {
             value = variable.value;
@@ -671,9 +682,19 @@ export class DebugProtocolAdapter {
         if (variableType === VariableType.SubtypedObject) {
             //subtyped objects can only have string values
             let parts = (variable.value as string).split('; ');
-            (variableType as string) = `${parts[0]} (${parts[1]})`;
+            // Pull the primary type from the value.
+            (variableType as string) = parts[0];
+
+            // Format the value to be more readable in the UI.
+            // Example: `roSGNode; Group` = `roSGNode (Group)`
+            (value as string) = `${parts[0]}(${parts[1]})`;
+        } else if (variableType === VariableType.Object || variableType === VariableType.Interface) {
+            // We want the type to reflect `roAppInfo` or `roDeviceInfo` for example in the UI
+            // so set the type to be the value from the device
+            variableType = value;
         } else if (variableType === VariableType.AssociativeArray) {
-            variableType = VariableType.AssociativeArray;
+            // We want the type to reflect `function` in the UI
+            value = VariableType.AssociativeArray;
         }
 
         //build full evaluate name for this var. (i.e. `alpha["beta"]` + ["charlie"]` === `alpha["beta"]["charlie"]`)
@@ -696,19 +717,41 @@ export class DebugProtocolAdapter {
             highLevelType: undefined,
             //non object/array variables don't have a key type
             keyType: variable.keyType as unknown as KeyType,
-            elementCount: variable.childCount ?? variable.children?.length ?? undefined,
+            namedVariables: 0,
+            indexedVariables: 0,
             //non object/array variables still need to have an empty `children` array to help upstream logic. The `keyType` being null is how we know it doesn't actually have children
             children: []
         };
 
+        // In preparation for adding custom variables some variables need to be marked
+        // as keyable/container like even thought they are not on device.
+        overrideKeyTypesForCustomVariables(this, container);
+
+        if (container.keyType === KeyType.integer) {
+            container.indexedVariables = variable.childCount ?? variable.children?.length ?? undefined;
+            // We do not know how many named variables there are, if any, so we will always tell the DAP client to ask for them
+            container.namedVariables = 1;
+        } else if (container.keyType === KeyType.string) {
+            // container.namedVariables = variable.childCount ?? variable.children?.length ?? undefined;
+            // Force one so DAP client always asks for all named vars
+            container.namedVariables = 1;
+        }
+
         //recursively generate children containers
         if ([KeyType.integer, KeyType.string].includes(container.keyType) && Array.isArray(variable.children)) {
             container.children = [];
+
+            container.namedVariables = 0;
+            container.indexedVariables = 0;
+
             for (let i = 0; i < variable.children.length; i++) {
                 const childVariable = variable.children[i];
+                if (childVariable.name === undefined) {
+                    container.indexedVariables++;
+                }
                 const childContainer = this.createEvaluateContainer(
                     childVariable,
-                    container.keyType === KeyType.integer ? i : childVariable.name,
+                    container.keyType === KeyType.integer && !childVariable.isVirtual ? i : childVariable.name,
                     container.evaluateName
                 );
                 container.children.push(childContainer);
@@ -717,7 +760,10 @@ export class DebugProtocolAdapter {
 
         //show virtual variables in the UI
         if (variable.isVirtual) {
-            container.presentationHint = 'virtual';
+            if (!container.presentationHint) {
+                container.presentationHint = {};
+            }
+            container.presentationHint.kind = 'virtual';
         }
 
         return container;
@@ -985,12 +1031,15 @@ export interface EvaluateContainer {
     name: string;
     evaluateName: string;
     type: string;
-    value: string;
+    value?: any;
     keyType?: KeyType;
-    elementCount: number;
-    highLevelType: HighLevelType;
+    namedVariables?: number;
+    indexedVariables?: number;
+    highLevelType?: HighLevelType;
     children: EvaluateContainer[];
-    presentationHint?: 'property' | 'method' | 'class' | 'data' | 'event' | 'baseClass' | 'innerClass' | 'interface' | 'mostDerivedClass' | 'virtual' | 'dataBreakpoint';
+    isCustom?: boolean;
+    evaluateNow?: boolean;
+    presentationHint?: DebugProtocol.VariablePresentationHint;
 }
 
 export enum KeyType {

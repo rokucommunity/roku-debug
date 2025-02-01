@@ -23,4 +23,5 @@ export interface AdapterOptions {
      * If true, the application being debugged will stop on the first line of the program.
      */
     stopOnEntry?: boolean;
+    autoResolveVirtualVariables?: boolean;
 }
