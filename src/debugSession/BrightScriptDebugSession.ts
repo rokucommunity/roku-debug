@@ -59,6 +59,8 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import { DiagnosticSeverity } from 'brighterscript';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 import { debounce } from 'debounce';
+import { interfaces, components, events } from 'brighterscript/dist/roku-types';
+import { globalCallables } from 'brighterscript/dist/globalCallables';
 
 const diagnosticSource = 'roku-debug';
 
@@ -1691,26 +1693,31 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return results;
     }
 
-    protected completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments, request?: DebugProtocol.Request) {
+    private failedToLoadCompletionPaths = new Set<string>();
+
+    protected async completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments, request?: DebugProtocol.Request) {
         this.logger.log('completionsRequest', args, request);
         this.sendEvent(new LogOutputEvent(`completionsRequest: ${args.text}`));
         this.sendEvent(new OutputEvent(`completionsRequest: ${args.text}\n`, 'stderr'));
 
         try {
-            if (!args.text.trim() || (args.column !== args.text.length + 1)) {
+            let provideGlobalCallables = false;
+            if ((args.column !== args.text.length + 1)) {
                 response.body = {
                     targets: []
                 };
                 return this.sendResponse(response);
             }
             let variablePath: string[] = [];
-            if (args.text.endsWith('.')) {
+            if (!args.text.trim()) {
+                variablePath = [''];
+            } else if (args.text.endsWith('.')) {
                 variablePath = util.getVariablePath(args.text.slice(0, -1));
             } else {
                 variablePath = util.getVariablePath(args.text);
             }
 
-            let completions: CompletionItem[] = [];
+            let completions: DebugProtocol.CompletionItem[] = [];
             if (variablePath) {
                 let parentVariablePath: string[];
                 // If the last character is a period, then pull completions for the parent variable before the period
@@ -1723,46 +1730,129 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 if (parentVariablePath.length === 0) {
                     parentVariablePath = [''];
                 }
+
+                if (parentVariablePath.length === 1 && parentVariablePath[0] === '') {
+                    provideGlobalCallables = true;
+                }
+
                 let parentVariable = this.findVariableByPath(Object.values(this.variables), parentVariablePath, args.frameId);
+
+                if ((!parentVariable || parentVariable.childVariables.length === 0) && !this.failedToLoadCompletionPaths.has(parentVariablePath.join('.'))) {
+                    try {
+                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: parentVariablePath.join('.'), frameId: args.frameId }, parentVariablePath);
+                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, args.frameId);
+                        parentVariable = await this.getVariableFromResult(result, args.frameId);
+                    } catch (error) {
+                        this.failedToLoadCompletionPaths.add(parentVariablePath.join('.'));
+                    }
+                }
 
                 if (parentVariable) {
                     let possibleVariables: AugmentedVariable[] = [];
-                    if (args.text.endsWith('.')) {
-                        possibleVariables = parentVariable.childVariables;
-                    } else {
-                        possibleVariables = parentVariable.childVariables.filter((v) => v.name.startsWith(variablePath[variablePath.length - 1]));
-                    }
+                    possibleVariables = parentVariable.childVariables.filter((v) => v.presentationHint?.kind !== 'virtual');
 
                     completions = possibleVariables.map((v) => {
-                        if (args.text.endsWith('.')) {
-                            return {
-                                label: v.name,
-                                type: 'variable',
-                                start: args.column - 1,
-                                length: 1
-                            };
-                        } else {
-                            return {
-                                label: v.name,
-                                type: 'variable',
-                                start: args.text.length - variablePath[variablePath.length - 1].length,
-                                length: variablePath[variablePath.length - 1].length
-                            };
+                        let completionType: DebugProtocol.CompletionItemType = 'variable';
+                        if (parentVariable.type === VariableType.AssociativeArray || parentVariable.type === VariableType.Object) {
+                            completionType = 'property';
+                        } else if (parentVariable.type === 'roSGNode') {
+                            completionType = 'field';
                         }
+
+                        switch (v.type) {
+                            case VariableType.AssociativeArray:
+                                completionType = 'module';
+                                break;
+                            case VariableType.Object:
+                                completionType = 'class';
+                                break;
+                            case VariableType.Function:
+                                completionType = 'function';
+                                break;
+                            case VariableType.Interface:
+                                completionType = 'interface';
+                                break;
+                            default:
+                                break;
+                        }
+
+                        return {
+                            label: v.name,
+                            type: completionType,
+                            sortText: '000000'
+                        };
                     });
+
+
+                    let parentComponentType = parentVariable.type;
+                    switch (parentComponentType) {
+                        case VariableType.AssociativeArray:
+                            parentComponentType = 'roAssociativeArray';
+                            break;
+                        case VariableType.List:
+                            parentComponentType = 'roList';
+                            break;
+                        case VariableType.Array:
+                            parentComponentType = 'roArray';
+                            break;
+                        default:
+                            break;
+                    }
+
+
+                    let componentInterfaces = [];
+
+                    // Add parent component function completions
+                    let parentComponent = components[parentVariable.type.toLowerCase()];
+                    if (parentComponent) {
+                        parentComponent.interfaces.forEach((i) => {
+                            componentInterfaces.push(interfaces[i.name.toLowerCase()]);
+                        });
+                    }
+
+                    let parentInterface = interfaces[parentVariable.type.toLowerCase()];
+                    if (parentInterface) {
+                        componentInterfaces.push(parentInterface);
+                    }
+
+                    for (let i of componentInterfaces) {
+                        i.methods.forEach((m) => {
+                            completions.push({
+                                label: m.name,
+                                type: 'method',
+                                detail: m.description ?? '',
+                                sortText: '000000'
+                            });
+
+                        });
+                    }
+
+                    // Add parent event function completions
+                    let event = events[parentVariable.type.toLowerCase()];
+                    if (event) {
+                        event.methods.forEach((m) => {
+                            completions.push({
+                                label: m.name,
+                                type: 'method',
+                                detail: m.description ?? '',
+                                sortText: '000000'
+                            });
+                        });
+                    }
+
+                    // Add the global functions to the completions results
+                    if (provideGlobalCallables) {
+                        for (let globalCallable of globalCallables) {
+                            completions.push({
+                                label: globalCallable.name,
+                                type: 'function',
+                                detail: globalCallable.shortDescription ?? globalCallable.documentation ?? '',
+                                sortText: '000000'
+                            });
+                        }
+                    }
                 }
             }
-
-            // let completions: any = [{
-            //     label: 'item1',
-            //     type: 'variable'
-            // }, {
-            //     label: 'item2',
-            //     type: 'variable'
-            // }, {
-            //     label: 'item3',
-            //     type: 'variable'
-            // }];
 
             this.sendEvent(new LogOutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}`));
             this.sendEvent(new OutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}\n`, 'stderr'));
@@ -2112,6 +2202,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private clearState() {
         //erase all cached variables
         this.variables = {};
+        this.failedToLoadCompletionPaths.clear();
     }
 
     /**
