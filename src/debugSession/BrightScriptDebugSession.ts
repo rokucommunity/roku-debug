@@ -1697,8 +1697,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     protected async completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments, request?: DebugProtocol.Request) {
         this.logger.log('completionsRequest', args, request);
-        this.sendEvent(new LogOutputEvent(`completionsRequest: ${args.text}`));
-        this.sendEvent(new OutputEvent(`completionsRequest: ${args.text}\n`, 'stderr'));
+        // this.sendEvent(new LogOutputEvent(`completionsRequest: ${args.text}`));
+        // this.sendEvent(new OutputEvent(`completionsRequest: ${args.text}\n`, 'stderr'));
 
         try {
             let provideGlobalCallables = false;
@@ -1857,15 +1857,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             }
 
-            this.sendEvent(new LogOutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}`));
-            this.sendEvent(new OutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}\n`, 'stderr'));
+            // this.sendEvent(new LogOutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}`));
+            // this.sendEvent(new OutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}\n`, 'stderr'));
 
             response.body = {
                 targets: completions
             };
         } catch (error) {
-            this.sendEvent(new LogOutputEvent(`text: ${args.text} | ${error}`));
-            this.sendEvent(new OutputEvent(`text: ${args.text} | ${error}\n`, 'stderr'));
+            // this.sendEvent(new LogOutputEvent(`text: ${args.text} | ${error}`));
+            // this.sendEvent(new OutputEvent(`text: ${args.text} | ${error}\n`, 'stderr'));
             this.logger.error('Error during completionsRequest', error, { args });
         }
         this.sendResponse(response);
