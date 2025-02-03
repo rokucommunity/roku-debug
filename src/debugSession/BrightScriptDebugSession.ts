@@ -487,7 +487,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             });
 
-            await this.publish();
+            let publishPromise = this.publish();
+
+            // Ask the programManager to start collecting scope level completions for all the projects
+            void this.projectManager.loadCompletions();
+
+            await publishPromise;
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
@@ -1787,36 +1792,46 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     let parentComponentType = this.debuggerVarTypeToRoType(parentVariable.type).toLowerCase();
                     //assemble a list of all methods on the parent component
-                    const methodCollections = [
+                    const methods = [
                         //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
-                        ...interfaces[parentComponentType] ?? [],
+                        ...interfaces[parentComponentType]?.methods ?? [],
                         //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
-                        ...components[parentComponentType]?.interfaces.map((i) => interfaces[i.name.toLowerCase()]) ?? [],
+                        ...components[parentComponentType]?.interfaces.map((i) => interfaces[i.name.toLowerCase()])?.methods ?? [],
                         // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
-                        ...events[parentComponentType] ?? []
-                    ].filter(x => !!x);
+                        ...events[parentComponentType]?.methods ?? []
+                    ].flat();
 
                     // Based on the results of interface, component, and event looks up, add all the methods to the completions
-                    for (const methodCollection of methodCollections) {
-                        for (const method of methodCollection.methods) {
-                            completions.set(`method-${method.name}`, {
-                                label: method.name,
-                                type: 'method',
-                                detail: method.description ?? '',
-                                sortText: '000000'
-                            });
-                        }
+                    for (const method of methods) {
+                        completions.set(`method-${method.name}`, {
+                            label: method.name,
+                            type: 'method',
+                            detail: method.description ?? '',
+                            sortText: '000000'
+                        });
                     }
 
                     // Add the global functions to the completions results
                     if (supplyLocalScopeCompletions) {
                         for (let globalCallable of globalCallables) {
-                            completions.set(`function-${globalCallable.name}`, {
+                            completions.set(`function-${globalCallable.name.toLocaleLowerCase()}`, {
                                 label: globalCallable.name,
                                 type: 'function',
                                 detail: globalCallable.shortDescription ?? globalCallable.documentation ?? '',
                                 sortText: '000000'
                             });
+                        }
+
+                        const frame = this.rokuAdapter.getStackFrameById(args.frameId);
+                        let globalScopeFunctions = await this.projectManager.getCompletionsForFile(frame.filePath);
+                        for (let globalScopeFunction of globalScopeFunctions) {
+                            if (!completions.has(`function-${globalScopeFunction.toLocaleLowerCase()}`)) {
+                                completions.set(`function-${globalScopeFunction.toLocaleLowerCase()}`, {
+                                    label: globalScopeFunction,
+                                    type: 'function',
+                                    sortText: '000000'
+                                });
+                            }
                         }
                     }
                 }

@@ -12,6 +12,7 @@ import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
 import { logger } from '../logging';
 import { Cache } from 'brighterscript/dist/Cache';
+import { Deferred, ProgramBuilder } from 'brighterscript';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -65,6 +66,29 @@ export class ProjectManager {
             ...(this.componentLibraryProjects ?? [])
         ];
         return projects.map(x => x.stagingDir);
+    }
+
+    private completionsLoadedDeferred = new Deferred();
+
+    public async loadCompletions() {
+        console.time('loadCompletions');
+        await Promise.all(this.getAllProjects().map(project => {
+            return project.loadCompletions();
+        }));
+        console.timeEnd('loadCompletions');
+        this.completionsLoadedDeferred.resolve();
+    }
+
+    public async getCompletionsForFile(pkgPath: string) {
+        let completions = new Set<string>();
+        await this.completionsLoadedDeferred.promise;
+        try {
+            const fileInfo = await this.getStagingFileInfo(pkgPath);
+            fileInfo?.project.getCompletionsForFile(fileInfo.relativePath, completions);
+        } catch (error) {
+            this.logger.error(`error loading completions for file ${pkgPath}`, error);
+        }
+        return completions;
     }
 
     /**
@@ -263,6 +287,7 @@ export class Project {
     public raleTrackerTaskFileLocation: string;
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
+    private programBuilder = new ProgramBuilder();
 
     //the default project doesn't have a postfix, but component libraries will have a postfix, so just use empty string to standardize the postfix logic
     public get postfix() {
@@ -305,6 +330,32 @@ export class Project {
         await this.copyAndTransformRaleTrackerTask();
 
         await this.copyAndTransformRDB();
+    }
+
+    public async loadCompletions() {
+        return this.programBuilder.run({
+            rootDir: this.stagingDir,
+            files: ['**/*'],
+            watch: false,
+            createPackage: false,
+            deploy: false,
+            copyToStaging: false,
+            showDiagnosticsInConsole: false,
+            skipInitialValidation: true
+        });
+    }
+
+    public getCompletionsForFile(pkgPath: string, completions: Set<string>) {
+        const file = this.programBuilder.program.getFile(pkgPath);
+        const scopes = this.programBuilder.program.getScopesForFile(file);
+
+        for (let scope of scopes) {
+            scope.getAllCallables();
+            for (let result of scope.getAllCallables()) {
+                completions.add(result.callable.name);
+            }
+        }
+        return completions;
     }
 
     /**

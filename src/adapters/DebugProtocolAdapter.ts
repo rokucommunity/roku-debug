@@ -568,7 +568,7 @@ export class DebugProtocolAdapter {
         });
     }
 
-    private getStackFrameById(frameId: number): StackFrame {
+    public getStackFrameById(frameId: number): StackFrame {
         return this.stackFramesCache[frameId];
     }
 
