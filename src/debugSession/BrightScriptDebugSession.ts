@@ -1693,15 +1693,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return results;
     }
 
-    private failedToLoadCompletionPaths = new Set<string>();
-
     protected async completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments, request?: DebugProtocol.Request) {
         this.logger.log('completionsRequest', args, request);
         // this.sendEvent(new LogOutputEvent(`completionsRequest: ${args.text}`));
         // this.sendEvent(new OutputEvent(`completionsRequest: ${args.text}\n`, 'stderr'));
 
         try {
-            let provideGlobalCallables = false;
+            let supplyLocalScopeCompletions = false;
             if ((args.column !== args.text.length + 1)) {
                 response.body = {
                     targets: []
@@ -1717,7 +1715,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 variablePath = util.getVariablePath(args.text);
             }
 
-            let completions: DebugProtocol.CompletionItem[] = [];
+            let completions = new Map<string, DebugProtocol.CompletionItem>();
             if (variablePath) {
                 let parentVariablePath: string[];
                 // If the last character is a period, then pull completions for the parent variable before the period
@@ -1732,18 +1730,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
 
                 if (parentVariablePath.length === 1 && parentVariablePath[0] === '') {
-                    provideGlobalCallables = true;
+                    supplyLocalScopeCompletions = true;
                 }
 
                 let parentVariable = this.findVariableByPath(Object.values(this.variables), parentVariablePath, args.frameId);
 
-                if ((!parentVariable || parentVariable.childVariables.length === 0) && !this.failedToLoadCompletionPaths.has(parentVariablePath.join('.'))) {
+                if (!parentVariable || parentVariable.childVariables.length === 0) {
                     try {
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: parentVariablePath.join('.'), frameId: args.frameId }, parentVariablePath);
                         let result = await this.rokuAdapter.getVariable(evalArgs.expression, args.frameId);
                         parentVariable = await this.getVariableFromResult(result, args.frameId);
                     } catch (error) {
-                        this.failedToLoadCompletionPaths.add(parentVariablePath.join('.'));
+                        this.logger.error('Error looking up parent completions', error, { parentVariablePath });
                     }
                 }
 
@@ -1751,41 +1749,37 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let possibleVariables: AugmentedVariable[] = [];
                     possibleVariables = parentVariable.childVariables.filter((v) => v.presentationHint?.kind !== 'virtual');
 
-                    completions = possibleVariables.map((v) => {
+                    for (let v of possibleVariables) {
                         let completionType: DebugProtocol.CompletionItemType = 'variable';
-                        if (parentVariable.type === VariableType.AssociativeArray || parentVariable.type === VariableType.Object) {
-                            completionType = 'property';
-                        } else if (parentVariable.type === 'roSGNode') {
-                            completionType = 'field';
+                        if (!supplyLocalScopeCompletions) {
+                            if (parentVariable.type === 'roSGNode' || parentVariable.type === VariableType.AssociativeArray || parentVariable.type === VariableType.Object) {
+                                completionType = 'field';
+                            }
+
+                            switch (v.type) {
+                                case VariableType.Function:
+                                case VariableType.Subroutine:
+                                    completionType = 'method';
+                                    break;
+                                default:
+                                    break;
+                            }
                         }
 
-                        switch (v.type) {
-                            case VariableType.AssociativeArray:
-                                completionType = 'module';
-                                break;
-                            case VariableType.Object:
-                                completionType = 'class';
-                                break;
-                            case VariableType.Function:
-                                completionType = 'function';
-                                break;
-                            case VariableType.Interface:
-                                completionType = 'interface';
-                                break;
-                            default:
-                                break;
-                        }
-
-                        return {
+                        completions.set(`${completionType}-${v.name}`, {
                             label: v.name,
                             type: completionType,
                             sortText: '000000'
-                        };
-                    });
+                        });
+                    }
 
 
                     let parentComponentType = parentVariable.type;
                     switch (parentComponentType) {
+                        case VariableType.Function:
+                        case VariableType.Subroutine:
+                            parentComponentType = 'roFunction';
+                            break;
                         case VariableType.AssociativeArray:
                             parentComponentType = 'roAssociativeArray';
                             break;
@@ -1794,6 +1788,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             break;
                         case VariableType.Array:
                             parentComponentType = 'roArray';
+                            break;
+                        case VariableType.Boolean:
+                            parentComponentType = 'roBoolean';
+                            break;
+                        case VariableType.Double:
+                            parentComponentType = 'roDouble';
+                            break;
+                        case VariableType.Float:
+                            parentComponentType = 'roFloat';
+                            break;
+                        case VariableType.Integer:
+                            parentComponentType = 'roInteger';
+                            break;
+                        case VariableType.LongInteger:
+                            parentComponentType = 'roLongInteger';
+                            break;
+                        case VariableType.String:
+                            parentComponentType = 'roString';
                             break;
                         default:
                             break;
@@ -1820,13 +1832,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                     for (let i of componentInterfaces) {
                         i.methods.forEach((m) => {
-                            completions.push({
+                            completions.set(`method-${m.name}`, {
                                 label: m.name,
                                 type: 'method',
                                 detail: m.description ?? '',
                                 sortText: '000000'
                             });
-
                         });
                     }
 
@@ -1834,7 +1845,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     let event = events[parentVariable.type.toLowerCase()];
                     if (event) {
                         event.methods.forEach((m) => {
-                            completions.push({
+                            completions.set(`method-${m.name}`, {
                                 label: m.name,
                                 type: 'method',
                                 detail: m.description ?? '',
@@ -1844,9 +1855,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
 
                     // Add the global functions to the completions results
-                    if (provideGlobalCallables) {
+                    if (supplyLocalScopeCompletions) {
                         for (let globalCallable of globalCallables) {
-                            completions.push({
+                            completions.set(`function-${globalCallable.name}`, {
                                 label: globalCallable.name,
                                 type: 'function',
                                 detail: globalCallable.shortDescription ?? globalCallable.documentation ?? '',
@@ -1861,7 +1872,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // this.sendEvent(new OutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}\n`, 'stderr'));
 
             response.body = {
-                targets: completions
+                targets: [...completions.values()]
             };
         } catch (error) {
             // this.sendEvent(new LogOutputEvent(`text: ${args.text} | ${error}`));
