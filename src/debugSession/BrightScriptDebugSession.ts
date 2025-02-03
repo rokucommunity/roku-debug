@@ -1701,41 +1701,49 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             let supplyLocalScopeCompletions = false;
             if ((args.column !== args.text.length + 1)) {
+                // If the cursor is not at the end of the line, then we should not supply completions at this time
                 response.body = {
                     targets: []
                 };
                 return this.sendResponse(response);
             }
+
+            // Get the variable path from the text
             let variablePath: string[] = [];
             if (!args.text.trim()) {
+                // The text was empty so assume via '' that we are looking up the local scope variables and global functions
                 variablePath = [''];
             } else if (args.text.endsWith('.')) {
+                // supplied text ends with a period, so strip it off to create a valid variable path
                 variablePath = util.getVariablePath(args.text.slice(0, -1));
             } else {
                 variablePath = util.getVariablePath(args.text);
             }
 
             let completions = new Map<string, DebugProtocol.CompletionItem>();
+
+            // Get the completions if the variable path was valid
             if (variablePath) {
                 let parentVariablePath: string[];
                 // If the last character is a period, then pull completions for the parent variable before the period
                 if (args.text.endsWith('.')) {
                     parentVariablePath = variablePath;
                 } else {
+                    // Otherwise, pull completions for the parent variable
                     parentVariablePath = variablePath.slice(0, variablePath.length - 1);
                 }
 
-                if (parentVariablePath.length === 0) {
+                // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
+                if (parentVariablePath.length === 0 || (parentVariablePath.length === 1 && parentVariablePath[0] === '')) {
                     parentVariablePath = [''];
-                }
-
-                if (parentVariablePath.length === 1 && parentVariablePath[0] === '') {
                     supplyLocalScopeCompletions = true;
                 }
 
+                // Look up the parent variable
                 let parentVariable = this.findVariableByPath(Object.values(this.variables), parentVariablePath, args.frameId);
 
                 if (!parentVariable || parentVariable.childVariables.length === 0) {
+                    // We did not find the parent variable, so try to look it up from the device
                     try {
                         let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: parentVariablePath.join('.'), frameId: args.frameId }, parentVariablePath);
                         let result = await this.rokuAdapter.getVariable(evalArgs.expression, args.frameId);
@@ -1745,13 +1753,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                 }
 
+                // provide completions for the parent variable if one was found
                 if (parentVariable) {
-                    let possibleVariables: AugmentedVariable[] = [];
-                    possibleVariables = parentVariable.childVariables.filter((v) => v.presentationHint?.kind !== 'virtual');
+                    let possibleFieldsAndMethods: AugmentedVariable[] = [];
+                    // Filter out virtual variables
+                    possibleFieldsAndMethods = parentVariable.childVariables.filter((v) => v.presentationHint?.kind !== 'virtual');
 
-                    for (let v of possibleVariables) {
+                    for (let v of possibleFieldsAndMethods) {
+                        // Default completion type should be variable
                         let completionType: DebugProtocol.CompletionItemType = 'variable';
                         if (!supplyLocalScopeCompletions) {
+                            // We are not supplying local scope completions, so we need to determine the completion type relative to the parent variable
                             if (parentVariable.type === 'roSGNode' || parentVariable.type === VariableType.AssociativeArray || parentVariable.type === VariableType.Object) {
                                 completionType = 'field';
                             }
@@ -1773,85 +1785,27 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         });
                     }
 
+                    let parentComponentType = this.debuggerVarTypeToRoType(parentVariable.type).toLowerCase();
+                    //assemble a list of all methods on the parent component
+                    const methodCollections = [
+                        //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
+                        ...interfaces[parentComponentType] ?? [],
+                        //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
+                        ...components[parentComponentType]?.interfaces.map((i) => interfaces[i.name.toLowerCase()]) ?? [],
+                        // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
+                        ...events[parentComponentType] ?? []
+                    ].filter(x => !!x);
 
-                    let parentComponentType = parentVariable.type;
-                    switch (parentComponentType) {
-                        case VariableType.Function:
-                        case VariableType.Subroutine:
-                            parentComponentType = 'roFunction';
-                            break;
-                        case VariableType.AssociativeArray:
-                            parentComponentType = 'roAssociativeArray';
-                            break;
-                        case VariableType.List:
-                            parentComponentType = 'roList';
-                            break;
-                        case VariableType.Array:
-                            parentComponentType = 'roArray';
-                            break;
-                        case VariableType.Boolean:
-                            parentComponentType = 'roBoolean';
-                            break;
-                        case VariableType.Double:
-                            parentComponentType = 'roDouble';
-                            break;
-                        case VariableType.Float:
-                            parentComponentType = 'roFloat';
-                            break;
-                        case VariableType.Integer:
-                            parentComponentType = 'roInteger';
-                            break;
-                        case VariableType.LongInteger:
-                            parentComponentType = 'roLongInteger';
-                            break;
-                        case VariableType.String:
-                            parentComponentType = 'roString';
-                            break;
-                        default:
-                            break;
-                    }
-
-                    parentComponentType = parentComponentType.toLowerCase();
-
-
-                    let componentInterfaces = [];
-
-                    // Add parent component function completions based on it's interfaces
-                    let parentComponent = components[parentComponentType];
-                    if (parentComponent) {
-                        parentComponent.interfaces.forEach((i) => {
-                            componentInterfaces.push(interfaces[i.name.toLowerCase()]);
-                        });
-                    }
-
-                    // If the parent variable is an actual interface we need to look it up
-                    let parentInterface = interfaces[parentComponentType];
-                    if (parentInterface) {
-                        componentInterfaces.push(parentInterface);
-                    }
-
-                    for (let i of componentInterfaces) {
-                        i.methods.forEach((m) => {
-                            completions.set(`method-${m.name}`, {
-                                label: m.name,
+                    // Based on the results of interface, component, and event looks up, add all the methods to the completions
+                    for (const methodCollection of methodCollections) {
+                        for (const method of methodCollection.methods) {
+                            completions.set(`method-${method.name}`, {
+                                label: method.name,
                                 type: 'method',
-                                detail: m.description ?? '',
+                                detail: method.description ?? '',
                                 sortText: '000000'
                             });
-                        });
-                    }
-
-                    // Add parent event function completions
-                    let event = events[parentVariable.type.toLowerCase()];
-                    if (event) {
-                        event.methods.forEach((m) => {
-                            completions.set(`method-${m.name}`, {
-                                label: m.name,
-                                type: 'method',
-                                detail: m.description ?? '',
-                                sortText: '000000'
-                            });
-                        });
+                        }
                     }
 
                     // Add the global functions to the completions results
@@ -1899,6 +1853,34 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             variables = current.childVariables;
         }
         return current;
+    }
+
+    private debuggerVarTypeToRoType(type: string): string {
+        switch (type) {
+            case VariableType.Function:
+            case VariableType.Subroutine:
+                return 'roFunction';
+            case VariableType.AssociativeArray:
+                return 'roAssociativeArray';
+            case VariableType.List:
+                return 'roList';
+            case VariableType.Array:
+                return 'roArray';
+            case VariableType.Boolean:
+                return 'roBoolean';
+            case VariableType.Double:
+                return 'roDouble';
+            case VariableType.Float:
+                return 'roFloat';
+            case VariableType.Integer:
+                return 'roInteger';
+            case VariableType.LongInteger:
+                return 'roLongInteger';
+            case VariableType.String:
+                return 'roString';
+            default:
+                return type;
+        }
     }
 
     /**
