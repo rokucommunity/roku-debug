@@ -489,9 +489,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             let publishPromise = this.publish();
 
-            // Ask the programManager to start collecting scope level completions for all the projects
-            void this.projectManager.loadCompletions();
-
             await publishPromise;
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
@@ -1823,7 +1820,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         }
 
                         const frame = this.rokuAdapter.getStackFrameById(args.frameId);
-                        let globalScopeFunctions = await this.projectManager.getCompletionsForFile(frame.filePath as string);
+                        let globalScopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
                         for (let globalScopeFunction of globalScopeFunctions) {
                             if (!completions.has(`function-${globalScopeFunction.toLocaleLowerCase()}`)) {
                                 completions.set(`function-${globalScopeFunction.toLocaleLowerCase()}`, {
