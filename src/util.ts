@@ -9,7 +9,7 @@ import type { AssignmentStatement, Position, Range } from 'brighterscript';
 import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
-import type { AdapterOptions } from './interfaces';
+import type { AdapterOptions, DisposableLike } from './interfaces';
 import * as r from 'postman-request';
 import type { Response } from 'request';
 import type * as requestType from 'request';
@@ -490,6 +490,23 @@ class Util {
             completed: toEmit,
             remaining
         };
+    }
+
+    /**
+     * Execute dispose for a series of disposable items, and empties the array in-place
+     * @param disposables a list of functions or disposables
+     */
+    public applyDispose(disposables: DisposableLike[]) {
+        disposables ??= [];
+        for (const disposable of disposables) {
+            if (typeof disposable === 'function') {
+                disposable();
+            } else {
+                disposable?.dispose?.();
+            }
+        }
+        //empty the array
+        disposables.splice(0, disposables.length);
     }
 }
 
