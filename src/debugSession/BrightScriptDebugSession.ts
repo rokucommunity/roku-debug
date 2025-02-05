@@ -1848,6 +1848,52 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
     }
 
+    /**
+     * Gets the closest completion details the incoming completion request.
+     */
+    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { variablePathString: string } {
+        const incomingText = args.text;
+        const lines = incomingText.split('\n');
+        let lineNumber = args.line ?? (this.initRequestArgs.linesStartAt1 ? 1 : 0);
+        let column = args.column;
+
+        // Make sure to correct the line and column to 0-based
+        // if they are being sent as 1-based from the client
+        if (this.initRequestArgs.linesStartAt1) {
+            lineNumber--;
+        }
+        if (this.initRequestArgs.columnsStartAt1) {
+            column--;
+        }
+
+        const targetLine = lines[lineNumber];
+        let variablePathString = '';
+
+        let i = column - 1;
+        const variableChars = /[a-z0-9_\.]/i;
+
+        // If the character at immediate to the right of the cursor is a variable character, then we are not at the end of the variable path.
+        if (targetLine.length - 1 > i && variableChars.test(targetLine[i + 1])) {
+            return undefined;
+        }
+
+        // Find the start of the variable path by looking for the first non-alphanumeric or non_underscore character before the cursor
+        while (i >= 0 && (variableChars.test(targetLine[i]))) {
+            i--;
+        }
+
+        // Pull the variable path string from the line
+        variablePathString = targetLine.slice(i + 1, column);
+
+        // Attempted dot access something unexpected
+        // Example: `getPerson().name` where `getPerson()` is not a valid variable
+        // and results in `.name` being the variable path string
+        if (variablePathString.startsWith('.')) {
+            return undefined;
+        }
+        return { variablePathString: variablePathString };
+    }
+
     private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {
         let current: AugmentedVariable = null;
         for (const name of path) {
