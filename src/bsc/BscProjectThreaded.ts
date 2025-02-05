@@ -10,12 +10,6 @@ import { util } from '../util';
 
 
 export class BscProjectThreaded implements ExtractMethods<BscProject> {
-
-    public constructor() {
-        // start a new worker thread or get an unused existing thread
-        this.worker = bscProjectWorkerPool.getWorker();
-    }
-
     private worker: Worker;
 
     private messageHandler: ThreadMessageHandler<BscProject>;
@@ -30,6 +24,9 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
     }
 
     public async activate(options: Parameters<ProgramBuilder['run']>[0]) {
+        // start a new worker thread or get an unused existing thread
+        this.worker = bscProjectWorkerPool.getWorker();
+
         //link the message handler to the worker
         this.messageHandler = new ThreadMessageHandler<BscProject>({
             name: 'MainThread',

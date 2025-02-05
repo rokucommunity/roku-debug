@@ -27,15 +27,30 @@ export const componentLibraryPostfix = '__lib';
  */
 export class ProjectManager {
     public constructor(
-        /**
-         * A class that keeps track of all the breakpoints for a debug session.
-         * It needs to be notified of any changes in breakpoints
-         */
-        public breakpointManager: BreakpointManager,
-        public locationManager: LocationManager
+        options: {
+            /**
+             * A class that keeps track of all the breakpoints for a debug session.
+             * It needs to be notified of any changes in breakpoints
+             */
+            breakpointManager: BreakpointManager;
+            locationManager: LocationManager;
+            enableBscProjectThreading?: boolean;
+        }
     ) {
-        this.breakpointManager = breakpointManager;
+        this.breakpointManager = options.breakpointManager;
+        this.locationManager = options.locationManager;
+        this.enableBscProjectThreading = options.enableBscProjectThreading ?? true;
     }
+
+    private breakpointManager: BreakpointManager;
+
+    private locationManager: LocationManager;
+
+    /**
+     * Should the threaded brighterscript ProgramBuilder be used for answering certain project-specific questions?
+     * If false, those questions will not be able to be answered.
+     */
+    private enableBscProjectThreading: boolean;
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;
@@ -253,6 +268,7 @@ export interface AddProjectParams {
     rdbFilesBasePath?: string;
     bsConst?: Record<string, boolean>;
     stagingDir?: string;
+    enableBscProjectThreading?: boolean;
 }
 
 export class Project {
@@ -273,6 +289,7 @@ export class Project {
         this.rdbFilesBasePath = params.rdbFilesBasePath;
         this.files = params.files ?? [];
         this.packagePath = params.packagePath;
+        this.enableBscProjectThreading = params.enableBscProjectThreading;
     }
     public rootDir: string;
     public outDir: string;
@@ -286,6 +303,7 @@ export class Project {
     public raleTrackerTaskFileLocation: string;
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
+    public enableBscProjectThreading: boolean;
 
     /**
      * A BrighterScript project for the stagingDir
@@ -325,17 +343,19 @@ export class Project {
             outDir: this.outDir
         });
 
-        //activate our background brighterscript ProgramBuilder now that the staging directory contains the final production project
-        void this.stagingBscProject.activate({
-            rootDir: this.stagingDir,
-            files: ['**/*'],
-            watch: false,
-            createPackage: false,
-            deploy: false,
-            copyToStaging: false,
-            showDiagnosticsInConsole: false,
-            validate: true
-        });
+        if (this.enableBscProjectThreading) {
+            //activate our background brighterscript ProgramBuilder now that the staging directory contains the final production project
+            void this.stagingBscProject.activate({
+                rootDir: this.stagingDir,
+                files: ['**/*'],
+                watch: false,
+                createPackage: false,
+                deploy: false,
+                copyToStaging: false,
+                showDiagnosticsInConsole: false,
+                validate: true
+            });
+        }
 
         //preload the original location of every file
         await this.resolveFileMappingsForSourceDirs();
@@ -353,7 +373,7 @@ export class Project {
      * @returns
      */
     public getScopeFunctionsForFile(relativePath: string) {
-        if (this.stagingBscProject.isActivated) {
+        if (this.enableBscProjectThreading && this.stagingBscProject?.isActivated) {
             return this.stagingBscProject.getScopeFunctionsForFile({ relativePath: relativePath });
         } else {
             return [];

@@ -41,7 +41,11 @@ describe('ProjectManager', () => {
         let locationManager = new LocationManager(sourceMapManager);
         let breakpointManager = new BreakpointManager(sourceMapManager, locationManager);
 
-        manager = new ProjectManager(breakpointManager, locationManager);
+        manager = new ProjectManager({
+            locationManager: locationManager,
+            breakpointManager: breakpointManager,
+            enableBscProjectThreading: false
+        });
 
         manager.mainProject = <any>{
             stagingDir: stagingDir
@@ -60,7 +64,7 @@ describe('ProjectManager', () => {
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
         it('accounts for the entry breakpoint', () => {
-            manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [{
+            manager['breakpointManager']['permanentBreakpointsBySrcPath'].set(filePath, [{
                 line: 3
             }, {
                 line: 3
@@ -121,7 +125,7 @@ describe('ProjectManager', () => {
                         line = 12
                 end function
              */
-            manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [
+            manager['breakpointManager']['permanentBreakpointsBySrcPath'].set(filePath, [
                 { line: 3 },
                 { line: 4 },
                 { line: 5 },
