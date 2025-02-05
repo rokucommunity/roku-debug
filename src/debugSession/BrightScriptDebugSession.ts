@@ -486,9 +486,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             let publishPromise = this.publish();
 
-            // Ask the programManager to start collecting scope level completions for all the projects
-            void this.projectManager.loadCompletions();
-
             await publishPromise;
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
@@ -1773,11 +1770,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //assemble a list of all methods on the parent component
                     const methods = [
                         //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
-                        ...interfaces[parentComponentType]?.methods ?? [],
+                        ...interfaces[parentComponentType as 'ifappinfo']?.methods ?? [],
                         //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
-                        ...components[parentComponentType]?.interfaces.map((i) => interfaces[i.name.toLowerCase()]?.methods) ?? [],
+                        ...components[parentComponentType as 'roappinfo']?.interfaces.map((i) => interfaces[i.name.toLowerCase() as 'ifappinfo']?.methods) ?? [],
                         // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
-                        ...events[parentComponentType]?.methods ?? []
+                        ...events[parentComponentType as 'roappmemorymonitorevent']?.methods ?? []
                     ].flat();
 
                     // Based on the results of interface, component, and event looks up, add all the methods to the completions
@@ -1802,7 +1799,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         }
 
                         const frame = this.rokuAdapter.getStackFrameById(args.frameId);
-                        let globalScopeFunctions = await this.projectManager.getCompletionsForFile(frame.filePath);
+                        let globalScopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
                         for (let globalScopeFunction of globalScopeFunctions) {
                             if (!completions.has(`function-${globalScopeFunction.toLocaleLowerCase()}`)) {
                                 completions.set(`function-${globalScopeFunction.toLocaleLowerCase()}`, {
@@ -2137,10 +2134,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     // check to see if this is an dictionary or a list
                     if (result.keyType === 'Integer') {
                         // list type
-                        v = new Variable(result.name, value, refId, indexedVariables, namedVariables);
+                        v = new Variable(result.name, value, refId, indexedVariables as number, namedVariables as number);
                     } else if (result.keyType === 'String') {
                         // dictionary type
-                        v = new Variable(result.name, value, refId, indexedVariables, namedVariables);
+                        v = new Variable(result.name, value, refId, indexedVariables as number, namedVariables as number);
                     }
                     v.type = result.type;
                 } else {
@@ -2235,7 +2232,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // if the var is an array and debugProtocol is enabled, include the array size
             if (this.enableDebugProtocol && v.type === VariableType.Array) {
-                if (isNaN(result.indexedVariables)) {
+                if (isNaN(result.indexedVariables as number)) {
                     v.value = v.type;
                 } else {
                     v.value = `${v.type}(${result.indexedVariables})`;
