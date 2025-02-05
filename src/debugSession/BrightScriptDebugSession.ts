@@ -1702,7 +1702,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         try {
             let supplyLocalScopeCompletions = false;
-            if ((args.column !== args.text.length + 1)) {
+
+            let closestCompletionDetails = this.getClosestCompletionDetails(args);
+
+            if (!closestCompletionDetails) {
                 // If the cursor is not at the end of the line, then we should not supply completions at this time
                 response.body = {
                     targets: []
@@ -1710,16 +1713,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 return this.sendResponse(response);
             }
 
+            let targetCompletionTest = closestCompletionDetails.variablePathString;
+
             // Get the variable path from the text
             let variablePath: string[] = [];
-            if (!args.text.trim()) {
+            if (!targetCompletionTest.trim()) {
                 // The text was empty so assume via '' that we are looking up the local scope variables and global functions
                 variablePath = [''];
-            } else if (args.text.endsWith('.')) {
+            } else if (targetCompletionTest.endsWith('.')) {
                 // supplied text ends with a period, so strip it off to create a valid variable path
-                variablePath = util.getVariablePath(args.text.slice(0, -1));
+                variablePath = util.getVariablePath(targetCompletionTest.slice(0, -1));
             } else {
-                variablePath = util.getVariablePath(args.text);
+                variablePath = util.getVariablePath(targetCompletionTest);
             }
 
             let completions = new Map<string, DebugProtocol.CompletionItem>();
@@ -1728,7 +1733,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (variablePath) {
                 let parentVariablePath: string[];
                 // If the last character is a period, then pull completions for the parent variable before the period
-                if (args.text.endsWith('.')) {
+                if (targetCompletionTest.endsWith('.')) {
                     parentVariablePath = variablePath;
                 } else {
                     // Otherwise, pull completions for the parent variable
