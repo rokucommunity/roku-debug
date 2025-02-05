@@ -69,6 +69,11 @@ export class ProjectManager {
         return projects.map(x => x.stagingDir);
     }
 
+    /**
+     * Get all of the functions avaiable for all scopes for this file.
+     * @param pkgPath the device path of the file (probably with `pkg:` or `libpkg` or something...)
+     * @returns
+     */
     public async getScopeFunctionsForFile(pkgPath: string): Promise<string[]> {
         let completions: string[] = [];
         try {
@@ -337,8 +342,17 @@ export class Project {
         await this.copyAndTransformRDB();
     }
 
-    public getScopeFunctionsForFile(pkgPath: string) {
-        return this.stagingBscProject.getScopeFunctionsForFile({ pkgPath: pkgPath });
+    /**
+     * Get all of the functions avaiable for all scopes for this file.
+     * @param relativePath path to the file relative to rootDir
+     * @returns
+     */
+    public getScopeFunctionsForFile(relativePath: string) {
+        if (this.stagingBscProject.isActivated) {
+            return this.stagingBscProject.getScopeFunctionsForFile({ relativePath: relativePath });
+        } else {
+            return [];
+        }
     }
 
     /**

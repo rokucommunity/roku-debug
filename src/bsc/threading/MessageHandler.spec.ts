@@ -1,6 +1,8 @@
 import { MessageChannel } from 'worker_threads';
 import { ThreadMessageHandler } from './ThreadMessageHandler';
 import type { BscProject } from '../BscProject';
+import { expect } from 'chai';
+import { util } from '../../util';
 
 describe('MessageHandler', () => {
     let server: ThreadMessageHandler<BscProject>;
@@ -56,7 +58,7 @@ describe('MessageHandler', () => {
         try {
             await responsePromise;
         } catch (e) {
-            error = e as any;
+            error = e as Error;
         }
         expect(error?.message).to.eql('Request 0 has been rejected because MessageHandler is now disposed');
     });

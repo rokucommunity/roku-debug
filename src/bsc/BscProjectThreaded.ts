@@ -17,6 +17,13 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
 
     private activateDeferred = new Deferred();
 
+    /**
+     * Has this project finished activating (either resolved or rejected...)
+     */
+    public get isActivated() {
+        return this.activateDeferred.isCompleted;
+    }
+
     public async activate(options: Parameters<ProgramBuilder['run']>[0]) {
 
         // start a new worker thread or get an unused existing thread
@@ -48,10 +55,10 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
 
     /**
      * Get all of the functions avaiable for all scopes for this file.
-     * @param pkgPath the pkgPath to the file (with or without `pkg:/`)
+     * @param relativePath path to the file relative to rootDir
      * @returns
      */
-    public getScopeFunctionsForFile(options: { pkgPath: string }): Promise<string[]> {
+    public getScopeFunctionsForFile(options: { relativePath: string }): Promise<string[]> {
         return this.sendStandardRequest('getScopeFunctionsForFile', options);
     }
 
