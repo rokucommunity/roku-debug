@@ -1,7 +1,7 @@
 import { Deferred, type ProgramBuilder } from 'brighterscript';
 import type { ExtractMethods, DisposableLike } from '../interfaces';
 import type { BscProject } from './BscProject';
-import { workerPool } from './threading/BscProjectWorkerPool';
+import { bscProjectWorkerPool } from './threading/BscProjectWorkerPool';
 import type { MethodNames, WorkerMessage } from './threading/ThreadMessageHandler';
 import { ThreadMessageHandler } from './threading/ThreadMessageHandler';
 import type { Worker } from 'worker_threads';
@@ -10,6 +10,11 @@ import { util } from '../util';
 
 
 export class BscProjectThreaded implements ExtractMethods<BscProject> {
+
+    public constructor() {
+        // start a new worker thread or get an unused existing thread
+        this.worker = bscProjectWorkerPool.getWorker();
+    }
 
     private worker: Worker;
 
@@ -25,10 +30,6 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
     }
 
     public async activate(options: Parameters<ProgramBuilder['run']>[0]) {
-
-        // start a new worker thread or get an unused existing thread
-        this.worker = workerPool.getWorker();
-
         //link the message handler to the worker
         this.messageHandler = new ThreadMessageHandler<BscProject>({
             name: 'MainThread',
@@ -41,7 +42,7 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
         this.disposables.push(
             this.messageHandler,
             //when disposed, move the worker back to the pool so it can be used again
-            () => workerPool.releaseWorker(this.worker)
+            () => bscProjectWorkerPool.releaseWorker(this.worker)
         );
 
         //send the request to the worker to activate itself

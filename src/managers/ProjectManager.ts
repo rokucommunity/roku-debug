@@ -14,6 +14,7 @@ import { logger } from '../logging';
 import { Cache } from 'brighterscript/dist/Cache';
 import { Deferred, ProgramBuilder } from 'brighterscript';
 import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
+import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -233,6 +234,10 @@ export class ProjectManager {
         } else {
             return undefined;
         }
+    }
+
+    public dispose() {
+        util.applyDispose(this.getAllProjects());
     }
 }
 
@@ -570,6 +575,10 @@ export class Project {
             mapping.dest = fileUtils.standardizePath(mapping.dest);
         }
         return fileMappings;
+    }
+
+    public dispose() {
+        this.stagingBscProject?.dispose?.();
     }
 }
 

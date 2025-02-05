@@ -2254,6 +2254,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
         try {
+            try {
+                this.projectManager?.dispose?.();
+            } catch (e) {
+                this.logger.error(e);
+            }
+
             this.componentLibraryServer?.stop();
 
             void this.rendezvousTracker?.destroy?.();
