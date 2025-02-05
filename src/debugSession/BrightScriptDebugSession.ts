@@ -1796,7 +1796,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
                         ...interfaces[parentComponentType]?.methods ?? [],
                         //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
-                        ...components[parentComponentType]?.interfaces.map((i) => interfaces[i.name.toLowerCase()])?.methods ?? [],
+                        ...components[parentComponentType]?.interfaces.map((i) => interfaces[i.name.toLowerCase()]?.methods) ?? [],
                         // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
                         ...events[parentComponentType]?.methods ?? []
                     ].flat();
