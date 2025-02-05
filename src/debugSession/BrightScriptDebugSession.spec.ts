@@ -1513,6 +1513,50 @@ describe('BrightScriptDebugSession', () => {
     });
     describe('completionsRequest', () => {
         describe('getClosestCompletionDetails', () => {
+            it('handles empty string columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: '',
+                    column: 0,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('handles empty string columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: '',
+                    column: 1,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('handles bad variable path columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: '1bad.path',
+                    column: 9,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+            });
+
+            it('handles bad variable path columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: '1bad.path',
+                    column: 10,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+            });
+
             it('handles simple input of just variable path columnsStartAt1 false', () => {
                 session['initRequestArgs']['columnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
@@ -1521,7 +1565,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'person.name'
+                    parentVariablePath: ['person']
                 });
             });
 
@@ -1533,7 +1577,31 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'person.name'
+                    parentVariablePath: ['person']
+                });
+            });
+
+            it('handles simple input of just variable path with training period columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'person.name.',
+                    column: 12,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person', 'name']
+                });
+            });
+
+            it('handles simple input of just variable path with training period columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'person.name.',
+                    column: 13,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person', 'name']
                 });
             });
 
@@ -1600,7 +1668,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'person.name'
+                    parentVariablePath: ['person']
                 });
 
                 expect(session['getClosestCompletionDetails']({
@@ -1609,7 +1677,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'person.name'
+                    parentVariablePath: ['person']
                 });
             });
 
@@ -1621,7 +1689,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'person.name'
+                    parentVariablePath: ['person']
                 });
 
                 expect(session['getClosestCompletionDetails']({
@@ -1630,7 +1698,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'person.name'
+                    parentVariablePath: ['person']
                 });
             });
 
@@ -1642,7 +1710,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'person.name'
+                    parentVariablePath: ['person']
                 });
             });
 
@@ -1654,7 +1722,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'person.name'
+                    parentVariablePath: ['person']
                 });
             });
 
@@ -1666,7 +1734,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'test'
+                    parentVariablePath: ['']
                 });
 
                 expect(session['getClosestCompletionDetails']({
@@ -1675,7 +1743,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'test'
+                    parentVariablePath: ['']
                 });
             });
 
@@ -1687,7 +1755,7 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'test'
+                    parentVariablePath: ['']
                 });
 
                 expect(session['getClosestCompletionDetails']({
@@ -1696,34 +1764,57 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'test'
+                    parentVariablePath: ['']
                 });
             });
 
             it('handles multiline inout columnsStartAt1 false linesStartAt1 false', () => {
                 session['initRequestArgs']['columnsStartAt1'] = false;
                 session['initRequestArgs']['linesStartAt1'] = false;
+
+                // cursor is on the first line
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name, {\ntemp: test\n})',
+                    column: 20,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+
+                // cursor is on the second line
                 expect(session['getClosestCompletionDetails']({
                     text: 'getValue(person.name, {\ntemp: test\n})',
                     column: 10,
                     line: 1,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'test'
+                    parentVariablePath: ['']
                 });
             });
 
-            it('input after a open bracket with training closing bracket columnsStartAt1 true linesStartAt1 true', () => {
+            it('handles multiline inout columnsStartAt1 true linesStartAt1 true', () => {
                 session['initRequestArgs']['columnsStartAt1'] = true;
                 session['initRequestArgs']['linesStartAt1'] = true;
+
+                // cursor is on the first line
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name, {\ntemp: test\n})',
+                    column: 21,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+
+                // cursor is on the second line
                 expect(session['getClosestCompletionDetails']({
                     text: 'getValue(person.name, {\ntemp: test\n})',
                     column: 11,
                     line: 2,
                     frameId: 0
                 })).to.eql({
-                    variablePathString: 'test'
+                    parentVariablePath: ['']
                 });
+
             });
         });
     });

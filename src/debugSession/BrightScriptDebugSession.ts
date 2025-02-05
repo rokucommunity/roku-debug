@@ -1712,37 +1712,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 };
                 return this.sendResponse(response);
             }
-
-            let targetCompletionTest = closestCompletionDetails.variablePathString;
-
-            // Get the variable path from the text
-            let variablePath: string[] = [];
-            if (!targetCompletionTest.trim()) {
-                // The text was empty so assume via '' that we are looking up the local scope variables and global functions
-                variablePath = [''];
-            } else if (targetCompletionTest.endsWith('.')) {
-                // supplied text ends with a period, so strip it off to create a valid variable path
-                variablePath = util.getVariablePath(targetCompletionTest.slice(0, -1));
-            } else {
-                variablePath = util.getVariablePath(targetCompletionTest);
-            }
-
             let completions = new Map<string, DebugProtocol.CompletionItem>();
 
+            let parentVariablePath = closestCompletionDetails.parentVariablePath;
             // Get the completions if the variable path was valid
-            if (variablePath) {
-                let parentVariablePath: string[];
-                // If the last character is a period, then pull completions for the parent variable before the period
-                if (targetCompletionTest.endsWith('.')) {
-                    parentVariablePath = variablePath;
-                } else {
-                    // Otherwise, pull completions for the parent variable
-                    parentVariablePath = variablePath.slice(0, variablePath.length - 1);
-                }
+            if (parentVariablePath) {
 
-                // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
-                if (parentVariablePath.length === 0 || (parentVariablePath.length === 1 && parentVariablePath[0] === '')) {
-                    parentVariablePath = [''];
+                // If the parent variable path is an empty string, then we are looking up the local scope variables and global functions
+                if (parentVariablePath.length === 1 && parentVariablePath[0] === '') {
                     supplyLocalScopeCompletions = true;
                 }
 
@@ -1856,7 +1833,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Gets the closest completion details the incoming completion request.
      */
-    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { variablePathString: string } {
+    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[] } {
         const incomingText = args.text;
         const lines = incomingText.split('\n');
         let lineNumber = args.line ?? (this.initRequestArgs.linesStartAt1 ? 1 : 0);
@@ -1896,7 +1873,39 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         if (variablePathString.startsWith('.')) {
             return undefined;
         }
-        return { variablePathString: variablePathString };
+
+        // Get the variable path from the text
+        let variablePath: string[] = [];
+        if (!variablePathString.trim()) {
+            // The text was empty so assume via '' that we are looking up the local scope variables and global functions
+            variablePath = [''];
+        } else if (variablePathString.endsWith('.')) {
+            // supplied text ends with a period, so strip it off to create a valid variable path
+            variablePath = util.getVariablePath(variablePathString.slice(0, -1));
+        } else {
+            variablePath = util.getVariablePath(variablePathString);
+        }
+
+        // the target string is not a valid variable path
+        if (!variablePath) {
+            return undefined;
+        }
+
+        let parentVariablePath: string[];
+        // If the last character is a period, then pull completions for the parent variable before the period
+        if (variablePathString.endsWith('.')) {
+            parentVariablePath = variablePath;
+        } else {
+            // Otherwise, pull completions for the parent variable
+            parentVariablePath = variablePath.slice(0, variablePath.length - 1);
+        }
+
+        // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
+        if (parentVariablePath.length === 0) {
+            parentVariablePath = [''];
+        }
+
+        return { parentVariablePath: parentVariablePath };
     }
 
     private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {
