@@ -18,12 +18,12 @@ export class BscProject {
 
     /**
      * Get all of the functions available for all scopes for this file.
-     * @param pkgPath the pkgPath to the file (with or without `pkg:/`)
+     * @param relativePath path to the file relative to rootDir
      * @returns
      */
-    public getScopeFunctionsForFile(options: { pkgPath: string }): MaybePromise<string[]> {
-        const pkgPath = options?.pkgPath?.replace(/^pkg:\/\//i, '');
-        const file = this.programBuilder.program.getFile(pkgPath);
+    public getScopeFunctionsForFile(options: { relativePath: string }): MaybePromise<string[]> {
+        //remove the leading `pkg:/` if it exists
+        const file = this.programBuilder.program.getFile(options?.relativePath);
         const scopes = this.programBuilder.program.getScopesForFile(file);
 
         const result = new Set<string>();
