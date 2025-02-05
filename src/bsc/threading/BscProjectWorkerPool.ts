@@ -19,7 +19,7 @@ if (!isMainThread) {
 /**
  * A pool of workers that gets pre-baked and reused so we don't pay the worker thread penalty every time we need a new worker.
  */
-export const workerPool = new WorkerPool(() => {
+export const bscProjectWorkerPool = new WorkerPool(() => {
     return new Worker(
         __filename,
         {
