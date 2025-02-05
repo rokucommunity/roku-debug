@@ -222,6 +222,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         response.body.supportsLogPoints = true;
 
         response.body.supportsCompletionsRequest = true;
+        response.body.completionTriggerCharacters = ['.', '(', ','];
 
         this.sendResponse(response);
 
