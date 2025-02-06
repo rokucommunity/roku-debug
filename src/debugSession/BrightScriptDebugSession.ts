@@ -84,7 +84,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.projectManager = new ProjectManager({
             breakpointManager: this.breakpointManager,
             locationManager: this.locationManager,
-            enableBscProjectThreading: true
+            enhanceREPLCompletions: true
         });
         this.fileLoggingManager = new FileLoggingManager();
     }
@@ -362,6 +362,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.emitChannelPublishedEvent ??= true;
         config.rewriteDevicePathsInLogs ??= true;
         config.autoResolveVirtualVariables ??= false;
+        config.enhanceREPLCompletions ??= true;
         return config;
     }
 
@@ -901,7 +902,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
             stagingDir: this.launchConfiguration.stagingDir,
             packagePath: this.launchConfiguration.packagePath,
-            enableBscProjectThreading: true
+            enhanceREPLCompletions: true
         });
 
         util.log('Moving selected files to staging area');
@@ -985,7 +986,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
                         libraryIndex: libraryIndex,
-                        enableBscProjectThreading: true
+                        enhanceREPLCompletions: true
                     })
                 );
             }

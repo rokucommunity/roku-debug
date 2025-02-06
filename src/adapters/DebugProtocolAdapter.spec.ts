@@ -69,7 +69,7 @@ describe('DebugProtocolAdapter', function() {
         projectManager = new ProjectManager({
             breakpointManager: breakpointManager,
             locationManager: locationManager,
-            enableBscProjectThreading: false
+            enhanceREPLCompletions: false
         });
         projectManager.mainProject = new Project({
             rootDir: rootDir,

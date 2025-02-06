@@ -170,6 +170,13 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     autoResolveVirtualVariables: boolean;
 
     /**
+     * Enables scanning deployment files for additional REPL completions,
+     * such as user-defined functions. This process runs in a background
+     * thread and may be resource-intensive.
+     */
+    enhanceREPLCompletions: boolean;
+
+    /**
      * If true, will attempt to skip false breakpoints created by the micro debugger, which are particularly prevalent for SG apps with multiple run loops.
      */
     enableDebuggerAutoRecovery: boolean;

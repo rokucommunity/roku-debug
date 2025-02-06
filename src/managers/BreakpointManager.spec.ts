@@ -48,7 +48,7 @@ describe('BreakpointManager', () => {
         projectManager = new ProjectManager({
             breakpointManager: bpManager,
             locationManager: locationManager,
-            enableBscProjectThreading: false
+            enhanceREPLCompletions: false
         });
         projectManager.mainProject = new Project({
             rootDir: rootDir,
