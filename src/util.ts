@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as net from 'net';
-import * as url from 'url';
 import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { LogOutputEvent } from './debugSession/Events';
@@ -13,6 +12,7 @@ import type { AdapterOptions } from './interfaces';
 import * as r from 'postman-request';
 import type { Response } from 'request';
 import type * as requestType from 'request';
+import { OutputEvent } from '@vscode/debugadapter';
 const request = r as typeof requestType;
 
 class Util {
@@ -136,6 +136,7 @@ class Util {
     public log(message: string) {
         if (this._debugSession) {
             this._debugSession.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
+            this._debugSession.sendEvent(new OutputEvent(`DebugServer: ${message}`, 'stdout'));
         }
     }
 
