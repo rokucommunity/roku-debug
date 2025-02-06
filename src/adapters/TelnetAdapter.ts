@@ -63,6 +63,7 @@ export class TelnetAdapter {
     private debugStartRegex: RegExp;
     private debugEndRegex: RegExp;
     private chanperfTracker: ChanperfTracker;
+    private stackFramesCache: Record<number, StackFrame> = {};
 
     private cache = {};
 
@@ -470,6 +471,7 @@ export class TelnetAdapter {
     public clearCache() {
         this.logger.info('Clearing TelnetAdapter cache');
         this.cache = {};
+        this.stackFramesCache = {};
         this.isAtDebuggerPrompt = false;
     }
 
@@ -521,11 +523,16 @@ export class TelnetAdapter {
                         functionIdentifier: functionIdentifier
                     };
                     frames.push(frame);
+                    this.stackFramesCache[frame.frameId] = frame;
                 }
             }
             //if we didn't find frames yet, then there's not much more we can do...
             return frames;
         });
+    }
+
+    public getStackFrameById(frameId: number): StackFrame {
+        return this.stackFramesCache[frameId];
     }
 
     /**

@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 import * as net from 'net';
-import * as url from 'url';
 import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { LogOutputEvent } from './debugSession/Events';
@@ -9,10 +8,11 @@ import type { AssignmentStatement, Position, Range } from 'brighterscript';
 import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
-import type { AdapterOptions } from './interfaces';
+import type { AdapterOptions, DisposableLike } from './interfaces';
 import * as r from 'postman-request';
 import type { Response } from 'request';
 import type * as requestType from 'request';
+import { OutputEvent } from '@vscode/debugadapter';
 const request = r as typeof requestType;
 
 class Util {
@@ -136,6 +136,7 @@ class Util {
     public log(message: string) {
         if (this._debugSession) {
             this._debugSession.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
+            this._debugSession.sendEvent(new OutputEvent(`DebugServer: ${message}`, 'stdout'));
         }
     }
 
@@ -490,6 +491,23 @@ class Util {
             completed: toEmit,
             remaining
         };
+    }
+
+    /**
+     * Execute dispose for a series of disposable items, and empties the array in-place
+     * @param disposables a list of functions or disposables
+     */
+    public applyDispose(disposables: DisposableLike[]) {
+        disposables ??= [];
+        for (const disposable of disposables) {
+            if (typeof disposable === 'function') {
+                disposable();
+            } else {
+                disposable?.dispose?.();
+            }
+        }
+        //empty the array
+        disposables.splice(0, disposables.length);
     }
 }
 

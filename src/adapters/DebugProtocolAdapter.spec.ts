@@ -66,11 +66,15 @@ describe('DebugProtocolAdapter', function() {
         const locationManager = new LocationManager(sourcemapManager);
         const rendezvousTracker = new RendezvousTracker({}, {} as any);
         breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
-        projectManager = new ProjectManager(breakpointManager, locationManager);
+        projectManager = new ProjectManager({
+            breakpointManager: breakpointManager,
+            locationManager: locationManager
+        });
         projectManager.mainProject = new Project({
             rootDir: rootDir,
             files: [],
-            outDir: outDir
+            outDir: outDir,
+            enhanceREPLCompletions: false
         });
         adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager, rendezvousTracker, deviceInfo);
 
@@ -94,7 +98,7 @@ describe('DebugProtocolAdapter', function() {
      * Handles the initial connection and the "stop at first byte code" flow
      */
     async function initialize() {
-        sinon.stub(adapter, 'processTelnetOutput').callsFake(async () => {});
+        sinon.stub(adapter, 'processTelnetOutput').callsFake(async () => { });
 
         await adapter.connect();
         await adapter['createDebugProtocolClient']();
