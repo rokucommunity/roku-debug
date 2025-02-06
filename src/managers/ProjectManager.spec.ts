@@ -43,8 +43,7 @@ describe('ProjectManager', () => {
 
         manager = new ProjectManager({
             locationManager: locationManager,
-            breakpointManager: breakpointManager,
-            enhanceREPLCompletions: false
+            breakpointManager: breakpointManager
         });
 
         manager.mainProject = <any>{

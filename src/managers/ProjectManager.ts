@@ -33,23 +33,15 @@ export class ProjectManager {
              */
             breakpointManager: BreakpointManager;
             locationManager: LocationManager;
-            enhanceREPLCompletions: boolean;
         }
     ) {
         this.breakpointManager = options.breakpointManager;
         this.locationManager = options.locationManager;
-        this.enhanceREPLCompletions = options.enhanceREPLCompletions ?? true;
     }
 
     private breakpointManager: BreakpointManager;
 
     private locationManager: LocationManager;
-
-    /**
-     * Should the threaded brighterscript ProgramBuilder be used for answering certain project-specific questions?
-     * If false, those questions will not be able to be answered.
-     */
-    private enhanceREPLCompletions: boolean;
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;

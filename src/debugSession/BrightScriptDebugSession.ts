@@ -83,8 +83,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceBreakpointsChanged('changed', data));
         this.projectManager = new ProjectManager({
             breakpointManager: this.breakpointManager,
-            locationManager: this.locationManager,
-            enhanceREPLCompletions: true
+            locationManager: this.locationManager
         });
         this.fileLoggingManager = new FileLoggingManager();
     }
@@ -902,7 +901,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
             stagingDir: this.launchConfiguration.stagingDir,
             packagePath: this.launchConfiguration.packagePath,
-            enhanceREPLCompletions: true
+            enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
         });
 
         util.log('Moving selected files to staging area');
@@ -986,7 +985,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
                         libraryIndex: libraryIndex,
-                        enhanceREPLCompletions: true
+                        enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
                     })
                 );
             }

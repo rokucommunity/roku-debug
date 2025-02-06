@@ -68,8 +68,7 @@ describe('DebugProtocolAdapter', function() {
         breakpointManager = new BreakpointManager(sourcemapManager, locationManager);
         projectManager = new ProjectManager({
             breakpointManager: breakpointManager,
-            locationManager: locationManager,
-            enhanceREPLCompletions: false
+            locationManager: locationManager
         });
         projectManager.mainProject = new Project({
             rootDir: rootDir,
