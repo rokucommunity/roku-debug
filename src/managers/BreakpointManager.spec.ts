@@ -53,7 +53,8 @@ describe('BreakpointManager', () => {
         projectManager.mainProject = new Project({
             rootDir: rootDir,
             files: [],
-            outDir: s`${outDir}/mainProject`
+            outDir: s`${outDir}/mainProject`,
+            enhanceREPLCompletions: false
         });
         projectManager.addComponentLibraryProject(
             new ComponentLibraryProject({
@@ -61,7 +62,8 @@ describe('BreakpointManager', () => {
                 files: [],
                 libraryIndex: 0,
                 outDir: complib1OutDir,
-                outFile: s`${complib1OutDir}/complib1.zip`
+                outFile: s`${complib1OutDir}/complib1.zip`,
+                enhanceREPLCompletions: false
             })
         );
         projectManager.addComponentLibraryProject(
@@ -70,7 +72,8 @@ describe('BreakpointManager', () => {
                 files: [],
                 libraryIndex: 1,
                 outDir: complib2OutDir,
-                outFile: s`${complib2OutDir}/complib2.zip`
+                outFile: s`${complib2OutDir}/complib2.zip`,
+                enhanceREPLCompletions: false
             })
         );
     });
@@ -617,7 +620,8 @@ describe('BreakpointManager', () => {
                 ],
                 rootDir: s`${tmpDir}/dist`,
                 outDir: s`${tmpDir}/out`,
-                stagingDir: stagingDir
+                stagingDir: stagingDir,
+                enhanceREPLCompletions: false
             }));
 
             //the breakpoints should be placed in the proper locations
@@ -724,7 +728,8 @@ describe('BreakpointManager', () => {
                 ],
                 stagingDir: stagingDir,
                 outDir: outDir,
-                rootDir: rootDir
+                rootDir: rootDir,
+                enhanceREPLCompletions: false
             }));
 
             //use sourcemap to look up original location
@@ -785,7 +790,8 @@ describe('BreakpointManager', () => {
                 ],
                 stagingDir: stagingDir,
                 outDir: outDir,
-                rootDir: rootDir
+                rootDir: rootDir,
+                enhanceREPLCompletions: false
             }));
 
             //the in-memory cached source map should have been updated to point to rootDir
@@ -823,7 +829,8 @@ describe('BreakpointManager', () => {
             ],
             stagingDir: stagingDir,
             outDir: outDir,
-            rootDir: rootDir
+            rootDir: rootDir,
+            enhanceREPLCompletions: false
         });
         await project.stage();
         await bpManager.writeBreakpointsForProject(project);

@@ -74,7 +74,8 @@ describe('DebugProtocolAdapter', function() {
         projectManager.mainProject = new Project({
             rootDir: rootDir,
             files: [],
-            outDir: outDir
+            outDir: outDir,
+            enhanceREPLCompletions: false
         });
         adapter = new DebugProtocolAdapter(options, projectManager, breakpointManager, rendezvousTracker, deviceInfo);
 

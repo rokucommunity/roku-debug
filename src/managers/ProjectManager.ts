@@ -33,7 +33,7 @@ export class ProjectManager {
              */
             breakpointManager: BreakpointManager;
             locationManager: LocationManager;
-            enhanceREPLCompletions?: boolean;
+            enhanceREPLCompletions: boolean;
         }
     ) {
         this.breakpointManager = options.breakpointManager;
@@ -267,7 +267,7 @@ export interface AddProjectParams {
     rdbFilesBasePath?: string;
     bsConst?: Record<string, boolean>;
     stagingDir?: string;
-    enhanceREPLCompletions?: boolean;
+    enhanceREPLCompletions: boolean;
 }
 
 export class Project {
