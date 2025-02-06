@@ -495,9 +495,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             });
 
-            let publishPromise = this.publish();
-
-            await publishPromise;
+            await this.publish();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
