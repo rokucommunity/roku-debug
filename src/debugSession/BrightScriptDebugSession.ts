@@ -57,6 +57,7 @@ import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetEx
 import { debounce } from 'debounce';
 import { interfaces, components, events } from 'brighterscript/dist/roku-types';
 import { globalCallables } from 'brighterscript/dist/globalCallables';
+import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 
 const diagnosticSource = 'roku-debug';
 
@@ -76,7 +77,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         //send newly-verified breakpoints to vscode
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceBreakpointsChanged('changed', data));
-        this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
+        this.projectManager = new ProjectManager({
+            breakpointManager: this.breakpointManager,
+            locationManager: this.locationManager,
+            enableBscProjectThreading: true
+        });
         this.fileLoggingManager = new FileLoggingManager();
     }
 
@@ -364,6 +369,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
 
         this.launchConfiguration = this.normalizeLaunchConfig(config);
+
+        //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
+        bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
 
         //set the logLevel provided by the launch config
         if (this.launchConfiguration.logLevel) {
@@ -889,7 +897,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             injectRdbOnDeviceComponent: this.launchConfiguration.injectRdbOnDeviceComponent,
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
             stagingDir: this.launchConfiguration.stagingDir,
-            packagePath: this.launchConfiguration.packagePath
+            packagePath: this.launchConfiguration.packagePath,
+            enableBscProjectThreading: true
         });
 
         util.log('Moving selected files to staging area');
@@ -972,7 +981,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         bsConst: componentLibrary.bsConst,
                         injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
-                        libraryIndex: libraryIndex
+                        libraryIndex: libraryIndex,
+                        enableBscProjectThreading: true
                     })
                 );
             }
@@ -1799,12 +1809,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         }
 
                         const frame = this.rokuAdapter.getStackFrameById(args.frameId);
-                        let globalScopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
-                        for (let globalScopeFunction of globalScopeFunctions) {
-                            if (!completions.has(`function-${globalScopeFunction.toLocaleLowerCase()}`)) {
-                                completions.set(`function-${globalScopeFunction.toLocaleLowerCase()}`, {
-                                    label: globalScopeFunction,
-                                    type: 'function',
+                        let scopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
+                        for (let scopeFunction of scopeFunctions) {
+                            if (!completions.has(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`)) {
+                                completions.set(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`, {
+                                    label: scopeFunction.name,
+                                    type: scopeFunction.completionItemKind,
                                     sortText: '000000'
                                 });
                             }

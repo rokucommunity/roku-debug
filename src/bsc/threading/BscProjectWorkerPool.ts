@@ -1,10 +1,7 @@
 import { Worker } from 'worker_threads';
-import type { MessagePort } from 'worker_threads';
 import { isMainThread, parentPort } from 'worker_threads';
 import { BscProject } from '../BscProject';
 import { WorkerPool } from './WorkerPool';
-import type { MethodNames, WorkerMessage } from './ThreadMessageHandler';
-import { ThreadMessageHandler } from './ThreadMessageHandler';
 import { ThreadRunner } from './ThreadRunner';
 
 //if this script is running in a Worker, start the project runner

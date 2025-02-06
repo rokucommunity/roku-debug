@@ -45,7 +45,11 @@ describe('BreakpointManager', () => {
         sourceMapManager = new SourceMapManager();
         locationManager = new LocationManager(sourceMapManager);
         bpManager = new BreakpointManager(sourceMapManager, locationManager);
-        projectManager = new ProjectManager(bpManager, locationManager);
+        projectManager = new ProjectManager({
+            breakpointManager: bpManager,
+            locationManager: locationManager,
+            enableBscProjectThreading: false
+        });
         projectManager.mainProject = new Project({
             rootDir: rootDir,
             files: [],
@@ -306,7 +310,7 @@ describe('BreakpointManager', () => {
             });
 
             //write the breakpoints to the files
-            await projectManager.breakpointManager.writeBreakpointsForProject(projectManager.mainProject);
+            await projectManager['breakpointManager'].writeBreakpointsForProject(projectManager.mainProject);
 
             expect(breakpoints[0]).to.deep.include({
                 line: 2,
