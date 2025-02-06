@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.19](https://github.com/rokucommunity/roku-debug/compare/v0.21.18...v0.21.19) - 2025-02-06
+### Added
+ - debugger completions in the REPL ([#211](https://github.com/rokucommunity/roku-debug/pull/211))
+ - More completion trigger locations in the REPL ([#217](https://github.com/rokucommunity/roku-debug/pull/217))
+### Changed
+ - Sends the same start up logs for both debug console and output panel ([#218](https://github.com/rokucommunity/roku-debug/pull/218))
+ - upgrade to [brighterscript@0.68.5](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0685---2025-02-06). Notable changes since 0.68.4:
+     - Add `validate` flag to ProgramBuilder.run() ([brighterscript#1409](https://github.com/rokucommunity/brighterscript/pull/1409))
+
+
+
 ## [0.21.18](https://github.com/rokucommunity/roku-debug/compare/v0.21.17...v0.21.18) - 2025-01-31
 ### Fixed
  - Fix ecp limited crash ([#215](https://github.com/rokucommunity/roku-debug/pull/215))
