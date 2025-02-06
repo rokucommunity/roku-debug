@@ -2159,10 +2159,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     // check to see if this is an dictionary or a list
                     if (result.keyType === 'Integer') {
                         // list type
-                        v = new Variable(result.name, value, refId, indexedVariables as number, namedVariables as number);
+                        v = new Variable(variableName, value, refId, indexedVariables as number, namedVariables as number);
                     } else if (result.keyType === 'String') {
                         // dictionary type
-                        v = new Variable(result.name, value, refId, indexedVariables as number, namedVariables as number);
+                        v = new Variable(variableName, value, refId, indexedVariables as number, namedVariables as number);
                     }
                     v.type = result.type;
                 } else {
