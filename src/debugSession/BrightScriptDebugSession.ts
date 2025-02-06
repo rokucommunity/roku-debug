@@ -3,9 +3,6 @@ import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError } from 'roku-deploy';
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
-import type {
-    CompletionItem
-} from '@vscode/debugadapter';
 import {
     BreakpointEvent,
     DebugSession as BaseDebugSession,
@@ -54,7 +51,6 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
-import * as xml2js from 'xml2js';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
@@ -230,6 +226,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         response.body.supportsLogPoints = true;
 
         response.body.supportsCompletionsRequest = true;
+        response.body.completionTriggerCharacters = ['.', '(', '{', ',', ' '];
 
         this.sendResponse(response);
 
@@ -1712,42 +1709,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         try {
             let supplyLocalScopeCompletions = false;
-            if ((args.column !== args.text.length + 1)) {
+
+            let closestCompletionDetails = this.getClosestCompletionDetails(args);
+
+            if (!closestCompletionDetails) {
                 // If the cursor is not at the end of the line, then we should not supply completions at this time
                 response.body = {
                     targets: []
                 };
                 return this.sendResponse(response);
             }
-
-            // Get the variable path from the text
-            let variablePath: string[] = [];
-            if (!args.text.trim()) {
-                // The text was empty so assume via '' that we are looking up the local scope variables and global functions
-                variablePath = [''];
-            } else if (args.text.endsWith('.')) {
-                // supplied text ends with a period, so strip it off to create a valid variable path
-                variablePath = util.getVariablePath(args.text.slice(0, -1));
-            } else {
-                variablePath = util.getVariablePath(args.text);
-            }
-
             let completions = new Map<string, DebugProtocol.CompletionItem>();
 
+            let parentVariablePath = closestCompletionDetails.parentVariablePath;
             // Get the completions if the variable path was valid
-            if (variablePath) {
-                let parentVariablePath: string[];
-                // If the last character is a period, then pull completions for the parent variable before the period
-                if (args.text.endsWith('.')) {
-                    parentVariablePath = variablePath;
-                } else {
-                    // Otherwise, pull completions for the parent variable
-                    parentVariablePath = variablePath.slice(0, variablePath.length - 1);
-                }
+            if (parentVariablePath) {
 
-                // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
-                if (parentVariablePath.length === 0 || (parentVariablePath.length === 1 && parentVariablePath[0] === '')) {
-                    parentVariablePath = [''];
+                // If the parent variable path is an empty string, then we are looking up the local scope variables and global functions
+                if (parentVariablePath.length === 1 && parentVariablePath[0] === '') {
                     supplyLocalScopeCompletions = true;
                 }
 
@@ -1790,8 +1769,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             }
                         }
 
+                        let label = v.name;
+                        if (parentVariable.type === VariableType.Array ||
+                            parentVariable.type === VariableType.List ||
+                            parentVariable.type === 'roXMLList' ||
+                            parentVariable.type === 'roByteArray'
+                        ) {
+                            label = `[${v.name}]`;
+                        }
                         completions.set(`${completionType}-${v.name}`, {
-                            label: v.name,
+                            label: label,
                             type: completionType,
                             sortText: '000000'
                         });
@@ -1856,6 +1843,84 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.error('Error during completionsRequest', error, { args });
         }
         this.sendResponse(response);
+    }
+
+    /**
+     * Gets the closest completion details the incoming completion request.
+     */
+    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[] } {
+        const incomingText = args.text;
+        const lines = incomingText.split('\n');
+        let lineNumber = args.line ?? (this.initRequestArgs.linesStartAt1 ? 1 : 0);
+        let column = args.column;
+
+        // Make sure to correct the line and column to 0-based
+        // if they are being sent as 1-based from the client
+        if (this.initRequestArgs.linesStartAt1) {
+            lineNumber--;
+        }
+        if (this.initRequestArgs.columnsStartAt1) {
+            column--;
+        }
+
+        const targetLine = lines[lineNumber];
+        let variablePathString = '';
+
+        let i = column - 1;
+        const variableChars = /[a-z0-9_\.]/i;
+
+        // If the character at immediate to the right of the cursor is a variable character, then we are not at the end of the variable path.
+        if (targetLine.length - 1 > i && variableChars.test(targetLine[i + 1])) {
+            return undefined;
+        }
+
+        // Find the start of the variable path by looking for the first non-alphanumeric or non_underscore character before the cursor
+        while (i >= 0 && (variableChars.test(targetLine[i]))) {
+            i--;
+        }
+
+        // Pull the variable path string from the line
+        variablePathString = targetLine.slice(i + 1, column);
+
+        // Attempted dot access something unexpected
+        // Example: `getPerson().name` where `getPerson()` is not a valid variable
+        // and results in `.name` being the variable path string
+        if (variablePathString.startsWith('.')) {
+            return undefined;
+        }
+
+        // Get the variable path from the text
+        let variablePath: string[] = [];
+        if (!variablePathString.trim()) {
+            // The text was empty so assume via '' that we are looking up the local scope variables and global functions
+            variablePath = [''];
+        } else if (variablePathString.endsWith('.')) {
+            // supplied text ends with a period, so strip it off to create a valid variable path
+            variablePath = util.getVariablePath(variablePathString.slice(0, -1));
+        } else {
+            variablePath = util.getVariablePath(variablePathString);
+        }
+
+        // the target string is not a valid variable path
+        if (!variablePath) {
+            return undefined;
+        }
+
+        let parentVariablePath: string[];
+        // If the last character is a period, then pull completions for the parent variable before the period
+        if (variablePathString.endsWith('.')) {
+            parentVariablePath = variablePath;
+        } else {
+            // Otherwise, pull completions for the parent variable
+            parentVariablePath = variablePath.slice(0, variablePath.length - 1);
+        }
+
+        // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
+        if (parentVariablePath.length === 0) {
+            parentVariablePath = [''];
+        }
+
+        return { parentVariablePath: parentVariablePath };
     }
 
     private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {
