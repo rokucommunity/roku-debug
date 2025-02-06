@@ -3,6 +3,9 @@ import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError } from 'roku-deploy';
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
+import type {
+    CompletionItem
+} from '@vscode/debugadapter';
 import {
     BreakpointEvent,
     DebugSession as BaseDebugSession,
@@ -56,6 +59,9 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import { DiagnosticSeverity } from 'brighterscript';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 import { debounce } from 'debounce';
+import { interfaces, components, events } from 'brighterscript/dist/roku-types';
+import { globalCallables } from 'brighterscript/dist/globalCallables';
+import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 
 const diagnosticSource = 'roku-debug';
 
@@ -75,7 +81,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
         //send newly-verified breakpoints to vscode
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceBreakpointsChanged('changed', data));
-        this.projectManager = new ProjectManager(this.breakpointManager, this.locationManager);
+        this.projectManager = new ProjectManager({
+            breakpointManager: this.breakpointManager,
+            locationManager: this.locationManager
+        });
         this.fileLoggingManager = new FileLoggingManager();
     }
 
@@ -220,6 +229,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // This debug adapter supports log points by interpreting the 'logMessage' attribute of the SourceBreakpoint
         response.body.supportsLogPoints = true;
 
+        response.body.supportsCompletionsRequest = true;
+
         this.sendResponse(response);
 
         //register the debug output log transport writer
@@ -350,16 +361,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.emitChannelPublishedEvent ??= true;
         config.rewriteDevicePathsInLogs ??= true;
         config.autoResolveVirtualVariables ??= false;
+        config.enhanceREPLCompletions ??= true;
         return config;
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-        this.logger.log('[launchRequest] begin');
+        const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
 
         this.launchConfiguration = this.normalizeLaunchConfig(config);
+
+        //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
+        bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
 
         //set the logLevel provided by the launch config
         if (this.launchConfiguration.logLevel) {
@@ -520,6 +535,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await this.rokuAdapter?.sendErrors();
             }
         }
+
+        logEnd();
 
         //at this point, the project has been deployed. If we need to use a deep link, launch it now.
         if (this.launchConfiguration.deepLinkUrl) {
@@ -883,7 +900,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             injectRdbOnDeviceComponent: this.launchConfiguration.injectRdbOnDeviceComponent,
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
             stagingDir: this.launchConfiguration.stagingDir,
-            packagePath: this.launchConfiguration.packagePath
+            packagePath: this.launchConfiguration.packagePath,
+            enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
         });
 
         util.log('Moving selected files to staging area');
@@ -966,7 +984,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         bsConst: componentLibrary.bsConst,
                         injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
-                        libraryIndex: libraryIndex
+                        libraryIndex: libraryIndex,
+                        enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
                     })
                 );
             }
@@ -1686,6 +1705,206 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return results;
     }
 
+    protected async completionsRequest(response: DebugProtocol.CompletionsResponse, args: DebugProtocol.CompletionsArguments, request?: DebugProtocol.Request) {
+        this.logger.log('completionsRequest', args, request);
+        // this.sendEvent(new LogOutputEvent(`completionsRequest: ${args.text}`));
+        // this.sendEvent(new OutputEvent(`completionsRequest: ${args.text}\n`, 'stderr'));
+
+        try {
+            let supplyLocalScopeCompletions = false;
+            if ((args.column !== args.text.length + 1)) {
+                // If the cursor is not at the end of the line, then we should not supply completions at this time
+                response.body = {
+                    targets: []
+                };
+                return this.sendResponse(response);
+            }
+
+            // Get the variable path from the text
+            let variablePath: string[] = [];
+            if (!args.text.trim()) {
+                // The text was empty so assume via '' that we are looking up the local scope variables and global functions
+                variablePath = [''];
+            } else if (args.text.endsWith('.')) {
+                // supplied text ends with a period, so strip it off to create a valid variable path
+                variablePath = util.getVariablePath(args.text.slice(0, -1));
+            } else {
+                variablePath = util.getVariablePath(args.text);
+            }
+
+            let completions = new Map<string, DebugProtocol.CompletionItem>();
+
+            // Get the completions if the variable path was valid
+            if (variablePath) {
+                let parentVariablePath: string[];
+                // If the last character is a period, then pull completions for the parent variable before the period
+                if (args.text.endsWith('.')) {
+                    parentVariablePath = variablePath;
+                } else {
+                    // Otherwise, pull completions for the parent variable
+                    parentVariablePath = variablePath.slice(0, variablePath.length - 1);
+                }
+
+                // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
+                if (parentVariablePath.length === 0 || (parentVariablePath.length === 1 && parentVariablePath[0] === '')) {
+                    parentVariablePath = [''];
+                    supplyLocalScopeCompletions = true;
+                }
+
+                // Look up the parent variable
+                let parentVariable = this.findVariableByPath(Object.values(this.variables), parentVariablePath, args.frameId);
+
+                if (!parentVariable || parentVariable.childVariables.length === 0) {
+                    // We did not find the parent variable, so try to look it up from the device
+                    try {
+                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: parentVariablePath.join('.'), frameId: args.frameId }, parentVariablePath);
+                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, args.frameId);
+                        parentVariable = await this.getVariableFromResult(result, args.frameId);
+                    } catch (error) {
+                        this.logger.error('Error looking up parent completions', error, { parentVariablePath });
+                    }
+                }
+
+                // provide completions for the parent variable if one was found
+                if (parentVariable) {
+                    let possibleFieldsAndMethods: AugmentedVariable[] = [];
+                    // Filter out virtual variables
+                    possibleFieldsAndMethods = parentVariable.childVariables.filter((v) => v.presentationHint?.kind !== 'virtual');
+
+                    for (let v of possibleFieldsAndMethods) {
+                        // Default completion type should be variable
+                        let completionType: DebugProtocol.CompletionItemType = 'variable';
+                        if (!supplyLocalScopeCompletions) {
+                            // We are not supplying local scope completions, so we need to determine the completion type relative to the parent variable
+                            if (parentVariable.type === 'roSGNode' || parentVariable.type === VariableType.AssociativeArray || parentVariable.type === VariableType.Object) {
+                                completionType = 'field';
+                            }
+
+                            switch (v.type) {
+                                case VariableType.Function:
+                                case VariableType.Subroutine:
+                                    completionType = 'method';
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+
+                        completions.set(`${completionType}-${v.name}`, {
+                            label: v.name,
+                            type: completionType,
+                            sortText: '000000'
+                        });
+                    }
+
+                    let parentComponentType = this.debuggerVarTypeToRoType(parentVariable.type).toLowerCase();
+                    //assemble a list of all methods on the parent component
+                    const methods = [
+                        //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
+                        ...interfaces[parentComponentType as 'ifappinfo']?.methods ?? [],
+                        //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
+                        ...components[parentComponentType as 'roappinfo']?.interfaces.map((i) => interfaces[i.name.toLowerCase() as 'ifappinfo']?.methods) ?? [],
+                        // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
+                        ...events[parentComponentType as 'roappmemorymonitorevent']?.methods ?? []
+                    ].flat();
+
+                    // Based on the results of interface, component, and event looks up, add all the methods to the completions
+                    for (const method of methods) {
+                        completions.set(`method-${method.name}`, {
+                            label: method.name,
+                            type: 'method',
+                            detail: method.description ?? '',
+                            sortText: '000000'
+                        });
+                    }
+
+                    // Add the global functions to the completions results
+                    if (supplyLocalScopeCompletions) {
+                        for (let globalCallable of globalCallables) {
+                            completions.set(`function-${globalCallable.name.toLocaleLowerCase()}`, {
+                                label: globalCallable.name,
+                                type: 'function',
+                                detail: globalCallable.shortDescription ?? globalCallable.documentation ?? '',
+                                sortText: '000000'
+                            });
+                        }
+
+                        const frame = this.rokuAdapter.getStackFrameById(args.frameId);
+                        let scopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
+                        for (let scopeFunction of scopeFunctions) {
+                            if (!completions.has(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`)) {
+                                completions.set(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`, {
+                                    label: scopeFunction.name,
+                                    type: scopeFunction.completionItemKind,
+                                    sortText: '000000'
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // this.sendEvent(new LogOutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}`));
+            // this.sendEvent(new OutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}\n`, 'stderr'));
+
+            response.body = {
+                targets: [...completions.values()]
+            };
+        } catch (error) {
+            // this.sendEvent(new LogOutputEvent(`text: ${args.text} | ${error}`));
+            // this.sendEvent(new OutputEvent(`text: ${args.text} | ${error}\n`, 'stderr'));
+            this.logger.error('Error during completionsRequest', error, { args });
+        }
+        this.sendResponse(response);
+    }
+
+    private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {
+        let current: AugmentedVariable = null;
+        for (const name of path) {
+            // Find the object matching the current name in the data
+            current = (Array.isArray(variables) ? variables : current?.childVariables)?.find(obj => {
+                return obj.name === name && obj.frameId === frameId;
+            });
+
+            // If no match is found, return null
+            if (!current) {
+                return null;
+            }
+
+            // Move to the children for the next iteration
+            variables = current.childVariables;
+        }
+        return current;
+    }
+
+    private debuggerVarTypeToRoType(type: string): string {
+        switch (type) {
+            case VariableType.Function:
+            case VariableType.Subroutine:
+                return 'roFunction';
+            case VariableType.AssociativeArray:
+                return 'roAssociativeArray';
+            case VariableType.List:
+                return 'roList';
+            case VariableType.Array:
+                return 'roArray';
+            case VariableType.Boolean:
+                return 'roBoolean';
+            case VariableType.Double:
+                return 'roDouble';
+            case VariableType.Float:
+                return 'roFloat';
+            case VariableType.Integer:
+                return 'roInteger';
+            case VariableType.LongInteger:
+                return 'roLongInteger';
+            case VariableType.String:
+                return 'roString';
+            default:
+                return type;
+        }
+    }
+
     /**
      * Called when the host stops debugging
      * @param response
@@ -1868,10 +2087,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     // check to see if this is an dictionary or a list
                     if (result.keyType === 'Integer') {
                         // list type
-                        v = new Variable(result.name, value, refId, indexedVariables, namedVariables);
+                        v = new Variable(result.name, value, refId, indexedVariables as number, namedVariables as number);
                     } else if (result.keyType === 'String') {
                         // dictionary type
-                        v = new Variable(result.name, value, refId, indexedVariables, namedVariables);
+                        v = new Variable(result.name, value, refId, indexedVariables as number, namedVariables as number);
                     }
                     v.type = result.type;
                 } else {
@@ -1966,7 +2185,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // if the var is an array and debugProtocol is enabled, include the array size
             if (this.enableDebugProtocol && v.type === VariableType.Array) {
-                if (isNaN(result.indexedVariables)) {
+                if (isNaN(result.indexedVariables as number)) {
                     v.value = v.type;
                 } else {
                     v.value = `${v.type}(${result.indexedVariables})`;
@@ -2045,16 +2264,30 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
         try {
+            this.projectManager?.dispose?.();
+        } catch (e) {
+            this.logger.error(e);
+        }
+
+        try {
             this.componentLibraryServer?.stop();
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             void this.rendezvousTracker?.destroy?.();
+        } catch (e) {
+            this.logger.error(e);
+        }
 
-            try {
-                this.sourceMapManager?.destroy?.();
-            } catch (e) {
-                this.logger.error(e);
-            }
+        try {
+            this.sourceMapManager?.destroy?.();
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
                 const stagingDirs = this.projectManager?.getStagingDirs() ?? [];
@@ -2068,13 +2301,21 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                 }
             }
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             //if there was an error message, display it to the user
             if (errorMessage) {
                 this.logger.error(errorMessage);
                 this.showPopupMessage(errorMessage, 'error', modal);
             }
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             this.logger.log('Destroy rokuAdapter');
             await this.rokuAdapter?.destroy?.();
             //press the home button to return to the home screen
@@ -2084,8 +2325,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } catch (e) {
                 this.logger.error(e);
             }
+        } catch (e) {
+            this.logger.error(e);
+        }
 
-
+        try {
             this.logger.log('Send terminated event');
             this.sendEvent(new TerminatedEvent());
 
