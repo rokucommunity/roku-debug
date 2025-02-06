@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import dedent = require('dedent');
 import { SmartBuffer } from 'smart-buffer';
+import { bscProjectWorkerPool } from './bsc/threading/BscProjectWorkerPool';
 
 /**
  * Forces all line endings to \n
@@ -103,3 +104,8 @@ export async function expectThrowsAsync(callback: () => any, expectedMessage = u
         throw new Error(failedTestMessage);
     }
 }
+
+//tear down all threads at the end of our entire test suite
+after(() => {
+    bscProjectWorkerPool.dispose();
+});

@@ -1511,4 +1511,311 @@ describe('BrightScriptDebugSession', () => {
             });
         });
     });
+    describe('completionsRequest', () => {
+        describe('getClosestCompletionDetails', () => {
+            it('handles empty string columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: '',
+                    column: 0,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('handles empty string columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: '',
+                    column: 1,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('handles bad variable path columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: '1bad.path',
+                    column: 9,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+            });
+
+            it('handles bad variable path columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: '1bad.path',
+                    column: 10,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+            });
+
+            it('handles simple input of just variable path columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'person.name',
+                    column: 11,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+            });
+
+            it('handles simple input of just variable path columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'person.name',
+                    column: 12,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+            });
+
+            it('handles simple input of just variable path with training period columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'person.name.',
+                    column: 12,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person', 'name']
+                });
+            });
+
+            it('handles simple input of just variable path with training period columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'person.name.',
+                    column: 13,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person', 'name']
+                });
+            });
+
+            it('handles simple input of just variable path columnsStartAt1 false but cursor is not at the end', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'person.name',
+                    column: 9,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+            });
+
+            it('handles simple input of just variable path columnsStartAt1 true but cursor is not at the end', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'person.name',
+                    column: 10,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+            });
+
+            it('returns undefined following closing brackets columnsStartAt1 false but cursor is not at the end', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getPerson().name',
+                    column: 16,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getPerson[0].name',
+                    column: 17,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+            });
+
+            it('returns undefined following closing brackets columnsStartAt1 true but cursor is not at the end', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getPerson().name',
+                    column: 17,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getPerson[0].name',
+                    column: 18,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql(undefined);
+            });
+
+
+            it('input after a open bracket columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name',
+                    column: 20,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue[person.name',
+                    column: 20,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+            });
+
+            it('input after a open bracket columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name',
+                    column: 21,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue[person.name',
+                    column: 21,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+            });
+
+            it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name)',
+                    column: 20,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+            });
+
+            it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name)',
+                    column: 21,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+            });
+
+            it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name, test)',
+                    column: 26,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue[person.name, test]',
+                    column: 26,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name, test)',
+                    column: 27,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue[person.name, test]',
+                    column: 27,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('handles multiline inout columnsStartAt1 false linesStartAt1 false', () => {
+                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['initRequestArgs']['linesStartAt1'] = false;
+
+                // cursor is on the first line
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name, {\ntemp: test\n})',
+                    column: 20,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+
+                // cursor is on the second line
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name, {\ntemp: test\n})',
+                    column: 10,
+                    line: 1,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('handles multiline inout columnsStartAt1 true linesStartAt1 true', () => {
+                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['initRequestArgs']['linesStartAt1'] = true;
+
+                // cursor is on the first line
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name, {\ntemp: test\n})',
+                    column: 21,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['person']
+                });
+
+                // cursor is on the second line
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue(person.name, {\ntemp: test\n})',
+                    column: 11,
+                    line: 2,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+
+            });
+        });
+    });
 });

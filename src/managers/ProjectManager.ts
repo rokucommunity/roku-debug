@@ -12,6 +12,8 @@ import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
 import { logger } from '../logging';
 import { Cache } from 'brighterscript/dist/Cache';
+import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
+import type { ScopeFunction } from '../bsc/BscProject';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -24,15 +26,22 @@ export const componentLibraryPostfix = '__lib';
  */
 export class ProjectManager {
     public constructor(
-        /**
-         * A class that keeps track of all the breakpoints for a debug session.
-         * It needs to be notified of any changes in breakpoints
-         */
-        public breakpointManager: BreakpointManager,
-        public locationManager: LocationManager
+        options: {
+            /**
+             * A class that keeps track of all the breakpoints for a debug session.
+             * It needs to be notified of any changes in breakpoints
+             */
+            breakpointManager: BreakpointManager;
+            locationManager: LocationManager;
+        }
     ) {
-        this.breakpointManager = breakpointManager;
+        this.breakpointManager = options.breakpointManager;
+        this.locationManager = options.locationManager;
     }
+
+    private breakpointManager: BreakpointManager;
+
+    private locationManager: LocationManager;
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;
@@ -65,6 +74,22 @@ export class ProjectManager {
             ...(this.componentLibraryProjects ?? [])
         ];
         return projects.map(x => x.stagingDir);
+    }
+
+    /**
+     * Get all of the functions avaiable for all scopes for this file.
+     * @param pkgPath the device path of the file (probably with `pkg:` or `libpkg` or something...)
+     * @returns
+     */
+    public async getScopeFunctionsForFile(pkgPath: string): Promise<Array<ScopeFunction>> {
+        let completions: ScopeFunction[] = [];
+        try {
+            const fileInfo = await this.getStagingFileInfo(pkgPath);
+            completions = await fileInfo?.project.getScopeFunctionsForFile(fileInfo.relativePath);
+        } catch (error) {
+            this.logger.error(`error loading completions for file ${pkgPath}`, error);
+        }
+        return completions;
     }
 
     /**
@@ -216,6 +241,10 @@ export class ProjectManager {
             return undefined;
         }
     }
+
+    public dispose() {
+        util.applyDispose(this.getAllProjects());
+    }
 }
 
 export interface AddProjectParams {
@@ -230,6 +259,7 @@ export interface AddProjectParams {
     rdbFilesBasePath?: string;
     bsConst?: Record<string, boolean>;
     stagingDir?: string;
+    enhanceREPLCompletions: boolean;
 }
 
 export class Project {
@@ -250,6 +280,7 @@ export class Project {
         this.rdbFilesBasePath = params.rdbFilesBasePath;
         this.files = params.files ?? [];
         this.packagePath = params.packagePath;
+        this.enhanceREPLCompletions = params.enhanceREPLCompletions;
     }
     public rootDir: string;
     public outDir: string;
@@ -263,6 +294,12 @@ export class Project {
     public raleTrackerTaskFileLocation: string;
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
+    public enhanceREPLCompletions: boolean;
+
+    /**
+     * A BrighterScript project for the stagingDir
+     */
+    private stagingBscProject = new BscProjectThreaded();
 
     //the default project doesn't have a postfix, but component libraries will have a postfix, so just use empty string to standardize the postfix logic
     public get postfix() {
@@ -297,6 +334,22 @@ export class Project {
             outDir: this.outDir
         });
 
+        if (this.enhanceREPLCompletions) {
+            //activate our background brighterscript ProgramBuilder now that the staging directory contains the final production project
+            void this.stagingBscProject.activate({
+                rootDir: this.stagingDir,
+                files: ['**/*'],
+                watch: false,
+                createPackage: false,
+                deploy: false,
+                copyToStaging: false,
+                showDiagnosticsInConsole: false,
+                logLevel: 'error',
+                //this project is only used for file and scope lookups, so skip all validations since that takes a while and we don't care
+                validate: false
+            });
+        }
+
         //preload the original location of every file
         await this.resolveFileMappingsForSourceDirs();
 
@@ -305,6 +358,19 @@ export class Project {
         await this.copyAndTransformRaleTrackerTask();
 
         await this.copyAndTransformRDB();
+    }
+
+    /**
+     * Get all of the functions avaiable for all scopes for this file.
+     * @param relativePath path to the file relative to rootDir
+     * @returns
+     */
+    public getScopeFunctionsForFile(relativePath: string) {
+        if (this.enhanceREPLCompletions && this.stagingBscProject?.isActivated) {
+            return this.stagingBscProject.getScopeFunctionsForFile({ relativePath: relativePath });
+        } else {
+            return [];
+        }
     }
 
     /**
@@ -522,6 +588,10 @@ export class Project {
             mapping.dest = fileUtils.standardizePath(mapping.dest);
         }
         return fileMappings;
+    }
+
+    public dispose() {
+        this.stagingBscProject?.dispose?.();
     }
 }
 

@@ -59,6 +59,7 @@ module.exports = {
         '@typescript-eslint/no-unused-vars': 'off',
         '@typescript-eslint/no-unused-vars-experimental': 'off',
         '@typescript-eslint/no-use-before-define': 'off',
+        '@typescript-eslint/no-unnecessary-type-assertion': 'off',
         '@typescript-eslint/object-curly-spacing': ['error', 'always'],
         '@typescript-eslint/parameter-properties': 'off',
         '@typescript-eslint/prefer-nullish-coalescing': 'off',

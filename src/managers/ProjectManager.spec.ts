@@ -41,7 +41,10 @@ describe('ProjectManager', () => {
         let locationManager = new LocationManager(sourceMapManager);
         let breakpointManager = new BreakpointManager(sourceMapManager, locationManager);
 
-        manager = new ProjectManager(breakpointManager, locationManager);
+        manager = new ProjectManager({
+            locationManager: locationManager,
+            breakpointManager: breakpointManager
+        });
 
         manager.mainProject = <any>{
             stagingDir: stagingDir
@@ -60,7 +63,7 @@ describe('ProjectManager', () => {
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
         it('accounts for the entry breakpoint', () => {
-            manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [{
+            manager['breakpointManager']['permanentBreakpointsBySrcPath'].set(filePath, [{
                 line: 3
             }, {
                 line: 3
@@ -121,7 +124,7 @@ describe('ProjectManager', () => {
                         line = 12
                 end function
              */
-            manager.breakpointManager['permanentBreakpointsBySrcPath'].set(filePath, [
+            manager['breakpointManager']['permanentBreakpointsBySrcPath'].set(filePath, [
                 { line: 3 },
                 { line: 4 },
                 { line: 5 },
@@ -305,7 +308,8 @@ describe('Project', () => {
             rdbFilesBasePath: rdbFilesBasePath,
             sourceDirs: [s`${cwd}/source1`],
             stagingDir: stagingDir,
-            raleTrackerTaskFileLocation: 'z'
+            raleTrackerTaskFileLocation: 'z',
+            enhanceREPLCompletions: false
         });
     });
 
@@ -694,7 +698,8 @@ describe('ComponentLibraryProject', () => {
             stagingDir: s`${outDir}/complib1-staging`,
             raleTrackerTaskFileLocation: 'z',
             libraryIndex: 0,
-            outFile: 'PrettyComponent.zip'
+            outFile: 'PrettyComponent.zip',
+            enhanceREPLCompletions: false
         };
     });
 
@@ -791,7 +796,8 @@ describe('ComponentLibraryProject', () => {
                     stagingDir: s`${outDir}/complib1-staging`,
                     libraryIndex: 0,
                     // eslint-disable-next-line no-template-curly-in-string
-                    outFile: '${title}.zip'
+                    outFile: '${title}.zip',
+                    enhanceREPLCompletions: false
                 });
                 await project.stage();
                 expect(project.outFile).to.eql('CompLibTest.zip');
