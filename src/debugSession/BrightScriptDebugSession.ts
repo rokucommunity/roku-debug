@@ -366,7 +366,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-        this.logger.log('[launchRequest] begin');
+        const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
@@ -537,6 +537,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await this.rokuAdapter?.sendErrors();
             }
         }
+
+        logEnd();
 
         //at this point, the project has been deployed. If we need to use a deep link, launch it now.
         if (this.launchConfiguration.deepLinkUrl) {

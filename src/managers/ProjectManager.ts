@@ -352,6 +352,7 @@ export class Project {
                 deploy: false,
                 copyToStaging: false,
                 showDiagnosticsInConsole: false,
+                logLevel: 'error',
                 //this project is only used for file and scope lookups, so skip all validations since that takes a while and we don't care
                 validate: false
             });
