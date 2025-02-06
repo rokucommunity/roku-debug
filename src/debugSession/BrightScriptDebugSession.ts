@@ -227,7 +227,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         response.body.supportsLogPoints = true;
 
         response.body.supportsCompletionsRequest = true;
-        response.body.completionTriggerCharacters = ['.', '(', ',', ':'];
+        response.body.completionTriggerCharacters = ['.', '(', '{', ',', ' '];
 
         this.sendResponse(response);
 
@@ -1769,8 +1769,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             }
                         }
 
+                        let label = v.name;
+                        if (parentVariable.type === VariableType.Array ||
+                            parentVariable.type === VariableType.List ||
+                            parentVariable.type === 'roXMLList' ||
+                            parentVariable.type === 'roByteArray'
+                        ) {
+                            label = `[${v.name}]`;
+                        }
                         completions.set(`${completionType}-${v.name}`, {
-                            label: v.name,
+                            label: label,
                             type: completionType,
                             sortText: '000000'
                         });
