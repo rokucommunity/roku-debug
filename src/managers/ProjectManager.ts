@@ -12,9 +12,8 @@ import type { LocationManager, SourceLocation } from './LocationManager';
 import { util } from '../util';
 import { logger } from '../logging';
 import { Cache } from 'brighterscript/dist/Cache';
-import { Deferred, ProgramBuilder } from 'brighterscript';
 import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
-import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
+import type { ScopeFunction } from '../bsc/BscProject';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -90,8 +89,8 @@ export class ProjectManager {
      * @param pkgPath the device path of the file (probably with `pkg:` or `libpkg` or something...)
      * @returns
      */
-    public async getScopeFunctionsForFile(pkgPath: string): Promise<string[]> {
-        let completions: string[] = [];
+    public async getScopeFunctionsForFile(pkgPath: string): Promise<Array<ScopeFunction>> {
+        let completions: ScopeFunction[] = [];
         try {
             const fileInfo = await this.getStagingFileInfo(pkgPath);
             completions = await fileInfo?.project.getScopeFunctionsForFile(fileInfo.relativePath);

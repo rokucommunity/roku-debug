@@ -1,11 +1,10 @@
 import { Deferred, type ProgramBuilder } from 'brighterscript';
-import type { ExtractMethods, DisposableLike } from '../interfaces';
-import type { BscProject } from './BscProject';
+import type { ExtractMethods, DisposableLike, MaybePromise } from '../interfaces';
+import type { BscProject, ScopeFunction } from './BscProject';
 import { bscProjectWorkerPool } from './threading/BscProjectWorkerPool';
 import type { MethodNames, WorkerMessage } from './threading/ThreadMessageHandler';
 import { ThreadMessageHandler } from './threading/ThreadMessageHandler';
 import type { Worker } from 'worker_threads';
-import { MessageChannel } from 'worker_threads';
 import { util } from '../util';
 
 
@@ -56,7 +55,7 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
      * @param relativePath path to the file relative to rootDir
      * @returns
      */
-    public getScopeFunctionsForFile(options: { relativePath: string }): Promise<string[]> {
+    public getScopeFunctionsForFile(options: { relativePath: string }): MaybePromise<Array<ScopeFunction>> {
         return this.sendStandardRequest('getScopeFunctionsForFile', options);
     }
 

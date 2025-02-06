@@ -1830,12 +1830,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         }
 
                         const frame = this.rokuAdapter.getStackFrameById(args.frameId);
-                        let globalScopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
-                        for (let globalScopeFunction of globalScopeFunctions) {
-                            if (!completions.has(`function-${globalScopeFunction.toLocaleLowerCase()}`)) {
-                                completions.set(`function-${globalScopeFunction.toLocaleLowerCase()}`, {
-                                    label: globalScopeFunction,
-                                    type: 'function',
+                        let scopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
+                        for (let scopeFunction of scopeFunctions) {
+                            if (!completions.has(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`)) {
+                                completions.set(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`, {
+                                    label: scopeFunction.name,
+                                    type: scopeFunction.completionItemKind,
                                     sortText: '000000'
                                 });
                             }
