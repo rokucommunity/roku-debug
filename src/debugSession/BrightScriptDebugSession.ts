@@ -2329,22 +2329,30 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
         try {
-            try {
-                this.projectManager?.dispose?.();
-            } catch (e) {
-                this.logger.error(e);
-            }
+            this.projectManager?.dispose?.();
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             this.componentLibraryServer?.stop();
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             void this.rendezvousTracker?.destroy?.();
+        } catch (e) {
+            this.logger.error(e);
+        }
 
-            try {
-                this.sourceMapManager?.destroy?.();
-            } catch (e) {
-                this.logger.error(e);
-            }
+        try {
+            this.sourceMapManager?.destroy?.();
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             //if configured, delete the staging directory
             if (!this.launchConfiguration.retainStagingFolder) {
                 const stagingDirs = this.projectManager?.getStagingDirs() ?? [];
@@ -2358,13 +2366,21 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }
                 }
             }
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             //if there was an error message, display it to the user
             if (errorMessage) {
                 this.logger.error(errorMessage);
                 this.showPopupMessage(errorMessage, 'error', modal);
             }
+        } catch (e) {
+            this.logger.error(e);
+        }
 
+        try {
             this.logger.log('Destroy rokuAdapter');
             await this.rokuAdapter?.destroy?.();
             //press the home button to return to the home screen
@@ -2374,8 +2390,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } catch (e) {
                 this.logger.error(e);
             }
+        } catch (e) {
+            this.logger.error(e);
+        }
 
-
+        try {
             this.logger.log('Send terminated event');
             this.sendEvent(new TerminatedEvent());
 
