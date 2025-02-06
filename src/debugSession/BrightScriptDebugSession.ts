@@ -79,8 +79,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceBreakpointsChanged('changed', data));
         this.projectManager = new ProjectManager({
             breakpointManager: this.breakpointManager,
-            locationManager: this.locationManager,
-            enableBscProjectThreading: true
+            locationManager: this.locationManager
         });
         this.fileLoggingManager = new FileLoggingManager();
     }
@@ -359,11 +358,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.emitChannelPublishedEvent ??= true;
         config.rewriteDevicePathsInLogs ??= true;
         config.autoResolveVirtualVariables ??= false;
+        config.enhanceREPLCompletions ??= true;
         return config;
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
-        this.logger.log('[launchRequest] begin');
+        const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
@@ -492,9 +492,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             });
 
-            let publishPromise = this.publish();
-
-            await publishPromise;
+            await this.publish();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
@@ -534,6 +532,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await this.rokuAdapter?.sendErrors();
             }
         }
+
+        logEnd();
 
         //at this point, the project has been deployed. If we need to use a deep link, launch it now.
         if (this.launchConfiguration.deepLinkUrl) {
@@ -898,7 +898,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             rdbFilesBasePath: this.launchConfiguration.rdbFilesBasePath,
             stagingDir: this.launchConfiguration.stagingDir,
             packagePath: this.launchConfiguration.packagePath,
-            enableBscProjectThreading: true
+            enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
         });
 
         util.log('Moving selected files to staging area');
@@ -982,7 +982,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
                         libraryIndex: libraryIndex,
-                        enableBscProjectThreading: true
+                        enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
                     })
                 );
             }

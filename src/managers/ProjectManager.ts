@@ -33,23 +33,15 @@ export class ProjectManager {
              */
             breakpointManager: BreakpointManager;
             locationManager: LocationManager;
-            enableBscProjectThreading?: boolean;
         }
     ) {
         this.breakpointManager = options.breakpointManager;
         this.locationManager = options.locationManager;
-        this.enableBscProjectThreading = options.enableBscProjectThreading ?? true;
     }
 
     private breakpointManager: BreakpointManager;
 
     private locationManager: LocationManager;
-
-    /**
-     * Should the threaded brighterscript ProgramBuilder be used for answering certain project-specific questions?
-     * If false, those questions will not be able to be answered.
-     */
-    private enableBscProjectThreading: boolean;
 
     public launchConfiguration: {
         enableSourceMaps?: boolean;
@@ -267,7 +259,7 @@ export interface AddProjectParams {
     rdbFilesBasePath?: string;
     bsConst?: Record<string, boolean>;
     stagingDir?: string;
-    enableBscProjectThreading?: boolean;
+    enhanceREPLCompletions: boolean;
 }
 
 export class Project {
@@ -288,7 +280,7 @@ export class Project {
         this.rdbFilesBasePath = params.rdbFilesBasePath;
         this.files = params.files ?? [];
         this.packagePath = params.packagePath;
-        this.enableBscProjectThreading = params.enableBscProjectThreading;
+        this.enhanceREPLCompletions = params.enhanceREPLCompletions;
     }
     public rootDir: string;
     public outDir: string;
@@ -302,7 +294,7 @@ export class Project {
     public raleTrackerTaskFileLocation: string;
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
-    public enableBscProjectThreading: boolean;
+    public enhanceREPLCompletions: boolean;
 
     /**
      * A BrighterScript project for the stagingDir
@@ -342,7 +334,7 @@ export class Project {
             outDir: this.outDir
         });
 
-        if (this.enableBscProjectThreading) {
+        if (this.enhanceREPLCompletions) {
             //activate our background brighterscript ProgramBuilder now that the staging directory contains the final production project
             void this.stagingBscProject.activate({
                 rootDir: this.stagingDir,
@@ -352,7 +344,9 @@ export class Project {
                 deploy: false,
                 copyToStaging: false,
                 showDiagnosticsInConsole: false,
-                validate: true
+                logLevel: 'error',
+                //this project is only used for file and scope lookups, so skip all validations since that takes a while and we don't care
+                validate: false
             });
         }
 
@@ -372,7 +366,7 @@ export class Project {
      * @returns
      */
     public getScopeFunctionsForFile(relativePath: string) {
-        if (this.enableBscProjectThreading && this.stagingBscProject?.isActivated) {
+        if (this.enhanceREPLCompletions && this.stagingBscProject?.isActivated) {
             return this.stagingBscProject.getScopeFunctionsForFile({ relativePath: relativePath });
         } else {
             return [];

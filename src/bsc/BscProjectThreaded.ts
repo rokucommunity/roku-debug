@@ -6,9 +6,13 @@ import type { MethodNames, WorkerMessage } from './threading/ThreadMessageHandle
 import { ThreadMessageHandler } from './threading/ThreadMessageHandler';
 import type { Worker } from 'worker_threads';
 import { util } from '../util';
+import { logger } from '../logging';
 
 
 export class BscProjectThreaded implements ExtractMethods<BscProject> {
+
+    public logger = logger.createLogger('[BscProjectThreaded]');
+
     private worker: Worker;
 
     private messageHandler: ThreadMessageHandler<BscProject>;
@@ -23,6 +27,8 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
     }
 
     public async activate(options: Parameters<ProgramBuilder['run']>[0]) {
+        const timeEnd = this.logger.timeStart('log', 'activate');
+
         // start a new worker thread or get an unused existing thread
         this.worker = bscProjectWorkerPool.getWorker();
 
@@ -48,6 +54,7 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
         } catch (e) {
             this.activateDeferred.reject(e);
         }
+        timeEnd();
     }
 
     /**

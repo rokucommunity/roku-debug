@@ -43,8 +43,7 @@ describe('ProjectManager', () => {
 
         manager = new ProjectManager({
             locationManager: locationManager,
-            breakpointManager: breakpointManager,
-            enableBscProjectThreading: false
+            breakpointManager: breakpointManager
         });
 
         manager.mainProject = <any>{
@@ -309,7 +308,8 @@ describe('Project', () => {
             rdbFilesBasePath: rdbFilesBasePath,
             sourceDirs: [s`${cwd}/source1`],
             stagingDir: stagingDir,
-            raleTrackerTaskFileLocation: 'z'
+            raleTrackerTaskFileLocation: 'z',
+            enhanceREPLCompletions: false
         });
     });
 
@@ -698,7 +698,8 @@ describe('ComponentLibraryProject', () => {
             stagingDir: s`${outDir}/complib1-staging`,
             raleTrackerTaskFileLocation: 'z',
             libraryIndex: 0,
-            outFile: 'PrettyComponent.zip'
+            outFile: 'PrettyComponent.zip',
+            enhanceREPLCompletions: false
         };
     });
 
@@ -795,7 +796,8 @@ describe('ComponentLibraryProject', () => {
                     stagingDir: s`${outDir}/complib1-staging`,
                     libraryIndex: 0,
                     // eslint-disable-next-line no-template-curly-in-string
-                    outFile: '${title}.zip'
+                    outFile: '${title}.zip',
+                    enhanceREPLCompletions: false
                 });
                 await project.stage();
                 expect(project.outFile).to.eql('CompLibTest.zip');
