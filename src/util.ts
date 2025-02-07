@@ -13,6 +13,7 @@ import * as r from 'postman-request';
 import type { Response } from 'request';
 import type * as requestType from 'request';
 import { OutputEvent } from '@vscode/debugadapter';
+import * as xml2js from 'xml2js';
 const request = r as typeof requestType;
 
 class Util {
@@ -509,6 +510,81 @@ class Util {
         //empty the array
         disposables.splice(0, disposables.length);
     }
+
+    public async convertRegistryEcpResponseToScope(response: Response): Promise<EcpRegistryData> {
+        if (response.statusCode === 200 && typeof response.body === 'string') {
+            let parsed = await this.parseXml(response.body) as RegistryAsJson;
+
+            let registry = parsed['plugin-registry'].registry?.[0];
+
+            let sections: EcpRegistryData['sections'] = {};
+            for (const section of registry?.sections?.[0]?.section ?? []) {
+                if (typeof section === 'string') {
+                    continue;
+                }
+                let sectionName = section.name[0];
+                for (const item of section.items[0].item) {
+                    sections[sectionName] ??= {};
+                    sections[sectionName][item.key[0]] = item.value[0];
+                }
+            }
+
+            let result = {
+                devId: registry?.['dev-id']?.[0],
+                plugins: registry?.plugins?.[0]?.split(','),
+                sections: sections,
+                spaceAvailable: registry?.['space-available']?.[0],
+                status: parsed?.['plugin-registry']?.status?.[0]
+            };
+
+            return result;
+        }
+    }
+
+    /**
+     * Parse an xml file and get back a javascript object containing its results
+     */
+    public parseXml(text: string) {
+        return new Promise<any>((resolve, reject) => {
+            xml2js.parseString(text, (err, data) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(data);
+                }
+            });
+        });
+    }
+}
+
+export interface EcpRegistryData {
+    devId: string;
+    plugins: Array<string>;
+    sections: Record<string, Record<string, string>>;
+    spaceAvailable: string;
+    status: string;
+}
+
+interface RegistryAsJson {
+    'plugin-registry': {
+        registry: [{
+            'dev-id': [string];
+            plugins: [string];
+            sections: [{
+                section: [{
+                    items: [{
+                        item: [{
+                            key: [string];
+                            value: [string];
+                        }];
+                    }];
+                    name: [string];
+                } | string];
+            }];
+            'space-available': [string];
+        }];
+        status: [string];
+    };
 }
 
 export function defer<T>() {
