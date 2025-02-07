@@ -10,7 +10,6 @@ import {
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
-    Scope,
     Source,
     StackFrame,
     StoppedEvent,
@@ -1185,7 +1184,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         const logger = this.logger.createLogger(`scopesRequest ${this.idCounter}`);
         logger.info('begin', { args });
         try {
-            const scopes = new Array<Scope>();
+            const scopes = new Array<DebugProtocol.Scope>();
 
             if (isDebugProtocolAdapter(this.rokuAdapter)) {
                 let refId = this.getEvaluateRefId('', args.frameId);
@@ -1205,12 +1204,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v.frameId = args.frameId;
                 }
 
-                let scope = new Scope('Local', refId, false);
-                scopes.push(scope);
+                scopes.push(<DebugProtocol.Scope>{
+                    name: 'Local',
+                    variablesReference: v.variablesReference,
+                    expensive: false,
+                    presentationHint: 'locals'
+                });
             } else {
                 // NOTE: Legacy telnet support
-                scopes.push(new Scope('Local', this.variableHandles.create('local'), false));
+                scopes.push(<DebugProtocol.Scope>{
+                    name: 'Local',
+                    variablesReference: this.variableHandles.create('local'),
+                    expensive: false,
+                    presentationHint: 'locals'
+                });
             }
+
+            let refId = this.getEvaluateRefId('$$registry', Infinity);
+            scopes.push(<DebugProtocol.Scope>{
+                name: 'Registry',
+                variablesReference: refId,
+                expensive: true
+            });
+
+            this.variables[refId] = {
+                variablesReference: refId,
+                name: 'Registry',
+                value: '',
+                type: '$$Registry',
+                childVariables: []
+            };
 
             response.body = {
                 scopes: scopes
