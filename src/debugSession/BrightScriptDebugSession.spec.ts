@@ -1823,7 +1823,7 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('populateVariableFromRegistryEcp', () => {
-        describe.only('non-error responses', () => {
+        describe('non-error responses', () => {
             beforeEach(() => {
                 session['variables'] = {};
                 session['evaluateRefIdCounter'] = 1;
@@ -2119,6 +2119,120 @@ describe('BrightScriptDebugSession', () => {
                             childVariables: []
                         }]
                     }]
+                });
+            });
+        });
+
+        describe('error responses', () => {
+            beforeEach(() => {
+                session['variables'] = {};
+                session['evaluateRefIdCounter'] = 1;
+            });
+
+            afterEach(() => {
+                session['variables'] = {};
+                session['evaluateRefIdCounter'] = 1;
+            });
+
+            it('handles not in dev mode', async () => {
+                let v: AugmentedVariable = {
+                    variablesReference: 1,
+                    name: 'Registry',
+                    value: '',
+                    type: '$$Registry',
+                    childVariables: []
+                };
+                await session['populateVariableFromRegistryEcp']({
+                    body: `
+                        <plugin-registry>
+                            <status>FAILED</status>
+                            <error>Plugin dev not found</error>
+                        </plugin-registry>
+                    `,
+                    statusCode: 200
+                } as Response, v);
+                expect(v.childVariables.length).to.eql(1);
+                expect(v.childVariables[0]).to.eql({
+                    name: 'error',
+                    value: `❌ Error: Plugin dev not found`,
+                    variablesReference: 0,
+                    type: VariableType.String,
+                    childVariables: []
+                });
+            });
+
+            it('handles device not keyed', async () => {
+                let v: AugmentedVariable = {
+                    variablesReference: 1,
+                    name: 'Registry',
+                    value: '',
+                    type: '$$Registry',
+                    childVariables: []
+                };
+                await session['populateVariableFromRegistryEcp']({
+                    body: `
+                        <plugin-registry>
+                            <status>FAILED</status>
+                            <error>Device not keyed</error>
+                        </plugin-registry>
+                    `,
+                    statusCode: 200
+                } as Response, v);
+                expect(v.childVariables.length).to.eql(1);
+                expect(v.childVariables[0]).to.eql({
+                    name: 'error',
+                    value: `❌ Error: Device not keyed`,
+                    variablesReference: 0,
+                    type: VariableType.String,
+                    childVariables: []
+                });
+            });
+
+            it('handles failed status with missing error', async () => {
+                let v: AugmentedVariable = {
+                    variablesReference: 1,
+                    name: 'Registry',
+                    value: '',
+                    type: '$$Registry',
+                    childVariables: []
+                };
+                await session['populateVariableFromRegistryEcp']({
+                    body: `
+                        <plugin-registry>
+                            <status>FAILED</status>
+                        </plugin-registry>
+                    `,
+                    statusCode: 200
+                } as Response, v);
+                expect(v.childVariables.length).to.eql(1);
+                expect(v.childVariables[0]).to.eql({
+                    name: 'error',
+                    value: `❌ Error: Unknown error`,
+                    variablesReference: 0,
+                    type: VariableType.String,
+                    childVariables: []
+                });
+            });
+
+            it('handles error response without xml', async () => {
+                let v: AugmentedVariable = {
+                    variablesReference: 1,
+                    name: 'Registry',
+                    value: '',
+                    type: '$$Registry',
+                    childVariables: []
+                };
+                await session['populateVariableFromRegistryEcp']({
+                    body: `ECP command not allowed in Limited mode.`,
+                    statusCode: 403
+                } as Response, v);
+                expect(v.childVariables.length).to.eql(1);
+                expect(v.childVariables[0]).to.eql({
+                    name: 'error',
+                    value: `❌ Error: ECP command not allowed in Limited mode.`,
+                    variablesReference: 0,
+                    type: VariableType.String,
+                    childVariables: []
                 });
             });
         });
