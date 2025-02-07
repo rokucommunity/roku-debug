@@ -57,6 +57,7 @@ import { debounce } from 'debounce';
 import { interfaces, components, events } from 'brighterscript/dist/roku-types';
 import { globalCallables } from 'brighterscript/dist/globalCallables';
 import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
+import type { Response } from 'request';
 
 const diagnosticSource = 'roku-debug';
 
@@ -1399,6 +1400,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     return this.sendResponse(response);
                 }
                 logger.log('variable', v);
+
+                if (v.type === '$$Registry' && v.childVariables.length === 0) {
+                    // This is a special scope variable used to load registry data via an ECP call
+                    const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/registry/dev`;
+                    // Send rendezvous query to ECP
+                    const response = await util.httpGet(url);
+                    await this.populateVariableFromRegistryEcp(response, v);
+                }
+
                 //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
                 if (v.childVariables.length === 0 || v.isResolved) {
                     let tempVar: AugmentedVariable;
@@ -1521,6 +1531,118 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         return filteredUpdatedVariables;
+    }
+
+    private async populateVariableFromRegistryEcp(response: Response, v: AugmentedVariable) {
+        let registryData = await util.convertRegistryEcpResponseToScope(response);
+
+        // Add registry data to variable list
+        if (registryData.devId) {
+            v.childVariables.push(<AugmentedVariable>{
+                name: 'devId',
+                value: `"${registryData.devId}"`,
+                type: VariableType.String,
+                variablesReference: 0,
+                childVariables: []
+            });
+        }
+
+        if (registryData.plugins) {
+            let refId = this.getEvaluateRefId('$$registry.plugins', Infinity);
+            let pluginsVariable = <AugmentedVariable>{
+                name: 'plugins',
+                value: VariableType.Array + `(${registryData.plugins.length})`,
+                type: VariableType.Array,
+                indexedVariables: registryData.plugins.length,
+                namedVariables: 1,
+                variablesReference: registryData.plugins.length > 0 ? refId : 0,
+                childVariables: [<AugmentedVariable>{
+                    name: '$count',
+                    value: registryData.plugins.length.toString(),
+                    type: VariableType.Integer,
+                    presentationHint: { kind: 'virtual' },
+                    variablesReference: 0,
+                    childVariables: []
+                }]
+            };
+            v.childVariables.push(pluginsVariable);
+            this.variables[refId] = pluginsVariable;
+            pluginsVariable.childVariables = pluginsVariable.childVariables.concat(registryData.plugins.map((id, index) => {
+                return <AugmentedVariable>{
+                    name: index.toString(),
+                    value: `"${id}"`,
+                    type: VariableType.String,
+                    variablesReference: 0,
+                    childVariables: []
+                };
+            }));
+        }
+
+        if (registryData.spaceAvailable) {
+            v.childVariables.push(<AugmentedVariable>{
+                name: 'spaceAvailable',
+                value: registryData.spaceAvailable,
+                type: VariableType.Integer,
+                variablesReference: 0,
+                childVariables: []
+            });
+        }
+
+        if (registryData.sections) {
+            let refId = this.getEvaluateRefId('$$registry.sections', Infinity);
+            let sections = Object.entries(registryData.sections);
+            let sectionsVariable = <AugmentedVariable>{
+                name: 'sections',
+                value: VariableType.AssociativeArray,
+                type: VariableType.AssociativeArray,
+                namedVariables: sections.length + 1,
+                variablesReference: refId,
+                childVariables: [<AugmentedVariable>{
+                    name: '$count',
+                    value: sections.length.toString(),
+                    type: VariableType.Integer,
+                    presentationHint: { kind: 'virtual' },
+                    variablesReference: 0,
+                    childVariables: []
+                }]
+            };
+            v.childVariables.push(sectionsVariable);
+            this.variables[refId] = sectionsVariable;
+            sectionsVariable.childVariables = sectionsVariable.childVariables.concat(sections.map((entry) => {
+                let sectionName = entry[0];
+                let items = Object.entries(entry[1]);
+                let refId = this.getEvaluateRefId(`$$registry.sections.${sectionName}`, Infinity);
+                let sectionItemVariable = <AugmentedVariable>{
+                    name: sectionName,
+                    value: VariableType.AssociativeArray,
+                    type: VariableType.AssociativeArray,
+                    variablesReference: refId,
+                    namedVariables: items.length + 1,
+                    childVariables: [<AugmentedVariable>{
+                        name: '$count',
+                        value: items.length.toString(),
+                        type: VariableType.Integer,
+                        presentationHint: { kind: 'virtual' },
+                        variablesReference: 0,
+                        childVariables: []
+                    }]
+                };
+                this.variables[refId] = sectionItemVariable;
+
+                sectionItemVariable.childVariables = sectionItemVariable.childVariables.concat(items.map((item) => {
+                    let [itemName, itemValue] = item;
+                    return <AugmentedVariable>{
+                        evaluateName: `createObject("roRegistrySection", "${sectionName}").Read("${itemName}")`,
+                        name: itemName,
+                        value: `"${itemValue}"`,
+                        type: VariableType.String,
+                        variablesReference: 0,
+                        childVariables: []
+                    };
+                }));
+                return sectionItemVariable;
+            }));
+        }
     }
 
     private evaluateRequestPromise = Promise.resolve();
@@ -2431,7 +2553,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 }
 
-interface AugmentedVariable extends DebugProtocol.Variable {
+export interface AugmentedVariable extends DebugProtocol.Variable {
     childVariables?: AugmentedVariable[];
     // eslint-disable-next-line camelcase
     request_seq?: number;
