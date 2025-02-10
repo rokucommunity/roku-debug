@@ -1923,13 +1923,6 @@ describe('BrightScriptDebugSession', () => {
                     namedVariables: 1,
                     type: VariableType.Array,
                     childVariables: [{
-                        name: '$count',
-                        presentationHint: { kind: 'virtual' },
-                        type: VariableType.Integer,
-                        value: '3',
-                        variablesReference: 0,
-                        childVariables: []
-                    }, {
                         name: '0',
                         value: '"12"',
                         variablesReference: 0,
@@ -1946,6 +1939,13 @@ describe('BrightScriptDebugSession', () => {
                         value: '"dev"',
                         variablesReference: 0,
                         type: VariableType.String,
+                        childVariables: []
+                    }, {
+                        name: '$count',
+                        presentationHint: { kind: 'virtual' },
+                        type: VariableType.Integer,
+                        value: '3',
+                        variablesReference: 0,
                         childVariables: []
                     }]
                 });
@@ -2035,17 +2035,17 @@ describe('BrightScriptDebugSession', () => {
                     namedVariables: 1,
                     type: VariableType.Array,
                     childVariables: [{
+                        name: '0',
+                        value: '"dev"',
+                        variablesReference: 0,
+                        type: VariableType.String,
+                        childVariables: []
+                    }, {
                         name: '$count',
                         presentationHint: { kind: 'virtual' },
                         type: VariableType.Integer,
                         value: '1',
                         variablesReference: 0,
-                        childVariables: []
-                    }, {
-                        name: '0',
-                        value: '"dev"',
-                        variablesReference: 0,
-                        type: VariableType.String,
                         childVariables: []
                     }]
                 });
@@ -2063,31 +2063,24 @@ describe('BrightScriptDebugSession', () => {
                     namedVariables: 3,
                     type: VariableType.AssociativeArray,
                     childVariables: [{
-                        name: '$count',
-                        value: '2',
-                        presentationHint: { kind: 'virtual' },
-                        type: VariableType.Integer,
-                        variablesReference: 0,
-                        childVariables: []
-                    }, {
                         name: 'section One',
                         value: VariableType.AssociativeArray,
                         variablesReference: 3,
                         namedVariables: 2,
                         type: VariableType.AssociativeArray,
                         childVariables: [{
-                            name: '$count',
-                            value: '1',
-                            presentationHint: { kind: 'virtual' },
-                            type: VariableType.Integer,
-                            variablesReference: 0,
-                            childVariables: []
-                        }, {
                             name: 'first key in section one',
                             value: '"value one section one"',
                             evaluateName: 'createObject("roRegistrySection", "section One").Read("first key in section one")',
                             variablesReference: 0,
                             type: VariableType.String,
+                            childVariables: []
+                        }, {
+                            name: '$count',
+                            value: '1',
+                            presentationHint: { kind: 'virtual' },
+                            type: VariableType.Integer,
+                            variablesReference: 0,
                             childVariables: []
                         }]
                     }, {
@@ -2097,13 +2090,6 @@ describe('BrightScriptDebugSession', () => {
                         namedVariables: 3,
                         type: VariableType.AssociativeArray,
                         childVariables: [{
-                            name: '$count',
-                            value: '2',
-                            presentationHint: { kind: 'virtual' },
-                            type: VariableType.Integer,
-                            variablesReference: 0,
-                            childVariables: []
-                        }, {
                             name: 'first key in section two',
                             value: '"value one section two"',
                             evaluateName: 'createObject("roRegistrySection", "section Two").Read("first key in section two")',
@@ -2117,7 +2103,21 @@ describe('BrightScriptDebugSession', () => {
                             variablesReference: 0,
                             type: VariableType.String,
                             childVariables: []
+                        }, {
+                            name: '$count',
+                            value: '2',
+                            presentationHint: { kind: 'virtual' },
+                            type: VariableType.Integer,
+                            variablesReference: 0,
+                            childVariables: []
                         }]
+                    }, {
+                        name: '$count',
+                        value: '2',
+                        presentationHint: { kind: 'virtual' },
+                        type: VariableType.Integer,
+                        variablesReference: 0,
+                        childVariables: []
                     }]
                 });
             });

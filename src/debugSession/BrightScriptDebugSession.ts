@@ -1568,7 +1568,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 };
                 v.childVariables.push(pluginsVariable);
                 this.variables[refId] = pluginsVariable;
-                pluginsVariable.childVariables = pluginsVariable.childVariables.concat(registryData.plugins.map((id, index) => {
+                pluginsVariable.childVariables.splice(0, 0, ...registryData.plugins.map((id, index) => {
                     return <AugmentedVariable>{
                         name: index.toString(),
                         value: `"${id}"`,
@@ -1609,7 +1609,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 };
                 v.childVariables.push(sectionsVariable);
                 this.variables[refId] = sectionsVariable;
-                sectionsVariable.childVariables = sectionsVariable.childVariables.concat(sections.map((entry) => {
+                sectionsVariable.childVariables.splice(0, 0, ...sections.map((entry) => {
                     let sectionName = entry[0];
                     let items = Object.entries(entry[1]);
                     let refId = this.getEvaluateRefId(`$$registry.sections.${sectionName}`, Infinity);
@@ -1630,7 +1630,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     };
                     this.variables[refId] = sectionItemVariable;
 
-                    sectionItemVariable.childVariables = sectionItemVariable.childVariables.concat(items.map((item) => {
+                    sectionItemVariable.childVariables.splice(0, 0, ...items.map((item) => {
                         let [itemName, itemValue] = item;
                         return <AugmentedVariable>{
                             evaluateName: `createObject("roRegistrySection", "${sectionName}").Read("${itemName}")`,
