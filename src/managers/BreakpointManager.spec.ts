@@ -1105,17 +1105,14 @@ describe('BreakpointManager', () => {
             });
         });
 
-        it('detects column number change (roku does not support this yet, but we might as well...)', async () => {
+        it('does not create work for inline breakpoints', async () => {
             bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
                 line: 2,
                 column: 4
             }]);
 
             await testDiffEquals({
-                added: [{
-                    line: 2,
-                    column: 4
-                }]
+                added: []
             });
 
             bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
@@ -1124,44 +1121,8 @@ describe('BreakpointManager', () => {
             }]);
 
             await testDiffEquals({
-                removed: [{
-                    line: 2,
-                    column: 4
-                }],
-                added: [{
-                    line: 2,
-                    column: 8
-                }]
-            });
-        });
-
-        it('maintains breakpoint IDs', async () => {
-            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
-                line: 2,
-                column: 4
-            }]);
-
-            await testDiffEquals({
-                added: [{
-                    line: 2,
-                    column: 4
-                }]
-            });
-
-            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
-                line: 2,
-                column: 8
-            }]);
-
-            await testDiffEquals({
-                removed: [{
-                    line: 2,
-                    column: 4
-                }],
-                added: [{
-                    line: 2,
-                    column: 8
-                }]
+                removed: [],
+                added: []
             });
         });
 

@@ -93,6 +93,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 column: breakpoint.column,
                 verified: breakpoint.verified,
                 id: breakpoint.id,
+                reason: breakpoint.reason,
+                message: breakpoint.message,
                 source: {
                     path: breakpoint.srcPath
                 }

@@ -107,8 +107,8 @@ export class BreakpointManager {
         //get the breakpoints array (and optionally initialize it if not set)
         let breakpointsArray = this.getBreakpointsForFile(srcPath, true);
 
-        //only a single breakpoint can be defined per line. So, if we find one on this line, we'll augment that breakpoint rather than builiding a new one
-        const existingBreakpoint = breakpointsArray.find(x => x.line === breakpoint.line);
+        //only a single breakpoint can be defined per line. So, if we find one on this line, we'll augment that breakpoint rather than building a new one
+        const existingBreakpoint = breakpointsArray.find(x => x.line === breakpoint.line && x.column === (breakpoint.column ?? 0));
 
         this.logger.debug('existingBreakpoint', existingBreakpoint);
 
@@ -122,16 +122,23 @@ export class BreakpointManager {
                 logMessage: undefined
             },
             ...breakpoint,
-            srcPath: srcPath,
-            //assign a hash-like key to this breakpoint (so we can match against other similar breakpoints in the future)
-            srcHash: this.getBreakpointSrcHash(srcPath, breakpoint)
+            srcPath: srcPath
         } as AugmentedSourceBreakpoint);
+
+        //assign a hash-like key to this breakpoint (so we can match against other similar breakpoints in the future)
+        // Do this after all props are assigned so we can get a consistent hash
+        bp.srcHash = this.getBreakpointSrcHash(srcPath, bp);
 
         //generate a new id for this breakpoint if one does not exist
         bp.id ??= this.breakpointIdSequence++;
 
         //all breakpoints default to false if not already set to true
         bp.verified ??= false;
+
+        if (bp.column > 0) {
+            bp.message = `Error: inline break points are not supported`;
+            bp.reason = 'failed';
+        }
 
         //if the breakpoint hash changed, mark the breakpoint as unverified
         if (existingBreakpoint?.srcHash !== bp.srcHash) {
@@ -376,6 +383,11 @@ export class BreakpointManager {
         //iterate over every file that contains breakpoints
         for (let [sourceFilePath, breakpoints] of this.breakpointsByFilePath) {
             for (let breakpoint of breakpoints) {
+                if (breakpoint?.reason === 'failed') {
+                    // If this breakpoint failed then skip this work item
+                    // Can happen due to developers setting breakpoints in the wrong place
+                    continue;
+                }
                 //get the list of locations in staging that this breakpoint should be written to.
                 //if none are found, then this breakpoint is ignored
                 let stagingLocationsResult = await this.locationManager.getStagingLocations(
@@ -868,6 +880,18 @@ export interface AugmentedSourceBreakpoint extends DebugProtocol.SourceBreakpoin
      * This breakpoint has been verified (i.e. we were able to set it at the given location)
      */
     verified: boolean;
+
+    /** A message about the state of the breakpoint.
+        This is shown to the user and can be used to explain why a breakpoint could not be verified.
+    */
+    message?: string;
+
+    /** A machine-readable explanation of why a breakpoint may not be verified. If a breakpoint is verified or a specific reason is not known, the adapter should omit this property. Possible values include:
+
+        - `pending`: Indicates a breakpoint might be verified in the future, but the adapter cannot verify it in the current state.
+            - `failed`: Indicates a breakpoint was not able to be verified, and the adapter does not believe it can be verified without intervention.
+    */
+    reason?: 'pending' | 'failed';
 }
 
 export interface BreakpointWorkItem {
