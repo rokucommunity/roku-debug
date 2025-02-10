@@ -1438,8 +1438,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             }
 
+            // Only send the updated variables if we are not going to trigger an invalidated event.
+            // This is to prevent the UI from updating twice and makes the experience much smoother to the end user.
             response.body = {
-                variables: this.filterVariablesUpdates(updatedVariables, args, this.variables[args.variablesReference])
+                variables: sendInvalidatedEvent ? [] : this.filterVariablesUpdates(updatedVariables, args, this.variables[args.variablesReference])
             };
         } catch (error) {
             logger.error('Error during variablesRequest', error, { args });

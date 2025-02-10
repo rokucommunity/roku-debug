@@ -42,8 +42,8 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
 
     pushCustomVariableToContainer(adapter, container, {
         name: '$childElements',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.List,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetChildElements()`,
         value: '',
         children: []
@@ -51,8 +51,8 @@ export function pushIfXMLElementVariables(adapter: DebugProtocolAdapter, express
 
     pushCustomVariableToContainer(adapter, container, {
         name: '$childNodes',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.List,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetChildNodes()`,
         value: '',
         children: []
