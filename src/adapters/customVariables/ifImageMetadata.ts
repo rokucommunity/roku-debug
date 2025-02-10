@@ -6,8 +6,8 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfImageMetadataVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(adapter, container, {
         name: '$metadata',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.Object,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetMetadata()`,
         value: '',
         children: []
@@ -15,8 +15,8 @@ export function pushIfImageMetadataVariables(adapter: DebugProtocolAdapter, expr
 
     pushCustomVariableToContainer(adapter, container, {
         name: '$thumbnail',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.Object,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetThumbnail()`,
         value: '',
         children: []
