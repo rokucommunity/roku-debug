@@ -6,6 +6,7 @@ import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
 import { DebugSession } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
+import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
 import type { StackFrame } from '../adapters/TelnetAdapter';
 import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';

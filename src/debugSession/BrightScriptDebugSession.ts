@@ -10,7 +10,6 @@ import {
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
-    Scope,
     Source,
     StackFrame,
     StoppedEvent,
@@ -58,6 +57,7 @@ import { debounce } from 'debounce';
 import { interfaces, components, events } from 'brighterscript/dist/roku-types';
 import { globalCallables } from 'brighterscript/dist/globalCallables';
 import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
+import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
 
 const diagnosticSource = 'roku-debug';
 
@@ -1185,7 +1185,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         const logger = this.logger.createLogger(`scopesRequest ${this.idCounter}`);
         logger.info('begin', { args });
         try {
-            const scopes = new Array<Scope>();
+            const scopes = new Array<DebugProtocol.Scope>();
 
             if (isDebugProtocolAdapter(this.rokuAdapter)) {
                 let refId = this.getEvaluateRefId('', args.frameId);
@@ -1205,12 +1205,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v.frameId = args.frameId;
                 }
 
-                let scope = new Scope('Local', refId, false);
-                scopes.push(scope);
+                scopes.push(<DebugProtocol.Scope>{
+                    name: 'Local',
+                    variablesReference: v.variablesReference,
+                    expensive: false,
+                    presentationHint: 'locals'
+                });
             } else {
                 // NOTE: Legacy telnet support
-                scopes.push(new Scope('Local', this.variableHandles.create('local'), false));
+                scopes.push(<DebugProtocol.Scope>{
+                    name: 'Local',
+                    variablesReference: this.variableHandles.create('local'),
+                    expensive: false,
+                    presentationHint: 'locals'
+                });
             }
+
+            let refId = this.getEvaluateRefId('$$registry', Infinity);
+            scopes.push(<DebugProtocol.Scope>{
+                name: 'Registry',
+                variablesReference: refId,
+                expensive: true
+            });
+
+            this.variables[refId] = {
+                variablesReference: refId,
+                name: 'Registry',
+                value: '',
+                type: '$$Registry',
+                childVariables: []
+            };
 
             response.body = {
                 scopes: scopes
@@ -1376,6 +1400,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     return this.sendResponse(response);
                 }
                 logger.log('variable', v);
+
+                if (v.type === '$$Registry' && v.childVariables.length === 0) {
+                    // This is a special scope variable used to load registry data via an ECP call
+                    const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/registry/dev`;
+                    // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
+                    const response = await util.httpGet(url);
+                    await populateVariableFromRegistryEcp(response, v, this.variables, this.getEvaluateRefId.bind(this));
+                }
+
                 //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
                 if (v.childVariables.length === 0 || v.isResolved) {
                     let tempVar: AugmentedVariable;
@@ -2410,7 +2443,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 }
 
-interface AugmentedVariable extends DebugProtocol.Variable {
+export interface AugmentedVariable extends DebugProtocol.Variable {
     childVariables?: AugmentedVariable[];
     // eslint-disable-next-line camelcase
     request_seq?: number;

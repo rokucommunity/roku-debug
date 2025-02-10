@@ -13,6 +13,7 @@ import * as r from 'postman-request';
 import type { Response } from 'request';
 import type * as requestType from 'request';
 import { OutputEvent } from '@vscode/debugadapter';
+import * as xml2js from 'xml2js';
 const request = r as typeof requestType;
 
 class Util {
@@ -508,6 +509,21 @@ class Util {
         }
         //empty the array
         disposables.splice(0, disposables.length);
+    }
+
+    /**
+     * Parse an xml file and get back a javascript object containing its results
+     */
+    public parseXml(text: string) {
+        return new Promise<any>((resolve, reject) => {
+            xml2js.parseString(text, (err, data) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(data);
+                }
+            });
+        });
     }
 }
 
