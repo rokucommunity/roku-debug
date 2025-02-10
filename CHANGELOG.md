@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.20](https://github.com/rokucommunity/roku-debug/compare/v0.21.19...v0.21.20) - 2025-02-10
+### Added
+ - Feature/registry scope in variables pannel ([#219](https://github.com/rokucommunity/roku-debug/pull/219))
+### Changed
+ - Updated the breakpoint manager to fail inline breakpoint requests ([#221](https://github.com/rokucommunity/roku-debug/pull/221))
+ - upgrade to [brighterscript@0.69.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0690---2025-02-10). Notable changes since 0.68.5:
+     - Language Server Rewrite ([brighterscript#993](https://github.com/rokucommunity/brighterscript/pull/993))
+### Fixed
+ - Bugfix/UI flicker on invalidated events ([#220](https://github.com/rokucommunity/roku-debug/pull/220))
+
+
+
 ## [0.21.19](https://github.com/rokucommunity/roku-debug/compare/v0.21.18...v0.21.19) - 2025-02-06
 ### Added
  - debugger completions in the REPL ([#211](https://github.com/rokucommunity/roku-debug/pull/211))

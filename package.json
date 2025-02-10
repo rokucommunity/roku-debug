@@ -100,7 +100,7 @@
         "@types/request": "^2.48.8",
         "@vscode/debugadapter": "^1.68.0",
         "@vscode/debugprotocol": "^1.68.0",
-        "brighterscript": "^0.68.5",
+        "brighterscript": "^0.69.0",
         "dateformat": "^4.6.3",
         "debounce": "^1.2.1",
         "eol": "^0.9.1",
