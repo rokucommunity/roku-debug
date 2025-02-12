@@ -137,7 +137,7 @@ class Util {
     public log(message: string) {
         if (this._debugSession) {
             this._debugSession.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
-            this._debugSession.sendEvent(new OutputEvent(`DebugServer: ${message}`, 'stdout'));
+            this._debugSession.sendEvent(new OutputEvent(`DebugServer: ${message}\n`, 'stdout'));
         }
     }
 
