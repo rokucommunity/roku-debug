@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.21](https://github.com/rokucommunity/roku-debug/compare/v0.21.20...v0.21.21) - 2025-02-13
+### Fixed
+ - Fixed a bug that preventing the `stopOnEntry` setting from being respected when restarting a debug session ([#223](https://github.com/rokucommunity/roku-debug/pull/223))
+ - fixed missing `\n` characters in startup logs ([#222](https://github.com/rokucommunity/roku-debug/pull/222))
+
+
+
 ## [0.21.20](https://github.com/rokucommunity/roku-debug/compare/v0.21.19...v0.21.20) - 2025-02-10
 ### Added
  - Feature/registry scope in variables pannel ([#219](https://github.com/rokucommunity/roku-debug/pull/219))
