@@ -367,6 +367,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
+        // launchRequest gets invoked by our restart session flow.
+        // We need to clear/reset some state to avoid issues.
+        this.entryBreakpointWasHandled = false;
+        this.breakpointManager.clearBreakpointLastState();
+
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
 
@@ -474,9 +479,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // close disconnect if required when the app is exited
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.rokuAdapter.on('app-exit', async () => {
-                this.entryBreakpointWasHandled = false;
-                this.breakpointManager.clearBreakpointLastState();
-
                 if (this.launchConfiguration.stopDebuggerOnAppExit) {
                     let message = `App exit event detected and launchConfiguration.stopDebuggerOnAppExit is true`;
                     message += ' - shutting down debug session';
