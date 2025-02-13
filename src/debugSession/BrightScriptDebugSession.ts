@@ -58,6 +58,7 @@ import { interfaces, components, events } from 'brighterscript/dist/roku-types';
 import { globalCallables } from 'brighterscript/dist/globalCallables';
 import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
+import { rokuECP } from '../RokuECP';
 
 const diagnosticSource = 'roku-debug';
 
@@ -2036,9 +2037,51 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.rokuAdapter.removeAllListeners();
             }
             await this.rokuAdapter.destroy();
+            await this.ensureAppIsInactive();
             this.rokuAdapterDeferred = defer();
         }
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
+    }
+
+    private exitAppTimeout: 5000;
+    private async ensureAppIsInactive() {
+        const startTime = Date.now();
+
+        while (true) {
+            if (Date.now() - startTime > this.exitAppTimeout) {
+                return;
+            }
+
+            try {
+                let appStateResult = await rokuECP.getAppState({
+                    host: this.launchConfiguration.host,
+                    remotePort: this.launchConfiguration.remotePort,
+                    appId: 'dev',
+                    requestOptions: { timeout: 300 }
+                });
+
+                const state = appStateResult.state?.toLowerCase();
+
+                if (state === 'active' || state === 'background') {
+                    // Suspends or terminates an app that is running:
+                    // If the app supports Instant Resume and is running in the foreground, sending this command suspends the app (the app runs in the background).
+                    // If the app supports Instant Resume and is running in the background or the app does not support Instant Resume and is running, sending this command terminates the app.
+                    // This means that we might need to send this command twice to terminate the app.
+                    await rokuECP.exitApp({
+                        host: this.launchConfiguration.host,
+                        remotePort: this.launchConfiguration.remotePort,
+                        appId: 'dev',
+                        requestOptions: { timeout: 300 }
+                    });
+                } else if (state === 'inactive') {
+                    return;
+                }
+            } catch (e) {
+                this.logger.error('Error attempting to exit application', e);
+            }
+
+            await util.sleep(200);
+        }
     }
 
     /**
