@@ -425,9 +425,9 @@ class Util {
     /**
      * Do an http GET request
      */
-    public httpGet(url: string) {
+    public httpGet(url: string, options?: requestType.CoreOptions) {
         return new Promise<Response>((resolve, reject) => {
-            request.get(url, (err, response) => {
+            request.get(url, options, (err, response) => {
                 return err ? reject(err) : resolve(response);
             });
         });

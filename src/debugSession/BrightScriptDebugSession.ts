@@ -1407,10 +1407,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 if (v.type === '$$Registry' && v.childVariables.length === 0) {
                     // This is a special scope variable used to load registry data via an ECP call
-                    const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/registry/dev`;
                     // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
-                    const response = await util.httpGet(url);
-                    await populateVariableFromRegistryEcp(response, v, this.variables, this.getEvaluateRefId.bind(this));
+                    await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
                 }
 
                 //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable

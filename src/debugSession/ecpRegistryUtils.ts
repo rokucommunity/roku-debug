@@ -1,10 +1,12 @@
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { util } from '../util';
+import { rokuECP } from '../RokuECP';
+import type { RokuEcpParam } from '../RokuECP';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import type { Response } from 'request';
 
-export async function populateVariableFromRegistryEcp(response: Response, v: AugmentedVariable, variables: Record<number, AugmentedVariable>, refIdFactory: (key: string, frameId: number) => number) {
-    let registryData = await convertRegistryEcpResponseToScope(response);
+export async function populateVariableFromRegistryEcp(options: RokuEcpParam<'getRegistry'>, v: AugmentedVariable, variables: Record<number, AugmentedVariable>, refIdFactory: (key: string, frameId: number) => number) {
+    let registryData = await rokuECP.getRegistry(options);
 
     if (registryData.status === 'OK') {
         // Add registry data to variable list
@@ -122,52 +124,6 @@ export async function populateVariableFromRegistryEcp(response: Response, v: Aug
             variablesReference: 0,
             childVariables: []
         });
-    }
-}
-
-async function convertRegistryEcpResponseToScope(response: Response): Promise<EcpRegistryData> {
-    if (typeof response.body === 'string') {
-        try {
-            let parsed = await util.parseXml(response.body) as RegistryAsJson;
-
-            const status = parsed['plugin-registry'].status[0];
-
-            if (status === 'OK') {
-
-                let registry = parsed['plugin-registry'].registry?.[0];
-
-                let sections: EcpRegistryData['sections'] = {};
-                for (const section of registry?.sections?.[0]?.section ?? []) {
-                    if (typeof section === 'string') {
-                        continue;
-                    }
-                    let sectionName = section.name[0];
-                    for (const item of section.items[0].item) {
-                        sections[sectionName] ??= {};
-                        sections[sectionName][item.key[0]] = item.value[0];
-                    }
-                }
-
-                return {
-                    devId: registry?.['dev-id']?.[0],
-                    plugins: registry?.plugins?.[0]?.split(','),
-                    sections: sections,
-                    spaceAvailable: registry?.['space-available']?.[0],
-                    status: 'OK'
-                };
-            } else {
-                return {
-                    status: 'FAILED',
-                    errorMessage: parsed?.['plugin-registry']?.error?.[0] ?? 'Unknown error'
-                };
-            }
-        } catch {
-            //if the response is not xml, just return the body as-is
-            return {
-                status: 'FAILED',
-                errorMessage: response.body
-            };
-        }
     }
 }
 
