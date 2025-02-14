@@ -425,9 +425,9 @@ class Util {
     /**
      * Do an http GET request
      */
-    public httpGet(url: string) {
+    public httpGet(url: string, options?: requestType.CoreOptions) {
         return new Promise<Response>((resolve, reject) => {
-            request.get(url, (err, response) => {
+            request.get(url, options, (err, response) => {
                 return err ? reject(err) : resolve(response);
             });
         });
@@ -514,7 +514,7 @@ class Util {
     /**
      * Parse an xml file and get back a javascript object containing its results
      */
-    public parseXml(text: string) {
+    public parseXml<T = any>(text: string): Promise<T> {
         return new Promise<any>((resolve, reject) => {
             xml2js.parseString(text, (err, data) => {
                 if (err) {

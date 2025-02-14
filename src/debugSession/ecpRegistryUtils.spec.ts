@@ -4,12 +4,20 @@ import { VariableType } from '../debugProtocol/events/responses/VariablesRespons
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
+import { rokuECP } from '../RokuECP';
+import { createSandbox } from 'sinon';
+
+const sinon = createSandbox();
 
 describe('ecpRegistryUtils', () => {
     let session: BrightScriptDebugSession;
 
     beforeEach(() => {
         session = new BrightScriptDebugSession();
+    });
+
+    afterEach(() => {
+        sinon.restore();
     });
 
     describe('populateVariableFromRegistryEcp', () => {
@@ -34,7 +42,8 @@ describe('ecpRegistryUtils', () => {
                     type: '$$Registry',
                     childVariables: []
                 };
-                await populateVariableFromRegistryEcp({
+
+                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
                     body: `
                         <plugin-registry>
                         <status>OK</status>
@@ -42,7 +51,9 @@ describe('ecpRegistryUtils', () => {
                         </plugin-registry>
                     `,
                     statusCode: 200
-                } as Response, v, session['variables'], refFactory);
+                } as Response));
+
+                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'sections',
@@ -84,7 +95,8 @@ describe('ecpRegistryUtils', () => {
                     type: '$$Registry',
                     childVariables: []
                 };
-                await populateVariableFromRegistryEcp({
+
+                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
                     body: `
                         <?xml version="1.0" encoding="UTF-8" ?>
                         <plugin-registry>
@@ -98,7 +110,9 @@ describe('ecpRegistryUtils', () => {
                         </plugin-registry>
                     `,
                     statusCode: 200
-                } as Response, v, session['variables'], refFactory);
+                } as Response));
+
+                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(4);
                 expect(v.childVariables[0]).to.eql({
                     name: 'devId',
@@ -173,7 +187,8 @@ describe('ecpRegistryUtils', () => {
                     type: '$$Registry',
                     childVariables: []
                 };
-                await populateVariableFromRegistryEcp({
+
+                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
                     body: `
                         <?xml version="1.0" encoding="UTF-8" ?>
                         <plugin-registry>
@@ -210,7 +225,9 @@ describe('ecpRegistryUtils', () => {
                         </plugin-registry>
                     `,
                     statusCode: 200
-                } as Response, v, session['variables'], refFactory);
+                } as Response));
+
+                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(4);
                 expect(v.childVariables[0]).to.eql({
                     name: 'devId',
@@ -334,7 +351,8 @@ describe('ecpRegistryUtils', () => {
                     type: '$$Registry',
                     childVariables: []
                 };
-                await populateVariableFromRegistryEcp({
+
+                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
                     body: `
                         <plugin-registry>
                             <status>FAILED</status>
@@ -342,7 +360,9 @@ describe('ecpRegistryUtils', () => {
                         </plugin-registry>
                     `,
                     statusCode: 200
-                } as Response, v, session['variables'], refFactory);
+                } as Response));
+
+                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'error',
@@ -361,7 +381,8 @@ describe('ecpRegistryUtils', () => {
                     type: '$$Registry',
                     childVariables: []
                 };
-                await populateVariableFromRegistryEcp({
+
+                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
                     body: `
                         <plugin-registry>
                             <status>FAILED</status>
@@ -369,7 +390,9 @@ describe('ecpRegistryUtils', () => {
                         </plugin-registry>
                     `,
                     statusCode: 200
-                } as Response, v, session['variables'], refFactory);
+                } as Response));
+
+                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'error',
@@ -388,14 +411,17 @@ describe('ecpRegistryUtils', () => {
                     type: '$$Registry',
                     childVariables: []
                 };
-                await populateVariableFromRegistryEcp({
+
+                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
                     body: `
                         <plugin-registry>
                             <status>FAILED</status>
                         </plugin-registry>
                     `,
                     statusCode: 200
-                } as Response, v, session['variables'], refFactory);
+                } as Response));
+
+                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'error',
@@ -414,10 +440,13 @@ describe('ecpRegistryUtils', () => {
                     type: '$$Registry',
                     childVariables: []
                 };
-                await populateVariableFromRegistryEcp({
+
+                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
                     body: `ECP command not allowed in Limited mode.`,
                     statusCode: 403
-                } as Response, v, session['variables'], refFactory);
+                } as Response));
+
+                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'error',
