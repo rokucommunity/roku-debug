@@ -3,9 +3,13 @@ import type * as requestType from 'request';
 import type { Response } from 'request';
 
 export class RokuECP {
-    private async doRequest(route: string, options: BaseOptions): Promise<Response> {
+    private async doRequest(route: string, options: BaseOptions, method: 'post' | 'get' = 'get'): Promise<Response> {
         const url = `http://${options.host}:${options.remotePort ?? 8060}/${route.replace(/^\//, '')}`;
-        return util.httpGet(url, options.requestOptions);
+        if (method === 'post') {
+            return util.httpPost(url, options.requestOptions);
+        } else {
+            return util.httpGet(url, options.requestOptions);
+        }
     }
 
     private getEcpStatus(response: ParsedEcpRoot, rootKey: string): EcpStatus {
@@ -63,7 +67,7 @@ export class RokuECP {
     }
 
     public async getAppState(options: BaseOptions & { appId: string }) {
-        let result = await this.doRequest(`query/app-status/${options.appId}`, options);
+        let result = await this.doRequest(`query/app-state/${options.appId}`, options);
         return this.processAppState(result);
     }
 
@@ -82,7 +86,7 @@ export class RokuECP {
     }
 
     public async exitApp(options: BaseOptions & { appId: string }): Promise<EcpExitAppData> {
-        let result = await this.doRequest(`exit-app/${options.appId}`, options);
+        let result = await this.doRequest(`exit-app/${options.appId}`, options, 'post');
         return this.processExitApp(result);
     }
 

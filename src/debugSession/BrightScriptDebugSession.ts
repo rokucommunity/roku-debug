@@ -2052,7 +2052,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }
 
-    private exitAppTimeout: 5000;
+    private exitAppTimeout = 5000;
     private async ensureAppIsInactive() {
         const startTime = Date.now();
 

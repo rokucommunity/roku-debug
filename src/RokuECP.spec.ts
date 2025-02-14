@@ -77,6 +77,32 @@ describe('RokuECP', () => {
             await rokuECP['doRequest']('/query/my-route', options);
             expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8060/query/my-route`, undefined]);
         });
+
+        it('supports get and post methods', async () => {
+            let options = {
+                host: '1.1.1.1'
+            };
+
+            const getStub = sinon.stub(util as any, 'httpGet').resolves({
+                body: '',
+                statusCode: 200
+            });
+            const postStub = sinon.stub(util as any, 'httpPost').resolves({
+                body: '',
+                statusCode: 200
+            });
+
+            await rokuECP['doRequest']('/query/my-route', options, 'get');
+            expect(getStub.getCall(0).args).to.eql([`http://1.1.1.1:8060/query/my-route`, undefined]);
+            expect(getStub.callCount).to.eql(1);
+            expect(postStub.callCount).to.eql(0);
+
+            await rokuECP['doRequest']('/query/my-route', options, 'post');
+            expect(postStub.getCall(0).args).to.eql([`http://1.1.1.1:8060/query/my-route`, undefined]);
+            expect(getStub.callCount).to.eql(1);
+            expect(postStub.callCount).to.eql(1);
+
+        });
     });
 
     describe('getRegistry', () => {
@@ -270,7 +296,7 @@ describe('RokuECP', () => {
             sinon.stub(rokuECP as any, 'processAppState').resolves({});
 
             await rokuECP.getAppState(options);
-            expect(stub.getCall(0).args).to.eql(['query/app-status/dev', options]);
+            expect(stub.getCall(0).args).to.eql(['query/app-state/dev', options]);
         });
     });
 
@@ -406,7 +432,7 @@ describe('RokuECP', () => {
             sinon.stub(rokuECP as any, 'processExitApp').resolves({});
 
             await rokuECP.exitApp(options);
-            expect(stub.getCall(0).args).to.eql(['exit-app/dev', options]);
+            expect(stub.getCall(0).args).to.eql(['exit-app/dev', options, 'post']);
         });
     });
 
