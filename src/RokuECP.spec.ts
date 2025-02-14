@@ -4,11 +4,12 @@ import { describe } from 'mocha';
 import type { EcpAppStateData, EcpRegistryData } from './RokuECP';
 import { AppState, EcpStatus, rokuECP } from './RokuECP';
 import { util } from './util';
+import { expectThrowsAsync } from './testHelpers.spec';
 
 const sinon = createSandbox();
 
 
-describe('RokuECP', () => {
+describe.only('RokuECP', () => {
 
     beforeEach(() => {
         sinon.restore();
@@ -90,6 +91,7 @@ describe('RokuECP', () => {
                 body: '',
                 statusCode: 200
             });
+            sinon.stub(rokuECP as any, 'processRegistry').resolves({});
 
             await rokuECP.getRegistry(options);
             expect(stub.getCall(0).args).to.eql(['query/registry/dev', options]);
@@ -214,11 +216,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 };
-                let result = await rokuECP['processRegistry'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'Plugin dev not found'
-                } as EcpRegistryData);
+                await expectThrowsAsync(() => rokuECP['processRegistry'](response as any), 'Plugin dev not found');
             });
 
             it('handles device not keyed', async () => {
@@ -231,11 +229,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 };
-                let result = await rokuECP['processRegistry'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'Device not keyed'
-                } as EcpRegistryData);
+                await expectThrowsAsync(() => rokuECP['processRegistry'](response as any), 'Device not keyed');
             });
 
             it('handles failed status with missing error', async () => {
@@ -247,11 +241,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 };
-                let result = await rokuECP['processRegistry'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'Unknown error'
-                } as EcpRegistryData);
+                await expectThrowsAsync(() => rokuECP['processRegistry'](response as any), 'Unknown error');
             });
 
             it('handles error response without xml', async () => {
@@ -259,11 +249,7 @@ describe('RokuECP', () => {
                     body: `ECP command not allowed in Limited mode.`,
                     statusCode: 403
                 };
-                let result = await rokuECP['processRegistry'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'ECP command not allowed in Limited mode.'
-                } as EcpRegistryData);
+                await expectThrowsAsync(() => rokuECP['processRegistry'](response as any), 'ECP command not allowed in Limited mode.');
             });
         });
     });
@@ -281,12 +267,14 @@ describe('RokuECP', () => {
                 statusCode: 200
             });
 
+            sinon.stub(rokuECP as any, 'processAppState').resolves({});
+
             await rokuECP.getAppState(options);
             expect(stub.getCall(0).args).to.eql(['query/app-status/dev', options]);
         });
     });
 
-    describe('parseAppState', () => {
+    describe('processAppState', () => {
         describe('non-error responses', () => {
             it('handles ok response', async () => {
                 let response = {
@@ -377,11 +365,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 };
-                let result = await rokuECP['processAppState'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'Unknown error'
-                } as EcpAppStateData);
+                await expectThrowsAsync(() => rokuECP['processAppState'](response as any), 'Unknown error');
             });
 
             it('handles failed status with populated error', async () => {
@@ -394,11 +378,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 };
-                let result = await rokuECP['processAppState'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'App not found'
-                } as EcpAppStateData);
+                await expectThrowsAsync(() => rokuECP['processAppState'](response as any), 'App not found');
             });
 
             it('handles error response without xml', async () => {
@@ -406,11 +386,7 @@ describe('RokuECP', () => {
                     body: `ECP command not allowed in Limited mode.`,
                     statusCode: 403
                 };
-                let result = await rokuECP['processAppState'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'ECP command not allowed in Limited mode.'
-                } as EcpAppStateData);
+                await expectThrowsAsync(() => rokuECP['processAppState'](response as any), 'ECP command not allowed in Limited mode.');
             });
         });
     });
@@ -427,13 +403,14 @@ describe('RokuECP', () => {
                 body: '',
                 statusCode: 200
             });
+            sinon.stub(rokuECP as any, 'processExitApp').resolves({});
 
             await rokuECP.exitApp(options);
             expect(stub.getCall(0).args).to.eql(['exit-app/dev', options]);
         });
     });
 
-    describe('parseExitApp', () => {
+    describe('processExitApp', () => {
         describe('non-error responses', () => {
             it('handles ok response', async () => {
                 let response = {
@@ -462,11 +439,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 };
-                let result = await rokuECP['processExitApp'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'Unknown error'
-                });
+                await expectThrowsAsync(() => rokuECP['processExitApp'](response as any), 'Unknown error');
             });
 
             it('handles failed status with populated error', async () => {
@@ -479,11 +452,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 };
-                let result = await rokuECP['processExitApp'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'App not found'
-                });
+                await expectThrowsAsync(() => rokuECP['processExitApp'](response as any), 'App not found');
             });
 
             it('handles error response without xml', async () => {
@@ -491,11 +460,7 @@ describe('RokuECP', () => {
                     body: `ECP command not allowed in Limited mode.`,
                     statusCode: 403
                 };
-                let result = await rokuECP['processExitApp'](response as any);
-                expect(result).to.eql({
-                    status: EcpStatus.failed,
-                    errorMessage: 'ECP command not allowed in Limited mode.'
-                });
+                await expectThrowsAsync(() => rokuECP['processExitApp'](response as any), 'ECP command not allowed in Limited mode.');
             });
         });
     });

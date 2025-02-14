@@ -12,25 +12,21 @@ export class RokuECP {
         return EcpStatus[response?.[rootKey]?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
     }
 
-    private async parseResponse<R>(response: Response, rootKey: string, callback: (parsed: any, status: EcpStatus) => R): Promise<R | { status: EcpStatus; errorMessage: string }> {
+    private async parseResponse<R>(response: Response, rootKey: string, callback: (parsed: any, status: EcpStatus) => R): Promise<R> {
         if (typeof response.body === 'string') {
+            let parsed: ParsedEcpRoot;
             try {
-                let parsed = await util.parseXml<ParsedEcpRoot>(response.body);
-                const status = this.getEcpStatus(parsed, rootKey);
-                if (status === EcpStatus.ok) {
-                    return callback(parsed?.[rootKey], status);
-                } else {
-                    return {
-                        status: status,
-                        errorMessage: parsed?.[rootKey]?.error?.[0] ?? 'Unknown error'
-                    };
-                }
+                parsed = await util.parseXml<ParsedEcpRoot>(response.body);
             } catch {
                 //if the response is not xml, just return the body as-is
-                return {
-                    status: EcpStatus.failed,
-                    errorMessage: response.body ?? 'Unknown error'
-                };
+                throw new Error(response.body ?? 'Unknown error');
+            }
+
+            const status = this.getEcpStatus(parsed, rootKey);
+            if (status === EcpStatus.ok) {
+                return callback(parsed?.[rootKey], status);
+            } else {
+                throw new Error(parsed?.[rootKey]?.error?.[0] ?? 'Unknown error');
             }
         }
     }

@@ -4,9 +4,8 @@ import type { RokuEcpParam } from '../RokuECP';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 
 export async function populateVariableFromRegistryEcp(options: RokuEcpParam<'getRegistry'>, v: AugmentedVariable, variables: Record<number, AugmentedVariable>, refIdFactory: (key: string, frameId: number) => number) {
-    let result = await rokuECP.getRegistry(options);
-
-    if (result.status === EcpStatus.ok) {
+    try {
+        let registryData = await rokuECP.getRegistry(options);
         // Add registry data to variable list
         if (registryData.devId) {
             v.childVariables.push(<AugmentedVariable>{
@@ -114,10 +113,10 @@ export async function populateVariableFromRegistryEcp(options: RokuEcpParam<'get
                 return sectionItemVariable;
             }));
         }
-    } else {
+    } catch (e) {
         v.childVariables.push(<AugmentedVariable>{
             name: 'error',
-            value: `❌ Error: ${registryData.errorMessage ?? 'Unknown error'}`,
+            value: `❌ Error: ${e.message ?? 'Unknown error'}`,
             type: VariableType.String,
             variablesReference: 0,
             childVariables: []
