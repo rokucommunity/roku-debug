@@ -9,7 +9,7 @@ import { expectThrowsAsync } from './testHelpers.spec';
 const sinon = createSandbox();
 
 
-describe.only('RokuECP', () => {
+describe('RokuECP', () => {
 
     beforeEach(() => {
         sinon.restore();
