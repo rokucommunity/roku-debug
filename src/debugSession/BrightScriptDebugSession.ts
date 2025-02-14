@@ -58,6 +58,7 @@ import { interfaces, components, events } from 'brighterscript/dist/roku-types';
 import { globalCallables } from 'brighterscript/dist/globalCallables';
 import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
+import { AppState, rokuECP } from '../RokuECP';
 
 const diagnosticSource = 'roku-debug';
 
@@ -367,10 +368,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
-        // launchRequest gets invoked by our restart session flow.
-        // We need to clear/reset some state to avoid issues.
-        this.entryBreakpointWasHandled = false;
-        this.breakpointManager.clearBreakpointLastState();
+        this.resetSessionState();
 
         //send the response right away so the UI immediately shows the debugger toolbar
         this.sendResponse(response);
@@ -479,6 +477,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             // close disconnect if required when the app is exited
             // eslint-disable-next-line @typescript-eslint/no-misused-promises
             this.rokuAdapter.on('app-exit', async () => {
+                this.resetSessionState();
+
                 if (this.launchConfiguration.stopDebuggerOnAppExit) {
                     let message = `App exit event detected and launchConfiguration.stopDebuggerOnAppExit is true`;
                     message += ' - shutting down debug session';
@@ -552,6 +552,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //send the deep link http request
             await util.httpPost(deepLinkUrl);
         }
+    }
+
+    /**
+     * Clear certain properties that need reset whenever a debug session is restarted (via vscode or launched from the Roku home screen)
+     */
+    private resetSessionState() {
+        // launchRequest gets invoked by our restart session flow.
+        // We need to clear/reset some state to avoid issues.
+        this.entryBreakpointWasHandled = false;
+        this.breakpointManager.clearBreakpointLastState();
     }
 
     /**
@@ -1407,10 +1417,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 if (v.type === '$$Registry' && v.childVariables.length === 0) {
                     // This is a special scope variable used to load registry data via an ECP call
-                    const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/registry/dev`;
                     // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
-                    const response = await util.httpGet(url);
-                    await populateVariableFromRegistryEcp(response, v, this.variables, this.getEvaluateRefId.bind(this));
+                    await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
                 }
 
                 //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
@@ -2038,9 +2046,51 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.rokuAdapter.removeAllListeners();
             }
             await this.rokuAdapter.destroy();
+            await this.ensureAppIsInactive();
             this.rokuAdapterDeferred = defer();
         }
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
+    }
+
+    private exitAppTimeout = 5000;
+    private async ensureAppIsInactive() {
+        const startTime = Date.now();
+
+        while (true) {
+            if (Date.now() - startTime > this.exitAppTimeout) {
+                return;
+            }
+
+            try {
+                let appStateResult = await rokuECP.getAppState({
+                    host: this.launchConfiguration.host,
+                    remotePort: this.launchConfiguration.remotePort,
+                    appId: 'dev',
+                    requestOptions: { timeout: 300 }
+                });
+
+                const state = appStateResult.state;
+
+                if (state === AppState.active || state === AppState.background) {
+                    // Suspends or terminates an app that is running:
+                    // If the app supports Instant Resume and is running in the foreground, sending this command suspends the app (the app runs in the background).
+                    // If the app supports Instant Resume and is running in the background or the app does not support Instant Resume and is running, sending this command terminates the app.
+                    // This means that we might need to send this command twice to terminate the app.
+                    await rokuECP.exitApp({
+                        host: this.launchConfiguration.host,
+                        remotePort: this.launchConfiguration.remotePort,
+                        appId: 'dev',
+                        requestOptions: { timeout: 300 }
+                    });
+                } else if (state === AppState.inactive) {
+                    return;
+                }
+            } catch (e) {
+                this.logger.error('Error attempting to exit application', e);
+            }
+
+            await util.sleep(200);
+        }
     }
 
     /**
