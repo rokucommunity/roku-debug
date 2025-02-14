@@ -17,9 +17,9 @@ export class RokuECP {
         if (typeof response.body === 'string') {
             try {
                 let parsed = await util.parseXml(response.body) as RegistryAsJson;
-                const status = parsed['plugin-registry'].status[0];
+                const status = EcpStatus[parsed['plugin-registry']?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
 
-                if (status === 'OK') {
+                if (status === EcpStatus.ok) {
                     const registry = parsed['plugin-registry'].registry?.[0];
                     let sections: EcpRegistryData['sections'] = {};
 
@@ -39,18 +39,18 @@ export class RokuECP {
                         plugins: registry?.plugins?.[0]?.split(','),
                         sections: sections,
                         spaceAvailable: registry?.['space-available']?.[0],
-                        status: 'OK'
+                        status: status
                     };
                 } else {
                     return {
-                        status: 'FAILED',
+                        status: status,
                         errorMessage: parsed?.['plugin-registry']?.error?.[0] ?? 'Unknown error'
                     };
                 }
             } catch {
                 //if the response is not xml, just return the body as-is
                 return {
-                    status: 'FAILED',
+                    status: EcpStatus.failed,
                     errorMessage: response.body ?? 'Unknown error'
                 };
             }
@@ -66,27 +66,28 @@ export class RokuECP {
         if (typeof response.body === 'string') {
             try {
                 let parsed = await util.parseXml(response.body) as AppStateAsJson;
-                const status = parsed['app-state'].status[0];
-                if (status === 'OK') {
+                const status = EcpStatus[parsed?.['app-state']?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
+                if (status === EcpStatus.ok) {
                     const appState = parsed['app-state'];
+                    const state = AppState[appState.state?.[0]?.toLowerCase()] ?? AppState.unknown;
                     return {
                         appId: appState['app-id']?.[0],
                         appDevId: appState['app-dev-id']?.[0],
                         appTitle: appState['app-title']?.[0],
                         appVersion: appState['app-version']?.[0],
-                        state: appState.state?.[0] ?? 'unknown',
-                        status: 'OK'
+                        state: state,
+                        status: status
                     };
                 } else {
                     return {
-                        status: 'FAILED',
+                        status: status,
                         errorMessage: parsed['app-state']?.error?.[0] ?? 'Unknown error'
                     };
                 }
             } catch {
                 //if the response is not xml, just return the body as-is
                 return {
-                    status: 'FAILED',
+                    status: EcpStatus.failed,
                     errorMessage: response.body ?? 'Unknown error'
                 };
             }
@@ -102,19 +103,19 @@ export class RokuECP {
         if (typeof response.body === 'string') {
             try {
                 let parsed = await util.parseXml(response.body) as ExitAppAsJson;
-                const status = parsed['exit-app'].status[0];
-                if (status === 'OK') {
-                    return { status: 'OK' };
+                const status = EcpStatus[parsed?.['exit-app']?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
+                if (status === EcpStatus.ok) {
+                    return { status: status };
                 } else {
                     return {
-                        status: 'FAILED',
+                        status: status,
                         errorMessage: parsed?.['exit-app']?.error?.[0] ?? 'Unknown error'
                     };
                 }
             } catch {
                 //if the response is not xml, just return the body as-is
                 return {
-                    status: 'FAILED',
+                    status: EcpStatus.failed,
                     errorMessage: response.body ?? 'Unknown error'
                 };
             }
@@ -129,6 +130,11 @@ interface BaseOptions {
 }
 
 export type RokuEcpParam<T extends keyof RokuECP> = Parameters<RokuECP[T]>[0];
+
+export enum EcpStatus {
+    ok = 'ok',
+    failed = 'failed'
+}
 
 interface RegistryAsJson {
     'plugin-registry': {
@@ -159,7 +165,7 @@ export interface EcpRegistryData {
     sections?: Record<string, Record<string, string>>;
     spaceAvailable?: string;
     state?: string;
-    status: 'OK' | 'FAILED';
+    status: EcpStatus;
     errorMessage?: string;
 }
 interface AppStateAsJson {
@@ -174,13 +180,20 @@ interface AppStateAsJson {
     };
 }
 
+export enum AppState {
+    active = 'active',
+    background = 'background',
+    inactive = 'inactive',
+    unknown = 'unknown'
+}
+
 export interface EcpAppStateData {
     appId?: string;
     appTitle?: string;
     appVersion?: string;
     appDevId?: string;
-    state?: 'active' | 'background' | 'inactive' | 'unknown';
-    status: 'OK' | 'FAILED';
+    state?: AppState;
+    status: EcpStatus;
     errorMessage?: string;
 }
 
@@ -192,7 +205,7 @@ interface ExitAppAsJson {
 }
 
 export interface EcpExitAppData {
-    status: 'OK' | 'FAILED';
+    status: EcpStatus;
     errorMessage?: string;
 }
 

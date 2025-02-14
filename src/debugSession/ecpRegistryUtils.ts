@@ -1,14 +1,12 @@
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
-import { util } from '../util';
-import { rokuECP } from '../RokuECP';
+import { EcpStatus, rokuECP } from '../RokuECP';
 import type { RokuEcpParam } from '../RokuECP';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
-import type { Response } from 'request';
 
 export async function populateVariableFromRegistryEcp(options: RokuEcpParam<'getRegistry'>, v: AugmentedVariable, variables: Record<number, AugmentedVariable>, refIdFactory: (key: string, frameId: number) => number) {
     let registryData = await rokuECP.getRegistry(options);
 
-    if (registryData.status === 'OK') {
+    if (registryData.status === EcpStatus.ok) {
         // Add registry data to variable list
         if (registryData.devId) {
             v.childVariables.push(<AugmentedVariable>{
@@ -125,36 +123,4 @@ export async function populateVariableFromRegistryEcp(options: RokuEcpParam<'get
             childVariables: []
         });
     }
-}
-
-export interface EcpRegistryData {
-    devId?: string;
-    plugins?: Array<string>;
-    sections?: Record<string, Record<string, string>>;
-    spaceAvailable?: string;
-    status: 'OK' | 'FAILED';
-    errorMessage?: string;
-}
-
-interface RegistryAsJson {
-    'plugin-registry': {
-        registry: [{
-            'dev-id': [string];
-            plugins: [string];
-            sections: [{
-                section: [{
-                    items: [{
-                        item: [{
-                            key: [string];
-                            value: [string];
-                        }];
-                    }];
-                    name: [string];
-                } | string];
-            }];
-            'space-available': [string];
-        }];
-        status: [string];
-        error?: [string];
-    };
 }

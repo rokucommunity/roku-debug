@@ -58,7 +58,7 @@ import { interfaces, components, events } from 'brighterscript/dist/roku-types';
 import { globalCallables } from 'brighterscript/dist/globalCallables';
 import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
-import { rokuECP } from '../RokuECP';
+import { AppState, rokuECP } from '../RokuECP';
 
 const diagnosticSource = 'roku-debug';
 
@@ -2060,9 +2060,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     requestOptions: { timeout: 300 }
                 });
 
-                const state = appStateResult.state?.toLowerCase();
+                const state = appStateResult.state;
 
-                if (state === 'active' || state === 'background') {
+                if (state === AppState.active || state === AppState.background) {
                     // Suspends or terminates an app that is running:
                     // If the app supports Instant Resume and is running in the foreground, sending this command suspends the app (the app runs in the background).
                     // If the app supports Instant Resume and is running in the background or the app does not support Instant Resume and is running, sending this command terminates the app.
@@ -2073,7 +2073,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         appId: 'dev',
                         requestOptions: { timeout: 300 }
                     });
-                } else if (state === 'inactive') {
+                } else if (state === AppState.inactive) {
                     return;
                 }
             } catch (e) {
