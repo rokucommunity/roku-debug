@@ -414,4 +414,89 @@ describe('RokuECP', () => {
             });
         });
     });
+
+    describe('exitApp', () => {
+        it('calls doRequest with correct route and options', async () => {
+            let options = {
+                host: '1.1.1.1',
+                remotePort: 8080,
+                appId: 'dev'
+            };
+
+            let stub = sinon.stub(rokuECP as any, 'doRequest').resolves({
+                body: '',
+                statusCode: 200
+            });
+
+            await rokuECP.exitApp(options);
+            expect(stub.getCall(0).args).to.eql(['exit-app/dev', options]);
+        });
+    });
+
+    describe('parseExitApp', () => {
+        describe('non-error responses', () => {
+            it('handles ok response', async () => {
+                let response = {
+                    body: `
+                        <?xml version="1.0" encoding="UTF-8" ?>
+                        <exit-app>
+                            <status>OK</status>
+                        </exit-app>
+                    `,
+                    statusCode: 200
+                };
+                let result = await rokuECP['processExitApp'](response as any);
+                expect(result).to.eql({
+                    status: EcpStatus.ok
+                });
+            });
+        });
+
+        describe('error responses', () => {
+            it('handles failed status with missing error', async () => {
+                let response = {
+                    body: `
+                        <exit-app>
+                            <status>FAILED</status>
+                        </exit-app>
+                    `,
+                    statusCode: 200
+                };
+                let result = await rokuECP['processExitApp'](response as any);
+                expect(result).to.eql({
+                    status: EcpStatus.failed,
+                    errorMessage: 'Unknown error'
+                });
+            });
+
+            it('handles failed status with populated error', async () => {
+                let response = {
+                    body: `
+                        <exit-app>
+                            <status>FAILED</status>
+                            <error>App not found</error>
+                        </exit-app>
+                    `,
+                    statusCode: 200
+                };
+                let result = await rokuECP['processExitApp'](response as any);
+                expect(result).to.eql({
+                    status: EcpStatus.failed,
+                    errorMessage: 'App not found'
+                });
+            });
+
+            it('handles error response without xml', async () => {
+                let response = {
+                    body: `ECP command not allowed in Limited mode.`,
+                    statusCode: 403
+                };
+                let result = await rokuECP['processExitApp'](response as any);
+                expect(result).to.eql({
+                    status: EcpStatus.failed,
+                    errorMessage: 'ECP command not allowed in Limited mode.'
+                });
+            });
+        });
+    });
 });

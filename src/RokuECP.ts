@@ -8,6 +8,10 @@ export class RokuECP {
         return util.httpGet(url, options.requestOptions);
     }
 
+    private getEcpStatus(response: any, rootKey: string): EcpStatus {
+        return EcpStatus[(response as Record<string, { status?: [string] }>)?.[rootKey]?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
+    }
+
     public async getRegistry(options: BaseOptions & { appId: string }): Promise<EcpRegistryData> {
         let result = await this.doRequest(`query/registry/${options.appId}`, options);
         return this.processRegistry(result);
@@ -17,7 +21,7 @@ export class RokuECP {
         if (typeof response.body === 'string') {
             try {
                 let parsed = await util.parseXml(response.body) as RegistryAsJson;
-                const status = EcpStatus[parsed['plugin-registry']?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
+                const status = this.getEcpStatus(parsed, 'plugin-registry');
 
                 if (status === EcpStatus.ok) {
                     const registry = parsed['plugin-registry'].registry?.[0];
@@ -66,7 +70,7 @@ export class RokuECP {
         if (typeof response.body === 'string') {
             try {
                 let parsed = await util.parseXml(response.body) as AppStateAsJson;
-                const status = EcpStatus[parsed?.['app-state']?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
+                const status = this.getEcpStatus(parsed, 'app-state');
                 if (status === EcpStatus.ok) {
                     const appState = parsed['app-state'];
                     const state = AppState[appState.state?.[0]?.toLowerCase()] ?? AppState.unknown;
@@ -103,7 +107,7 @@ export class RokuECP {
         if (typeof response.body === 'string') {
             try {
                 let parsed = await util.parseXml(response.body) as ExitAppAsJson;
-                const status = EcpStatus[parsed?.['exit-app']?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
+                const status = this.getEcpStatus(parsed, 'exit-app');
                 if (status === EcpStatus.ok) {
                     return { status: status };
                 } else {
