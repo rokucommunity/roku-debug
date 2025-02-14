@@ -514,7 +514,7 @@ class Util {
     /**
      * Parse an xml file and get back a javascript object containing its results
      */
-    public parseXml(text: string) {
+    public parseXml<T = any>(text: string): Promise<T> {
         return new Promise<any>((resolve, reject) => {
             xml2js.parseString(text, (err, data) => {
                 if (err) {

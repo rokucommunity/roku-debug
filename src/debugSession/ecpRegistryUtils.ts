@@ -4,9 +4,9 @@ import type { RokuEcpParam } from '../RokuECP';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 
 export async function populateVariableFromRegistryEcp(options: RokuEcpParam<'getRegistry'>, v: AugmentedVariable, variables: Record<number, AugmentedVariable>, refIdFactory: (key: string, frameId: number) => number) {
-    let registryData = await rokuECP.getRegistry(options);
+    let result = await rokuECP.getRegistry(options);
 
-    if (registryData.status === EcpStatus.ok) {
+    if (result.status === EcpStatus.ok) {
         // Add registry data to variable list
         if (registryData.devId) {
             v.childVariables.push(<AugmentedVariable>{
