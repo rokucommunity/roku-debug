@@ -1,25 +1,82 @@
-import * as assert from 'assert';
 import { expect } from 'chai';
-import * as fsExtra from 'fs-extra';
-import * as getPort from 'get-port';
-import * as net from 'net';
-import * as path from 'path';
-import type { BSDebugDiagnostic } from './CompileErrorProcessor';
-import * as dedent from 'dedent';
-import { util } from './util';
-import { util as bscUtil } from 'brighterscript';
 import { createSandbox } from 'sinon';
 import { describe } from 'mocha';
-import { get } from 'request';
 import type { EcpRegistryData } from './RokuECP';
 import { rokuECP } from './RokuECP';
+import { util } from './util';
+
 const sinon = createSandbox();
 
-beforeEach(() => {
-    sinon.restore();
-});
 
 describe('RokuECP', () => {
+
+    beforeEach(() => {
+        sinon.restore();
+    });
+
+    describe('doRequest', () => {
+        it('correctly builds url without leading /', async () => {
+            let options = {
+                host: '1.1.1.1',
+                remotePort: 8080
+            };
+
+            let stub = sinon.stub(util as any, 'httpGet').resolves({
+                body: '',
+                statusCode: 200
+            });
+
+            await rokuECP['doRequest']('query/my-route', options);
+            expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8080/query/my-route`, undefined]);
+        });
+
+        it('correctly builds url with leading /', async () => {
+            let options = {
+                host: '1.1.1.1',
+                remotePort: 8080
+            };
+
+            let stub = sinon.stub(util as any, 'httpGet').resolves({
+                body: '',
+                statusCode: 200
+            });
+
+            await rokuECP['doRequest']('/query/my-route', options);
+            expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8080/query/my-route`, undefined]);
+        });
+
+        it('passes request options if populated', async () => {
+            let options = {
+                host: '1.1.1.1',
+                remotePort: 8080,
+                requestOptions: {
+                    timeout: 1000
+                }
+            };
+
+            let stub = sinon.stub(util as any, 'httpGet').resolves({
+                body: '',
+                statusCode: 200
+            });
+
+            await rokuECP['doRequest']('/query/my-route', options);
+            expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8080/query/my-route`, options.requestOptions]);
+        });
+
+        it('uses default port 8060 when missing in options', async () => {
+            let options = {
+                host: '1.1.1.1'
+            };
+
+            let stub = sinon.stub(util as any, 'httpGet').resolves({
+                body: '',
+                statusCode: 200
+            });
+
+            await rokuECP['doRequest']('/query/my-route', options);
+            expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8060/query/my-route`, undefined]);
+        });
+    });
 
     describe('getRegistry', () => {
         it('calls doRequest with correct route and options', async () => {
