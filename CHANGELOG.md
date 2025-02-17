@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.22](https://github.com/rokucommunity/roku-debug/compare/v0.21.21...v0.21.22) - 2025-02-17
+### Changed
+ - Bump serialize-javascript and mocha ([#224](https://github.com/rokucommunity/roku-debug/pull/224))
+ - Centralize ECP request processing ([#225](https://github.com/rokucommunity/roku-debug/pull/225))
+### Fixed
+ - Fixed an issue where the entry breakpoint could be hit again by the end user if they manually restarted the app ([#226](https://github.com/rokucommunity/roku-debug/pull/226))
+
+
+
 ## [0.21.21](https://github.com/rokucommunity/roku-debug/compare/v0.21.20...v0.21.21) - 2025-02-13
 ### Fixed
  - Fixed a bug that preventing the `stopOnEntry` setting from being respected when restarting a debug session ([#223](https://github.com/rokucommunity/roku-debug/pull/223))
