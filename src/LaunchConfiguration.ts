@@ -161,8 +161,15 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
 
     /**
      * Enables automatic population of the debug variable panel on a breakpoint or runtime errors.
+     * @deprecated Use `deferScopeLoading` instead
      */
     enableVariablesPanel: boolean;
+
+    /**
+     * Will defer the population of the 'Local' scope variables until the user expands it in the variables panel.
+     * @default false
+     */
+    deferScopeLoading: boolean;
 
     /**
      * Enables automatic population of the virtual variables.

@@ -588,8 +588,9 @@ export class TelnetAdapter {
     /**
      * Given an expression, evaluate that statement ON the roku
      * @param expression
+     * @param frameId unused but added to match signature of DebugProtocolAdapter
      */
-    public async getVariable(expression: string) {
+    public async getVariable(expression: string, frameId = -1) {
         const logger = this.logger.createLogger('[getVariable]');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
@@ -1167,6 +1168,6 @@ interface BrightScriptRuntimeError {
     errorCode: string;
 }
 
-export function isTelnetAdapterAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is TelnetAdapter {
+export function isTelnetAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is TelnetAdapter {
     return adapter?.constructor.name === TelnetAdapter.name;
 }
