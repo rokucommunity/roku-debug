@@ -1530,70 +1530,73 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param args
      */
     private async populateScopeVariables(v: AugmentedVariable, args: DebugProtocol.VariablesArguments) {
-        if (v.childVariables.length === 0) {
-            let tempVar: AugmentedVariable;
-            try {
-                if (v.type === '$$Locals') {
-                    if (this.rokuAdapter.isDebugProtocolAdapter()) {
-                        let result = await this.rokuAdapter.getLocalVariables(v.frameId);
-                        tempVar = await this.getVariableFromResult(result, v.frameId);
-                    } else if (this.rokuAdapter.isTelnetAdapter()) {
-                        // NOTE: Legacy telnet support
-                        let variables: AugmentedVariable[] = [];
-                        const varNames = await this.rokuAdapter.getScopeVariables();
+        if (v.childVariables.length > 0) {
+            // Already populated
+            return;
+        }
 
-                        // Fetch each variable individually
-                        for (const varName of varNames) {
-                            let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: varName, frameId: -1 }, util.getVariablePath(varName));
-                            let result = await this.rokuAdapter.getVariable(evalArgs.expression, -1);
-                            let tempLocalsVar = await this.getVariableFromResult(result, -1);
-                            variables.push(tempLocalsVar);
-                        }
-                        tempVar = {
-                            ...v,
-                            childVariables: variables,
-                            namedVariables: variables.length,
-                            indexedVariables: 0
-                        };
+        let tempVar: AugmentedVariable;
+        try {
+            if (v.type === '$$Locals') {
+                if (this.rokuAdapter.isDebugProtocolAdapter()) {
+                    let result = await this.rokuAdapter.getLocalVariables(v.frameId);
+                    tempVar = await this.getVariableFromResult(result, v.frameId);
+                } else if (this.rokuAdapter.isTelnetAdapter()) {
+                    // NOTE: Legacy telnet support
+                    let variables: AugmentedVariable[] = [];
+                    const varNames = await this.rokuAdapter.getScopeVariables();
+
+                    // Fetch each variable individually
+                    for (const varName of varNames) {
+                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: varName, frameId: -1 }, util.getVariablePath(varName));
+                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, -1);
+                        let tempLocalsVar = await this.getVariableFromResult(result, -1);
+                        variables.push(tempLocalsVar);
                     }
-
-                    // Merge the resulting updates together onto the original variable
-                    v.childVariables = tempVar.childVariables;
-                    v.namedVariables = tempVar.namedVariables;
-                    v.indexedVariables = tempVar.indexedVariables;
-                } else if (v.type === '$$Registry') {
-                    // This is a special scope variable used to load registry data via an ECP call
-                    // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
-                    await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
+                    tempVar = {
+                        ...v,
+                        childVariables: variables,
+                        namedVariables: variables.length,
+                        indexedVariables: 0
+                    };
                 }
-            } catch (error) {
-                logger.error(`Error getting variables for scope ${v.type}`, error);
-                tempVar = {
-                    name: '',
-                    value: `❌ Error: ${error.message}`,
-                    variablesReference: 0,
-                    childVariables: []
-                };
-                v.childVariables = [tempVar];
-                v.namedVariables = 1;
-                v.indexedVariables = 0;
-            }
 
-            // Mark the scope as resolved so we don't re-fetch the variables
-            v.isResolved = true;
-
-            // If the scope has no children, add a single child to indicate there are no values
-            if (v.childVariables.length === 0) {
-                tempVar = {
-                    name: '',
-                    value: `No values for scope '${v.name}'`,
-                    variablesReference: 0,
-                    childVariables: []
-                };
-                v.childVariables = [tempVar];
-                v.namedVariables = 1;
-                v.indexedVariables = 0;
+                // Merge the resulting updates together onto the original variable
+                v.childVariables = tempVar.childVariables;
+                v.namedVariables = tempVar.namedVariables;
+                v.indexedVariables = tempVar.indexedVariables;
+            } else if (v.type === '$$Registry') {
+                // This is a special scope variable used to load registry data via an ECP call
+                // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
+                await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
             }
+        } catch (error) {
+            logger.error(`Error getting variables for scope ${v.type}`, error);
+            tempVar = {
+                name: '',
+                value: `❌ Error: ${error.message}`,
+                variablesReference: 0,
+                childVariables: []
+            };
+            v.childVariables = [tempVar];
+            v.namedVariables = 1;
+            v.indexedVariables = 0;
+        }
+
+        // Mark the scope as resolved so we don't re-fetch the variables
+        v.isResolved = true;
+
+        // If the scope has no children, add a single child to indicate there are no values
+        if (v.childVariables.length === 0) {
+            tempVar = {
+                name: '',
+                value: `No values for scope '${v.name}'`,
+                variablesReference: 0,
+                childVariables: []
+            };
+            v.childVariables = [tempVar];
+            v.namedVariables = 1;
+            v.indexedVariables = 0;
         }
     }
 
