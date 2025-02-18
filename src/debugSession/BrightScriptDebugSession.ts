@@ -24,8 +24,8 @@ import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
-import { isDebugProtocolAdapter, DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
-import { isTelnetAdapter, TelnetAdapter } from '../adapters/TelnetAdapter';
+import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
+import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { RendezvousTracker } from '../RendezvousTracker';
 import {
@@ -1534,10 +1534,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let tempVar: AugmentedVariable;
             try {
                 if (v.type === '$$Locals') {
-                    if (isDebugProtocolAdapter(this.rokuAdapter)) {
+                    if (this.rokuAdapter.isDebugProtocolAdapter()) {
                         let result = await this.rokuAdapter.getLocalVariables(v.frameId);
                         tempVar = await this.getVariableFromResult(result, v.frameId);
-                    } else if (isTelnetAdapter(this.rokuAdapter)) {
+                    } else if (this.rokuAdapter.isTelnetAdapter()) {
                         // NOTE: Legacy telnet support
                         let variables: AugmentedVariable[] = [];
                         const varNames = await this.rokuAdapter.getScopeVariables();
@@ -1614,7 +1614,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         await this.getRokuAdapter();
 
         let deferred = defer<void>();
-        if (args.context === 'repl' && isTelnetAdapter(this.rokuAdapter) && args.expression.trim().startsWith('>')) {
+        if (args.context === 'repl' && this.rokuAdapter.isTelnetAdapter() && args.expression.trim().startsWith('>')) {
             this.clearState();
             this.rokuAdapter.clearCache();
             const expression = args.expression.replace(/^\s*>\s*/, '');
@@ -2254,7 +2254,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let v: AugmentedVariable;
 
         if (result) {
-            if (isDebugProtocolAdapter(this.rokuAdapter)) {
+            if (this.rokuAdapter.isDebugProtocolAdapter()) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
                 if (result.isCustom && !result.presentationHint?.lazy && result.evaluateNow) {
                     try {
@@ -2312,7 +2312,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v = new Variable(result.name, value, result?.presentationHint?.lazy ? refId : 0);
                 }
                 this.variables[refId] = v;
-            } else if (isTelnetAdapter(this.rokuAdapter)) {
+            } else if (this.rokuAdapter.isTelnetAdapter()) {
                 if (result.highLevelType === 'primative' || result.highLevelType === 'uninitialized') {
                     v = new Variable(result.name, `${result.value}`);
                 } else if (result.highLevelType === 'array') {

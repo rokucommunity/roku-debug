@@ -1011,6 +1011,14 @@ export class DebugProtocolAdapter {
             }
         }
     }
+
+    public isTelnetAdapter(): this is TelnetAdapter {
+        return false;
+    }
+
+    public isDebugProtocolAdapter(): this is DebugProtocolAdapter {
+        return true;
+    }
 }
 
 export interface StackFrame {
@@ -1062,8 +1070,4 @@ export interface Thread {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
-}
-
-export function isDebugProtocolAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is DebugProtocolAdapter {
-    return adapter?.constructor.name === DebugProtocolAdapter.name;
 }

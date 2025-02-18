@@ -1113,6 +1113,14 @@ export class TelnetAdapter {
     public async syncBreakpoints() {
         //we can't send dynamic breakpoints to the server...so just do nothing
     }
+
+    public isTelnetAdapter(): this is TelnetAdapter {
+        return true;
+    }
+
+    public isDebugProtocolAdapter(): this is DebugProtocolAdapter {
+        return true;
+    }
 }
 
 export interface StackFrame {
@@ -1166,8 +1174,4 @@ export enum PrimativeType {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
-}
-
-export function isTelnetAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is TelnetAdapter {
-    return adapter?.constructor.name === TelnetAdapter.name;
 }

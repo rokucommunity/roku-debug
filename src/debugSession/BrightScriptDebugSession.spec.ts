@@ -22,6 +22,7 @@ import { RendezvousTracker } from '../RendezvousTracker';
 import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -117,6 +118,8 @@ describe('BrightScriptDebugSession', () => {
             getScopeVariables: (a) => { },
             setExceptionBreakpoints: (a) => { },
             isScrapableContainObject: () => { },
+            isTelnetAdapter: () => false,
+            isDebugProtocolAdapter: () => true,
             getThreads: () => {
                 return [];
             },
@@ -334,6 +337,21 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuAdapter, 'getScopeVariables').callsFake(() => {
                 return Promise.resolve(['m', 'top', `${session.tempVarPrefix}eval`]);
             });
+            sinon.stub(session as any, 'populateScopeVariables').callsFake((v: AugmentedVariable, args: DebugProtocol.VariablesArguments) => {
+                v.childVariables = [{
+                    name: `${session.tempVarPrefix}eval`,
+                    value: 'true',
+                    variablesReference: 0
+                }, {
+                    name: 'top',
+                    value: 'roSGNode:GetSubReddit',
+                    variablesReference: 3
+                }, {
+                    name: 'm',
+                    value: VariableType.AssociativeArray,
+                    variablesReference: 0
+                }];
+            });
             sinon.stub(rokuAdapter, 'getVariable').callsFake(x => {
                 return Promise.resolve(
                     {
@@ -359,7 +377,7 @@ describe('BrightScriptDebugSession', () => {
             session['dispatchRequest']({ command: 'scopes', arguments: { frameId: 0 }, type: 'request', seq: 8 });
             await session.variablesRequest(
                 response,
-                { variablesReference: 1000, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+                { variablesReference: 1, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
             );
 
             expect(
@@ -369,7 +387,7 @@ describe('BrightScriptDebugSession', () => {
             session['launchConfiguration'].showHiddenVariables = true;
             await session.variablesRequest(
                 response,
-                { variablesReference: 1000, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
+                { variablesReference: 1, filter: 'named', start: 0, count: 0, format: '' } as DebugProtocol.VariablesArguments
             );
             expect(
                 response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
@@ -654,6 +672,8 @@ describe('BrightScriptDebugSession', () => {
 
         it('returns the correct boolean variable', async () => {
             session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+            sinon.stub(session['rokuAdapter'], 'isTelnetAdapter').callsFake(() => true);
+            sinon.stub(session['rokuAdapter'], 'isDebugProtocolAdapter').callsFake(() => false);
 
             let expression = 'someBool';
             getVariableValue = getBooleanEvaluateContainer(expression);
@@ -673,6 +693,8 @@ describe('BrightScriptDebugSession', () => {
         //this fails on TravisCI for some reason. TODO - fix this
         it('returns the correct indexed variables count', async () => {
             session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+            sinon.stub(session['rokuAdapter'], 'isTelnetAdapter').callsFake(() => true);
+            sinon.stub(session['rokuAdapter'], 'isDebugProtocolAdapter').callsFake(() => false);
 
             let expression = 'someArray';
             getVariableValue = <EvaluateContainer>{
@@ -699,6 +721,8 @@ describe('BrightScriptDebugSession', () => {
 
         it('returns the correct named variables count', async () => {
             session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+            sinon.stub(session['rokuAdapter'], 'isTelnetAdapter').callsFake(() => true);
+            sinon.stub(session['rokuAdapter'], 'isDebugProtocolAdapter').callsFake(() => false);
 
             let expression = 'someObject';
             getVariableValue = <EvaluateContainer>{
@@ -1020,6 +1044,8 @@ describe('BrightScriptDebugSession', () => {
 
         beforeEach(() => {
             session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+            sinon.stub(session['rokuAdapter'], 'isTelnetAdapter').callsFake(() => true);
+            sinon.stub(session['rokuAdapter'], 'isDebugProtocolAdapter').callsFake(() => false);
 
             rokuAdapter.isAtDebuggerPrompt = true;
             evalStub = sinon.stub(rokuAdapter, 'evaluate').callsFake((args) => {
