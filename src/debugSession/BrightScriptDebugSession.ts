@@ -1206,7 +1206,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let v: AugmentedVariable;
 
             // create the locals scope
-            let localsRefId = this.getEvaluateRefId('', args.frameId);
+            let localsRefId = this.getEvaluateRefId('$$locals', args.frameId);
             if (this.variables[localsRefId]) {
                 v = this.variables[localsRefId];
             } else {
