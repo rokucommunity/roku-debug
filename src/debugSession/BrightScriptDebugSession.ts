@@ -6,7 +6,6 @@ import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     DebugSession as BaseDebugSession,
-    Handles,
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
@@ -25,7 +24,7 @@ import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
-import { isDebugProtocolAdapter, DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
+import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { RendezvousTracker } from '../RendezvousTracker';
@@ -140,8 +139,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private evaluateRefIdCounter = 1;
 
     private variables: Record<number, AugmentedVariable> = {};
-
-    private variableHandles = new Handles<string>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
 
@@ -362,6 +359,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.rewriteDevicePathsInLogs ??= true;
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
+
+        // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
+        if (typeof config.enableVariablesPanel !== 'boolean') {
+            config.enableVariablesPanel = true;
+        }
+        config.deferScopeLoading ??= config.enableVariablesPanel === false;
         return config;
     }
 
@@ -1195,58 +1198,52 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
+    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
         const logger = this.logger.createLogger(`scopesRequest ${this.idCounter}`);
         logger.info('begin', { args });
         try {
             const scopes = new Array<DebugProtocol.Scope>();
+            let v: AugmentedVariable;
 
-            if (isDebugProtocolAdapter(this.rokuAdapter)) {
-                let refId = this.getEvaluateRefId('', args.frameId);
-                let v: AugmentedVariable;
-                //if we already looked this item up, return it
-                if (this.variables[refId]) {
-                    v = this.variables[refId];
-                } else {
-                    let result = await this.rokuAdapter.getLocalVariables(args.frameId);
-                    if (!result) {
-                        throw new Error(`Could not get scopes`);
-                    }
-                    v = await this.getVariableFromResult(result, args.frameId);
-                    //TODO - testing something, remove later
-                    // eslint-disable-next-line camelcase
-                    v.request_seq = response.request_seq;
-                    v.frameId = args.frameId;
-                }
-
-                scopes.push(<DebugProtocol.Scope>{
-                    name: 'Local',
-                    variablesReference: v.variablesReference,
-                    expensive: false,
-                    presentationHint: 'locals'
-                });
+            // create the locals scope
+            let localsRefId = this.getEvaluateRefId('$$locals', args.frameId);
+            if (this.variables[localsRefId]) {
+                v = this.variables[localsRefId];
             } else {
-                // NOTE: Legacy telnet support
-                scopes.push(<DebugProtocol.Scope>{
-                    name: 'Local',
-                    variablesReference: this.variableHandles.create('local'),
-                    expensive: false,
-                    presentationHint: 'locals'
-                });
+                v = {
+                    variablesReference: localsRefId,
+                    name: 'Locals',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: args.frameId,
+                    isScope: true,
+                    childVariables: []
+                };
+                this.variables[localsRefId] = v;
             }
 
-            let refId = this.getEvaluateRefId('$$registry', Infinity);
+            scopes.push(<DebugProtocol.Scope>{
+                name: 'Local',
+                variablesReference: v.variablesReference,
+                // Flag the locals scope as expensive if the client asked that it be loaded lazily
+                expensive: this.launchConfiguration.deferScopeLoading,
+                presentationHint: 'locals'
+            });
+
+            // create the registry scope
+            let registryRefId = this.getEvaluateRefId('$$registry', Infinity);
             scopes.push(<DebugProtocol.Scope>{
                 name: 'Registry',
-                variablesReference: refId,
+                variablesReference: registryRefId,
                 expensive: true
             });
 
-            this.variables[refId] = {
-                variablesReference: refId,
+            this.variables[registryRefId] = {
+                variablesReference: registryRefId,
                 name: 'Registry',
                 value: '',
                 type: '$$Registry',
+                isScope: true,
                 childVariables: []
             };
 
@@ -1387,100 +1384,80 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 response.message = 'Debug session is not paused';
                 return this.sendResponse(response);
             }
-            const reference = this.variableHandles.get(args.variablesReference);
-            if (reference) {
-                logger.log('reference', reference);
-                // NOTE: Legacy telnet support for local vars
-                if (this.launchConfiguration.enableVariablesPanel) {
-                    const vars = await (this.rokuAdapter as TelnetAdapter).getScopeVariables();
 
-                    for (const varName of vars) {
-                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: varName, frameId: -1 }, util.getVariablePath(varName));
-                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, -1);
-                        let tempVar = await this.getVariableFromResult(result, -1);
-                        updatedVariables.push(tempVar);
+            //find the variable with this reference
+            let v = this.variables[args.variablesReference];
+            if (!v) {
+                response.success = false;
+                response.message = `Variable reference has expired`;
+                return this.sendResponse(response);
+            }
+            logger.log('variable', v);
+
+            // Populate scope level values if needed
+            if (v.isScope) {
+                await this.populateScopeVariables(v, args);
+            }
+
+            //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
+            if (v.childVariables.length === 0 || v.isResolved) {
+                let tempVar: AugmentedVariable;
+                if (!v.isResolved) {
+                    // Evaluate the variable
+                    try {
+                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
+                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
+                        tempVar = await this.getVariableFromResult(result, v.frameId);
+                        tempVar.frameId = v.frameId;
+                        // Determine if the variable has changed
+                        sendInvalidatedEvent = v.type !== tempVar.type || v.indexedVariables !== tempVar.indexedVariables;
+                    } catch (error) {
+                        logger.error('Error getting variables', error);
+                        tempVar = new Variable('Error', `❌ Error: ${error.message}`);
+                        tempVar.type = '';
+                        tempVar.childVariables = [];
+                        sendInvalidatedEvent = true;
+                        response.success = false;
+                        response.message = error.message;
                     }
-                } else {
-                    updatedVariables.push(new Variable('variables disabled by launch.json setting', 'enableVariablesPanel: false'));
+
+                    // Merge the resulting updates together
+                    v.childVariables = tempVar.childVariables;
+                    v.value = tempVar.value;
+                    v.type = tempVar.type;
+                    v.indexedVariables = tempVar.indexedVariables;
+                    v.namedVariables = tempVar.namedVariables;
                 }
-                this.variables[args.variablesReference] = new Variable('', '', args.variablesReference, 0, updatedVariables.length);
-                this.variables[args.variablesReference].childVariables = updatedVariables;
-            } else {
-                //find the variable with this reference
-                let v = this.variables[args.variablesReference];
-                if (!v) {
-                    response.success = false;
-                    response.message = `Variable reference has expired`;
-                    return this.sendResponse(response);
-                }
-                logger.log('variable', v);
+                frameId = v.frameId;
 
-                if (v.type === '$$Registry' && v.childVariables.length === 0) {
-                    // This is a special scope variable used to load registry data via an ECP call
-                    // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
-                    await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
-                }
-
-                //query for child vars if we haven't done it yet or DAP is asking to resolve a lazy variable
-                if (v.childVariables.length === 0 || v.isResolved) {
-                    let tempVar: AugmentedVariable;
-                    if (!v.isResolved) {
-                        // Evaluate the variable
-                        try {
-                            let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: v.evaluateName, frameId: v.frameId }, util.getVariablePath(v.evaluateName));
-                            let result = await this.rokuAdapter.getVariable(evalArgs.expression, v.frameId);
-                            tempVar = await this.getVariableFromResult(result, v.frameId);
-                            tempVar.frameId = v.frameId;
-                            // Determine if the variable has changed
-                            sendInvalidatedEvent = v.type !== tempVar.type || v.indexedVariables !== tempVar.indexedVariables;
-                        } catch (error) {
-                            logger.error('Error getting variables', error);
-                            tempVar = new Variable('Error', `❌ Error: ${error.message}`);
-                            tempVar.type = '';
-                            tempVar.childVariables = [];
-                            sendInvalidatedEvent = true;
-                            response.success = false;
-                            response.message = error.message;
-                        }
-
-                        // Merge the resulting updates together
-                        v.childVariables = tempVar.childVariables;
-                        v.value = tempVar.value;
-                        v.type = tempVar.type;
-                        v.indexedVariables = tempVar.indexedVariables;
-                        v.namedVariables = tempVar.namedVariables;
-                    }
-                    frameId = v.frameId;
-
-                    if (v?.presentationHint?.lazy || v.isResolved) {
-                        // If this was a lazy variable we need to respond with the updated variable and not the children
-                        if (v.isResolved && v.childVariables.length > 0) {
-                            updatedVariables = v.childVariables;
-                        } else {
-                            updatedVariables = [v];
-                        }
-                        v.isResolved = true;
-                    } else {
+                if (v?.presentationHint?.lazy || v.isResolved) {
+                    // If this was a lazy variable we need to respond with the updated variable and not the children
+                    if (v.isResolved && v.childVariables.length > 0) {
                         updatedVariables = v.childVariables;
-                    }
-
-                    // If the variable has no children, set the reference to 0
-                    // so it does not look expandable in the Ui
-                    if (v.childVariables.length === 0) {
-                        v.variablesReference = 0;
-                    }
-
-                    // If the variable was resolve in the past we may not have fetched a new temp var
-                    tempVar ??= v;
-                    if (v?.presentationHint) {
-                        v.presentationHint.lazy = tempVar.presentationHint?.lazy;
                     } else {
-                        v.presentationHint = tempVar.presentationHint;
+                        updatedVariables = [v];
                     }
-
+                    v.isResolved = true;
                 } else {
                     updatedVariables = v.childVariables;
                 }
+
+                // If the variable has no children, set the reference to 0
+                // so it does not look expandable in the Ui
+                if (v.childVariables.length === 0) {
+                    v.variablesReference = 0;
+                }
+
+                // If the variable was resolve in the past we may not have fetched a new temp var
+                tempVar ??= v;
+                if (v?.presentationHint) {
+                    v.presentationHint.lazy = tempVar.presentationHint?.lazy;
+                } else {
+                    v.presentationHint = tempVar.presentationHint;
+                }
+
+            } else {
+                updatedVariables = v.childVariables;
             }
 
             // Only send the updated variables if we are not going to trigger an invalidated event.
@@ -1547,6 +1524,82 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return filteredUpdatedVariables;
     }
 
+    /**
+     * Takes a scope variable and populates its child variables based on the scope type and the current adapter type.
+     * @param v scope variable to populate
+     * @param args
+     */
+    private async populateScopeVariables(v: AugmentedVariable, args: DebugProtocol.VariablesArguments) {
+        if (v.childVariables.length > 0) {
+            // Already populated
+            return;
+        }
+
+        let tempVar: AugmentedVariable;
+        try {
+            if (v.type === '$$Locals') {
+                if (this.rokuAdapter.isDebugProtocolAdapter()) {
+                    let result = await this.rokuAdapter.getLocalVariables(v.frameId);
+                    tempVar = await this.getVariableFromResult(result, v.frameId);
+                } else if (this.rokuAdapter.isTelnetAdapter()) {
+                    // NOTE: Legacy telnet support
+                    let variables: AugmentedVariable[] = [];
+                    const varNames = await this.rokuAdapter.getScopeVariables();
+
+                    // Fetch each variable individually
+                    for (const varName of varNames) {
+                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: varName, frameId: -1 }, util.getVariablePath(varName));
+                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, -1);
+                        let tempLocalsVar = await this.getVariableFromResult(result, -1);
+                        variables.push(tempLocalsVar);
+                    }
+                    tempVar = {
+                        ...v,
+                        childVariables: variables,
+                        namedVariables: variables.length,
+                        indexedVariables: 0
+                    };
+                }
+
+                // Merge the resulting updates together onto the original variable
+                v.childVariables = tempVar.childVariables;
+                v.namedVariables = tempVar.namedVariables;
+                v.indexedVariables = tempVar.indexedVariables;
+            } else if (v.type === '$$Registry') {
+                // This is a special scope variable used to load registry data via an ECP call
+                // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
+                await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
+            }
+        } catch (error) {
+            logger.error(`Error getting variables for scope ${v.type}`, error);
+            tempVar = {
+                name: '',
+                value: `❌ Error: ${error.message}`,
+                variablesReference: 0,
+                childVariables: []
+            };
+            v.childVariables = [tempVar];
+            v.namedVariables = 1;
+            v.indexedVariables = 0;
+        }
+
+        // Mark the scope as resolved so we don't re-fetch the variables
+        v.isResolved = true;
+
+        // If the scope has no children, add a single child to indicate there are no values
+        if (v.childVariables.length === 0) {
+            tempVar = {
+                name: '',
+                value: `No values for scope '${v.name}'`,
+                variablesReference: 0,
+                childVariables: []
+            };
+            v.childVariables = [tempVar];
+            v.namedVariables = 1;
+            v.indexedVariables = 0;
+        }
+    }
+
     private evaluateRequestPromise = Promise.resolve();
     private evaluateVarIndexByFrameId = new Map<number, number>();
 
@@ -1564,12 +1617,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         await this.getRokuAdapter();
 
         let deferred = defer<void>();
-        if (args.context === 'repl' && !this.enableDebugProtocol && args.expression.trim().startsWith('>')) {
+        if (args.context === 'repl' && this.rokuAdapter.isTelnetAdapter() && args.expression.trim().startsWith('>')) {
             this.clearState();
             this.rokuAdapter.clearCache();
             const expression = args.expression.replace(/^\s*>\s*/, '');
             this.logger.log('Sending raw telnet command...I sure hope you know what you\'re doing', { expression });
-            (this.rokuAdapter as TelnetAdapter).requestPipeline.client.write(`${expression}\r\n`);
+            this.rokuAdapter.requestPipeline.client.write(`${expression}\r\n`);
             this.sendResponse(response);
             return deferred.promise;
         }
@@ -2204,7 +2257,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let v: AugmentedVariable;
 
         if (result) {
-            if (this.enableDebugProtocol) {
+            if (this.rokuAdapter.isDebugProtocolAdapter()) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
                 if (result.isCustom && !result.presentationHint?.lazy && result.evaluateNow) {
                     try {
@@ -2262,7 +2315,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     v = new Variable(result.name, value, result?.presentationHint?.lazy ? refId : 0);
                 }
                 this.variables[refId] = v;
-            } else {
+            } else if (this.rokuAdapter.isTelnetAdapter()) {
                 if (result.highLevelType === 'primative' || result.highLevelType === 'uninitialized') {
                     v = new Variable(result.name, `${result.value}`);
                 } else if (result.highLevelType === 'array') {
@@ -2272,7 +2325,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 } else if (result.highLevelType === 'object') {
                     let refId: number;
                     //handle collections
-                    if ((this.rokuAdapter as TelnetAdapter).isScrapableContainObject(result.type)) {
+                    if (this.rokuAdapter.isScrapableContainObject(result.type)) {
                         refId = this.getEvaluateRefId(result.evaluateName, frameId);
                     }
                     v = new Variable(result.name, result.type, refId, 0, result.children?.length ?? 0);
@@ -2506,4 +2559,9 @@ export interface AugmentedVariable extends DebugProtocol.Variable {
      * only used for lazy variables
      */
     isResolved?: boolean;
+    /**
+     * used to indicate that this variable is a scope variable
+     * and may require special handling
+     */
+    isScope?: boolean;
 }

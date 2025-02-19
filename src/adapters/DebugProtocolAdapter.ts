@@ -581,7 +581,6 @@ export class DebugProtocolAdapter {
      * @param expression the expression for the specified variable (i.e. `m`, `someVar.value`, `arr[1][2].three`). If empty string/undefined is specified, all local variables are retrieved instead
      */
     private async getVariablesResponse(expression: string, frameId: number) {
-        const isScopesRequest = expression === '';
         const logger = this.logger.createLogger('[getVariable]');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
@@ -1012,6 +1011,14 @@ export class DebugProtocolAdapter {
             }
         }
     }
+
+    public isTelnetAdapter(): this is TelnetAdapter {
+        return false;
+    }
+
+    public isDebugProtocolAdapter(): this is DebugProtocolAdapter {
+        return true;
+    }
 }
 
 export interface StackFrame {
@@ -1063,8 +1070,4 @@ export interface Thread {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
-}
-
-export function isDebugProtocolAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is DebugProtocolAdapter {
-    return adapter?.constructor.name === DebugProtocolAdapter.name;
 }
