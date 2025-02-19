@@ -220,7 +220,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             //     break;
             case RokuObjectTypes.roList:
             case RokuObjectTypes.List:
-                customVariables.pushIfListToArrayVariables(adapter, expression, container);
+                // customVariables.pushIfListToArrayVariables(adapter, expression, container);
                 customVariables.pushIfEnumVariables(adapter, expression, container);
                 customVariables.pushIfArrayVariables(adapter, expression, container);
                 break;
@@ -325,7 +325,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
             case RokuObjectTypes.roXMLList:
                 customVariables.pushIfListVariables(adapter, expression, container);
                 customVariables.pushIfXMLListVariables(adapter, expression, container);
-                customVariables.pushIfListToArrayVariables(adapter, expression, container);
+                // customVariables.pushIfListToArrayVariables(adapter, expression, container);
                 customVariables.pushIfArrayVariables(adapter, expression, container);
                 break;
 
