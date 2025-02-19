@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.23](https://github.com/rokucommunity/roku-debug/compare/v0.21.22...v0.21.23) - 2025-02-19
+### Changed
+ - Cleaned up the scopes flows and added the ability to defer the loading of the local scope ([#227](https://github.com/rokucommunity/roku-debug/pull/227))
+ - Removed the random `uuid` virtual variable from device info ([#228](https://github.com/rokucommunity/roku-debug/pull/228))
+
+
+
 ## [0.21.22](https://github.com/rokucommunity/roku-debug/compare/v0.21.21...v0.21.22) - 2025-02-17
 ### Changed
  - Bump serialize-javascript and mocha ([#224](https://github.com/rokucommunity/roku-debug/pull/224))
