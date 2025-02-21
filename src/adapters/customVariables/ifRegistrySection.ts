@@ -12,4 +12,13 @@ export function pushIfRegistrySectionVariables(adapter: DebugProtocolAdapter, ex
         value: VariableType.List,
         children: []
     });
+
+    pushCustomVariableToContainer(adapter, container, {
+        name: '$contents',
+        type: VariableType.AssociativeArray,
+        presentationHint: { kind: 'virtual' },
+        evaluateName: `${expression}.readMulti(${expression}.GetKeyList())`,
+        value: VariableType.AssociativeArray,
+        children: []
+    });
 }
