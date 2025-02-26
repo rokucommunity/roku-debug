@@ -266,6 +266,7 @@ export async function insertCustomVariables(adapter: DebugProtocolAdapter, expre
                 customVariables.pushIfSGNodeChildrenVariables(adapter, expression, container);
                 customVariables.pushIfSGNodeFieldVariables(adapter, expression, container);
                 customVariables.pushIfSGNodeDictVariables(adapter, expression, container);
+                customVariables.pushIfSGNodeFocusVariables(adapter, expression, container);
                 customVariables.pushIfSGNodeBoundingRectVariables(adapter, expression, container);
                 customVariables.pushIfSGNodeHttpAgentAccessVariables(adapter, expression, container);
                 break;
