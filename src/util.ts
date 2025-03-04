@@ -14,6 +14,7 @@ import type { Response } from 'request';
 import type * as requestType from 'request';
 import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
+import { isPromise } from 'util/types';
 const request = r as typeof requestType;
 
 class Util {
@@ -499,12 +500,26 @@ class Util {
      * @param disposables a list of functions or disposables
      */
     public applyDispose(disposables: DisposableLike[]) {
+        let promises = [];
+        let exceptions = [];
+
         disposables ??= [];
         for (const disposable of disposables) {
-            if (typeof disposable === 'function') {
-                disposable();
-            } else {
-                disposable?.dispose?.();
+            let value: any;
+            try {
+                if (typeof disposable === 'function') {
+                    value = disposable();
+                } else {
+                    value = disposable?.dispose?.();
+                }
+            } catch (e) {
+                exceptions.push(e);
+            }
+            //if this value is a promise, add a .catch to it so we don't bring down the app
+            if (isPromise(value)) {
+                value.catch(e => {
+                    console.error('Unhandled promise during dispose', e);
+                });
             }
         }
         //empty the array

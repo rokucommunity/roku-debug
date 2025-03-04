@@ -1864,15 +1864,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         }
 
                         const frame = this.rokuAdapter.getStackFrameById(args.frameId);
-                        let scopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
-                        for (let scopeFunction of scopeFunctions) {
-                            if (!completions.has(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`)) {
-                                completions.set(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`, {
-                                    label: scopeFunction.name,
-                                    type: scopeFunction.completionItemKind,
-                                    sortText: '000000'
-                                });
+
+                        try {
+                            let scopeFunctions = await this.projectManager.getScopeFunctionsForFile(frame.filePath as string);
+                            for (let scopeFunction of scopeFunctions) {
+                                if (!completions.has(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`)) {
+                                    completions.set(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`, {
+                                        label: scopeFunction.name,
+                                        type: scopeFunction.completionItemKind,
+                                        sortText: '000000'
+                                    });
+                                }
                             }
+                        } catch (e) {
+                            this.logger.warn('Could not build list of scope functions for file', e);
                         }
                     }
                 }
