@@ -588,8 +588,9 @@ export class TelnetAdapter {
     /**
      * Given an expression, evaluate that statement ON the roku
      * @param expression
+     * @param frameId unused but added to match signature of DebugProtocolAdapter
      */
-    public async getVariable(expression: string) {
+    public async getVariable(expression: string, frameId = -1) {
         const logger = this.logger.createLogger('[getVariable]');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
@@ -1112,6 +1113,14 @@ export class TelnetAdapter {
     public async syncBreakpoints() {
         //we can't send dynamic breakpoints to the server...so just do nothing
     }
+
+    public isTelnetAdapter(): this is TelnetAdapter {
+        return true;
+    }
+
+    public isDebugProtocolAdapter(): this is DebugProtocolAdapter {
+        return true;
+    }
 }
 
 export interface StackFrame {
@@ -1165,8 +1174,4 @@ export enum PrimativeType {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
-}
-
-export function isTelnetAdapterAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is TelnetAdapter {
-    return adapter?.constructor.name === TelnetAdapter.name;
 }

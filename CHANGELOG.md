@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.24](https://github.com/rokucommunity/roku-debug/compare/v0.21.23...v0.21.24) - 2025-02-21
+### Changed
+ - Rename `roAudioPlayerEvent` virtual vars, add missing `roChannelStoreEvent` virtual vars ([#230](https://github.com/rokucommunity/roku-debug/pull/230))
+ - Add `$contents` virtual variable to `roRegistrySection` ([#231](https://github.com/rokucommunity/roku-debug/pull/231))
+ - Temporary fix for virtual vars in hovers ([#232](https://github.com/rokucommunity/roku-debug/pull/232))
+ - Removed the array virtual variables from list and xml list ([#229](https://github.com/rokucommunity/roku-debug/pull/229))
+
+
+
+## [0.21.23](https://github.com/rokucommunity/roku-debug/compare/v0.21.22...v0.21.23) - 2025-02-19
+### Changed
+ - Cleaned up the scopes flows and added the ability to defer the loading of the local scope ([#227](https://github.com/rokucommunity/roku-debug/pull/227))
+ - Removed the random `uuid` virtual variable from device info ([#228](https://github.com/rokucommunity/roku-debug/pull/228))
+
+
+
+## [0.21.22](https://github.com/rokucommunity/roku-debug/compare/v0.21.21...v0.21.22) - 2025-02-17
+### Changed
+ - Bump serialize-javascript and mocha ([#224](https://github.com/rokucommunity/roku-debug/pull/224))
+ - Centralize ECP request processing ([#225](https://github.com/rokucommunity/roku-debug/pull/225))
+### Fixed
+ - Fixed an issue where the entry breakpoint could be hit again by the end user if they manually restarted the app ([#226](https://github.com/rokucommunity/roku-debug/pull/226))
+
+
+
 ## [0.21.21](https://github.com/rokucommunity/roku-debug/compare/v0.21.20...v0.21.21) - 2025-02-13
 ### Fixed
  - Fixed a bug that preventing the `stopOnEntry` setting from being respected when restarting a debug session ([#223](https://github.com/rokucommunity/roku-debug/pull/223))

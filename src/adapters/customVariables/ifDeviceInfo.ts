@@ -95,15 +95,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     });
 
     pushCustomVariableToContainer(adapter, container, {
-        name: '$randomUUID',
-        type: VariableType.String,
-        presentationHint: { kind: 'virtual', lazy: true },
-        evaluateName: `${expression}.GetRandomUUID()`,
-        value: '',
-        children: []
-    });
-
-    pushCustomVariableToContainer(adapter, container, {
         name: '$timeZone',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
