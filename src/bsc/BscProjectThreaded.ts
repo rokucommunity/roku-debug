@@ -18,6 +18,7 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
     private messageHandler: ThreadMessageHandler<BscProject>;
 
     private activateDeferred = new Deferred();
+    private errorDeferred = new Deferred();
 
     /**
      * Has this project finished activating (either resolved or rejected...)
@@ -26,11 +27,37 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
         return this.activateDeferred.isCompleted;
     }
 
+    /**
+     * If an error occurs at any time during the worker's lifetime, it will be caught and stored here.
+     */
+    public isErrored() {
+        return this.errorDeferred.isCompleted;
+    }
+
+    private ready() {
+        return Promise.race([
+            //if we've encountered an error, reject immediately. The underlying error should propagate up
+            this.errorDeferred.promise,
+            //wait for the activate to finish. This should typically be the only promise that resolves
+            this.activateDeferred.promise
+        ]);
+    }
+
     public async activate(options: Parameters<ProgramBuilder['run']>[0]) {
         const timeEnd = this.logger.timeStart('log', 'activate');
 
         // start a new worker thread or get an unused existing thread
         this.worker = bscProjectWorkerPool.getWorker();
+
+        //!!!IMPORTANT!!! this observer must be registered in order to prevent the worker thread from crashing the main thread
+        this.worker.on('error', (error) => {
+            this.logger.error('Worker encountered an error', error);
+            this.errorDeferred.reject(error);
+            //!!!IMPORTANT!!! this is required to prevent node from freaking out about an uncaught promise
+            this.errorDeferred.promise.catch(e => {
+                //do nothing. this is just to prevent node from freaking out about an uncaught promise
+            });
+        });
 
         //link the message handler to the worker
         this.messageHandler = new ThreadMessageHandler<BscProject>({
@@ -62,7 +89,7 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
      * @param relativePath path to the file relative to rootDir
      * @returns
      */
-    public getScopeFunctionsForFile(options: { relativePath: string }): MaybePromise<Array<ScopeFunction>> {
+    public async getScopeFunctionsForFile(options: { relativePath: string }): Promise<Array<ScopeFunction>> {
         return this.sendStandardRequest('getScopeFunctionsForFile', options);
     }
 
@@ -73,7 +100,7 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
      * @returns the response from the request
      */
     private async sendStandardRequest<T>(name: MethodNames<BscProject>, ...data: any[]) {
-        await this.activateDeferred.promise;
+        await this.ready();
         const response = await this.messageHandler.sendRequest<T>(name, {
             data: data
         });
