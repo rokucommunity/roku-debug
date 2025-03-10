@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.25](https://github.com/rokucommunity/roku-debug/compare/v0.21.24...v0.21.25) - 2025-03-10
+### Added
+ - Add `hasFocus` and `isInFocusChain` virtual vars to nodes ([#234](https://github.com/rokucommunity/roku-debug/pull/234))
+### Changed
+ - upgrade to [brighterscript@0.69.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0691---2025-03-10). Notable changes since 0.69.0:
+     - Prevent running the lsp project in a worker thread ([brighterscript#1423](https://github.com/rokucommunity/brighterscript/pull/1423))
+### Fixed
+ - Fix crash in bsc project when thread has error ([#235](https://github.com/rokucommunity/roku-debug/pull/235))
+
+
+
 ## [0.21.24](https://github.com/rokucommunity/roku-debug/compare/v0.21.23...v0.21.24) - 2025-02-21
 ### Changed
  - Rename `roAudioPlayerEvent` virtual vars, add missing `roChannelStoreEvent` virtual vars ([#230](https://github.com/rokucommunity/roku-debug/pull/230))
