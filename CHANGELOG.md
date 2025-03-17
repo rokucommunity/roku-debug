@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.27](https://github.com/rokucommunity/roku-debug/compare/v0.21.26...v0.21.27) - 2025-03-17
+### Changed
+ - Fixed `TelnetAdapter` reporting that it was a protocol adapter ([#237](https://github.com/rokucommunity/roku-debug/pull/237))
+
+
+
 ## [0.21.26](https://github.com/rokucommunity/roku-debug/compare/v0.21.25...v0.21.26) - 2025-03-13
 ### Changed
  - upgrade to [brighterscript@0.69.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0692---2025-03-13). Notable changes since 0.69.1:
