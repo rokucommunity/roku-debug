@@ -1119,7 +1119,7 @@ export class TelnetAdapter {
     }
 
     public isDebugProtocolAdapter(): this is DebugProtocolAdapter {
-        return true;
+        return false;
     }
 }
 
