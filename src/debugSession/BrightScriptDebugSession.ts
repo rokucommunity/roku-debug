@@ -1198,7 +1198,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
+    protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
         const logger = this.logger.createLogger(`scopesRequest ${this.idCounter}`);
         logger.info('begin', { args });
         try {
@@ -1222,13 +1222,25 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.variables[localsRefId] = v;
             }
 
-            scopes.push(<DebugProtocol.Scope>{
+            const frame = this.rokuAdapter.getStackFrameById(args.frameId);
+            const scopeRange = await this.projectManager.getScopeRange(frame.filePath, { line: frame.lineNumber - 1, character: 0 });
+
+            let localScope: DebugProtocol.Scope = {
                 name: 'Local',
                 variablesReference: v.variablesReference,
                 // Flag the locals scope as expensive if the client asked that it be loaded lazily
                 expensive: this.launchConfiguration.deferScopeLoading,
                 presentationHint: 'locals'
-            });
+            };
+
+            if (scopeRange) {
+                localScope.line = this.toClientLine(scopeRange.start.line - 1);
+                localScope.column = this.toClientColumn(scopeRange.start.column);
+                localScope.endLine = this.toClientLine(scopeRange.end.line - 1);
+                localScope.endColumn = this.toClientColumn(scopeRange.end.column);
+            }
+
+            scopes.push(localScope);
 
             // create the registry scope
             let registryRefId = this.getEvaluateRefId('$$registry', Infinity);
@@ -1958,17 +1970,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[] } {
         const incomingText = args.text;
         const lines = incomingText.split('\n');
-        let lineNumber = args.line ?? (this.initRequestArgs.linesStartAt1 ? 1 : 0);
-        let column = args.column;
-
-        // Make sure to correct the line and column to 0-based
-        // if they are being sent as 1-based from the client
-        if (this.initRequestArgs.linesStartAt1) {
-            lineNumber--;
-        }
-        if (this.initRequestArgs.columnsStartAt1) {
-            column--;
-        }
+        let lineNumber = this.toDebuggerLine(args.line, 0);
+        let column = this.toDebuggerColumn(args.column);
 
         const targetLine = lines[lineNumber];
         let variablePathString = '';
