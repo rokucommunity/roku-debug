@@ -66,8 +66,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         super();
 
         // this debugger uses one-based lines and columns
-        this.setDebuggerLinesStartAt1(true);
-        this.setDebuggerColumnsStartAt1(true);
+        this.setDebuggerLinesStartAt1(false);
+        this.setDebuggerColumnsStartAt1(false);
 
         //give util a reference to this session to assist in logging across the entire module
         util._debugSession = this;
@@ -1198,7 +1198,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
+    protected async scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) {
         const logger = this.logger.createLogger(`scopesRequest ${this.idCounter}`);
         logger.info('begin', { args });
         try {
@@ -1222,13 +1222,25 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.variables[localsRefId] = v;
             }
 
-            scopes.push(<DebugProtocol.Scope>{
+            const frame = this.rokuAdapter.getStackFrameById(args.frameId);
+            const scopeRange = await this.projectManager.getScopeRange(frame.filePath, { line: frame.lineNumber - 1, character: 0 });
+
+            let localScope: DebugProtocol.Scope = {
                 name: 'Local',
                 variablesReference: v.variablesReference,
                 // Flag the locals scope as expensive if the client asked that it be loaded lazily
                 expensive: this.launchConfiguration.deferScopeLoading,
                 presentationHint: 'locals'
-            });
+            };
+
+            if (scopeRange) {
+                localScope.line = this.toClientLine(scopeRange.start.line - 1);
+                localScope.column = this.toClientColumn(scopeRange.start.column);
+                localScope.endLine = this.toClientLine(scopeRange.end.line - 1);
+                localScope.endColumn = this.toClientColumn(scopeRange.end.column);
+            }
+
+            scopes.push(localScope);
 
             // create the registry scope
             let registryRefId = this.getEvaluateRefId('$$registry', Infinity);
@@ -1958,17 +1970,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[] } {
         const incomingText = args.text;
         const lines = incomingText.split('\n');
-        let lineNumber = args.line ?? (this.initRequestArgs.linesStartAt1 ? 1 : 0);
-        let column = args.column;
-
-        // Make sure to correct the line and column to 0-based
-        // if they are being sent as 1-based from the client
-        if (this.initRequestArgs.linesStartAt1) {
-            lineNumber--;
-        }
-        if (this.initRequestArgs.columnsStartAt1) {
-            column--;
-        }
+        let lineNumber = this.toDebuggerLine(args.line, 0);
+        let column = this.toDebuggerColumn(args.column);
 
         const targetLine = lines[lineNumber];
         let variablePathString = '';
@@ -2460,6 +2463,56 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+    /**
+     * Converts a debugger line number to a client line number.
+     *
+     * @param debuggerLine - The line number from the debugger as zero based.
+     * @param defaultDebuggerLine - An optional default line number, as zero based, to use if `debuggerLine` is not provided.
+     * @returns The corresponding client line number.
+     */
+    private toClientLine(debuggerLine: number, defaultDebuggerLine?: number) {
+        return this.convertDebuggerLineToClient(debuggerLine ?? defaultDebuggerLine);
+    }
+
+    /**
+     * Converts a debugger column number to a client column number.
+     *
+     * @param debuggerLine - The column number from the debugger as zero based.
+     * @param defaultDebuggerLine - An optional default column number, as zero based, to use if `debuggerLine` is not provided.
+     * @returns The corresponding client column number.
+     */
+    private toClientColumn(debuggerLine: number, defaultDebuggerLine?: number) {
+        return this.convertDebuggerColumnToClient(debuggerLine ?? defaultDebuggerLine);
+    }
+
+    /**
+     * Converts a client line number to a debugger line number.
+     *
+     * @param clientLine - The line number from the client.
+     * @param defaultDebuggerLine - An optional default line number, as zero based, to use if `clientLine` is not provided.
+     * @returns The corresponding debugger line number as zero based.
+     */
+    private toDebuggerLine(clientLine: number, defaultDebuggerLine?: number) {
+        if (typeof clientLine === 'number') {
+            return this.convertClientLineToDebugger(clientLine);
+        }
+        return defaultDebuggerLine;
+    }
+
+    /**
+     * Converts a client column number to a debugger column number.
+     *
+     * @param clientLine - The column number from the client.
+     * @param defaultDebuggerLine - An optional default column number, as zero based, to use if `clientLine` is not provided.
+     * @returns The corresponding debugger column number as zero based.
+     */
+    private toDebuggerColumn(clientLine: number, defaultDebuggerLine?: number) {
+        if (typeof clientLine === 'number') {
+            return this.convertClientColumnToDebugger(clientLine);
+        }
+        return defaultDebuggerLine;
+    }
+
     private shutdownPromise: Promise<void> | undefined = undefined;
 
     /**
@@ -2490,13 +2543,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         try {
-            void this.rendezvousTracker?.destroy?.();
+            await this.rendezvousTracker?.destroy?.();
         } catch (e) {
             this.logger.error(e);
         }
 
         try {
-            this.sourceMapManager?.destroy?.();
+            await this.sourceMapManager?.destroy?.();
         } catch (e) {
             this.logger.error(e);
         }

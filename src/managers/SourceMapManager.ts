@@ -5,6 +5,7 @@ import { standardizePath as s, fileUtils } from '../FileUtils';
 import * as path from 'path';
 import type { SourceLocation } from './LocationManager';
 import { logger } from '../logging';
+import type { MaybePromise } from '../interfaces';
 
 /**
  * Unifies access to source files across the whole project
@@ -119,14 +120,20 @@ export class SourceMapManager {
         }
     }
 
-    private sourceMapConsumerCache: Record<string, SourceMapConsumer> = {};
+    private sourceMapConsumerCache: Record<string, MaybePromise<SourceMapConsumer>> = {};
 
     private async getSourceMapConsumer(sourceMapPath: string, parsedSourceMap: RawSourceMap) {
         let consumer = this.sourceMapConsumerCache[sourceMapPath];
         if (!consumer) {
-            consumer = await new SourceMapConsumer(parsedSourceMap);
+            consumer = new SourceMapConsumer(parsedSourceMap);
             this.sourceMapConsumerCache[sourceMapPath] = consumer;
         }
+
+        if (typeof (consumer as Promise<SourceMapConsumer>)?.then === 'function') {
+            consumer = await consumer;
+            this.sourceMapConsumerCache[sourceMapPath] = consumer;
+        }
+
         return consumer;
     }
 
@@ -170,11 +177,18 @@ export class SourceMapManager {
         return locations;
     }
 
-    public destroy() {
+    public async destroy() {
         // Clean up all source map consumers
         for (let key in this.sourceMapConsumerCache) {
-            let consumer = this.sourceMapConsumerCache[key];
-            consumer?.destroy?.();
+            try {
+                let consumer = this.sourceMapConsumerCache[key];
+                if (typeof (consumer as Promise<SourceMapConsumer>)?.then === 'function') {
+                    consumer = await consumer;
+                }
+                (consumer as SourceMapConsumer)?.destroy?.();
+            } catch (error) {
+                this.logger.error('Error destroying source map consumer', key, { error });
+            }
         }
     }
 }
