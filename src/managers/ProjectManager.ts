@@ -14,6 +14,7 @@ import { logger } from '../logging';
 import { Cache } from 'brighterscript/dist/Cache';
 import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
 import type { ScopeFunction } from '../bsc/BscProject';
+import type { Position } from 'brighterscript';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -90,6 +91,37 @@ export class ProjectManager {
             this.logger.error(`error loading completions for file ${pkgPath}`, error);
         }
         return completions;
+    }
+
+    /**
+     * Get the range of the scope for the given position in the file
+     * @param pkgPath the device path of the file (probably with `pkg:` or `libpkg` or something...)
+     * @param position the position in the file to get the scope range for
+     */
+    public async getScopeRange(pkgPath: string, position: Position) {
+        try {
+            const fileInfo = await this.getStagingFileInfo(pkgPath);
+            const parentFunctionRange = await fileInfo?.project.getScopeRange(fileInfo.relativePath, position);
+            if (parentFunctionRange) {
+                const [startPosition, endPosition] = await Promise.all([
+                    this.getSourceLocation(pkgPath, parentFunctionRange.start.line + 1),
+                    this.getSourceLocation(pkgPath, parentFunctionRange.end.line + 1)
+                ]);
+                return {
+                    start: {
+                        line: startPosition.lineNumber,
+                        column: startPosition.columnIndex
+                    },
+                    end: {
+                        line: endPosition.lineNumber,
+                        column: endPosition.columnIndex
+                    }
+                };
+            }
+        } catch (error) {
+            this.logger.error(`error loading scope range for file ${pkgPath}`, error);
+        }
+        return undefined;
     }
 
     /**
@@ -361,7 +393,7 @@ export class Project {
     }
 
     /**
-     * Get all of the functions avaiable for all scopes for this file.
+     * Get all of the functions available for all scopes for this file.
      * @param relativePath path to the file relative to rootDir
      * @returns
      */
@@ -370,6 +402,19 @@ export class Project {
             return this.stagingBscProject.getScopeFunctionsForFile({ relativePath: relativePath });
         } else {
             return [];
+        }
+    }
+
+    /**
+     * Get the range of the scope for the given position in the file
+     * @param relativePath path to the file relative to rootDir
+     * @param position the position in the file to get the scope range for
+     */
+    public async getScopeRange(relativePath: string, position: Position) {
+        if (this.stagingBscProject?.isActivated) {
+            return this.stagingBscProject.getScopeRange({ relativePath: relativePath, position: position });
+        } else {
+            return undefined;
         }
     }
 

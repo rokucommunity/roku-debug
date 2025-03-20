@@ -1,4 +1,5 @@
-import { Deferred, type ProgramBuilder } from 'brighterscript';
+import { Deferred } from 'brighterscript';
+import type { Position, ProgramBuilder, Range } from 'brighterscript';
 import type { ExtractMethods, DisposableLike, MaybePromise } from '../interfaces';
 import type { BscProject, ScopeFunction } from './BscProject';
 import { bscProjectWorkerPool } from './threading/BscProjectWorkerPool';
@@ -85,12 +86,17 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
     }
 
     /**
-     * Get all of the functions avaiable for all scopes for this file.
-     * @param relativePath path to the file relative to rootDir
-     * @returns
+     * Get all of the functions available for all scopes for this file.
      */
     public async getScopeFunctionsForFile(options: { relativePath: string }): Promise<Array<ScopeFunction>> {
         return this.sendStandardRequest('getScopeFunctionsForFile', options);
+    }
+
+    /**
+     * Get the range of the scope that contains the specified position
+     */
+    public getScopeRange(options: { relativePath: string; position: Position }): Promise<Range> {
+        return this.sendStandardRequest('getScopeRange', options);
     }
 
     /**
