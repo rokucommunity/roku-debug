@@ -2490,13 +2490,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         try {
-            void this.rendezvousTracker?.destroy?.();
+            await this.rendezvousTracker?.destroy?.();
         } catch (e) {
             this.logger.error(e);
         }
 
         try {
-            this.sourceMapManager?.destroy?.();
+            await this.sourceMapManager?.destroy?.();
         } catch (e) {
             this.logger.error(e);
         }
