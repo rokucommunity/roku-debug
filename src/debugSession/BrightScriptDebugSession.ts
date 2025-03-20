@@ -66,8 +66,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         super();
 
         // this debugger uses one-based lines and columns
-        this.setDebuggerLinesStartAt1(true);
-        this.setDebuggerColumnsStartAt1(true);
+        this.setDebuggerLinesStartAt1(false);
+        this.setDebuggerColumnsStartAt1(false);
 
         //give util a reference to this session to assist in logging across the entire module
         util._debugSession = this;
@@ -2458,6 +2458,56 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingDir);
             }
         }
+    }
+
+    /**
+     * Converts a debugger line number to a client line number.
+     *
+     * @param debuggerLine - The line number from the debugger as zero based.
+     * @param defaultDebuggerLine - An optional default line number, as zero based, to use if `debuggerLine` is not provided.
+     * @returns The corresponding client line number.
+     */
+    private toClientLine(debuggerLine: number, defaultDebuggerLine?: number) {
+        return this.convertDebuggerLineToClient(debuggerLine ?? defaultDebuggerLine);
+    }
+
+    /**
+     * Converts a debugger column number to a client column number.
+     *
+     * @param debuggerLine - The column number from the debugger as zero based.
+     * @param defaultDebuggerLine - An optional default column number, as zero based, to use if `debuggerLine` is not provided.
+     * @returns The corresponding client column number.
+     */
+    private toClientColumn(debuggerLine: number, defaultDebuggerLine?: number) {
+        return this.convertDebuggerColumnToClient(debuggerLine ?? defaultDebuggerLine);
+    }
+
+    /**
+     * Converts a client line number to a debugger line number.
+     *
+     * @param clientLine - The line number from the client.
+     * @param defaultDebuggerLine - An optional default line number, as zero based, to use if `clientLine` is not provided.
+     * @returns The corresponding debugger line number as zero based.
+     */
+    private toDebuggerLine(clientLine: number, defaultDebuggerLine?: number) {
+        if (typeof clientLine === 'number') {
+            return this.convertClientLineToDebugger(clientLine);
+        }
+        return defaultDebuggerLine;
+    }
+
+    /**
+     * Converts a client column number to a debugger column number.
+     *
+     * @param clientLine - The column number from the client.
+     * @param defaultDebuggerLine - An optional default column number, as zero based, to use if `clientLine` is not provided.
+     * @returns The corresponding debugger column number as zero based.
+     */
+    private toDebuggerColumn(clientLine: number, defaultDebuggerLine?: number) {
+        if (typeof clientLine === 'number') {
+            return this.convertClientColumnToDebugger(clientLine);
+        }
+        return defaultDebuggerLine;
     }
 
     private shutdownPromise: Promise<void> | undefined = undefined;
