@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.28](https://github.com/rokucommunity/roku-debug/compare/v0.21.27...v0.21.28) - 2025-03-20
+### Changed
+ - Limit the range of scopes ([#240](https://github.com/rokucommunity/roku-debug/pull/240))
+ - Fixed some duplicate variable names on `roDateTime` ([#239](https://github.com/rokucommunity/roku-debug/pull/239))
+ - upgrade to [brighterscript@0.69.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0693---2025-03-20). Notable changes since 0.69.2:
+     - Fixed getClosestExpression bug to return undefined when position not found ([brighterscript#1433](https://github.com/rokucommunity/brighterscript/pull/1433))
+     - Adds Alias statement syntax from v1 to v0 ([brighterscript#1430](https://github.com/rokucommunity/brighterscript/pull/1430))
+
+
+
 ## [0.21.27](https://github.com/rokucommunity/roku-debug/compare/v0.21.26...v0.21.27) - 2025-03-17
 ### Changed
  - Fixed `TelnetAdapter` reporting that it was a protocol adapter ([#237](https://github.com/rokucommunity/roku-debug/pull/237))
