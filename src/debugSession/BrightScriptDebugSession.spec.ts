@@ -1541,7 +1541,7 @@ describe('BrightScriptDebugSession', () => {
     describe('completionsRequest', () => {
         describe('getClosestCompletionDetails', () => {
             it('handles empty string columnsStartAt1 false', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: '',
                     column: 0,
@@ -1553,7 +1553,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles empty string columnsStartAt1 true', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: '',
                     column: 1,
@@ -1565,7 +1565,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles bad variable path columnsStartAt1 false', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: '1bad.path',
                     column: 9,
@@ -1575,7 +1575,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles bad variable path columnsStartAt1 true', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: '1bad.path',
                     column: 10,
@@ -1585,7 +1585,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles simple input of just variable path columnsStartAt1 false', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: 'person.name',
                     column: 11,
@@ -1597,7 +1597,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles simple input of just variable path columnsStartAt1 true', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: 'person.name',
                     column: 12,
@@ -1609,7 +1609,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles simple input of just variable path with training period columnsStartAt1 false', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: 'person.name.',
                     column: 12,
@@ -1621,7 +1621,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles simple input of just variable path with training period columnsStartAt1 true', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: 'person.name.',
                     column: 13,
@@ -1633,7 +1633,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles simple input of just variable path columnsStartAt1 false but cursor is not at the end', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: 'person.name',
                     column: 9,
@@ -1643,7 +1643,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles simple input of just variable path columnsStartAt1 true but cursor is not at the end', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: 'person.name',
                     column: 10,
@@ -1653,7 +1653,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('returns undefined following closing brackets columnsStartAt1 false but cursor is not at the end', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: 'getPerson().name',
                     column: 16,
@@ -1670,7 +1670,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('returns undefined following closing brackets columnsStartAt1 true but cursor is not at the end', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: 'getPerson().name',
                     column: 17,
@@ -1688,7 +1688,7 @@ describe('BrightScriptDebugSession', () => {
 
 
             it('input after a open bracket columnsStartAt1 false', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: 'getValue(person.name',
                     column: 20,
@@ -1709,7 +1709,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('input after a open bracket columnsStartAt1 true', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: 'getValue(person.name',
                     column: 21,
@@ -1730,7 +1730,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: 'getValue(person.name)',
                     column: 20,
@@ -1742,7 +1742,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: 'getValue(person.name)',
                     column: 21,
@@ -1754,7 +1754,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
                 expect(session['getClosestCompletionDetails']({
                     text: 'getValue(person.name, test)',
                     column: 26,
@@ -1775,7 +1775,7 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
                     text: 'getValue(person.name, test)',
                     column: 27,
@@ -1796,8 +1796,8 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles multiline inout columnsStartAt1 false linesStartAt1 false', () => {
-                session['initRequestArgs']['columnsStartAt1'] = false;
-                session['initRequestArgs']['linesStartAt1'] = false;
+                session['_clientColumnsStartAt1'] = false;
+                session['_clientLinesStartAt1'] = false;
 
                 // cursor is on the first line
                 expect(session['getClosestCompletionDetails']({
@@ -1820,8 +1820,8 @@ describe('BrightScriptDebugSession', () => {
             });
 
             it('handles multiline inout columnsStartAt1 true linesStartAt1 true', () => {
-                session['initRequestArgs']['columnsStartAt1'] = true;
-                session['initRequestArgs']['linesStartAt1'] = true;
+                session['_clientColumnsStartAt1'] = true;
+                session['_clientLinesStartAt1'] = true;
 
                 // cursor is on the first line
                 expect(session['getClosestCompletionDetails']({

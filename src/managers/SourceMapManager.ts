@@ -125,7 +125,8 @@ export class SourceMapManager {
     private async getSourceMapConsumer(sourceMapPath: string, parsedSourceMap: RawSourceMap) {
         let consumer = this.sourceMapConsumerCache[sourceMapPath];
         if (!consumer) {
-            this.sourceMapConsumerCache[sourceMapPath] = new SourceMapConsumer(parsedSourceMap);
+            consumer = new SourceMapConsumer(parsedSourceMap);
+            this.sourceMapConsumerCache[sourceMapPath] = consumer;
         }
 
         if (typeof (consumer as Promise<SourceMapConsumer>)?.then === 'function') {
