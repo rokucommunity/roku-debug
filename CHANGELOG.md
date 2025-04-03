@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.29](https://github.com/rokucommunity/roku-debug/compare/v0.21.28...v0.21.29) - 2025-04-03
+### Changed
+ - Migrate to shared CI ([#242](https://github.com/rokucommunity/roku-debug/pull/242))
+ - Fix launch race bug ([#241](https://github.com/rokucommunity/roku-debug/pull/241))
+ - upgrade to [@rokucommunity/logger@0.3.10](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#0310---2025-03-26). Notable changes since 0.3.9:
+     - Fixing issues before release 0.3.10 ([logger#d5babf1](https://github.com/rokucommunity/logger/commit/d5babf1))
+     - Added the ability to turn off timestamps in the output and fixed a potental crash if the format string was empty ([logger#11](https://github.com/rokucommunity/logger/pull/11))
+ - upgrade to [brighterscript@0.69.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0694---2025-03-31). Notable changes since 0.69.3:
+     - Migration to the new shared CI ([brighterscript#1440](https://github.com/rokucommunity/brighterscript/pull/1440))
+     - Support plugin factory detecting brighterscript version ([brighterscript#1438](https://github.com/rokucommunity/brighterscript/pull/1438))
+
+
+
 ## [0.21.28](https://github.com/rokucommunity/roku-debug/compare/v0.21.27...v0.21.28) - 2025-03-20
 ### Changed
  - Limit the range of scopes ([#240](https://github.com/rokucommunity/roku-debug/pull/240))
