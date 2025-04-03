@@ -11,7 +11,8 @@
         "test": "nyc mocha \"src/**/*spec.ts\" --exclude \"src/**/*.device.spec.ts\"",
         "device-test": "mocha --spec \"src/**/*.device.spec.ts\"",
         "test:nocover": "mocha \"src/**/*.spec.ts\" --exclude \"src/**/*.device.spec.ts\"",
-        "publish-coverage": "nyc report --reporter=text-lcov | coveralls"
+        "publish-coverage": "nyc report --reporter=text-lcov | coveralls",
+        "package": "npm ci && npm run build && npm pack"
     },
     "typings": "dist/index.d.ts",
     "repository": {
