@@ -368,7 +368,7 @@ export class Project {
 
         if (this.enhanceREPLCompletions) {
             //activate our background brighterscript ProgramBuilder now that the staging directory contains the final production project
-            void this.stagingBscProject.activate({
+            this.stagingBscProject.activate({
                 rootDir: this.stagingDir,
                 files: ['**/*'],
                 watch: false,
@@ -379,6 +379,8 @@ export class Project {
                 logLevel: 'error',
                 //this project is only used for file and scope lookups, so skip all validations since that takes a while and we don't care
                 validate: false
+            }).catch((e) => {
+                this.logger.error('Error activating staging project.', e);
             });
         }
 

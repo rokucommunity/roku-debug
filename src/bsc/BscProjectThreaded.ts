@@ -83,6 +83,8 @@ export class BscProjectThreaded implements ExtractMethods<BscProject> {
             this.activateDeferred.reject(e);
         }
         timeEnd();
+
+        return this.activateDeferred.promise;
     }
 
     /**
