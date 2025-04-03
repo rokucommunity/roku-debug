@@ -2530,6 +2530,31 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
+        //send the message FIRST before anything else. This improves the chances that the message will be displayed to the user
+        try {
+            if (errorMessage) {
+                this.logger.error(errorMessage);
+                this.showPopupMessage(errorMessage, 'error', modal);
+            }
+        } catch (e) {
+            this.logger.error(e);
+        }
+
+        //close the debugger connection
+        try {
+            this.logger.log('Destroy rokuAdapter');
+            await this.rokuAdapter?.destroy?.();
+            //press the home button to return to the home screen
+            try {
+                this.logger.log('Press home button');
+                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            } catch (e) {
+                this.logger.error(e);
+            }
+        } catch (e) {
+            this.logger.error(e);
+        }
+
         try {
             this.projectManager?.dispose?.();
         } catch (e) {
@@ -2567,30 +2592,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         util.log(`Error removing staging directory '${stagingDir}': ${JSON.stringify(e)}`);
                     }
                 }
-            }
-        } catch (e) {
-            this.logger.error(e);
-        }
-
-        try {
-            //if there was an error message, display it to the user
-            if (errorMessage) {
-                this.logger.error(errorMessage);
-                this.showPopupMessage(errorMessage, 'error', modal);
-            }
-        } catch (e) {
-            this.logger.error(e);
-        }
-
-        try {
-            this.logger.log('Destroy rokuAdapter');
-            await this.rokuAdapter?.destroy?.();
-            //press the home button to return to the home screen
-            try {
-                this.logger.log('Press home button');
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-            } catch (e) {
-                this.logger.error(e);
             }
         } catch (e) {
             this.logger.error(e);
