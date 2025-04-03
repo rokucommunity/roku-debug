@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      - Migration to the new shared CI ([brighterscript#1440](https://github.com/rokucommunity/brighterscript/pull/1440))
      - Support plugin factory detecting brighterscript version ([brighterscript#1438](https://github.com/rokucommunity/brighterscript/pull/1438))
 ### Fixed
- - launch race bug ([#241](https://github.com/rokucommunity/roku-debug/pull/241))
+ - launch crash race condition ([#241](https://github.com/rokucommunity/roku-debug/pull/241))
 
 
 ## [0.21.28](https://github.com/rokucommunity/roku-debug/compare/v0.21.27...v0.21.28) - 2025-03-20
