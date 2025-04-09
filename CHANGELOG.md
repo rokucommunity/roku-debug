@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.30](https://github.com/rokucommunity/roku-debug/compare/v0.21.29...v0.21.30) - 2025-04-09
+### Changed
+ - Explicitly set the version of the package glob ([#244](https://github.com/rokucommunity/roku-debug/pull/244))
+ - upgrade to [brighterscript@0.69.6](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0696---2025-04-09). Notable changes since 0.69.4:
+     - Updated the type definition of the `InStr` global callable ([brighterscript#1456](https://github.com/rokucommunity/brighterscript/pull/1456))
+     - More safely wrap expressions for template string transpile ([brighterscript#1445](https://github.com/rokucommunity/brighterscript/pull/1445))
+
+
+
 ## [0.21.29](https://github.com/rokucommunity/roku-debug/compare/v0.21.28...v0.21.29) - 2025-04-03
 ### Changed
  - (chore) migrate to shared CI ([#242](https://github.com/rokucommunity/roku-debug/pull/242))
