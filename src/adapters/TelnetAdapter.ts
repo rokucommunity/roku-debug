@@ -205,7 +205,7 @@ export class TelnetAdapter {
                 }, maxWaitMilliseconds);
             };
 
-            client.addListener(name, handler);
+            client.on(name, handler);
             //call the handler immediately so we have a timeout
             handler();
         });
@@ -253,12 +253,12 @@ export class TelnetAdapter {
             util.registerSocketLogging(telnetSocket, this.logger, 'TelnetSocket');
 
             //listen for the close event
-            telnetSocket.addListener('close', () => {
+            telnetSocket.on('close', () => {
                 this.emit('close');
             });
 
             //if the connection fails, reject the connect promise
-            telnetSocket.addListener('error', (err) => {
+            telnetSocket.on('error', (err) => {
                 deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 

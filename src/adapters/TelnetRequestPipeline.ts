@@ -48,7 +48,7 @@ export class TelnetRequestPipeline {
      * Start listening for future incoming data from the client
      */
     public connect() {
-        this.client.addListener('data', (data) => {
+        this.client.on('data', (data) => {
             this.handleData(data.toString());
         });
     }
