@@ -206,7 +206,7 @@ export class DebugProtocolAdapter {
                 }, maxWaitMilliseconds);
             }
 
-            client.addListener(name, handler);
+            client.on(name, handler);
             //call the handler immediately so we have a timeout
             handler();
         });
@@ -403,7 +403,7 @@ export class DebugProtocolAdapter {
             });
 
             //if the connection fails, reject the connect promise
-            this.compileClient.addListener('error', (err) => {
+            this.compileClient.on('error', (err) => {
                 deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
             this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });

@@ -22,7 +22,7 @@ describe('RequestPipeline', () => {
     let socket = {
         listeners: [],
         messageQueue: [] as Array<string | string[]>,
-        addListener: function(eventName: string, listener: (data: Buffer) => void) {
+        on: function(eventName: string, listener: (data: Buffer) => void) {
             this.listeners.push(listener);
         },
         /**
