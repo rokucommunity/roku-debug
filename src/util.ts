@@ -15,6 +15,7 @@ import type * as requestType from 'request';
 import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
+import type { Logger } from '@rokucommunity/logger';
 const request = r as typeof requestType;
 
 class Util {
@@ -540,6 +541,83 @@ class Util {
             });
         });
     }
+
+    /**
+     * Register the socket events for logging
+     * @param socket - the socket to listen to for events
+     * @param logger - the logger to use for logging
+     * @param socketType - the type of socket (e.g. "client", "server")
+     */
+    public registerSocketLogging(socket: net.Socket, logger: Logger, socketType: string) {
+        // create a new child logger for the socket events
+        let socketLogger = logger.createLogger(`[${socketType}]`);
+
+        socket.on('error', (error: Error) => {
+            socketLogger.error(`socket error: ${this.getSocketAddressForLogs(socket)}`, error);
+        });
+
+        socket.on('close', (hadError: boolean) => {
+            if (hadError) {
+                socketLogger.error(`socket closed with error: ${this.getSocketAddressForLogs(socket)}`);
+            } else {
+                socketLogger.log(`socket closed: ${this.getSocketAddressForLogs(socket)}`);
+            }
+        });
+
+        socket.on('end', () => {
+            socketLogger.log(`device signalling to end socket connection: ${this.getSocketAddressForLogs(socket)}`);
+        });
+
+        socket.on('timeout', () => {
+            socketLogger.log(`socket timeout. duration: ${socket.timeout}. ${this.getSocketAddressForLogs(socket)}`);
+        });
+
+        socket.on('lookup', (err: Error | null, address: string, family: number | null, host: string) => {
+            if (err) {
+                socketLogger.error(`socket lookup error. family: ${family ? `IPv${family}` : 'unknown'} address: ${address}, host: ${host}, error: ${err}`);
+            } else {
+                socketLogger.log(`socket lookup. family: ${family ? `IPv${family}` : 'unknown'} address: ${address}, host: ${host}`);
+            }
+        });
+
+        socket.on('connectionAttempt', (ip: string, port: number, family: number) => {
+            socketLogger.log(`socket connection attempt: ${this.getSocketAddressForLogs(socket, ip, port, family)}`);
+        });
+
+        socket.on('connectionAttemptFailed', (ip: string, port: number, family: number, error: Error) => {
+            socketLogger.error(`socket connection attempt failed: ${this.getSocketAddressForLogs(socket, ip, port, family)}, error: ${error.message}`);
+        });
+
+        socket.on('connectionAttemptTimeout', (ip: string, port: number, family: number) => {
+            socketLogger.log(`socket connection timed out: ${this.getSocketAddressForLogs(socket, ip, port, family)}`);
+        });
+
+        socket.on('connect', () => {
+            socketLogger.log(`socket connected: ${this.getSocketAddressForLogs(socket)}`);
+        });
+
+        socket.on('ready', () => {
+            socketLogger.log(`socket is ready for use: ${this.getSocketAddressForLogs(socket)}`);
+        });
+    }
+
+    private getSocketAddressForLogs(socket: net.Socket, ip?: string, port?: number, family?: number): string {
+        let familyString: string;
+        if (typeof family === 'number') {
+            familyString = `IPv${family}`;
+        } else {
+            familyString = socket.localFamily;
+        }
+
+        const remoteString = `remote: ${familyString} ${ip ?? socket.remoteAddress}:${port ?? socket.remotePort}`;
+
+        if (socket.localAddress !== undefined && socket.localPort !== undefined) {
+            return `local: ${socket.localFamily ? socket.localFamily : ''}${socket.localAddress}:${socket.localPort} -> ${remoteString}`;
+        } else {
+            return remoteString;
+        }
+    }
+
 }
 
 export function defer<T>() {

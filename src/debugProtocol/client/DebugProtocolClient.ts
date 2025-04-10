@@ -230,9 +230,8 @@ export class DebugProtocolClient {
             const socket = new Net.Socket({
                 allowHalfOpen: false
             });
-            socket.on('error', (error) => {
-                console.debug(Date.now(), 'Encountered an error connecting to the debug protocol socket.', error);
-            });
+            util.registerSocketLogging(socket, this.logger, 'ControlSocket');
+
             socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
                 resolve(socket);
             });
@@ -1104,6 +1103,8 @@ export class DebugProtocolClient {
             this.ioSocket = new Net.Socket({
                 allowHalfOpen: false
             });
+            util.registerSocketLogging(this.ioSocket, this.logger, 'IoSocket');
+
             // Send a connection request to the server.
             this.logger.log(`Connect to IO Port ${this.options.host}:${update.data.port}`);
 
