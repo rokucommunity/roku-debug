@@ -253,7 +253,7 @@ export class TelnetAdapter {
             util.registerSocketLogging(telnetSocket, this.logger, 'TelnetSocket');
 
             //listen for the close event
-            telnetSocket.addListener('close', (err, data) => {
+            telnetSocket.addListener('close', () => {
                 this.emit('close');
             });
 
