@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.31](https://github.com/rokucommunity/roku-debug/compare/v0.21.30...v0.21.31) - 2025-04-10
+### Changed
+ - updated usages of socket `addListener` to `on` ([#247](https://github.com/rokucommunity/roku-debug/pull/247))
+ - Better logs around socket connections with the device ([#246](https://github.com/rokucommunity/roku-debug/pull/246))
+
+
+
 ## [0.21.30](https://github.com/rokucommunity/roku-debug/compare/v0.21.29...v0.21.30) - 2025-04-09
 ### Changed
  - Explicitly set the version of the package glob ([#244](https://github.com/rokucommunity/roku-debug/pull/244))
