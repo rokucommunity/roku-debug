@@ -249,20 +249,21 @@ export class TelnetAdapter {
             this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
             await rokuDeploy.pressHomeButton(this.options.host, this.options.remotePort);
-            let client: Socket = new Socket();
+            let telnetSocket: Socket = new Socket();
+            util.registerSocketLogging(telnetSocket, this.logger, 'TelnetSocket');
 
             //listen for the close event
-            client.addListener('close', (err, data) => {
+            telnetSocket.addListener('close', (err, data) => {
                 this.emit('close');
             });
 
             //if the connection fails, reject the connect promise
-            client.addListener('error', (err) => {
+            telnetSocket.addListener('error', (err) => {
                 deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
-            const settlePromise = this.settle(client, 'data');
-            client.connect(this.options.brightScriptConsolePort, this.options.host, () => {
+            const settlePromise = this.settle(telnetSocket, 'data');
+            telnetSocket.connect(this.options.brightScriptConsolePort, this.options.host, () => {
                 this.logger.log(`Telnet connection established to ${this.options.host}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
                 this.connectionDeferred.resolve();
@@ -272,7 +273,7 @@ export class TelnetAdapter {
             await settlePromise;
 
             //hook up the pipeline to the socket
-            this.requestPipeline = new TelnetRequestPipeline(client);
+            this.requestPipeline = new TelnetRequestPipeline(telnetSocket);
             this.requestPipeline.connect();
 
             let lastPartialLine = '';

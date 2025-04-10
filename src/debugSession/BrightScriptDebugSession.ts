@@ -700,11 +700,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.
+        let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(10_000)
+            util.sleep(10_000).then(() => {
+                didTimeOut = true;
+            })
         ]);
         this.logger.log('Finished racing promises');
+        if (didTimeOut) {
+            this.logger.warn('Timed out waiting for roku to connect');
+        }
         //if the adapter is still not connected, then it will probably never connect. Abort.
         if (packageIsPublished && !this.rokuAdapter.connected) {
             return this.shutdown('Debug session cancelled: failed to connect to debug protocol control port.');
