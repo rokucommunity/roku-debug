@@ -614,7 +614,14 @@ class Util {
         } else {
             familyString = socket.localFamily;
         }
-        return `local: ${socket.localFamily} ${socket.localAddress}:${socket.localPort} -> remote: ${familyString} ${ip ?? socket.remoteAddress}:${port ?? socket.remotePort}`;
+
+        const remoteString = `remote: ${familyString} ${ip ?? socket.remoteAddress}:${port ?? socket.remotePort}`;
+
+        if (socket.localAddress !== undefined && socket.localPort !== undefined) {
+            return `local: ${socket.localFamily ? socket.localFamily : ''}${socket.localAddress}:${socket.localPort} -> ${remoteString}`;
+        } else {
+            return remoteString;
+        }
     }
 
 }
