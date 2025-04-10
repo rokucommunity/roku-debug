@@ -553,12 +553,10 @@ class Util {
         let socketLogger = logger.createLogger(`[${socketType}]`);
 
         socket.on('error', (error: Error) => {
-            let address = socket.address() as net.AddressInfo;
             socketLogger.error(`socket error: ${this.getSocketAddressForLogs(socket)}`, error);
         });
 
         socket.on('close', (hadError: boolean) => {
-            let address = socket.address() as net.AddressInfo;
             if (hadError) {
                 socketLogger.error(`socket closed with error: ${this.getSocketAddressForLogs(socket)}`);
             } else {
@@ -567,12 +565,10 @@ class Util {
         });
 
         socket.on('end', () => {
-            let address = socket.address() as net.AddressInfo;
             socketLogger.log(`device signalling to end socket connection: ${this.getSocketAddressForLogs(socket)}`);
         });
 
         socket.on('timeout', () => {
-            let address = socket.address() as net.AddressInfo;
             socketLogger.log(`socket timeout. duration: ${socket.timeout}. ${this.getSocketAddressForLogs(socket)}`);
         });
 
@@ -597,12 +593,10 @@ class Util {
         });
 
         socket.on('connect', () => {
-            let address = socket.address() as net.AddressInfo;
             socketLogger.log(`socket connected: ${this.getSocketAddressForLogs(socket)}`);
         });
 
         socket.on('ready', () => {
-            let address = socket.address() as net.AddressInfo;
             socketLogger.log(`socket is ready for use: ${this.getSocketAddressForLogs(socket)}`);
         });
     }
