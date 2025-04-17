@@ -262,7 +262,7 @@ export class TelnetAdapter {
             this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
             await rokuDeploy.pressHomeButton(this.options.host, this.options.remotePort);
-            let telnetSocket: Socket = new Socket();
+            let telnetSocket: Socket = new Socket({ allowHalfOpen: false });
             util.registerSocketLogging(telnetSocket, this.logger, 'TelnetSocket');
 
             //listen for the close event
