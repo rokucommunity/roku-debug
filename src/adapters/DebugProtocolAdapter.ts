@@ -408,7 +408,7 @@ export class DebugProtocolAdapter {
 
         let deferred = defer();
         try {
-            this.compileClient = new Socket();
+            this.compileClient = new Socket({ allowHalfOpen: false });
             util.registerSocketLogging(this.compileClient, this.logger, 'CompileClient');
 
             this.compileErrorProcessor.on('diagnostics', (errors) => {
