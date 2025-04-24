@@ -23,6 +23,7 @@ import type { ThreadsResponse } from '../debugProtocol/events/responses/ThreadsR
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
 import { insertCustomVariables, overrideKeyTypesForCustomVariables } from './customVariableUtils';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import { SocketConnectionInUseError } from '../Exceptions';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -187,28 +188,41 @@ export class DebugProtocolAdapter {
     /**
      * Wait until the client has stopped sending messages. This is used mainly during .connect so we can ignore all old messages from the server
      * @param client
-     * @param name
      * @param maxWaitMilliseconds
      */
-    private settle(client: Socket, name: string, maxWaitMilliseconds = 400) {
-        return new Promise((resolve) => {
+    private settleCompileClient(client: Socket, maxWaitMilliseconds = 400) {
+        return new Promise<string>((resolve) => {
+            let timeoutStarted = false;
             let callCount = -1;
+            let logs = '';
 
-            function handler() {
+            function handler(buffer) {
                 callCount++;
+                logs += buffer.toString();
                 let myCallCount = callCount;
+                timeoutStarted = true;
                 setTimeout(() => {
-                    //if no other calls have been made since the timeout started, then the listener has settled
                     if (myCallCount === callCount) {
-                        client.removeListener(name, handler);
-                        resolve(callCount);
+                        // stop listening for data events
+                        client.removeListener('data', handler);
+                        resolve(logs);
                     }
                 }, maxWaitMilliseconds);
             }
 
-            client.on(name, handler);
-            //call the handler immediately so we have a timeout
-            handler();
+            const startTimeout = () => {
+                if (timeoutStarted === false) {
+                    handler(Buffer.from(''));
+                }
+            };
+
+            // watch for data events
+            client.on('data', handler);
+
+            // watch for different connection related events to start the timeout logic
+            client.on('ready', startTimeout);
+            client.on('end', startTimeout);
+            client.on('closed', startTimeout);
         });
     }
 
@@ -394,7 +408,7 @@ export class DebugProtocolAdapter {
 
         let deferred = defer();
         try {
-            this.compileClient = new Socket();
+            this.compileClient = new Socket({ allowHalfOpen: false });
             util.registerSocketLogging(this.compileClient, this.logger, 'CompileClient');
 
             this.compileErrorProcessor.on('diagnostics', (errors) => {
@@ -412,8 +426,16 @@ export class DebugProtocolAdapter {
             });
 
             this.logger.debug('Waiting for the compile client to settle');
-            await this.settle(this.compileClient, 'data');
+            const settledLogs = await this.settleCompileClient(this.compileClient);
             this.logger.debug('Compile client has settled');
+            this.logger.trace('Settled logs:', settledLogs);
+
+            if (settledLogs.trim().startsWith('Console connection is already in use.')) {
+                throw new SocketConnectionInUseError(`Telnet connection ${this.options.host}:${this.options.brightScriptConsolePort} already is use`, {
+                    port: this.options.brightScriptConsolePort,
+                    host: this.options.host
+                });
+            }
 
             let lastPartialLine = '';
             this.compileClient.on('data', (buffer) => {
@@ -428,9 +450,10 @@ export class DebugProtocolAdapter {
                     // Emit the completed io string.
                     this.findWaitForDebuggerPrompt(logResult.completed);
                     this.compileErrorProcessor.processUnhandledLines(logResult.completed);
+                    this.logger.debug('CompileClient data:', logResult.completed);
                     this.emit('unhandled-console-output', logResult.completed);
                 } else {
-                    this.logger.debug('Buffer was split', lastPartialLine);
+                    this.logger.debug('CompileClient buffer was split:', lastPartialLine);
                 }
             });
 
@@ -875,11 +898,9 @@ export class DebugProtocolAdapter {
         this.removeAllListeners();
         this.emitter = undefined;
 
-        if (this.compileClient) {
-            this.compileClient.removeAllListeners();
-            this.compileClient.destroy();
-            this.compileClient = undefined;
-        }
+        this.compileClient?.removeAllListeners();
+        this.compileClient?.destroy();
+        this.compileClient = undefined;
     }
 
     /**

@@ -8,7 +8,6 @@ import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
-import type { SourceLocation } from '../managers/LocationManager';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces';
@@ -16,6 +15,7 @@ import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
 import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAdapter';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
+import { SocketConnectionInUseError } from '../Exceptions';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -183,31 +183,44 @@ export class TelnetAdapter {
     /**
      * Wait until the client has stopped sending messages. This is used mainly during .connect so we can ignore all old messages from the server
      * @param client
-     * @param name
      * @param maxWaitMilliseconds
      */
-    private settle(client: Socket, name: string, maxWaitMilliseconds = 400) {
+    private settleTelnetConnection(client: Socket, maxWaitMilliseconds = 400) {
         const startTime = new Date();
         this.logger.log('Waiting for telnet client to settle');
-        return new Promise((resolve) => {
+        return new Promise<string>((resolve) => {
+            let timeoutStarted = false;
             let callCount = -1;
+            let logs = '';
 
-            const handler = () => {
+            const handler = (buffer) => {
                 callCount++;
+                logs += buffer.toString();
                 let myCallCount = callCount;
+                timeoutStarted = true;
                 setTimeout(() => {
-                    //if no other calls have been made since the timeout started, then the listener has settled
                     if (myCallCount === callCount) {
-                        client.removeListener(name, handler);
+                        // stop listening for data events
+                        client.removeListener('data', handler);
                         this.logger.log(`Telnet client has settled after ${new Date().getTime() - startTime.getTime()} milliseconds`);
-                        resolve(callCount);
+                        resolve(logs);
                     }
                 }, maxWaitMilliseconds);
             };
 
-            client.on(name, handler);
-            //call the handler immediately so we have a timeout
-            handler();
+            const startTimeout = () => {
+                if (timeoutStarted === false) {
+                    handler(Buffer.from(''));
+                }
+            };
+
+            // watch for data events
+            client.on('data', handler);
+
+            // watch for different connection related events to start the timeout logic
+            client.on('ready', startTimeout);
+            client.on('end', startTimeout);
+            client.on('closed', startTimeout);
         });
     }
 
@@ -249,7 +262,7 @@ export class TelnetAdapter {
             this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
             await rokuDeploy.pressHomeButton(this.options.host, this.options.remotePort);
-            let telnetSocket: Socket = new Socket();
+            let telnetSocket: Socket = new Socket({ allowHalfOpen: false });
             util.registerSocketLogging(telnetSocket, this.logger, 'TelnetSocket');
 
             //listen for the close event
@@ -262,7 +275,7 @@ export class TelnetAdapter {
                 deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
-            const settlePromise = this.settle(telnetSocket, 'data');
+            const settlePromise = this.settleTelnetConnection(telnetSocket);
             telnetSocket.connect(this.options.brightScriptConsolePort, this.options.host, () => {
                 this.logger.log(`Telnet connection established to ${this.options.host}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
@@ -270,7 +283,13 @@ export class TelnetAdapter {
                 this.emit('connected', this.connected);
             });
 
-            await settlePromise;
+            const settledLogs = await settlePromise;
+            if (settledLogs.trim().startsWith('Console connection is already in use.')) {
+                throw new SocketConnectionInUseError(`Telnet connection ${this.options.host}:${this.options.brightScriptConsolePort} already is use`, {
+                    port: this.options.brightScriptConsolePort,
+                    host: this.options.host
+                });
+            }
 
             //hook up the pipeline to the socket
             this.requestPipeline = new TelnetRequestPipeline(telnetSocket);
