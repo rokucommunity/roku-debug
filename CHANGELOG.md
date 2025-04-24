@@ -8,17 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.21.32](https://github.com/rokucommunity/roku-debug/compare/0.21.31...v0.21.32) - 2025-04-24
 ### Changed
- - Shared CI Support Prerelease ([#254](https://github.com/rokucommunity/roku-debug/pull/254))
  - Force allowHalfOpen to false on all sockets ([#251](https://github.com/rokucommunity/roku-debug/pull/251))
- - Bump @babel/runtime from 7.24.5 to 7.27.0 ([#252](https://github.com/rokucommunity/roku-debug/pull/252))
- - Update package.json ([#249](https://github.com/rokucommunity/roku-debug/pull/249))
  - Added better telnet socket in use detection ([#250](https://github.com/rokucommunity/roku-debug/pull/250))
  - upgrade to [brighterscript@0.69.7](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0697---2025-04-23). Notable changes since 0.69.6:
-     - Shared CI Support Prerelease ([brighterscript#1475](https://github.com/rokucommunity/brighterscript/pull/1475))
      - Prevent runtime crash for non-referencable funcs in ternary and null coalescing ([brighterscript#1474](https://github.com/rokucommunity/brighterscript/pull/1474))
-     - Fix `removeParameterTypes` compile errors for return types ([brighterscript#1414](https://github.com/rokucommunity/brighterscript/pull/1414))
-     - Remove `npm ci` from the `package` npm script since it's redundant ([brighterscript#1461](https://github.com/rokucommunity/brighterscript/pull/1461))
-     - Flag incorrect return statements in functions and subs ([brighterscript#1463](https://github.com/rokucommunity/brighterscript/pull/1463))
 
 
 
