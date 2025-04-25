@@ -6,9 +6,6 @@ on:
       - reopened
       - opened
       - synchronize
-    paths:
-        - 'package.json'
-        - 'package-lock.json'
 
 jobs:
   run:
