@@ -26,4 +26,9 @@ jobs:
     needs: [run]
     runs-on: ubuntu-latest
     steps:
-        - run: echo "done"
+      - run: |
+          if [ "${{ needs.run.result }}" == "failure" ]; then
+            echo "Release artifacts job failed!"
+            exit 1
+          fi
+          echo "All good."
