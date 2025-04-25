@@ -9,6 +9,7 @@ on:
 
 jobs:
   run:
+      name: Make Release Artifacts
       if: startsWith( github.head_ref, 'release/')
       uses: rokucommunity/workflows/.github/workflows/make-release-artifacts.yml@master
       with:
