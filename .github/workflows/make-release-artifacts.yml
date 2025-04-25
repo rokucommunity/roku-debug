@@ -8,14 +8,18 @@ on:
       - synchronize
 
 jobs:
+  # run:
+  #     if: startsWith( github.head_ref, 'release/')
+  #     uses: rokucommunity/workflows/.github/workflows/make-release-artifacts.yml@master
+  #     with:
+  #       branch: ${{ github.event.pull_request.head.ref }}
+  #       node-version: "16.20.2"
+  #       artifact-paths: "./*.tgz" # "*.vsix"
+  #     secrets: inherit
   run:
-      if: startsWith( github.head_ref, 'release/')
-      uses: rokucommunity/workflows/.github/workflows/make-release-artifacts.yml@master
-      with:
-        branch: ${{ github.event.pull_request.head.ref }}
-        node-version: "16.20.2"
-        artifact-paths: "./*.tgz" # "*.vsix"
-      secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+        - run: exit 1 #force a failure
 
   make-release-artifacts-success-or-skip:
     if: always()
