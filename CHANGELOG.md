@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.32](https://github.com/rokucommunity/roku-debug/compare/0.21.31...v0.21.32) - 2025-04-25
+### Changed
+ - Force `allowHalfOpen` to false on all sockets ([#251](https://github.com/rokucommunity/roku-debug/pull/251))
+ - Added better telnet socket in use detection ([#250](https://github.com/rokucommunity/roku-debug/pull/250))
+ - upgrade to [brighterscript@0.69.7](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0697---2025-04-23). Notable changes since 0.69.6:
+     - Prevent runtime crash for non-referencable funcs in ternary and null coalescing ([brighterscript#1474](https://github.com/rokucommunity/brighterscript/pull/1474))
+     - Fix `removeParameterTypes` compile errors for return types ([brighterscript#1414](https://github.com/rokucommunity/brighterscript/pull/1414))
+
+
+
 ## [0.21.31](https://github.com/rokucommunity/roku-debug/compare/v0.21.30...v0.21.31) - 2025-04-10
 ### Changed
  - Updated usages of socket `addListener` to `on` ([#247](https://github.com/rokucommunity/roku-debug/pull/247))
