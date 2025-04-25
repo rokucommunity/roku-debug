@@ -21,14 +21,10 @@ jobs:
     steps:
         - run: exit 1 #force a failure
 
-  make-release-artifacts-success-or-skip:
+  success-or-skip:
     if: always()
     needs: [run]
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          if [ "${{ needs.run.result }}" == "failure" ]; then
-            echo "Release artifacts job failed!"
-            exit 1
-          fi
-          echo "All good."
+      - run: if [ "${{ needs.run.result }}" = "failure" ]; then exit 1; fi
+
