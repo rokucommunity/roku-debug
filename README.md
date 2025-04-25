@@ -21,9 +21,5 @@ To run the language server standalone, you simply need to:
 - install this project (`npm install roku-debug`)
 - run the project in dap mode (`npx roku-debug --dap`)
 
-
-## Contributors
-[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/0)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/0)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/1)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/1)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/2)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/2)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/3)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/3)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/4)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/4)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/5)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/5)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/6)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/6)[![](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/images/7)](https://sourcerer.io/fame/TwitchBronBron/rokucommunity/roku-debug/links/7)
-
 ## Changelog
 Click [here](CHANGELOG.md) to view the changelog
