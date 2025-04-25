@@ -17,13 +17,9 @@ jobs:
         artifact-paths: "./*.tgz" # "*.vsix"
       secrets: inherit
 
-  noop:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "done"
-
   make-release-artifacts-success-or-skip:
-    needs: [run, noop]
+    if: always()
+    needs: [run]
     runs-on: ubuntu-latest
     steps:
         - run: echo "done"
