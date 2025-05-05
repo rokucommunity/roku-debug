@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.33](https://github.com/rokucommunity/roku-debug/compare/0.21.32...v0.21.33) - 2025-05-05
+### Changed
+ - upgrade to [@rokucommunity/logger@0.3.11](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#0311---2025-05-05). Notable changes since 0.3.10:
+ - upgrade to [brighterscript@0.69.8](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0698---2025-05-05). Notable changes since 0.69.7:
+ - upgrade to [roku-deploy@3.12.5](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3125---2025-05-05). Notable changes since 3.12.4:
+
+
+
 ## [0.21.32](https://github.com/rokucommunity/roku-debug/compare/0.21.31...v0.21.32) - 2025-04-25
 ### Changed
  - Force `allowHalfOpen` to false on all sockets ([#251](https://github.com/rokucommunity/roku-debug/pull/251))
