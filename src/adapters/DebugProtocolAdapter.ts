@@ -457,6 +457,11 @@ export class DebugProtocolAdapter {
                 }
             });
 
+            this.compileClient.on('close', () => {
+                this.logger.log('compileClient socket closed');
+                this.compileClientClosed.tryResolve();
+            });
+
             // connected to telnet. resolve the promise
             deferred.resolve();
         } catch (e) {
@@ -894,13 +899,43 @@ export class DebugProtocolAdapter {
             }
         }
 
+        try {
+            let shutdownTimeMax = this.options?.shutdownTimeout ?? 10_000;
+            await this.destroyCompileClient(shutdownTimeMax);
+        } catch (e) {
+            this.logger.error(e);
+        }
+
         this.cache = undefined;
         this.removeAllListeners();
         this.emitter = undefined;
+    }
 
-        this.compileClient?.removeAllListeners();
-        this.compileClient?.destroy();
-        this.compileClient = undefined;
+    /**
+     * Promise that is resolved when the compile client socket is closed
+     */
+    private compileClientClosed = defer<void>();
+    private isDestroyingCompileClient = false;
+
+    private async destroyCompileClient(timeout: number) {
+        if (this.compileClient && !this.isDestroyingCompileClient) {
+            this.isDestroyingCompileClient = true;
+            this.compileClient?.end();
+
+            //wait for the compileClient to be closed
+            await Promise.race([
+                this.compileClientClosed.promise,
+                util.sleep(timeout)
+            ]);
+
+            this.logger.log('[destroy] compileClient is: ', this.compileClientClosed.isResolved ? 'closed' : 'not closed');
+
+            //destroy the compileClient
+            this.compileClient?.removeAllListeners();
+            this.compileClient?.destroy();
+            this.compileClient = undefined;
+            this.isDestroyingCompileClient = false;
+        }
     }
 
     /**
