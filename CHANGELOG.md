@@ -8,11 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.21.34](https://github.com/rokucommunity/roku-debug/compare/0.21.33...v0.21.34) - 2025-05-12
 ### Changed
- - Shared CI: Remove merged check on publish releases ([#260](https://github.com/rokucommunity/roku-debug/pull/260))
- - Fix telnet-still-in-use issues ([#259](https://github.com/rokucommunity/roku-debug/pull/259))
  - upgrade to [brighterscript@0.69.9](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0699---2025-05-09). Notable changes since 0.69.8:
      - removed no-throw-literal lint rule ([brighterscript#1489](https://github.com/rokucommunity/brighterscript/pull/1489))
      - Add `bsc0` cli binary name ([brighterscript#1490](https://github.com/rokucommunity/brighterscript/pull/1490))
+### Fixed
+ - Fix telnet-still-in-use issues ([#259](https://github.com/rokucommunity/roku-debug/pull/259))
 
 
 
