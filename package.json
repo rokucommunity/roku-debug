@@ -1,6 +1,6 @@
 {
     "name": "roku-debug",
-    "version": "0.21.33",
+    "version": "0.21.34",
     "description": "Debug adapter for Roku application development using Node.js",
     "main": "dist/index.js",
     "scripts": {
@@ -101,7 +101,7 @@
         "@types/request": "^2.48.8",
         "@vscode/debugadapter": "^1.68.0",
         "@vscode/debugprotocol": "^1.68.0",
-        "brighterscript": "^0.69.8",
+        "brighterscript": "^0.69.9",
         "dateformat": "^4.6.3",
         "debounce": "^1.2.1",
         "eol": "^0.9.1",
