@@ -167,15 +167,6 @@ export function pushIfDeviceInfoVariables(adapter: DebugProtocolAdapter, express
     });
 
     pushCustomVariableToContainer(adapter, container, {
-        name: '$isClockValid',
-        type: VariableType.Boolean,
-        presentationHint: { kind: 'virtual', lazy: true },
-        evaluateName: `${expression}.IsClockValid()`,
-        value: '',
-        children: []
-    });
-
-    pushCustomVariableToContainer(adapter, container, {
         name: '$generalMemoryLevel',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
