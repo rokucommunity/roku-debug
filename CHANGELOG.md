@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.21.36](https://github.com/rokucommunity/roku-debug/compare/0.21.35...v0.21.36) - 2025-06-03
+### Changed
+ - upgrade to [brighterscript@0.69.10](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#06910---2025-06-03). Notable changes since 0.69.9:
+ - upgrade to [roku-deploy@3.12.6](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3126---2025-06-03). Notable changes since 3.12.5:
+
+
+
 ## [0.21.35](https://github.com/rokucommunity/roku-debug/compare/0.21.34...v0.21.35) - 2025-05-30
 ### Removed
  - Removed `isClockValid` virtual variable ([#262](https://github.com/rokucommunity/roku-debug/pull/262))
