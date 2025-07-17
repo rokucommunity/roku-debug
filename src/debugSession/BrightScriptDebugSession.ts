@@ -301,9 +301,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
+    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false, ...actions: string[]) {
         this.logger.trace('[showPopupMessage]', severity, message);
-        this.sendEvent(new PopupMessageEvent(message, severity, modal));
+        this.sendEvent(new PopupMessageEvent(message, severity, modal, ...actions));
     }
 
     private static requestIdSequence = 0;
@@ -457,6 +457,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     void this.sendLogOutput(data);
                 });
             }
+
+            this.rokuAdapter.on('telnet-output-timeout', (data: string) => {
+                this.showPopupMessage('No telnet output received for a while. Consider stopping the debug session', 'warn', false, 'Stop Debugging');
+            });
 
             // Send chanperf events to the extension
             this.rokuAdapter.on('chanperf', (output) => {
