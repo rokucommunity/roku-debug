@@ -26,7 +26,7 @@ export class TelnetRequestPipeline {
 
     private emitter = new EventEmitter();
 
-    public on(eventName: 'telnet-output-timeout', handler: () => void);
+    public on(eventName: 'device-unresponsive', handler: () => void);
     public on(eventName: 'console-output', handler: (data: string) => void);
     public on(eventName: 'unhandled-console-output', handler: (data: string) => void);
     public on(eventName: string, handler: (data: any) => void) {
@@ -36,10 +36,10 @@ export class TelnetRequestPipeline {
         };
     }
 
-    public emit(eventName: 'telnet-output-timeout', data: string);
     public emit(eventName: 'console-output', data: string);
     public emit(eventName: 'unhandled-console-output', data: string);
-    public emit(eventName: string, data: any) {
+    public emit(eventName: 'device-unresponsive');
+    public emit(eventName: string, data?: any) {
         //run the event on next tick to avoid timing issues
         process.nextTick(() => {
             this.emitter.emit(eventName, data);
@@ -176,7 +176,7 @@ export class TelnetRequestPipeline {
         this.logger.debug('Setting active device timer\n\n\n');
         this.activeDeviceTimer = setTimeout(() => {
             this.logger.warn('No commands have been executed in a while. Consider stopping the debug session');
-            this.emit('telnet-output-timeout', '');
+            this.emit('device-unresponsive');
         }, 1000 * 5);
     }
 

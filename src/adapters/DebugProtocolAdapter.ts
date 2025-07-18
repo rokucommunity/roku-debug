@@ -95,6 +95,7 @@ export class DebugProtocolAdapter {
     public once(eventName: 'runtime-error'): Promise<BrightScriptRuntimeError>;
     public once(eventName: 'suspend'): Promise<void>;
     public once(eventName: 'start'): Promise<void>;
+    public once(eventname: 'device-unresponsive'): Promise<void>;
     public once(eventname: 'unhandled-console-output'): Promise<string>;
     public once(eventName: string) {
         return new Promise((resolve) => {
@@ -123,8 +124,8 @@ export class DebugProtocolAdapter {
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
     public on(eventName: 'waiting-for-debugger', handler: () => void);
+    public on(eventName: 'device-unresponsive', handler: () => void);
     public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
-    public on(eventname: 'telnet-output-timeout', handler: (data: string) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter?.on(eventName, handler);
         return () => {
@@ -135,7 +136,7 @@ export class DebugProtocolAdapter {
     private emit(eventName: 'suspend');
     private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
-    private emit(eventName: 'app-exit' | 'app-ready' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output' | 'waiting-for-debugger', data?);
+    private emit(eventName: 'app-exit' | 'app-ready' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output' | 'waiting-for-debugger' | 'device-unresponsive', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {

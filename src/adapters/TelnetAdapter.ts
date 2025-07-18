@@ -101,7 +101,7 @@ export class TelnetAdapter {
     public on(eventName: 'suspend', handler: () => void);
     public on(eventName: 'start', handler: () => void);
     public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
-    public on(eventname: 'telnet-output-timeout', handler: (data: string) => void);
+    public on(eventname: 'device-unresponsive', handler: () => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -127,7 +127,7 @@ export class TelnetAdapter {
             'start' |
             'suspend' |
             'unhandled-console-output' |
-            'telnet-output-timeout',
+            'device-unresponsive',
         /* eslint-enable @typescript-eslint/indent */
         data?);
     private emit(eventName: string, data?) {
@@ -392,8 +392,8 @@ export class TelnetAdapter {
                 }
             });
 
-            this.requestPipeline.on('telnet-output-timeout', () => {
-                this.emit('telnet-output-timeout', '');
+            this.requestPipeline.on('device-unresponsive', () => {
+                this.emit('device-unresponsive');
             });
 
             //the adapter is connected and running smoothly. resolve the promise

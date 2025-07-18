@@ -458,8 +458,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             }
 
-            this.rokuAdapter.on('telnet-output-timeout', (data: string) => {
-                this.showPopupMessage('No telnet output received for a while. Consider stopping the debug session', 'warn', false, 'Stop Debugging');
+            this.rokuAdapter.on('device-unresponsive', () => {
+                this.showPopupMessage('No telnet output received for a while. Consider stopping the debug session', 'warn', false, 'Stop Debugger');
             });
 
             // Send chanperf events to the extension
