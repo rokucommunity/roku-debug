@@ -473,10 +473,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             }
 
-            this.rokuAdapter.on('device-unresponsive', () => {
-                const action = 'Stop Debugger';
-                this.showPopupMessage('No telnet output received for a while. Consider stopping the debug session', 'warn', false, action).then(async (response) => {
-                    if (response === action) {
+            this.rokuAdapter.on('device-unresponsive', (data: string) => {
+                const stopDebuggerAction = 'Stop Debugger';
+                const message = `Roku device ${this.launchConfiguration.host} is not responding. A session restart may be needed. Active command:\n
+"${data}".`;
+                this.logger.log(message); // where is this logging?
+                this.showPopupMessage(util.truncate(message, 150), 'warn', false, stopDebuggerAction).then(async (response) => {
+                    if (response === stopDebuggerAction) {
                         await this.shutdown();
                     }
                 }).catch((e) => {
