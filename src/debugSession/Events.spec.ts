@@ -10,7 +10,7 @@ describe('Events', () => {
         expect(isRendezvousEvent(new RendezvousEvent(null))).to.be.true;
         expect(isChanperfEvent(new ChanperfEvent(null))).to.be.true;
         expect(isLaunchStartEvent(new LaunchStartEvent(null))).to.be.true;
-        expect(isPopupMessageEvent(new PopupMessageEvent(null, 'error'))).to.be.true;
+        expect(isPopupMessageEvent(new PopupMessageEvent(null, null, 'error'))).to.be.true;
         expect(isChannelPublishedEvent(new ChannelPublishedEvent(null))).to.be.true;
 
         //not match

@@ -127,9 +127,9 @@ export function isLaunchStartEvent(event: any): event is LaunchStartEvent {
 /**
  * This event indicates that the client should show a popup message with the supplied information
  */
-export class PopupMessageEvent extends CustomEvent<{ message: string; severity: 'error' | 'info' | 'warn'; modal: boolean; actions: string[] }> {
-    constructor(message: string, severity: 'error' | 'info' | 'warn', modal = false, ...actions) {
-        super({ message, severity, modal, actions });
+export class PopupMessageEvent extends CustomEvent<{ requestId: number; message: string; severity: 'error' | 'info' | 'warn'; modal: boolean; actions: string[] }> {
+    constructor(requestId: number, message: string, severity: 'error' | 'info' | 'warn', modal = false, ...actions) {
+        super({ requestId, message, severity, modal, actions });
     }
 }
 

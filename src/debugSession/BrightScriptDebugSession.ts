@@ -301,9 +301,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false, ...actions: string[]) {
-        this.logger.trace('[showPopupMessage]', severity, message);
-        this.sendEvent(new PopupMessageEvent(message, severity, modal, ...actions));
+    private static popupMessageIdSequence = 0;
+    private popupMessageRequests: Record<number, { resolve: (value: boolean) => void; reject: (reason?: any) => void }> = {};
+
+    private async showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false, ...actions: string[]) {
+        const requestId = BrightScriptDebugSession.popupMessageIdSequence++;
+        const responsePromise = new Promise<any>((resolve, reject) => {
+            this.on('popupMessageEventResponse', (response) => {
+                if (response.requestId === requestId) {
+                    if (response.error) {
+                        throw response.error;
+                    } else {
+                        resolve(response.response);
+                    }
+                }
+            });
+        });
+        this.sendEvent(new PopupMessageEvent(requestId, message, severity, modal, ...actions));
+        return responsePromise;
     }
 
     private static requestIdSequence = 0;
@@ -459,7 +474,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             this.rokuAdapter.on('device-unresponsive', () => {
-                this.showPopupMessage('No telnet output received for a while. Consider stopping the debug session', 'warn', false, 'Stop Debugger');
+                const action = 'Stop Debugger';
+                this.showPopupMessage('No telnet output received for a while. Consider stopping the debug session', 'warn', false, action).then(async (response) => {
+                    if (response === action) {
+                        await this.shutdown();
+                    }
+                }).catch((e) => {
+                    this.logger.error('Failed to show popup message', e);
+                });
             });
 
             // Send chanperf events to the extension
@@ -585,7 +607,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         ]);
 
         if (initCompleted === false) {
-            this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn');
+            void this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn');
         }
     }
 
@@ -957,7 +979,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             const packagePath = this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipFilePath(options);
 
-            if (!fsExtra.pathExistsSync(packagePath)) {
+            if (!fsExtra.pathExistsSync(packagePath as string)) {
                 return this.shutdown(`Cancelling debug session. Package does not exist at '${packagePath}'`);
             }
         } else {
@@ -980,6 +1002,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'customRequestEventResponse') {
             this.emit('customRequestEventResponse', args);
+
+        } else if (command === 'popupMessageEventResponse') {
+            this.emit('popupMessageEventResponse', args);
         }
         this.sendResponse(response);
     }
@@ -1149,7 +1174,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     1,
                     1
                 ));
-                this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn');
+                void this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn');
             } else {
                 //ensure the rokuAdapter is loaded
                 await this.getRokuAdapter();
@@ -2257,7 +2282,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 // This stop was due to a breakpoint that we tried to delete, but couldn't.
                 // Now that we are stopped, we can delete it. We won't stop here again unless you re-add the breakpoint. You're welcome.
                 if ((bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
-                    this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info');
+                    void this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info');
                     this.logger.warn(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops`, bp, thread, sourceLocation);
                     break outer;
                 }
@@ -2544,7 +2569,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             if (errorMessage) {
                 this.logger.error(errorMessage);
-                this.showPopupMessage(errorMessage, 'error', modal);
+                void this.showPopupMessage(errorMessage, 'error', modal);
             }
         } catch (e) {
             this.logger.error(e);
