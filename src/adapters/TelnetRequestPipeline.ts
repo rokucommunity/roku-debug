@@ -26,7 +26,7 @@ export class TelnetRequestPipeline {
 
     private emitter = new EventEmitter();
 
-    public on(eventName: 'device-unresponsive', handler: (data: string) => void);
+    public on(eventName: 'device-unresponsive', handler: (data: { lastCommand: string }) => void);
     public on(eventName: 'console-output', handler: (data: string) => void);
     public on(eventName: 'unhandled-console-output', handler: (data: string) => void);
     public on(eventName: string, handler: (data: any) => void) {
@@ -38,7 +38,7 @@ export class TelnetRequestPipeline {
 
     public emit(eventName: 'console-output', data: string);
     public emit(eventName: 'unhandled-console-output', data: string);
-    public emit(eventName: 'device-unresponsive', data: string);
+    public emit(eventName: 'device-unresponsive', data: { lastCommand: string });
     public emit(eventName: string, data?: any) {
         //run the event on next tick to avoid timing issues
         process.nextTick(() => {
@@ -176,7 +176,7 @@ export class TelnetRequestPipeline {
         this.logger.debug('Setting active device timer\n\n\n');
         this.activeDeviceTimer = setTimeout(() => {
             this.logger.warn('No commands have been executed in a while. Consider stopping the debug session');
-            this.emit('device-unresponsive', this.activeCommand?.commandText || 'No active command');
+            this.emit('device-unresponsive', { lastCommand: this.activeCommand?.commandText || 'No active command' });
         }, 1000 * 5);
     }
 
@@ -223,8 +223,8 @@ export class TelnetRequestPipeline {
             } else {
                 logger.log('waitForCommand is false, so do not set as active command');
             }
-            //run the command. the on('data') event will handle launching the next command once this one has finished processing
             this.setActiveDeviceTimer();
+            //run the command. the on('data') event will handle launching the next command once this one has finished processing
             command.execute();
         }
     }

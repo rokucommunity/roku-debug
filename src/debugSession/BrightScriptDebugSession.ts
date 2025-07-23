@@ -457,9 +457,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             }
 
-            this.rokuAdapter.on('device-unresponsive', async (data: string) => {
+            this.rokuAdapter.on('device-unresponsive', async (data: { lastCommand: string }) => {
                 const stopDebuggerAction = 'Stop Debugger';
-                const message = `Roku device ${this.launchConfiguration.host} is not responding. A session restart may be needed. Active command:\n"${util.truncate(data, 30)}".`;
+                const message = `Roku device ${this.launchConfiguration.host} is not responding. A session restart may be needed. Active command:\n"${util.truncate(data.lastCommand, 30)}".`;
                 this.logger.log(message, data);
                 const response = await this.showPopupMessage(message, 'warn', false, [stopDebuggerAction]);
                 if (response === stopDebuggerAction) {

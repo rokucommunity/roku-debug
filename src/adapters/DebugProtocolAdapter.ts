@@ -124,7 +124,7 @@ export class DebugProtocolAdapter {
     public on(eventName: 'suspend', handler: () => any);
     public on(eventName: 'start', handler: () => any);
     public on(eventName: 'waiting-for-debugger', handler: () => any);
-    public on(eventName: 'device-unresponsive', handler: (data: string) => any);
+    public on(eventName: 'device-unresponsive', handler: (data: { lastCommand: string }) => any);
     public on(eventname: 'unhandled-console-output', handler: (output: string) => any);
     public on(eventName: string, handler: (payload: any) => any) {
         this.emitter?.on(eventName, handler);
