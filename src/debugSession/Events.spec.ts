@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { isDiagnosticsEvent, DiagnosticsEvent, isLogOutputEvent, LogOutputEvent, isDebugServerLogOutputEvent, DebugServerLogOutputEvent, isRendezvousEvent, RendezvousEvent, isChanperfEvent, ChanperfEvent, isLaunchStartEvent, LaunchStartEvent, isPopupMessageEvent, PopupMessageEvent, isChannelPublishedEvent, ChannelPublishedEvent } from './Events';
+import { isDiagnosticsEvent, DiagnosticsEvent, isLogOutputEvent, LogOutputEvent, isDebugServerLogOutputEvent, DebugServerLogOutputEvent, isRendezvousEvent, RendezvousEvent, isChanperfEvent, ChanperfEvent, isLaunchStartEvent, LaunchStartEvent, isChannelPublishedEvent, ChannelPublishedEvent } from './Events';
 
 describe('Events', () => {
     it('is* methods work properly', () => {
@@ -10,7 +10,6 @@ describe('Events', () => {
         expect(isRendezvousEvent(new RendezvousEvent(null))).to.be.true;
         expect(isChanperfEvent(new ChanperfEvent(null))).to.be.true;
         expect(isLaunchStartEvent(new LaunchStartEvent(null))).to.be.true;
-        expect(isPopupMessageEvent(new PopupMessageEvent(null, null, 'error'))).to.be.true;
         expect(isChannelPublishedEvent(new ChannelPublishedEvent(null))).to.be.true;
 
         //not match
@@ -20,7 +19,6 @@ describe('Events', () => {
         expect(isRendezvousEvent(null)).to.be.false;
         expect(isChanperfEvent(null)).to.be.false;
         expect(isLaunchStartEvent(null)).to.be.false;
-        expect(isPopupMessageEvent(null)).to.be.false;
         expect(isChannelPublishedEvent(null)).to.be.false;
     });
 });

@@ -37,7 +37,6 @@ import {
     ChanperfEvent,
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
-    PopupMessageEvent,
     CustomRequestEvent,
     ClientToServerCustomEventName
 } from './Events';
@@ -301,37 +300,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    private static popupMessageIdSequence = 0;
-    private popupMessageRequests: Record<number, { resolve: (value: boolean) => void; reject: (reason?: any) => void }> = {};
-
-    private async showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false, ...actions: string[]) {
-        const requestId = BrightScriptDebugSession.popupMessageIdSequence++;
-        const responsePromise = new Promise<any>((resolve, reject) => {
-            this.on('popupMessageEventResponse', (response) => {
-                if (response.requestId === requestId) {
-                    if (response.error) {
-                        throw response.error;
-                    } else {
-                        resolve(response.response);
-                    }
-                }
-            });
-        });
-        this.sendEvent(new PopupMessageEvent(requestId, message, severity, modal, ...actions));
-        return responsePromise;
+    private async showPopupMessage<T extends string>(message: string, severity: 'error' | 'warn' | 'info', modal = false, actions?: T[]): Promise<T> {
+        const response = await this.sendCustomRequest('showPopupMessage', { message: message, severity: severity, modal: modal, actions: actions });
+        return response.selectedAction;
     }
 
     private static requestIdSequence = 0;
 
-    private async sendCustomRequest<T = any>(name: string, data: T) {
+    private async sendCustomRequest<T = any, R = any>(name: string, data: T): Promise<R> {
         const requestId = BrightScriptDebugSession.requestIdSequence++;
-        const responsePromise = new Promise<any>((resolve, reject) => {
+        const responsePromise = new Promise<R>((resolve, reject) => {
             this.on(ClientToServerCustomEventName.customRequestEventResponse, (response) => {
                 if (response.requestId === requestId) {
                     if (response.error) {
                         throw response.error;
                     } else {
-                        resolve(response);
+                        resolve(response as R);
                     }
                 }
             });
@@ -342,7 +326,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 name: name,
                 ...data ?? {}
             }));
-        await responsePromise;
+        return responsePromise;
     }
 
     /**
@@ -473,18 +457,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             }
 
-            this.rokuAdapter.on('device-unresponsive', (data: string) => {
+            this.rokuAdapter.on('device-unresponsive', async (data: string) => {
                 const stopDebuggerAction = 'Stop Debugger';
-                const message = `Roku device ${this.launchConfiguration.host} is not responding. A session restart may be needed. Active command:\n
-"${data}".`;
-                this.logger.log(message); // where is this logging?
-                this.showPopupMessage(util.truncate(message, 150), 'warn', false, stopDebuggerAction).then(async (response) => {
-                    if (response === stopDebuggerAction) {
-                        await this.shutdown();
-                    }
-                }).catch((e) => {
-                    this.logger.error('Failed to show popup message', e);
-                });
+                const message = `Roku device ${this.launchConfiguration.host} is not responding. A session restart may be needed. Active command:\n"${util.truncate(data, 30)}".`;
+                this.logger.log(message, data);
+                const response = await this.showPopupMessage(message, 'warn', false, [stopDebuggerAction]);
+                if (response === stopDebuggerAction) {
+                    await this.shutdown();
+                }
             });
 
             // Send chanperf events to the extension

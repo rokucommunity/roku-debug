@@ -90,19 +90,19 @@ export class TelnetAdapter {
      * @param eventName
      * @param handler
      */
-    public on(eventName: 'cannot-continue', handler: () => void);
-    public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
-    public on(eventName: 'close', handler: () => void);
-    public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
-    public on(eventName: 'connected', handler: (params: boolean) => void);
-    public on(eventname: 'console-output', handler: (output: string) => void);
-    public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
-    public on(eventName: 'suspend', handler: () => void);
-    public on(eventName: 'start', handler: () => void);
-    public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
-    public on(eventname: 'device-unresponsive', handler: (data: string) => void);
-    public on(eventName: string, handler: (payload: any) => void) {
+    public on(eventName: 'cannot-continue', handler: () => any);
+    public on(eventname: 'chanperf', handler: (output: ChanperfData) => any);
+    public on(eventName: 'close', handler: () => any);
+    public on(eventName: 'app-exit', handler: () => any);
+    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => any);
+    public on(eventName: 'connected', handler: (params: boolean) => any);
+    public on(eventname: 'console-output', handler: (output: string) => any);
+    public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => any);
+    public on(eventName: 'suspend', handler: () => any);
+    public on(eventName: 'start', handler: () => any);
+    public on(eventname: 'unhandled-console-output', handler: (output: string) => any);
+    public on(eventname: 'device-unresponsive', handler: (data: string) => any);
+    public on(eventName: string, handler: (payload: any) => any) {
         this.emitter.on(eventName, handler);
         return () => {
             if (this.emitter !== undefined) {
