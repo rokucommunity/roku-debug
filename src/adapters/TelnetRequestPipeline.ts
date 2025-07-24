@@ -175,8 +175,8 @@ export class TelnetRequestPipeline {
 
         this.logger.debug('Setting active device timer\n\n\n');
         this.activeDeviceTimer = setTimeout(() => {
-            this.logger.warn('No commands have been executed in a while. Consider stopping the debug session');
-            this.emit('device-unresponsive', { lastCommand: this.activeCommand?.commandText || 'No active command' });
+            this.logger.warn(`The device hasn't sent any output in a while even though we're currently still running a command`);
+            this.emit('device-unresponsive', { lastCommand: this.activeCommand?.commandText });
         }, 1000 * 5);
     }
 
