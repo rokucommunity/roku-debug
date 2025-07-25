@@ -57,6 +57,7 @@ import { globalCallables } from 'brighterscript/dist/globalCallables';
 import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
 import { AppState, rokuECP } from '../RokuECP';
+import { SocketConnectionInUseError } from '../Exceptions';
 
 const diagnosticSource = 'roku-debug';
 
@@ -538,33 +539,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } else {
                 throw error;
             }
+
+            //at this point, the project has been deployed. If we need to use a deep link, launch it now.
+            if (this.launchConfiguration.deepLinkUrl) {
+                //wait until the first entry breakpoint has been hit
+                await this.firstRunDeferred.promise;
+                //if we are at a breakpoint, continue
+                await this.rokuAdapter.continue();
+                //kill the app on the roku
+                // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                //convert a hostname to an ip address
+                const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
+                //send the deep link http request
+                await util.httpPost(deepLinkUrl);
+            }
+
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
             if (!(e instanceof CompileError)) {
                 util.log('Encountered an issue during the publish process');
                 util.log((e as Error)?.stack);
-                this.sendErrorResponse(response, -1, (e as Error)?.stack);
 
                 //send any compile errors to the client
                 await this.rokuAdapter?.sendErrors();
+
+                const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
+                await this.shutdown(message as string, true);
             }
         }
 
         logEnd();
-
-        //at this point, the project has been deployed. If we need to use a deep link, launch it now.
-        if (this.launchConfiguration.deepLinkUrl) {
-            //wait until the first entry breakpoint has been hit
-            await this.firstRunDeferred.promise;
-            //if we are at a breakpoint, continue
-            await this.rokuAdapter.continue();
-            //kill the app on the roku
-            // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-            //convert a hostname to an ip address
-            const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
-            //send the deep link http request
-            await util.httpPost(deepLinkUrl);
-        }
     }
 
     /**
@@ -2541,7 +2545,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async shutdown(errorMessage?: string, modal = false): Promise<void> {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
-            this.shutdownPromise = this._shutdown(errorMessage);
+            this.shutdownPromise = this._shutdown(errorMessage, modal);
         } else {
             this.logger.log('[shutdown] Tried to call `.shutdown()` again. Returning the same promise');
         }
