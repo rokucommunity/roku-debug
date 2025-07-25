@@ -70,7 +70,7 @@ export class TelnetRequestPipeline {
         const logger = this.logger.createLogger(`[${TelnetRequestPipeline.prototype.handleData.name}]`);
         logger.debug('Raw telnet data', { data }, util.fence(data));
 
-        if (this.commands.length > 0) {
+        if (this.isProcessing) {
             this.setActiveDeviceTimer();
         }
 
@@ -205,7 +205,7 @@ export class TelnetRequestPipeline {
             this.activeCommand = undefined;
         }
 
-        if (this.commands.length === 0) {
+        if (this.commands.length === 0 && !this.isProcessing) {
             this.clearActiveDeviceTimer();
             return logger.info('No commands to process');
         }
