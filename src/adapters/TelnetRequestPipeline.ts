@@ -70,6 +70,10 @@ export class TelnetRequestPipeline {
         const logger = this.logger.createLogger(`[${TelnetRequestPipeline.prototype.handleData.name}]`);
         logger.debug('Raw telnet data', { data }, util.fence(data));
 
+        if (this.commands.length > 0) {
+            this.setActiveDeviceTimer();
+        }
+
         this.buffer += data;
         //if the buffer was split, wait for more incoming data
         if (!this.buffer.endsWith('\n') && !util.endsWithDebuggerPrompt(this.buffer) && !util.endsWithThreadAttachedText(this.buffer)) {
@@ -168,6 +172,7 @@ export class TelnetRequestPipeline {
     }
 
     private activeDeviceTimer: NodeJS.Timeout | undefined = undefined;
+    private activeDeviceTimeout = 1000 * 5;
     private setActiveDeviceTimer() {
         if (this.activeDeviceTimer) {
             clearTimeout(this.activeDeviceTimer);
@@ -177,7 +182,7 @@ export class TelnetRequestPipeline {
         this.activeDeviceTimer = setTimeout(() => {
             this.logger.warn(`The device hasn't sent any output in a while even though we're currently still running a command`);
             this.emit('device-unresponsive', { lastCommand: this.activeCommand?.commandText });
-        }, 1000 * 5);
+        }, this.activeDeviceTimeout);
     }
 
     private clearActiveDeviceTimer() {
