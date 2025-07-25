@@ -125,22 +125,6 @@ export function isLaunchStartEvent(event: any): event is LaunchStartEvent {
 }
 
 /**
- * This event indicates that the client should show a popup message with the supplied information
- */
-export class PopupMessageEvent extends CustomEvent<{ message: string; severity: 'error' | 'info' | 'warn'; modal: boolean }> {
-    constructor(message: string, severity: 'error' | 'info' | 'warn', modal = false) {
-        super({ message, severity, modal });
-    }
-}
-
-/**
- * Is the object a `PopupMessageEvent`
- */
-export function isPopupMessageEvent(event: any): event is PopupMessageEvent {
-    return !!event && event.event === PopupMessageEvent.name;
-}
-
-/**
  * Emitted once the channel has been sideloaded to the channel and the session is ready to start actually debugging.
  */
 export class ChannelPublishedEvent extends CustomEvent<{ launchConfiguration: LaunchConfiguration }> {
@@ -176,6 +160,10 @@ export function isCustomRequestEvent(event: any): event is CustomRequestEvent {
 
 export function isExecuteTaskCustomRequest(event: any): event is CustomRequestEvent<{ task: string }> {
     return !!event && event.event === CustomRequestEvent.name && event.body.name === 'executeTask';
+}
+
+export function isShowPopupMessageCustomRequest(event: any): event is CustomRequestEvent<{ message: string; severity: 'error' | 'warn' | 'info'; modal: boolean; actions: string[] }> {
+    return !!event && event.event === CustomRequestEvent.name && event.body.name === 'showPopupMessage';
 }
 
 export enum ClientToServerCustomEventName {
