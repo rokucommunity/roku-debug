@@ -1245,9 +1245,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.variables[localsRefId] = v;
             }
 
-            const frame = this.rokuAdapter.getStackFrameById(args.frameId);
-            const scopeRange = await this.projectManager.getScopeRange(frame.filePath, { line: frame.lineNumber - 1, character: 0 });
-
             let localScope: DebugProtocol.Scope = {
                 name: 'Local',
                 variablesReference: v.variablesReference,
@@ -1256,11 +1253,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 presentationHint: 'locals'
             };
 
-            if (scopeRange) {
-                localScope.line = this.toClientLine(scopeRange.start.line - 1);
-                localScope.column = this.toClientColumn(scopeRange.start.column);
-                localScope.endLine = this.toClientLine(scopeRange.end.line - 1);
-                localScope.endColumn = this.toClientColumn(scopeRange.end.column);
+            const frame = this.rokuAdapter.getStackFrameById(args.frameId);
+            if (frame) {
+                const scopeRange = await this.projectManager.getScopeRange(frame.filePath, { line: frame.lineNumber - 1, character: 0 });
+
+                if (scopeRange) {
+                    localScope.line = this.toClientLine(scopeRange.start.line - 1);
+                    localScope.column = this.toClientColumn(scopeRange.start.column);
+                    localScope.endLine = this.toClientLine(scopeRange.end.line - 1);
+                    localScope.endColumn = this.toClientColumn(scopeRange.end.column);
+                }
             }
 
             scopes.push(localScope);

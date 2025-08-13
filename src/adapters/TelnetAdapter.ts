@@ -455,19 +455,19 @@ export class TelnetAdapter {
      */
     public stepOver() {
         this.logger.log('stepOver');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('over', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepInto() {
         this.logger.log('stepInto');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('step', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepOut() {
         this.logger.log('stepOut');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('out', { waitForPrompt: false, insertAtFront: true });
 
     }
@@ -477,7 +477,7 @@ export class TelnetAdapter {
      */
     public continue() {
         this.logger.log('continue');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
     }
 
@@ -486,7 +486,7 @@ export class TelnetAdapter {
      */
     public pause() {
         this.logger.log('pause');
-        this.clearCache();
+        this.clearCache(true);
         //send the kill signal, which breaks into debugger mode. This gets written immediately, regardless of debugger prompt status.
         this.requestPipeline.write('\x03;');
     }
@@ -494,11 +494,13 @@ export class TelnetAdapter {
     /**
      * Clears the state, which means that everything will be retrieved fresh next time it is requested
      */
-    public clearCache() {
+    public clearCache(clearStackFrameCache = false) {
         this.logger.info('Clearing TelnetAdapter cache');
         this.cache = {};
-        this.stackFramesCache = {};
         this.isAtDebuggerPrompt = false;
+        if (clearStackFrameCache) {
+            this.stackFramesCache = {};
+        }
     }
 
     /**
