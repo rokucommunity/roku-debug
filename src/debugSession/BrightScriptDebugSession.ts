@@ -1773,7 +1773,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let arrayVarName = this.tempVarPrefix + 'eval';
             let command = '';
             if (varIndex === 0) {
-                command += `if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []\n`;
+                await this.rokuAdapter.evaluate(`if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []\n`, args.frameId);
             }
             let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
             returnVal.evalArgs.expression = `${arrayVarName}[${varIndex}]`;
