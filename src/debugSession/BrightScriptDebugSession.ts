@@ -595,7 +595,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         ]);
 
         if (initCompleted === false) {
-            void this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn');
+            this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn').catch((error) => {
+                this.logger.error('Error showing popup message', { error });
+            });
         }
     }
 
@@ -1162,7 +1164,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     1,
                     1
                 ));
-                void this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn');
+                this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn').catch((error) => {
+                    this.logger.error('Error showing popup message', { error });
+                });
             } else {
                 //ensure the rokuAdapter is loaded
                 await this.getRokuAdapter();
@@ -2272,7 +2276,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 // This stop was due to a breakpoint that we tried to delete, but couldn't.
                 // Now that we are stopped, we can delete it. We won't stop here again unless you re-add the breakpoint. You're welcome.
                 if ((bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
-                    void this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info');
+                    this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info').catch((error) => {
+                        this.logger.error('Error showing popup message', { error });
+                    });
                     this.logger.warn(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops`, bp, thread, sourceLocation);
                     break outer;
                 }
@@ -2559,7 +2565,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             if (errorMessage) {
                 this.logger.error(errorMessage);
-                void this.showPopupMessage(errorMessage, 'error', modal);
+                this.showPopupMessage(errorMessage, 'error', modal).catch((error) => {
+                    this.logger.error('Error showing popup message', { error });
+                });
             }
         } catch (e) {
             this.logger.error(e);
