@@ -415,13 +415,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let error: Error;
         this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
-            const start = Date.now();
+            const packageEnd = this.logger.timeStart('log', 'Packaging');
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
                 this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
-            this.logger.log(`Packaging projects took: ${(util.formatTime(Date.now() - start))}`);
+            packageEnd();
 
             if (this.enableDebugProtocol) {
                 util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.launchConfiguration.host}:${this.launchConfiguration.controlPort}`);
@@ -431,13 +431,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             //activate rendezvous tracking (if enabled). Log the error and move on if it crashes, this shouldn't bring down the session.
             try {
+                const rendezvousEnd = this.logger.timeStart('log', 'Rendezvous tracking');
                 await this.initRendezvousTracking();
+                rendezvousEnd();
             } catch (e) {
                 this.logger.error('Failed to initialize rendezvous tracking', e);
             }
 
+            const connectAdapterEnd = this.logger.timeStart('log', 'Connect adapter');
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();
+            connectAdapterEnd();
 
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
@@ -656,8 +660,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async publish() {
-        this.logger.log('Uploading zip');
-        const start = Date.now();
+        const uploadingEnd = this.logger.timeStart('log', 'Uploading zip');
         let packageIsPublished = false;
 
         //delete any currently installed dev channel (if enabled to do so)
@@ -712,7 +715,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         await publishPromise;
 
-        this.logger.log(`Uploading zip took ${Date.now() - start}ms`);
+        uploadingEnd();
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 5 seconds, it probably will never connect.
