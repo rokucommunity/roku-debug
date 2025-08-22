@@ -37,7 +37,6 @@ import {
     ChanperfEvent,
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
-    PopupMessageEvent,
     CustomRequestEvent,
     ClientToServerCustomEventName
 } from './Events';
@@ -58,6 +57,7 @@ import { globalCallables } from 'brighterscript/dist/globalCallables';
 import { bscProjectWorkerPool } from '../bsc/threading/BscProjectWorkerPool';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
 import { AppState, rokuECP } from '../RokuECP';
+import { SocketConnectionInUseError } from '../Exceptions';
 
 const diagnosticSource = 'roku-debug';
 
@@ -301,22 +301,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
-    private showPopupMessage(message: string, severity: 'error' | 'warn' | 'info', modal = false) {
-        this.logger.trace('[showPopupMessage]', severity, message);
-        this.sendEvent(new PopupMessageEvent(message, severity, modal));
+    private async showPopupMessage<T extends string>(message: string, severity: 'error' | 'warn' | 'info', modal = false, actions?: T[]): Promise<T> {
+        const response = await this.sendCustomRequest('showPopupMessage', { message: message, severity: severity, modal: modal, actions: actions });
+        return response.selectedAction;
     }
 
     private static requestIdSequence = 0;
 
-    private async sendCustomRequest<T = any>(name: string, data: T) {
+    private async sendCustomRequest<T = any, R = any>(name: string, data: T): Promise<R> {
         const requestId = BrightScriptDebugSession.requestIdSequence++;
-        const responsePromise = new Promise<any>((resolve, reject) => {
+        const responsePromise = new Promise<R>((resolve, reject) => {
             this.on(ClientToServerCustomEventName.customRequestEventResponse, (response) => {
                 if (response.requestId === requestId) {
                     if (response.error) {
                         throw response.error;
                     } else {
-                        resolve(response);
+                        resolve(response as R);
                     }
                 }
             });
@@ -327,7 +327,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 name: name,
                 ...data ?? {}
             }));
-        await responsePromise;
+        return responsePromise;
     }
 
     /**
@@ -462,6 +462,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 });
             }
 
+            this.rokuAdapter.on('device-unresponsive', async (data: { lastCommand: string }) => {
+                const stopDebuggerAction = 'Stop Debugger';
+                const message = `Roku device ${this.launchConfiguration.host} is not responding and may not recover.` +
+                    (data.lastCommand ? `\n\nActive command:\n"${util.truncate(data.lastCommand, 30)}"` : '');
+                this.logger.log(message, data);
+                const response = await this.showPopupMessage(message, 'warn', false, [stopDebuggerAction]);
+                if (response === stopDebuggerAction) {
+                    await this.shutdown();
+                }
+            });
+
             // Send chanperf events to the extension
             this.rokuAdapter.on('chanperf', (output) => {
                 this.sendEvent(new ChanperfEvent(output));
@@ -532,33 +543,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } else {
                 throw error;
             }
+
+            //at this point, the project has been deployed. If we need to use a deep link, launch it now.
+            if (this.launchConfiguration.deepLinkUrl) {
+                //wait until the first entry breakpoint has been hit
+                await this.firstRunDeferred.promise;
+                //if we are at a breakpoint, continue
+                await this.rokuAdapter.continue();
+                //kill the app on the roku
+                // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                //convert a hostname to an ip address
+                const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
+                //send the deep link http request
+                await util.httpPost(deepLinkUrl);
+            }
+
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
             if (!(e instanceof CompileError)) {
                 util.log('Encountered an issue during the publish process');
                 util.log((e as Error)?.stack);
-                this.sendErrorResponse(response, -1, (e as Error)?.stack);
 
                 //send any compile errors to the client
                 await this.rokuAdapter?.sendErrors();
+
+                const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
+                await this.shutdown(message as string, true);
             }
         }
 
         logEnd();
-
-        //at this point, the project has been deployed. If we need to use a deep link, launch it now.
-        if (this.launchConfiguration.deepLinkUrl) {
-            //wait until the first entry breakpoint has been hit
-            await this.firstRunDeferred.promise;
-            //if we are at a breakpoint, continue
-            await this.rokuAdapter.continue();
-            //kill the app on the roku
-            // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-            //convert a hostname to an ip address
-            const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
-            //send the deep link http request
-            await util.httpPost(deepLinkUrl);
-        }
     }
 
     /**
@@ -585,7 +599,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         ]);
 
         if (initCompleted === false) {
-            this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn');
+            this.showPopupMessage(`Rendezvous tracking timed out after ${timeout}ms. Consider setting "rendezvousTracking": false in launch.json`, 'warn').catch((error) => {
+                this.logger.error('Error showing popup message', { error });
+            });
         }
     }
 
@@ -956,7 +972,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             const packagePath = this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipFilePath(options);
 
-            if (!fsExtra.pathExistsSync(packagePath)) {
+            if (!fsExtra.pathExistsSync(packagePath as string)) {
                 return this.shutdown(`Cancelling debug session. Package does not exist at '${packagePath}'`);
             }
         } else {
@@ -979,6 +995,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'customRequestEventResponse') {
             this.emit('customRequestEventResponse', args);
+
+        } else if (command === 'popupMessageEventResponse') {
+            this.emit('popupMessageEventResponse', args);
         }
         this.sendResponse(response);
     }
@@ -1148,7 +1167,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     1,
                     1
                 ));
-                this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn');
+                this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn').catch((error) => {
+                    this.logger.error('Error showing popup message', { error });
+                });
             } else {
                 //ensure the rokuAdapter is loaded
                 await this.getRokuAdapter();
@@ -1231,9 +1252,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.variables[localsRefId] = v;
             }
 
-            const frame = this.rokuAdapter.getStackFrameById(args.frameId);
-            const scopeRange = await this.projectManager.getScopeRange(frame.filePath, { line: frame.lineNumber - 1, character: 0 });
-
             let localScope: DebugProtocol.Scope = {
                 name: 'Local',
                 variablesReference: v.variablesReference,
@@ -1242,11 +1260,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 presentationHint: 'locals'
             };
 
-            if (scopeRange) {
-                localScope.line = this.toClientLine(scopeRange.start.line - 1);
-                localScope.column = this.toClientColumn(scopeRange.start.column);
-                localScope.endLine = this.toClientLine(scopeRange.end.line - 1);
-                localScope.endColumn = this.toClientColumn(scopeRange.end.column);
+            const frame = this.rokuAdapter.getStackFrameById(args.frameId);
+            if (frame) {
+                const scopeRange = await this.projectManager.getScopeRange(frame.filePath, { line: frame.lineNumber - 1, character: 0 });
+
+                if (scopeRange) {
+                    localScope.line = this.toClientLine(scopeRange.start.line - 1);
+                    localScope.column = this.toClientColumn(scopeRange.start.column);
+                    localScope.endLine = this.toClientLine(scopeRange.end.line - 1);
+                    localScope.endColumn = this.toClientColumn(scopeRange.end.column);
+                }
             }
 
             scopes.push(localScope);
@@ -1759,7 +1782,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let arrayVarName = this.tempVarPrefix + 'eval';
             let command = '';
             if (varIndex === 0) {
-                command += `if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []\n`;
+                await this.rokuAdapter.evaluate(`if type(${arrayVarName}) = "<uninitialized>" then ${arrayVarName} = []\n`, args.frameId);
             }
             let statement = `${arrayVarName}[${varIndex}] = ${args.expression}`;
             returnVal.evalArgs.expression = `${arrayVarName}[${varIndex}]`;
@@ -2256,7 +2279,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 // This stop was due to a breakpoint that we tried to delete, but couldn't.
                 // Now that we are stopped, we can delete it. We won't stop here again unless you re-add the breakpoint. You're welcome.
                 if ((bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
-                    this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info');
+                    this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info').catch((error) => {
+                        this.logger.error('Error showing popup message', { error });
+                    });
                     this.logger.warn(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops`, bp, thread, sourceLocation);
                     break outer;
                 }
@@ -2531,7 +2556,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async shutdown(errorMessage?: string, modal = false): Promise<void> {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
-            this.shutdownPromise = this._shutdown(errorMessage);
+            this.shutdownPromise = this._shutdown(errorMessage, modal);
         } else {
             this.logger.log('[shutdown] Tried to call `.shutdown()` again. Returning the same promise');
         }
@@ -2543,7 +2568,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             if (errorMessage) {
                 this.logger.error(errorMessage);
-                this.showPopupMessage(errorMessage, 'error', modal);
+                this.showPopupMessage(errorMessage, 'error', modal).catch((error) => {
+                    this.logger.error('Error showing popup message', { error });
+                });
             }
         } catch (e) {
             this.logger.error(e);

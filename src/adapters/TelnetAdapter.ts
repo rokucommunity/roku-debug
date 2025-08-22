@@ -90,18 +90,19 @@ export class TelnetAdapter {
      * @param eventName
      * @param handler
      */
-    public on(eventName: 'cannot-continue', handler: () => void);
-    public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
-    public on(eventName: 'close', handler: () => void);
-    public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
-    public on(eventName: 'connected', handler: (params: boolean) => void);
-    public on(eventname: 'console-output', handler: (output: string) => void);
-    public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
-    public on(eventName: 'suspend', handler: () => void);
-    public on(eventName: 'start', handler: () => void);
-    public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
-    public on(eventName: string, handler: (payload: any) => void) {
+    public on(eventName: 'cannot-continue', handler: () => any);
+    public on(eventname: 'chanperf', handler: (output: ChanperfData) => any);
+    public on(eventName: 'close', handler: () => any);
+    public on(eventName: 'app-exit', handler: () => any);
+    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => any);
+    public on(eventName: 'connected', handler: (params: boolean) => any);
+    public on(eventname: 'console-output', handler: (output: string) => any);
+    public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => any);
+    public on(eventName: 'suspend', handler: () => any);
+    public on(eventName: 'start', handler: () => any);
+    public on(eventname: 'device-unresponsive', handler: (data: { lastCommand: string }) => any);
+    public on(eventname: 'unhandled-console-output', handler: (output: string) => any);
+    public on(eventName: string, handler: (payload: any) => any) {
         this.emitter.on(eventName, handler);
         return () => {
             if (this.emitter !== undefined) {
@@ -125,7 +126,8 @@ export class TelnetAdapter {
             'runtime-error' |
             'start' |
             'suspend' |
-            'unhandled-console-output',
+            'unhandled-console-output' |
+            'device-unresponsive',
         /* eslint-enable @typescript-eslint/indent */
         data?);
     private emit(eventName: string, data?) {
@@ -390,6 +392,10 @@ export class TelnetAdapter {
                 }
             });
 
+            this.requestPipeline.on('device-unresponsive', (data: { lastCommand: string }) => {
+                this.emit('device-unresponsive', data);
+            });
+
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();
         } catch (e) {
@@ -449,19 +455,19 @@ export class TelnetAdapter {
      */
     public stepOver() {
         this.logger.log('stepOver');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('over', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepInto() {
         this.logger.log('stepInto');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('step', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepOut() {
         this.logger.log('stepOut');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('out', { waitForPrompt: false, insertAtFront: true });
 
     }
@@ -471,7 +477,7 @@ export class TelnetAdapter {
      */
     public continue() {
         this.logger.log('continue');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
     }
 
@@ -480,7 +486,7 @@ export class TelnetAdapter {
      */
     public pause() {
         this.logger.log('pause');
-        this.clearCache();
+        this.clearCache(true);
         //send the kill signal, which breaks into debugger mode. This gets written immediately, regardless of debugger prompt status.
         this.requestPipeline.write('\x03;');
     }
@@ -488,11 +494,13 @@ export class TelnetAdapter {
     /**
      * Clears the state, which means that everything will be retrieved fresh next time it is requested
      */
-    public clearCache() {
+    public clearCache(clearStackFrameCache = false) {
         this.logger.info('Clearing TelnetAdapter cache');
         this.cache = {};
-        this.stackFramesCache = {};
         this.isAtDebuggerPrompt = false;
+        if (clearStackFrameCache) {
+            this.stackFramesCache = {};
+        }
     }
 
     /**

@@ -618,6 +618,13 @@ class Util {
         }
     }
 
+    public truncate(value: string, maxLength: number): string {
+        if (value.length > maxLength) {
+            return value.substring(0, maxLength - 3) + '...';
+        }
+        return value;
+    }
+
 }
 
 export function defer<T>() {

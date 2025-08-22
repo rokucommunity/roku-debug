@@ -26,6 +26,7 @@ export class TelnetRequestPipeline {
 
     private emitter = new EventEmitter();
 
+    public on(eventName: 'device-unresponsive', handler: (data: { lastCommand: string }) => void);
     public on(eventName: 'console-output', handler: (data: string) => void);
     public on(eventName: 'unhandled-console-output', handler: (data: string) => void);
     public on(eventName: string, handler: (data: any) => void) {
@@ -37,7 +38,8 @@ export class TelnetRequestPipeline {
 
     public emit(eventName: 'console-output', data: string);
     public emit(eventName: 'unhandled-console-output', data: string);
-    public emit(eventName: string, data: any) {
+    public emit(eventName: 'device-unresponsive', data: { lastCommand: string });
+    public emit(eventName: string, data?: any) {
         //run the event on next tick to avoid timing issues
         process.nextTick(() => {
             this.emitter.emit(eventName, data);
@@ -67,6 +69,10 @@ export class TelnetRequestPipeline {
     private handleData(data: string) {
         const logger = this.logger.createLogger(`[${TelnetRequestPipeline.prototype.handleData.name}]`);
         logger.debug('Raw telnet data', { data }, util.fence(data));
+
+        if (this.isProcessing) {
+            this.setActiveDeviceTimer();
+        }
 
         this.buffer += data;
         //if the buffer was split, wait for more incoming data
@@ -165,6 +171,27 @@ export class TelnetRequestPipeline {
         return command.promise;
     }
 
+    private activeDeviceTimer: NodeJS.Timeout | undefined = undefined;
+    private activeDeviceTimeout = 1000 * 5;
+    private setActiveDeviceTimer() {
+        if (this.activeDeviceTimer) {
+            clearTimeout(this.activeDeviceTimer);
+        }
+
+        this.logger.debug('Setting active device timer\n\n\n');
+        this.activeDeviceTimer = setTimeout(() => {
+            this.logger.warn(`The device hasn't sent any output in a while even though we're currently still running a command`);
+            this.emit('device-unresponsive', { lastCommand: this.activeCommand?.commandText });
+        }, this.activeDeviceTimeout);
+    }
+
+    private clearActiveDeviceTimer() {
+        if (this.activeDeviceTimer) {
+            clearTimeout(this.activeDeviceTimer);
+            this.activeDeviceTimer = undefined;
+        }
+    }
+
     /**
      * Executes the next command if no commands are running. If a command is running, exits immediately as that command will call this function again when it's finished.
      */
@@ -178,7 +205,8 @@ export class TelnetRequestPipeline {
             this.activeCommand = undefined;
         }
 
-        if (this.commands.length === 0) {
+        if (this.commands.length === 0 && !this.isProcessing) {
+            this.clearActiveDeviceTimer();
             return logger.info('No commands to process');
         }
 
@@ -200,6 +228,7 @@ export class TelnetRequestPipeline {
             } else {
                 logger.log('waitForCommand is false, so do not set as active command');
             }
+            this.setActiveDeviceTimer();
             //run the command. the on('data') event will handle launching the next command once this one has finished processing
             command.execute();
         }
