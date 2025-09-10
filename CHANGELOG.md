@@ -7,16 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.22.0](https://github.com/rokucommunity/roku-debug/compare/0.21.38...v0.22.0) - 2025-09-10
-### Added
- - Add more logs to track how long each step takes while sideloading ([#270](https://github.com/rokucommunity/roku-debug/pull/270))
 ### Changed
- - Better handling when the telnet debugger freezes ([#268](https://github.com/rokucommunity/roku-debug/pull/268))
+ - Add more logs to track how long each step takes while sideloading ([#270](https://github.com/rokucommunity/roku-debug/pull/270))
  - upgrade to [brighterscript@0.70.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0700---2025-08-11). Notable changes since 0.69.13:
-     - Support transpiling class methods as named functions ([#1548](https://github.com/rokucommunity/roku-debug/pull/1548))
-     - chore: update regex-literal docs about escaping the forward slash ([#1549](https://github.com/rokucommunity/roku-debug/pull/1549))
  - upgrade to [roku-deploy@3.13.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3130---2025-08-04). Notable changes since 3.12.6:
-     - chore: Support dispatch workflows ([#198](https://github.com/rokucommunity/roku-debug/pull/198))
      - Add standards-compliant User-Agent header ([#203](https://github.com/rokucommunity/roku-debug/pull/203))
+### Fixed
+ - Better handling when the telnet debugger freezes ([#268](https://github.com/rokucommunity/roku-debug/pull/268))
 
 
 
@@ -1051,3 +1048,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - renamed `enableSocketDebugger` to `enableDebugProtocol`
 ### Fixed
  - Bug in the telnet debugger on windows devices that would crash the debug session when `stopOnEntry` was enabled.
+
