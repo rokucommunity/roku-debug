@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.22.1](https://github.com/rokucommunity/roku-debug/compare/0.22.0...v0.22.1) - 2025-09-11
+### Changed
+ - upgrade to [brighterscript@0.70.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0701---2025-09-11). Notable changes since 0.70.0:
+
+
+
 ## [0.22.0](https://github.com/rokucommunity/roku-debug/compare/0.21.38...v0.22.0) - 2025-09-10
 ### Changed
  - Add more logs to track how long each step takes while sideloading ([#270](https://github.com/rokucommunity/roku-debug/pull/270))
@@ -1048,4 +1054,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - renamed `enableSocketDebugger` to `enableDebugProtocol`
 ### Fixed
  - Bug in the telnet debugger on windows devices that would crash the debug session when `stopOnEntry` was enabled.
+
 
