@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.22.1](https://github.com/rokucommunity/roku-debug/compare/0.22.0...v0.22.1) - 2025-09-11
+### Changed
+ - upgrade to [brighterscript@0.70.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0701---2025-09-11). Notable changes since 0.70.0:
+     - Flag param names that are reserved words ([#1556](https://github.com/rokucommunity/roku-debug/pull/1556))
+     - Fix for adding files on beforeProgramValidate ([#1568](https://github.com/rokucommunity/roku-debug/pull/1568))
+     - Fix typdef generation of default param func ([#1551](https://github.com/rokucommunity/roku-debug/pull/1551))
+
+
+
 ## [0.22.0](https://github.com/rokucommunity/roku-debug/compare/0.21.38...v0.22.0) - 2025-09-10
 ### Changed
  - Add more logs to track how long each step takes while sideloading ([#270](https://github.com/rokucommunity/roku-debug/pull/270))
