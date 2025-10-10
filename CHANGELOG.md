@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.22.2](https://github.com/rokucommunity/roku-debug/compare/0.22.1...v0.22.2) - 2025-10-10
+### Changed
+ - upgrade to [brighterscript@0.70.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0702---2025-10-10). Notable changes since 0.70.1:
+     - Add manual entries for roUtils and roRenderThreadQueue ([#1574](https://github.com/rokucommunity/roku-debug/pull/1574))
+     - Roku sdk updates ([#1573](https://github.com/rokucommunity/roku-debug/pull/1573))
+
+
+
 ## [0.22.1](https://github.com/rokucommunity/roku-debug/compare/0.22.0...v0.22.1) - 2025-09-11
 ### Changed
  - upgrade to [brighterscript@0.70.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0701---2025-09-11). Notable changes since 0.70.0:
