@@ -22,7 +22,7 @@ import type { DebugProtocol } from '@vscode/debugprotocol';
 import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
-import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
+import { ProjectManager, Project, ComponentLibraryProject, ComponentLibraryDCLProject, ComponentLibraryProjectWithCustomCMDToRun } from '../managers/ProjectManager';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
@@ -417,10 +417,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             const packageEnd = this.logger.timeStart('log', 'Packaging');
             //build the main project and all component libraries at the same time
-            await Promise.all([
-                this.prepareMainProject(),
-                this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
-            ]);
+            await this.prepareMainProject(),
+            await this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             packageEnd();
 
             if (this.enableDebugProtocol) {
@@ -722,7 +720,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(10_000).then(() => {
+            util.sleep(120_000).then(() => {
                 didTimeOut = true;
             })
         ]);
@@ -1016,8 +1014,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
                 let componentLibrary = componentLibraries[libraryIndex];
 
-                this.projectManager.componentLibraryProjects.push(
-                    new ComponentLibraryProject({
+                const commonParams = {
                         rootDir: componentLibrary.rootDir,
                         files: componentLibrary.files,
                         outDir: componentLibrariesOutDir,
@@ -1028,8 +1025,29 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
                         libraryIndex: libraryIndex,
                         enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
-                    })
-                );
+                }
+
+                if (componentLibrary.appType) {
+                  this.projectManager.componentLibraryProjects.push(
+                      new ComponentLibraryDCLProject({
+                          ...commonParams,
+                          host: componentLibrary.host,
+                          username: componentLibrary.username,
+                          password: componentLibrary.password
+                      })
+                  );
+                } else if (componentLibrary.cmd) {
+                    this.projectManager.componentLibraryProjects.push(
+                        new ComponentLibraryProjectWithCustomCMDToRun({
+                            ...commonParams,
+                            cmdToRun: componentLibrary.cmd
+                        })
+                    );
+                } else {
+                    this.projectManager.componentLibraryProjects.push(
+                        new ComponentLibraryProject(commonParams)
+                    );
+                }
             }
 
             //prepare all of the libraries in parallel
@@ -1048,6 +1066,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await compLibProject.postfixFiles();
 
                 await compLibProject.zipPackage({ retainStagingFolder: true });
+
+                await compLibProject.publish();
             });
 
             let hostingPromise: Promise<any>;

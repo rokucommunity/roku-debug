@@ -395,4 +395,10 @@ export interface ComponentLibraryConfiguration {
      * This is an absolute path to the TrackerTask.xml file to be injected into the component library during a debug session.
      */
     raleTrackerTaskFileLocation: string;
+
+    appType?: string;
+    cmd?: string;
+    host?: string;
+    username?: string;
+    password?: string;
 }

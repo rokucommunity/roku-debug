@@ -125,6 +125,21 @@ export function isLaunchStartEvent(event: any): event is LaunchStartEvent {
 }
 
 /**
+ * This event indicates that the client should show a popup message with the supplied information
+ */
+export declare class PopupMessageEvent extends CustomEvent<{
+    message: string;
+    severity: 'error' | 'info' | 'warn';
+    modal: boolean;
+}> {
+    constructor(message: string, severity: 'error' | 'info' | 'warn', modal?: boolean);
+}
+/**
+ * Is the object a `PopupMessageEvent`
+ */
+export declare function isPopupMessageEvent(event: any): event is PopupMessageEvent;
+
+/**
  * Emitted once the channel has been sideloaded to the channel and the session is ready to start actually debugging.
  */
 export class ChannelPublishedEvent extends CustomEvent<{ launchConfiguration: LaunchConfiguration }> {

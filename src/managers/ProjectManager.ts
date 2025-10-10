@@ -15,6 +15,7 @@ import { Cache } from 'brighterscript/dist/Cache';
 import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
 import type { ScopeFunction } from '../bsc/BscProject';
 import type { Position } from 'brighterscript';
+import { exec } from 'child_process';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -53,9 +54,9 @@ export class ProjectManager {
     public logger = logger.createLogger('[ProjectManager]');
 
     public mainProject: Project;
-    public componentLibraryProjects = [] as ComponentLibraryProject[];
+    public componentLibraryProjects: (ComponentLibraryProject | ComponentLibraryDCLProject | ComponentLibraryProjectWithCustomCMDToRun)[] = [];
 
-    public addComponentLibraryProject(project: ComponentLibraryProject) {
+    public addComponentLibraryProject(project: ComponentLibraryProject | ComponentLibraryDCLProject | ComponentLibraryProjectWithCustomCMDToRun) {
         this.componentLibraryProjects.push(project);
     }
 
@@ -647,6 +648,17 @@ export interface ComponentLibraryConstructorParams extends AddProjectParams {
     libraryIndex: number;
 }
 
+
+export interface ExtendedComponentLibraryConstructorParamsForDCL extends ComponentLibraryConstructorParams {
+    host?: string;
+    username?: string;
+    password?: string;
+}
+
+export interface ExtendedComponentLibraryConstructorParams extends ComponentLibraryConstructorParams {
+    cmdToRun?: string;
+}
+
 export class ComponentLibraryProject extends Project {
     constructor(params: ComponentLibraryConstructorParams) {
         super(params);
@@ -689,7 +701,7 @@ export class ComponentLibraryProject extends Project {
         }
     }
 
-    public async stage() {
+    public async setComponentLibraryName() {
         /*
          Compute the file mappings now (i.e. don't let the parent class compute them).
          This must be done BEFORE finding the manifest file location.
@@ -705,6 +717,19 @@ export class ComponentLibraryProject extends Project {
         } else {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
+
+    }
+
+    public async stage() {
+        /*
+         Compute the file mappings now (i.e. don't let the parent class compute them).
+         This must be done BEFORE finding the manifest file location.
+         */
+
+        await this.setComponentLibraryName();
+
+        this.fileMappings = await this.getFileMappings();
+
         let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
 
         let defaultStagingDir = this.stagingDir;
@@ -766,4 +791,164 @@ export class ComponentLibraryProject extends Project {
             }
         });
     }
+    public async publish() {
+
+    }
+}
+
+export class ComponentLibraryDCLProject extends ComponentLibraryProject {
+    constructor(params: ExtendedComponentLibraryConstructorParamsForDCL) {
+        super(params);
+        this.appType = 'dcl';
+        this.host = params.host;
+        this.username = params.username;
+        this.password = params.password;
+    }
+    public outFile: string;
+    public libraryIndex: number;
+    public appType: string;
+    public host: string;
+    public password: string;
+    public username: string;
+    public name: string;
+
+    public get postfix() {
+        return ``;
+    }
+
+    public async postfixFiles() {
+    }
+
+    public async stage() {
+        let rd = new RokuDeploy();
+        util.log(`dcl stage`);
+
+        this.fileMappings = await this.getFileMappings();
+
+        await super.setComponentLibraryName();
+
+        let prevStagingDir = this.stagingDir;
+        // copy to out directory to show breakpoint
+        this.stagingDir = s`${this.outDir}/../.roku-deploy-staging`;
+        await rd.prepublishToStaging({
+            rootDir: this.rootDir,
+            stagingDir: this.stagingDir,
+            files: this.files,
+            outDir: this.outDir
+        });
+
+        this.stagingDir = prevStagingDir;
+        await rd.prepublishToStaging({
+            rootDir: this.rootDir,
+            stagingDir: this.stagingDir,
+            files: this.files,
+            outDir: this.outDir
+        });
+    }
+m
+    public async publish() {
+        const options = rokuDeploy.getOptions({
+            ...this,
+            username: this.username || "rokudev", //change this toh get from the user actually using it
+            appType: this.appType,
+        });
+
+        await rokuDeploy.publish(options).then(function(){
+        }, function(error) {
+            util.log(`Error during sideloading: ${error}`);
+        });
+    }
+}
+
+export class ComponentLibraryProjectWithCustomCMDToRun extends ComponentLibraryProject {
+    constructor(params: ExtendedComponentLibraryConstructorParams) {
+        super(params);
+        this.cmdToRun = params.cmdToRun;
+    }
+    public cmdToRun: string;
+
+    public get postfix() {
+        return ``;
+    }
+
+    public async postfixFiles() {
+    }
+
+    public async zipPackage() {
+    }
+
+    public async stage() {
+        let rd = new RokuDeploy();
+    
+        await super.setComponentLibraryName();
+
+        // copy to out directory to show breakpoint
+        this.stagingDir = s`${this.outDir}/../.roku-deploy-staging`;
+        await rd.prepublishToStaging({
+            rootDir: this.rootDir,
+            stagingDir: this.stagingDir,
+            files: this.files,
+            outDir: this.outDir
+        })        
+        
+        // copy all project files to the staging folder to sideload
+        this.stagingDir = `${this.rootDir}../${componentLibraryPostfix}${this.libraryIndex}`;
+
+        // Print live console output during prepublishToStaging
+        util.log(`Starting prepublishToStaging for ${this.stagingDir}...`);
+
+        const startTime = Date.now();
+
+        const interval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            util.log(`... still running prepublishToStaging (${elapsed}s elapsed)`);
+        }, 10_000);
+
+        try {
+            await rd.prepublishToStaging({
+                rootDir: this.rootDir,
+                stagingDir: this.stagingDir,
+                files: this.files,
+                outDir: this.outDir
+            });
+        } finally {
+            clearInterval(interval);
+        }
+
+        const total = Math.floor((Date.now() - startTime) / 1000);
+        util.log(`Finished prepublishToStaging for ${this.stagingDir} in ${total}s`);
+
+    }
+
+    public async publish() {
+        util.log("Starting publish process...");
+                    
+        const startTime = Date.now();
+
+        const interval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            util.log(`... still publishing (sideloading in progress, ${elapsed}s elapsed)`);
+        }, 10_000);
+    
+        try {
+            const execPromise = promisify(exec);
+            util.log(`Running command: ${this.cmdToRun}`);
+            const { stdout, stderr } = await execPromise(`cd ${this.stagingDir} && ${this.cmdToRun}`);
+    
+            if (stderr) {
+                util.log(`Error in execution: ${stderr}`);
+            }
+    
+            if (stdout) {
+                util.log(`Command output: ${stdout}`);
+            }
+        } catch (error) {
+            util.log(`Error during execution: ${error instanceof Error ? error.message : error}`);
+        } finally {
+            clearInterval(interval);
+            const total = Math.floor((Date.now() - startTime) / 1000);
+            util.log(`Exited publish process in ${total}s`);
+        }
+    }
+
 }

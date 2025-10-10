@@ -354,7 +354,7 @@ export class TelnetAdapter {
 
                 if (this.isActivated) {
                     //watch for the start of the program
-                    if (/\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
+                    if (/\[scrpt.ctx.run.enter\]/i.exec(responseText.trim()) || /Backtrace:/i.exec(responseText.trim())) {
                         this.isAppRunning = true;
                         this.logger.log('Running beacon detected', { responseText });
                         void this.handleStartupIfReady();
