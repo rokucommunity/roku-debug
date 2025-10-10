@@ -720,7 +720,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(120_000).then(() => {
+            util.sleep(20_000).then(() => {
                 didTimeOut = true;
             })
         ]);
