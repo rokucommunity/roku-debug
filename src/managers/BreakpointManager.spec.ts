@@ -4,7 +4,7 @@ import { SourceMapConsumer, SourceNode } from 'source-map';
 import type { BreakpointWorkItem } from './BreakpointManager';
 import { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
-import { ComponentLibraryProject, Project, ProjectManager } from './ProjectManager';
+import { RemoteComponentLibraryProject, Project, ProjectManager } from './ProjectManager';
 let n = fileUtils.standardizePath.bind(fileUtils);
 import type { SourceLocation } from '../managers/LocationManager';
 import { LocationManager } from '../managers/LocationManager';
@@ -56,7 +56,7 @@ describe('BreakpointManager', () => {
             enhanceREPLCompletions: false
         });
         projectManager.addComponentLibraryProject(
-            new ComponentLibraryProject({
+            new RemoteComponentLibraryProject({
                 rootDir: complib1RootDir,
                 files: [],
                 libraryIndex: 0,
@@ -66,7 +66,7 @@ describe('BreakpointManager', () => {
             })
         );
         projectManager.addComponentLibraryProject(
-            new ComponentLibraryProject({
+            new RemoteComponentLibraryProject({
                 rootDir: complib2RootDir,
                 files: [],
                 libraryIndex: 1,

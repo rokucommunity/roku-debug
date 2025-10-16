@@ -396,8 +396,7 @@ export interface ComponentLibraryConfiguration {
      */
     raleTrackerTaskFileLocation: string;
 
-    appType?: string;
-    cmd?: string;
+    appType?: "channel" | "dcl" | "others";
     host?: string;
     username?: string;
     password?: string;

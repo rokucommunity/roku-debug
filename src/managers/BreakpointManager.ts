@@ -4,7 +4,7 @@ import type { CodeWithSourceMap } from 'source-map';
 import { SourceNode } from 'source-map';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { fileUtils, standardizePath } from '../FileUtils';
-import type { ComponentLibraryProject, Project } from './ProjectManager';
+import type { RemoteComponentLibraryProject, Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
 import type { SourceMapManager } from './SourceMapManager';
 import type { LocationManager } from './LocationManager';
@@ -434,7 +434,7 @@ export class BreakpointManager {
                         stagingFilePath: stagingLocation.filePath,
                         type: stagingLocationsResult.type,
                         pkgPath: pkgPath,
-                        componentLibraryName: (project as ComponentLibraryProject).name
+                        componentLibraryName: (project as RemoteComponentLibraryProject).name
                     };
                     obj.destHash = this.getBreakpointDestHash(obj);
                     obj.deviceId = this.deviceIdByDestHash.get(obj.destHash)?.deviceId;

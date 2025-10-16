@@ -5,8 +5,8 @@ import { util } from '../util';
 import { rokuDeploy } from 'roku-deploy';
 import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
-import type { ComponentLibraryConstructorParams, ExtendedComponentLibraryConstructorParams, ExtendedComponentLibraryConstructorParamsForDCL } from './ProjectManager';
-import { Project, ComponentLibraryProject, ProjectManager, ComponentLibraryDCLProject, ComponentLibraryProjectWithCustomCMDToRun } from './ProjectManager';
+import type { ComponentLibraryConstructorParams, ChannelStoreComponentLibraryProjectConstructorParams } from './ProjectManager';
+import { Project, RemoteComponentLibraryProject, ProjectManager, ChannelStoreComponentLibraryProject } from './ProjectManager';
 import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
@@ -685,7 +685,7 @@ describe('Project', () => {
 
 });
 
-describe('ComponentLibraryProject', () => {
+describe('RemoteComponentLibraryProject', () => {
     let params: ComponentLibraryConstructorParams;
     beforeEach(() => {
         params = {
@@ -705,7 +705,7 @@ describe('ComponentLibraryProject', () => {
 
     describe('computeOutFileName', () => {
         it('properly computes the outFile name', () => {
-            let project = new ComponentLibraryProject(params);
+            let project = new RemoteComponentLibraryProject(params);
             expect(project.outFile).to.equal('PrettyComponent.zip');
             (project as any).computeOutFileName();
             expect(project.outFile).to.equal('PrettyComponent.zip');
@@ -714,7 +714,7 @@ describe('ComponentLibraryProject', () => {
 
     describe('addPostFixToPath', () => {
         it('adds postfix if path is 1) pkg:/ or 2) relative - no spaces in url', async () => {
-            let project = new ComponentLibraryProject(params);
+            let project = new RemoteComponentLibraryProject(params);
             project.fileMappings = [];
             fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, '');
             fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
@@ -737,7 +737,7 @@ describe('ComponentLibraryProject', () => {
         });
 
         it('adds postfix if path is 1) pkg:/ or 2) relative - plus spaces in url', async () => {
-            let project = new ComponentLibraryProject(params);
+            let project = new RemoteComponentLibraryProject(params);
             project.fileMappings = [];
             fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, '');
             fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
@@ -763,7 +763,7 @@ describe('ComponentLibraryProject', () => {
     describe('stage', () => {
         it('computes stagingDir before calling getFileMappings', async () => {
             delete params.stagingDir;
-            let project = new ComponentLibraryProject(params);
+            let project = new RemoteComponentLibraryProject(params);
 
             sinon.stub(rokuDeploy, 'getFilePaths').returns(Promise.resolve([
                 { src: s`${rootDir}/manifest`, dest: s`manifest` },
@@ -787,7 +787,7 @@ describe('ComponentLibraryProject', () => {
             async function testManifestRead(src: string) {
                 fsExtra.outputFileSync(`${rootDir}/${src}`, `title=CompLibTest`);
                 params.bsConst = undefined;
-                const project = new ComponentLibraryProject({
+                const project = new RemoteComponentLibraryProject({
                     rootDir: rootDir,
                     outDir: `${outDir}/component-libraries`,
                     files: [
@@ -817,8 +817,8 @@ describe('ComponentLibraryProject', () => {
     });
 });
 
-describe('ComponentLibraryDCLProject', () =>{
-    let params : ExtendedComponentLibraryConstructorParamsForDCL;
+describe('ChannelStoreComponentLibraryProject', () =>{
+    let params : ChannelStoreComponentLibraryProjectConstructorParams;
     let logStub;
     beforeEach(() => {
         params = {
@@ -844,7 +844,7 @@ describe('ComponentLibraryDCLProject', () =>{
             async function testManifestRead(src: string) {
                 fsExtra.outputFileSync(`${rootDir}/${src}`, `title=CompLibTest`);
                 params.bsConst = undefined;
-                const project = new ComponentLibraryDCLProject({
+                const project = new ChannelStoreComponentLibraryProject({
                     rootDir: rootDir,
                     outDir: `${outDir}/component-libraries`,
                     files: [
@@ -884,7 +884,7 @@ describe('ComponentLibraryDCLProject', () =>{
         let stubLog;
         let publisher;
         describe('rokudev publish method', ()=>{
-                publisher = new ComponentLibraryDCLProject({
+                publisher = new ChannelStoreComponentLibraryProject({
                     rootDir: rootDir,
                     outDir: `${outDir}/component-libraries`,
                     files: [
@@ -948,90 +948,4 @@ describe('ComponentLibraryDCLProject', () =>{
 
         })
     })
-})
-
-describe('ComponentLibraryProjectWithCustomCMDToRun', () =>{
-    let params : ExtendedComponentLibraryConstructorParams;
-    let logStub;
-    let execPromiseStub;
-    beforeEach(() => {
-        params = {
-            rootDir: rootDir,
-            outDir: `${outDir}/component-libraries`,
-            files: ['a'],
-            bsConst: { b: true },
-            injectRaleTrackerTask: true,
-            sourceDirs: [s`${tempPath}/source1`],
-            stagingDir: s`${outDir}/complib1-staging`,
-            raleTrackerTaskFileLocation: 'z',
-            libraryIndex: 0,
-            outFile: 'PrettyComponent.zip',
-            cmdToRun: "",
-            enhanceREPLCompletions: false
-        };
-        execPromiseStub = sinon.stub().resolves({ stdout: 'Success', stderr: '' });
-    });
-
-    describe('publish', () => {
-        it('should execute the publish command and log correct output', async function () {
-            const project = new ComponentLibraryProjectWithCustomCMDToRun({
-                rootDir: rootDir,
-                outDir: `${outDir}/component-libraries`,
-                files: ['a'],
-                stagingDir: s`${outDir}/complib1-staging`,
-                libraryIndex: 0,
-                outFile: 'PrettyComponent.zip',
-                cmdToRun: params.cmdToRun,
-                enhanceREPLCompletions: false
-            });
-    
-            await project.publish();
-    
-
-            expect(execPromiseStub.calledOnce).to.be.true;
-
-            expect(logStub.calledWith('Starting publish process...')).to.be.true;
-            expect(logStub.calledWith('Running command: mock-command')).to.be.true;
-            expect(logStub.calledWith('Command output: Success')).to.be.true;
-            expect(logStub.calledWith('Error in execution:')).to.be.false;
-        });
-    
-        it('should handle errors during publish and log them', async function () {
-
-            execPromiseStub.rejects(new Error('Mock error'));
-    
-            const project = new ComponentLibraryProjectWithCustomCMDToRun({
-                rootDir: rootDir,
-                outDir: `${outDir}/component-libraries`,
-                files: ['a'],
-                stagingDir: s`${outDir}/complib1-staging`,
-                libraryIndex: 0,
-                outFile: 'PrettyComponent.zip',
-                cmdToRun: params.cmdToRun,
-                enhanceREPLCompletions: false
-            });
-    
-            await project.publish();
-            expect(logStub.calledWith('Error during execution: Mock error')).to.be.true;
-        });
-    
-        it('should log stderr output if it exists', async function () {
-
-            execPromiseStub.resolves({ stdout: '', stderr: 'Some error occurred' });
-    
-            const project = new ComponentLibraryProjectWithCustomCMDToRun({
-                rootDir: rootDir,
-                outDir: `${outDir}/component-libraries`,
-                files: ['a'],
-                stagingDir: s`${outDir}/complib1-staging`,
-                libraryIndex: 0,
-                outFile: 'PrettyComponent.zip',
-                cmdToRun: params.cmdToRun,
-                enhanceREPLCompletions: false
-            });
-    
-            await project.publish();
-            expect(logStub.calledWith('Error in execution: Some error occurred')).to.be.true;
-        });
-    });
 })
