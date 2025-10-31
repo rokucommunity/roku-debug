@@ -4,7 +4,7 @@ import type { CodeWithSourceMap } from 'source-map';
 import { SourceNode } from 'source-map';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { fileUtils, standardizePath } from '../FileUtils';
-import type { RemoteComponentLibraryProject, Project } from './ProjectManager';
+import type { RemoteComponentLibraryProject , Project } from './ProjectManager';
 import { standardizePath as s } from 'roku-deploy';
 import type { SourceMapManager } from './SourceMapManager';
 import type { LocationManager } from './LocationManager';

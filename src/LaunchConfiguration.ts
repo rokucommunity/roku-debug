@@ -361,6 +361,13 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default true
      */
     emitChannelPublishedEvent?: boolean;
+
+    /**
+     * Should the main library and component libraries be hosted synchronously. This is for when certain libraries like "DCL" require it
+     * if not set the default is false unless one of the libraries requires it
+     * @default true
+     */
+    prepareProjectFilesSynchronously?: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
@@ -396,7 +403,7 @@ export interface ComponentLibraryConfiguration {
      */
     raleTrackerTaskFileLocation: string;
 
-    appType?: "channel" | "dcl" | "others";
+    libType?: 'channelstore' | 'remote' | 'other';
     host?: string;
     username?: string;
     password?: string;

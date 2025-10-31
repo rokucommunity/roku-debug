@@ -5,8 +5,8 @@ import { util } from '../util';
 import { rokuDeploy } from 'roku-deploy';
 import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
-import type { ComponentLibraryConstructorParams, ChannelStoreComponentLibraryProjectConstructorParams } from './ProjectManager';
-import { Project, RemoteComponentLibraryProject, ProjectManager, ChannelStoreComponentLibraryProject } from './ProjectManager';
+import type { RemoteLibraryConstructorParams } from './ProjectManager';
+import { Project, RemoteComponentLibraryProject, ProjectManager } from './ProjectManager';
 import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
@@ -686,7 +686,7 @@ describe('Project', () => {
 });
 
 describe('RemoteComponentLibraryProject', () => {
-    let params: ComponentLibraryConstructorParams;
+    let params: RemoteLibraryConstructorParams;
     beforeEach(() => {
         params = {
             rootDir: rootDir,
@@ -816,136 +816,3 @@ describe('RemoteComponentLibraryProject', () => {
         });
     });
 });
-
-describe('ChannelStoreComponentLibraryProject', () =>{
-    let params : ChannelStoreComponentLibraryProjectConstructorParams;
-    let logStub;
-    beforeEach(() => {
-        params = {
-            rootDir: rootDir,
-            outDir: `${outDir}/component-libraries`,
-            files: ['a'],
-            bsConst: { b: true },
-            injectRaleTrackerTask: true,
-            sourceDirs: [s`${tempPath}/source1`],
-            stagingDir: s`${outDir}/complib1-staging`,
-            raleTrackerTaskFileLocation: 'z',
-            libraryIndex: 0,
-            outFile: 'PrettyComponent.zip',
-            host: "192.168.1.32'",
-            password: "aaaa",
-            username: "rokudev",
-            enhanceREPLCompletions: false
-        };
-    });
-
-    describe('stage', () => {
-        describe('rokuDeploy Stage method', () => {
-            async function testManifestRead(src: string) {
-                fsExtra.outputFileSync(`${rootDir}/${src}`, `title=CompLibTest`);
-                params.bsConst = undefined;
-                const project = new ChannelStoreComponentLibraryProject({
-                    rootDir: rootDir,
-                    outDir: `${outDir}/component-libraries`,
-                    files: [
-                        { src: src, dest: 'manifest' }
-                    ],
-                    stagingDir: s`${outDir}/complib1-staging`,
-                    libraryIndex: 0,
-                    // eslint-disable-next-line no-template-curly-in-string
-                    outFile: '${title}.zip',
-                    host: params.host,
-                    username: params.username,
-                    password: params.password,
-                    enhanceREPLCompletions: false
-                });
-                logStub = sinon.stub(util, 'log');
-                await project.stage();
-                expect(project.outFile).to.eql('CompLibTest.zip');
-            }
-
-            it('handles src entries with exactly the name "manifest"', async () => {
-                await testManifestRead('manifest');
-                await testManifestRead('configs/manifest');
-            });
-
-            it('handles non-standard manifest file names', async () => {
-                await testManifestRead('manifest.test');
-                await testManifestRead('test.manifest');
-                await testManifestRead('not_even_close');
-            });
-            expect(logStub.calledWith('dcl stage')).to.be.true;
-        });
-    });
-
-    describe('publish', () =>{
-        let stubGetOptions;
-        let stubPublish;
-        let stubLog;
-        let publisher;
-        describe('rokudev publish method', ()=>{
-                publisher = new ChannelStoreComponentLibraryProject({
-                    rootDir: rootDir,
-                    outDir: `${outDir}/component-libraries`,
-                    files: [
-                        { src: 'manifest', dest: 'manifest' }
-                    ],
-                    stagingDir: s`${outDir}/complib1-staging`,
-                    libraryIndex: 0,
-                    // eslint-disable-next-line no-template-curly-in-string
-                    outFile: '${title}.zip',
-                    host: params.host,
-                    username: params.username,
-                    password: params.password,
-                    enhanceREPLCompletions: false
-
-                });
-                
-                stubGetOptions = sinon.stub(rokuDeploy, 'getOptions').returns({
-                    username: 'rokudev',
-                });
-        
-                stubPublish = sinon.stub(rokuDeploy, 'publish').resolves();
-                stubLog = sinon.stub(util, 'log');
-
-        it('should call getOptions with correct parameters', async function() {
-            await publisher.publish();
-    
-            expect(stubGetOptions.calledOnce).to.be.true;
-            expect(stubGetOptions.calledWith({
-                username: 'rokudev',
-                appType: 'dcl',
-            })).to.be.true;
-        });
-    
-        it('should call publish with correct options', async function() {
-            await publisher.publish();
-    
-            expect(stubPublish.calledOnce).to.be.true;
-            expect(stubPublish.calledWith({
-                username: 'rokudev',
-                appType: 'dcl',
-            })).to.be.true;
-        });
-    
-        it('should log error if publish fails', async function() {
-
-            const error = new Error('Publish failed');
-            stubPublish.rejects(error);
-    
-            await publisher.publish();
-    
-            expect(stubLog.calledOnce).to.be.true;
-            expect(stubLog.calledWith(`Error during sideloading: ${error.message}`)).to.be.true;
-        });
-    
-        it('should not log error if publish succeeds', async function() {
-
-            await publisher.publish();
-    
-            expect(stubLog.notCalled).to.be.true;
-        });
-
-        })
-    })
-})

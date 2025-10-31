@@ -22,7 +22,7 @@ import type { DebugProtocol } from '@vscode/debugprotocol';
 import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
-import { ProjectManager, Project, RemoteComponentLibraryProject, ChannelStoreComponentLibraryProject } from '../managers/ProjectManager';
+import { ProjectManager, Project, RemoteComponentLibraryProject, RemoteLibraryConstructorParams } from '../managers/ProjectManager';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
@@ -182,7 +182,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.initRequestArgs = args;
         this.logger.log('initializeRequest');
 
-        response.body ||= {};
+        response.body = response.body || {};
 
         // This debug adapter implements the configurationDoneRequest.
         response.body.supportsConfigurationDoneRequest = true;
@@ -415,13 +415,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let error: Error;
         this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
+            const start = Date.now();
             const packageEnd = this.logger.timeStart('log', 'Packaging');
-            //build the main project and all component libraries at the same time
-            await Promise.all([
-                this.prepareMainProject(),
-                this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
-            ]);
-            packageEnd();
+            
+            // synchronously prepare the projects based on configuration
+            if (this.launchConfiguration.prepareProjectFilesSynchronously) {
+                await this.prepareMainProject();
+                await this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort);
+            } else {
+                //build the main project and all component libraries at the same time
+                await Promise.all([
+                    this.prepareMainProject(),
+                    this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+                ])
+            }
+
+            packageEnd()
+            this.logger.log(`Packaging projects took: ${(util.formatTime(Date.now() - start))}`);
 
             if (this.enableDebugProtocol) {
                 util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.launchConfiguration.host}:${this.launchConfiguration.controlPort}`);
@@ -1015,8 +1025,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //create a RemoteComponentLibraryProject for each component library
             for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
                 let componentLibrary = componentLibraries[libraryIndex];
-
-                const commonParams = {
+                const commonParams: RemoteLibraryConstructorParams = {
                     rootDir: componentLibrary.rootDir,
                     files: componentLibrary.files,
                     outDir: componentLibrariesOutDir,
@@ -1029,21 +1038,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
                 };
 
-                if (componentLibrary.appType) {
-                    this.projectManager.componentLibraryProjects.push(
-                        new ChannelStoreComponentLibraryProject({
-                            ...commonParams,
-                            host: componentLibrary.host,
-                            username: componentLibrary.username,
-                            password: componentLibrary.password,
-                        })
-                    );
+                if (componentLibrary.libType) {
+
+                    commonParams.host= this.launchConfiguration.host;
+                    commonParams.username= componentLibrary.username;
+                    commonParams.password= this.launchConfiguration.password;
+                    commonParams.libType= componentLibrary.libType;
                 }
-                else {
-                    this.projectManager.componentLibraryProjects.push(
-                        new RemoteComponentLibraryProject(commonParams)
-                    );
-                }
+
+                this.projectManager.componentLibraryProjects.push(
+                    new RemoteComponentLibraryProject(commonParams)
+                );
             }
 
             //prepare all of the libraries in parallel
@@ -1056,16 +1061,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
                 if (!this.enableDebugProtocol) {
-                    util.log(`debug protocol not enabled`);
                     await this.breakpointManager.writeBreakpointsForProject(compLibProject);
                 }
-                util.log(`Postfixing files for component library ${compLibProject.name}`);
+
                 await compLibProject.postfixFiles();
 
-                util.log(`Creating zip archive from component library ${compLibProject.name}`);
                 await compLibProject.zipPackage({ retainStagingFolder: true });
 
-                util.log(`Publishing component library ${compLibProject.name}`);
                 await compLibProject.publish();
             });
 
