@@ -16,8 +16,8 @@ import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brighterscript';
 import { DefaultFiles, rokuDeploy } from 'roku-deploy';
-import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
-import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
+import type { AddProjectParams, RemoteLibraryConstructorParams } from '../managers/ProjectManager';
+import { RemoteComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
 import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
@@ -1142,12 +1142,12 @@ describe('BrightScriptDebugSession', () => {
                 session.projectManager['mainProject'].fileMappings = [];
 
                 session.projectManager.componentLibraryProjects.push(
-                    new ComponentLibraryProject({
+                    new RemoteComponentLibraryProject({
                         rootDir: complib1Dir,
                         stagingDir: stagingDir,
                         outDir: outDir,
                         libraryIndex: 1
-                    } as Partial<ComponentLibraryConstructorParams> as any)
+                    } as Partial<RemoteLibraryConstructorParams> as any)
                 );
                 session.projectManager['componentLibraryProjects'][0].fileMappings = [];
 

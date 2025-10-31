@@ -22,7 +22,7 @@ import type { DebugProtocol } from '@vscode/debugprotocol';
 import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
-import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
+import { ProjectManager, Project, RemoteComponentLibraryProject, RemoteLibraryConstructorParams } from '../managers/ProjectManager';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
@@ -415,13 +415,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         let error: Error;
         this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
+            const start = Date.now();
             const packageEnd = this.logger.timeStart('log', 'Packaging');
-            //build the main project and all component libraries at the same time
-            await Promise.all([
-                this.prepareMainProject(),
-                this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
-            ]);
-            packageEnd();
+            
+            // synchronously prepare the projects based on configuration
+            if (this.launchConfiguration.prepareProjectFilesSynchronously) {
+                await this.prepareMainProject();
+                await this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort);
+            } else {
+                //build the main project and all component libraries at the same time
+                await Promise.all([
+                    this.prepareMainProject(),
+                    this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+                ])
+            }
+
+            packageEnd()
+            this.logger.log(`Packaging projects took: ${(util.formatTime(Date.now() - start))}`);
 
             if (this.enableDebugProtocol) {
                 util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.launchConfiguration.host}:${this.launchConfiguration.controlPort}`);
@@ -1012,23 +1022,32 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await fsExtra.ensureDir(componentLibrariesOutDir);
             await fsExtra.emptyDir(componentLibrariesOutDir);
 
-            //create a ComponentLibraryProject for each component library
+            //create a RemoteComponentLibraryProject for each component library
             for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
                 let componentLibrary = componentLibraries[libraryIndex];
+                const commonParams: RemoteLibraryConstructorParams = {
+                    rootDir: componentLibrary.rootDir,
+                    files: componentLibrary.files,
+                    outDir: componentLibrariesOutDir,
+                    outFile: componentLibrary.outFile,
+                    sourceDirs: componentLibrary.sourceDirs,
+                    bsConst: componentLibrary.bsConst,
+                    injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
+                    raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
+                    libraryIndex: libraryIndex,
+                    enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
+                };
+
+                if (componentLibrary.libType) {
+
+                    commonParams.host= this.launchConfiguration.host;
+                    commonParams.username= componentLibrary.username;
+                    commonParams.password= this.launchConfiguration.password;
+                    commonParams.libType= componentLibrary.libType;
+                }
 
                 this.projectManager.componentLibraryProjects.push(
-                    new ComponentLibraryProject({
-                        rootDir: componentLibrary.rootDir,
-                        files: componentLibrary.files,
-                        outDir: componentLibrariesOutDir,
-                        outFile: componentLibrary.outFile,
-                        sourceDirs: componentLibrary.sourceDirs,
-                        bsConst: componentLibrary.bsConst,
-                        injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
-                        raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
-                        libraryIndex: libraryIndex,
-                        enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
-                    })
+                    new RemoteComponentLibraryProject(commonParams)
                 );
             }
 
@@ -1048,6 +1067,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await compLibProject.postfixFiles();
 
                 await compLibProject.zipPackage({ retainStagingFolder: true });
+
+                await compLibProject.publish();
             });
 
             let hostingPromise: Promise<any>;

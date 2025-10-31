@@ -53,9 +53,9 @@ export class ProjectManager {
     public logger = logger.createLogger('[ProjectManager]');
 
     public mainProject: Project;
-    public componentLibraryProjects = [] as ComponentLibraryProject[];
+    public componentLibraryProjects: (RemoteComponentLibraryProject)[] = [];
 
-    public addComponentLibraryProject(project: ComponentLibraryProject) {
+    public addComponentLibraryProject(project: RemoteComponentLibraryProject) {
         this.componentLibraryProjects.push(project);
     }
 
@@ -174,7 +174,7 @@ export class ProjectManager {
             let project = stagingFileInfo.project;
 
             //remove the component library postfix if present
-            if (project instanceof ComponentLibraryProject) {
+            if (project instanceof RemoteComponentLibraryProject) {
                 stagingFileInfo.absolutePath = fileUtils.unPostfixFilePath(stagingFileInfo.absolutePath, project.postfix);
                 stagingFileInfo.relativePath = fileUtils.unPostfixFilePath(stagingFileInfo.relativePath, project.postfix);
             }
@@ -642,16 +642,24 @@ export class Project {
     }
 }
 
-export interface ComponentLibraryConstructorParams extends AddProjectParams {
+export interface RemoteLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
+    host?: string;
+    username?: string;
+    password?: string;
+    libType?: 'remote' | 'channelstore' | 'other';
 }
 
-export class ComponentLibraryProject extends Project {
-    constructor(params: ComponentLibraryConstructorParams) {
+export class RemoteComponentLibraryProject extends Project {
+    constructor(params: RemoteLibraryConstructorParams) {
         super(params);
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
+        this.libType = params.libType ||'channelstore';
+        this.host = params.host;
+        this.username = params.username;
+        this.password = params.password;
     }
     public outFile: string;
     public libraryIndex: number;
@@ -659,6 +667,11 @@ export class ComponentLibraryProject extends Project {
      * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
      */
     public name: string;
+
+    public libType: string;
+    public host: string;
+    public password: string;
+    public username: string;
 
     /**
      * Takes a component Library and checks the outFile for replaceable values pulled from the libraries manifest
@@ -689,11 +702,7 @@ export class ComponentLibraryProject extends Project {
         }
     }
 
-    public async stage() {
-        /*
-         Compute the file mappings now (i.e. don't let the parent class compute them).
-         This must be done BEFORE finding the manifest file location.
-         */
+    public async setComponentLibraryName() {
         this.fileMappings = await this.getFileMappings();
 
         let expectedManifestDestPath = fileUtils.standardizePath(`${this.stagingDir}/manifest`).toLowerCase();
@@ -705,23 +714,56 @@ export class ComponentLibraryProject extends Project {
         } else {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
-        let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
+    }
 
-        let defaultStagingDir = this.stagingDir;
-
-        //compute the staging folder path.
-        this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
-
+    public async stage() {
         /*
-          The fileMappings were created using the default stagingDir (because we need the manifest path
-          to compute the out file name and staging path), so we need to replace the default stagingDir
-          with the actual stagingDir.
+         Compute the file mappings now (i.e. don't let the parent class compute them).
+         This must be done BEFORE finding the manifest file location.
          */
-        for (let fileMapping of this.fileMappings) {
-            fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
-        }
+        this.fileMappings = await this.getFileMappings();
 
-        return super.stage();
+        await this.setComponentLibraryName();
+
+        if(this.libType) {
+            const rd = new RokuDeploy();
+            util.log(`Staging for ${this.libType}`);
+            let prevStagingDir = this.stagingDir;
+            // copy to out directory to show breakpoint
+            this.stagingDir = s`${this.outDir}/../.roku-deploy-staging`;
+            await rd.prepublishToStaging({
+                rootDir: this.rootDir,
+                stagingDir: this.stagingDir,
+                files: this.files,
+                outDir: this.outDir
+            });
+    
+            this.stagingDir = prevStagingDir;
+            await rd.prepublishToStaging({
+                rootDir: this.rootDir,
+                stagingDir: this.stagingDir,
+                files: this.files,
+                outDir: this.outDir
+            });
+        } else {
+            let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
+    
+            let defaultStagingDir = this.stagingDir;
+    
+            //compute the staging folder path.
+            this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
+    
+            /*
+              The fileMappings were created using the default stagingDir (because we need the manifest path
+              to compute the out file name and staging path), so we need to replace the default stagingDir
+              with the actual stagingDir.
+             */
+            for (let fileMapping of this.fileMappings) {
+                fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
+            }
+    
+            return super.stage();
+        }
     }
 
     /**
@@ -729,10 +771,13 @@ export class ComponentLibraryProject extends Project {
      * back to their original component library whenever the debugger truncates the file path.
      */
     public get postfix() {
-        return `${componentLibraryPostfix}${this.libraryIndex}`;
+
+        return this.libType? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
     }
 
     public async postfixFiles() {
+        if (this.libType) return;
+
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(
@@ -766,4 +811,25 @@ export class ComponentLibraryProject extends Project {
             }
         });
     }
+
+    public async publish() {
+        if(this.libType){
+            if(this.libType !== 'channelstore') {
+                util.log(`No publish for libType: ${this.libType}`)
+                return;
+            } 
+
+            const options = rokuDeploy.getOptions({
+                ...this,
+                username: this.username || "rokudev",
+                libType: 'dcl', // this would run only for DCL type & rokuDeploy expects dcl not channelstore
+            });
+
+            await rokuDeploy.publish(options).then(function(){
+            }, function(error) {
+                util.log(`Error during sideloading: ${error}`);
+            });
+        }
+    }
 }
+
