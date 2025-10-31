@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.22.3](https://github.com/rokucommunity/roku-debug/compare/0.22.2...v0.22.3) - 2025-10-31
+### Changed
+ - Change ecp logging to `trace` to make lower level logs more useful ([#276](https://github.com/rokucommunity/roku-debug/pull/276))
+ - upgrade to [brighterscript@0.70.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0703---2025-10-31). Notable changes since 0.70.2:
+     - Fix crash when bsc plugin in worker loads another version of bsc ([#1579](https://github.com/rokucommunity/roku-debug/pull/1579))
+     - Fix recursive const and enum resolution during transpilation ([#1578](https://github.com/rokucommunity/roku-debug/pull/1578))
+     - chore: support OIDC for publishing ([#1582](https://github.com/rokucommunity/roku-debug/pull/1582))
+ - upgrade to [roku-deploy@3.14.4](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3144---2025-10-30). Notable changes since 3.13.0:
+     - chore: Update package.json repository to support provenance ([#218](https://github.com/rokucommunity/roku-debug/pull/218))
+     - Add specific error classes for reboot and check for updates functions ([#216](https://github.com/rokucommunity/roku-debug/pull/216))
+     - Add pull-request write permissions ([#214](https://github.com/rokucommunity/roku-debug/pull/214))
+     - Chore: Update publish-release permissions to content: write ([#213](https://github.com/rokucommunity/roku-debug/pull/213))
+     - Add the OIDC permissions to the dispatching workflow ([#211](https://github.com/rokucommunity/roku-debug/pull/211))
+     - Add 'rebootDevice' and 'checkForUpdate' functionality for supported OS versions ([#208](https://github.com/rokucommunity/roku-debug/pull/208))
+
+
+
 ## [0.22.2](https://github.com/rokucommunity/roku-debug/compare/0.22.1...v0.22.2) - 2025-10-10
 ### Changed
  - upgrade to [brighterscript@0.70.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0702---2025-10-10). Notable changes since 0.70.1:
