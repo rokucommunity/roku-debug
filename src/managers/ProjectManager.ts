@@ -674,11 +674,11 @@ export class RemoteComponentLibraryProject extends Project {
     public username: string;
 
     private checkLibTypeForCL() {
-        if(this.libType === 'other' || this.libType === 'channelstore') {
+        if (this.libType === 'other' || this.libType === 'channelstore') {
             return true;
         }
         return false;
-    };
+    }
 
     /**
      * Takes a component Library and checks the outFile for replaceable values pulled from the libraries manifest
@@ -732,7 +732,7 @@ export class RemoteComponentLibraryProject extends Project {
 
         await this.setComponentLibraryName();
 
-        if(this.checkLibTypeForCL()) {
+        if (this.checkLibTypeForCL()) {
             const rd = new RokuDeploy();
             util.log(`Staging for ${this.libType}`);
             let prevStagingDir = this.stagingDir;
@@ -744,7 +744,7 @@ export class RemoteComponentLibraryProject extends Project {
                 files: this.files,
                 outDir: this.outDir
             });
-    
+
             this.stagingDir = prevStagingDir;
             await rd.prepublishToStaging({
                 rootDir: this.rootDir,
@@ -754,12 +754,12 @@ export class RemoteComponentLibraryProject extends Project {
             });
         } else {
             let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
-    
+
             let defaultStagingDir = this.stagingDir;
-    
+
             //compute the staging folder path.
             this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
-    
+
             /*
               The fileMappings were created using the default stagingDir (because we need the manifest path
               to compute the out file name and staging path), so we need to replace the default stagingDir
@@ -768,7 +768,7 @@ export class RemoteComponentLibraryProject extends Project {
             for (let fileMapping of this.fileMappings) {
                 fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
             }
-    
+
             return super.stage();
         }
     }
@@ -783,7 +783,9 @@ export class RemoteComponentLibraryProject extends Project {
     }
 
     public async postfixFiles() {
-        if (this.checkLibTypeForCL()) return;
+        if (this.checkLibTypeForCL()) {
+            return;
+        }
 
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
@@ -820,15 +822,15 @@ export class RemoteComponentLibraryProject extends Project {
     }
 
     public async publish() {
-        if(this.libType === 'other') {
+        if (this.libType === 'other') {
             const options = rokuDeploy.getOptions({
                 ...this,
-                username: this.username || "rokudev",
-                libType: 'dcl', // this would run only for DCL type & rokuDeploy expects dcl not channelstore
+                username: this.username || 'rokudev',
+                libType: 'dcl' // this would run only for DCL type & rokuDeploy expects dcl not channelstore
             });
-    
-            await rokuDeploy.publish(options).then(function(){
-            }, function(error) {
+
+            await rokuDeploy.publish(options).then(() => {
+            }, (error) => {
                 util.log(`Error during sideloading: ${error}`);
             });
         } 

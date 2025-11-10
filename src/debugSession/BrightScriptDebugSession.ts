@@ -22,7 +22,8 @@ import type { DebugProtocol } from '@vscode/debugprotocol';
 import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
-import { ProjectManager, Project, RemoteComponentLibraryProject, RemoteLibraryConstructorParams } from '../managers/ProjectManager';
+import { ProjectManager, Project, RemoteComponentLibraryProject } from '../managers/ProjectManager';
+import type { RemoteLibraryConstructorParams } from '../managers/ProjectManager';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
@@ -417,7 +418,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             const start = Date.now();
             const packageEnd = this.logger.timeStart('log', 'Packaging');
-            
             // sequentially prepare the projects
             if (this.launchConfiguration.sequentially) {
                 await this.prepareMainProject();
@@ -427,10 +427,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await Promise.all([
                     this.prepareMainProject(),
                     this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
-                ])
+                ]);
             }
 
-            packageEnd()
+            packageEnd();
             this.logger.log(`Packaging projects took: ${(util.formatTime(Date.now() - start))}`);
 
             if (this.enableDebugProtocol) {
@@ -1040,10 +1040,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 if (componentLibrary.libType === 'channelstore' || componentLibrary.libType === 'other') {
 
-                    commonParams.host= this.launchConfiguration.host;
-                    commonParams.username= componentLibrary.username;
-                    commonParams.password= this.launchConfiguration.password;
-                    commonParams.libType= componentLibrary.libType;
+                    commonParams.host = this.launchConfiguration.host;
+                    commonParams.username = componentLibrary.username;
+                    commonParams.password = this.launchConfiguration.password;
+                    commonParams.libType = componentLibrary.libType;
                 }
 
                 this.projectManager.componentLibraryProjects.push(
