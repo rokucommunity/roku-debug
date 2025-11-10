@@ -418,8 +418,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const start = Date.now();
             const packageEnd = this.logger.timeStart('log', 'Packaging');
             
-            // synchronously prepare the projects based on configuration
-            if (this.launchConfiguration.prepareProjectFilesSynchronously) {
+            // sequentially prepare the projects
+            if (this.launchConfiguration.sequentially) {
                 await this.prepareMainProject();
                 await this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort);
             } else {
@@ -1038,7 +1038,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
                 };
 
-                if (componentLibrary.libType) {
+                if (componentLibrary.libType === 'channelstore' || componentLibrary.libType === 'other') {
 
                     commonParams.host= this.launchConfiguration.host;
                     commonParams.username= componentLibrary.username;

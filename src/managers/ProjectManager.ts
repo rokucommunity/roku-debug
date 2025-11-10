@@ -656,7 +656,7 @@ export class RemoteComponentLibraryProject extends Project {
         super(params);
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
-        this.libType = params.libType ||'channelstore';
+        this.libType = params.libType;
         this.host = params.host;
         this.username = params.username;
         this.password = params.password;
@@ -672,6 +672,13 @@ export class RemoteComponentLibraryProject extends Project {
     public host: string;
     public password: string;
     public username: string;
+
+    private checkLibTypeForCL() {
+        if(this.libType === 'other' || this.libType === 'channelstore') {
+            return true;
+        }
+        return false;
+    };
 
     /**
      * Takes a component Library and checks the outFile for replaceable values pulled from the libraries manifest
@@ -725,7 +732,7 @@ export class RemoteComponentLibraryProject extends Project {
 
         await this.setComponentLibraryName();
 
-        if(this.libType) {
+        if(this.checkLibTypeForCL()) {
             const rd = new RokuDeploy();
             util.log(`Staging for ${this.libType}`);
             let prevStagingDir = this.stagingDir;
@@ -772,11 +779,11 @@ export class RemoteComponentLibraryProject extends Project {
      */
     public get postfix() {
 
-        return this.libType? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
+        return this.checkLibTypeForCL() ? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
     }
 
     public async postfixFiles() {
-        if (this.libType) return;
+        if (this.checkLibTypeForCL()) return;
 
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
@@ -813,23 +820,19 @@ export class RemoteComponentLibraryProject extends Project {
     }
 
     public async publish() {
-        if(this.libType){
-            if(this.libType !== 'channelstore') {
-                util.log(`No publish for libType: ${this.libType}`)
-                return;
-            } 
-
+        if(this.libType === 'other') {
             const options = rokuDeploy.getOptions({
                 ...this,
                 username: this.username || "rokudev",
                 libType: 'dcl', // this would run only for DCL type & rokuDeploy expects dcl not channelstore
             });
-
+    
             await rokuDeploy.publish(options).then(function(){
             }, function(error) {
                 util.log(`Error during sideloading: ${error}`);
             });
-        }
+        } 
+
     }
 }
 

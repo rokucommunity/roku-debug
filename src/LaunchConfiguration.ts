@@ -363,11 +363,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     emitChannelPublishedEvent?: boolean;
 
     /**
-     * Should the main library and component libraries be hosted synchronously. This is for when certain libraries like "DCL" require it
+     * Should the main library and component libraries be hosted sequentially. This is for when certain libraries like "DCL" require it
      * if not set the default is false unless one of the libraries requires it
      * @default true
      */
-    prepareProjectFilesSynchronously?: boolean;
+    sequentially?: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
