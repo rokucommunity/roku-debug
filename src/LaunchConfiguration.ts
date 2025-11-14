@@ -26,7 +26,7 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     rootDir: string;
 
     /**
-     * specifies if we want to publish the component libraries or not
+     * Should this component library be installed onto the Roku device prior to launching the application```
      */
     install?: boolean;
 
