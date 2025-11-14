@@ -1057,7 +1057,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
                 const compLibProject = this.projectManager.componentLibraryProjects[i];
 
-                // rokuDeploy.deleteInstalledChannel()
                 if (compLibProject .install === true) {
                     await compLibPromises[i];
 
