@@ -980,6 +980,25 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             util.log('Creating zip archive from project sources');
             await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
         }
+         // rokuDeploy.deleteInstalledChannel()
+        this.launchConfiguration.componentLibraries.forEach(async cl => {
+            if (cl.install === true){
+                const options = rokuDeploy.getOptions({
+                    host: this.launchConfiguration.host,
+                    password: this.launchConfiguration.password,
+                    username: this.launchConfiguration.username || 'rokudev',
+                    rootDir: cl.rootDir,
+                    files: cl.files,
+                    outDir: cl.outDir,
+                    outFile: cl.outFile,
+                });
+
+                await rokuDeploy.publish(options).then(() => {
+                    }, (error) => {
+                        util.log(`Error during sideloading: ${error}`);
+                });
+            }
+        });
     }
 
     /**

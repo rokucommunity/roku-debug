@@ -21,6 +21,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     password: string;
 
     /**
+     * To add the usename
+     */
+    username:string
+
+    /**
      * The root directory that contains your Roku project. This path should point to the folder containing your manifest file
      */
     rootDir: string;
@@ -395,4 +400,12 @@ export interface ComponentLibraryConfiguration {
      * This is an absolute path to the TrackerTask.xml file to be injected into the component library during a debug session.
      */
     raleTrackerTaskFileLocation: string;
+    /**
+     * This is to specify if we want to install the component library on the Roku device after building it.
+     */
+    install: boolean;
+    /**
+     * This is to specify the file locAation where we can find the .zip file for the CL.
+     */
+    outDir: string;
 }
