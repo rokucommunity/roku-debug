@@ -1052,11 +1052,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await compLibProject.zipPackage({ retainStagingFolder: true });
             });
 
+            //TODO delete all installed component libraries here before the loop
+
             for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
-                const compLibsProject = this.projectManager.componentLibraryProjects[i];
+                const compLibProject = this.projectManager.componentLibraryProjects[i];
 
                 // rokuDeploy.deleteInstalledChannel()
-                if (compLibsProject.install === true) {
+                if (compLibProject .install === true) {
                     await compLibPromises[i];
 
                     const options: RokuDeployOptions = {
@@ -1065,8 +1067,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         username: this.launchConfiguration.username || 'rokudev',
                         logLevel: LogLevelPriority[this.logger.logLevel],
                         failOnCompileError: true,
-                        outDir: compLibsProject.outDir,
-                        outFile: compLibsProject.outFile,
+                        outDir: compLibProject .outDir,
+                        outFile: compLibProject .outFile,
                         packageUploadOverrides: {
                             formData: {
                                 'app_type': 'dcl'
@@ -1077,7 +1079,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     try {
                         await rokuDeploy.publish(options);
                     } catch (error) {
-                        this.logger.error(`Error installing component libraries: ${compLibsProject.libraryIndex}`, options);
+                        this.logger.error(`Error installing component libraries: ${compLibProject .libraryIndex}`, options);
                     }
                 }
             }
