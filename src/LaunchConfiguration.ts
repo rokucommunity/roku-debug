@@ -384,10 +384,6 @@ export interface ComponentLibraryConfiguration {
      */
     install: boolean;
     /**
-     * The folder where the output files are places during the packaging process specific to this component library
-     */
-    outDir: string;
-    /**
      * The filename for the package.
      */
     outFile: string;
