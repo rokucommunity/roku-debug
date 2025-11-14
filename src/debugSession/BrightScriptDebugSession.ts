@@ -359,6 +359,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.rewriteDevicePathsInLogs ??= true;
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
+        config.username ??= 'rokudev';
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
         if (typeof config.enableVariablesPanel !== 'boolean') {
@@ -980,25 +981,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             util.log('Creating zip archive from project sources');
             await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
         }
-         // rokuDeploy.deleteInstalledChannel()
-        this.launchConfiguration.componentLibraries.forEach(async cl => {
-            if (cl.install === true){
-                const options = rokuDeploy.getOptions({
-                    host: this.launchConfiguration.host,
-                    password: this.launchConfiguration.password,
-                    username: this.launchConfiguration.username || 'rokudev',
-                    rootDir: cl.rootDir,
-                    files: cl.files,
-                    outDir: cl.outDir,
-                    outFile: cl.outFile,
-                });
-
-                await rokuDeploy.publish(options).then(() => {
-                    }, (error) => {
-                        util.log(`Error during sideloading: ${error}`);
-                });
-            }
-        });
     }
 
     /**
@@ -1043,6 +1025,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         outFile: componentLibrary.outFile,
                         sourceDirs: componentLibrary.sourceDirs,
                         bsConst: componentLibrary.bsConst,
+                        install: componentLibrary.install,
                         injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
                         libraryIndex: libraryIndex,
@@ -1068,6 +1051,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 await compLibProject.zipPackage({ retainStagingFolder: true });
             });
+
+            for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
+                const compLibsProject = this.projectManager.componentLibraryProjects[i];
+
+                // rokuDeploy.deleteInstalledChannel()
+                if (compLibsProject.install === true) {
+                    await compLibPromises[i];
+
+                    const options: RokuDeployOptions = {
+                        host: this.launchConfiguration.host,
+                        password: this.launchConfiguration.password,
+                        username: this.launchConfiguration.username || 'rokudev',
+                        logLevel: LogLevelPriority[this.logger.logLevel],
+                        failOnCompileError: true,
+                        outDir: compLibsProject.outDir,
+                        outFile: compLibsProject.outFile,
+                        packageUploadOverrides: {
+                            formData: {
+                                'app_type': 'dcl'
+                            }
+                        }
+                    };
+
+                    try {
+                        await rokuDeploy.publish(options);
+                    } catch (error) {
+                        this.logger.error(`Error installing component libraries: ${compLibsProject.libraryIndex}`, options);
+                    }
+                }
+            }
 
             let hostingPromise: Promise<any>;
             if (compLibPromises) {
