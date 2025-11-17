@@ -1052,7 +1052,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await compLibProject.zipPackage({ retainStagingFolder: true });
             });
 
-            //TODO delete all installed component libraries here before the loop
+            let needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x=> x.install);
+
+            if(needToDeleteComplibs){ 
+                rokuDeploy.deleteAllComponentLibraries({
+                    host: this.launchConfiguration.host,
+                    password: this.launchConfiguration.password,
+                    username: this.launchConfiguration.username || 'rokudev', 
+                });
+            }
 
             for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
                 const compLibProject = this.projectManager.componentLibraryProjects[i];
