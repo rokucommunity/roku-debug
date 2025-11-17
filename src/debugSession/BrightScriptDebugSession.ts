@@ -1052,20 +1052,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await compLibProject.zipPackage({ retainStagingFolder: true });
             });
 
-            let needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x=> x.install);
+            let needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
 
-            if(needToDeleteComplibs){ 
-                rokuDeploy.deleteAllComponentLibraries({
+            if (needToDeleteComplibs) {
+                await rokuDeploy.deleteAllComponentLibraries({
                     host: this.launchConfiguration.host,
                     password: this.launchConfiguration.password,
-                    username: this.launchConfiguration.username || 'rokudev', 
+                    username: this.launchConfiguration.username || 'rokudev'
                 });
             }
 
             for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
                 const compLibProject = this.projectManager.componentLibraryProjects[i];
 
-                if (compLibProject .install === true) {
+                if (compLibProject.install === true) {
                     await compLibPromises[i];
 
                     const options: RokuDeployOptions = {
@@ -1074,8 +1074,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         username: this.launchConfiguration.username || 'rokudev',
                         logLevel: LogLevelPriority[this.logger.logLevel],
                         failOnCompileError: true,
-                        outDir: compLibProject .outDir,
-                        outFile: compLibProject .outFile,
+                        outDir: compLibProject.outDir,
+                        outFile: compLibProject.outFile,
                         packageUploadOverrides: {
                             formData: {
                                 'app_type': 'dcl'
@@ -1086,7 +1086,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     try {
                         await rokuDeploy.publish(options);
                     } catch (error) {
-                        this.logger.error(`Error installing component libraries: ${compLibProject .libraryIndex}`, options);
+                        this.logger.error(`Error installing component libraries: ${compLibProject.libraryIndex}`, options);
                     }
                 }
             }
