@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.22.4](https://github.com/rokucommunity/roku-debug/compare/0.22.3...v0.22.4) - 2025-11-19
+### Added
+ - Add ability to install component libraries on device ([#279](https://github.com/rokucommunity/roku-debug/pull/279))
+### Changed
+ - upgrade to [roku-deploy@3.15.0](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3150---2025-11-17). Notable changes since 3.14.4:
+     - Support installing and deleting component libraries ([#220](https://github.com/rokucommunity/roku-deploy/pull/220))
+
+
+
 ## [0.22.3](https://github.com/rokucommunity/roku-debug/compare/0.22.2...v0.22.3) - 2025-10-31
 ### Changed
  - Change ecp logging to `trace` to make lower level logs more useful ([#276](https://github.com/rokucommunity/roku-debug/pull/276))
