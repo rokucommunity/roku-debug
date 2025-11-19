@@ -26,6 +26,17 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     rootDir: string;
 
     /**
+     * Should this component library be installed onto the Roku device prior to launching the application```
+     */
+    install?: boolean;
+
+    /**
+     * Username for the developer page on the target Roku device. This is hardcoded to "rokudev"
+     * @default "rokudev"
+     */
+    username?: string;
+
+    /**
      * If you have a build system, rootDir will point to the build output folder, and this path should point to the actual source folder
      * so that breakpoints can be set in the source files when debugging. In order for this to work, your build process cannot change
      * line offsets between source files and built files, otherwise debugger lines will be out of sync.
@@ -368,6 +379,10 @@ export interface ComponentLibraryConfiguration {
      * The root directory for the component library project. This path should point to the folder containing the manifest file
      */
     rootDir: string;
+    /**
+     * Install component library on device if true
+     */
+    install: boolean;
     /**
      * The filename for the package.
      */

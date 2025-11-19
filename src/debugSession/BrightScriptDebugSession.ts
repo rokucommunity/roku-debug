@@ -359,6 +359,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.rewriteDevicePathsInLogs ??= true;
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
+        config.username ??= 'rokudev';
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
         if (typeof config.enableVariablesPanel !== 'boolean') {
@@ -1024,6 +1025,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         outFile: componentLibrary.outFile,
                         sourceDirs: componentLibrary.sourceDirs,
                         bsConst: componentLibrary.bsConst,
+                        install: componentLibrary.install,
                         injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
                         libraryIndex: libraryIndex,
@@ -1050,15 +1052,49 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 await compLibProject.zipPackage({ retainStagingFolder: true });
             });
 
-            let hostingPromise: Promise<any>;
-            if (compLibPromises) {
-                // prepare static file hosting
-                hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
-                    util.log(message);
+            let needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
+
+            if (needToDeleteComplibs) {
+                await rokuDeploy.deleteAllComponentLibraries({
+                    host: this.launchConfiguration.host,
+                    password: this.launchConfiguration.password,
+                    username: this.launchConfiguration.username || 'rokudev'
                 });
             }
 
-            //wait for all component libaries to finish building, and the file hosting to start up
+            for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
+                const compLibProject = this.projectManager.componentLibraryProjects[i];
+
+                if (compLibProject.install === true) {
+                    //wait for this complib to finish being staged and zipped
+                    await compLibPromises[i];
+
+                    const options: RokuDeployOptions = {
+                        host: this.launchConfiguration.host,
+                        password: this.launchConfiguration.password,
+                        username: this.launchConfiguration.username || 'rokudev',
+                        logLevel: LogLevelPriority[this.logger.logLevel],
+                        failOnCompileError: true,
+                        outDir: compLibProject.outDir,
+                        outFile: compLibProject.outFile,
+                        appType: 'dcl'
+                    };
+
+                    try {
+                        await rokuDeploy.publish(options);
+                    } catch (error) {
+                        this.logger.error(`Error installing component library ${i}`, options);
+                    }
+                }
+            }
+
+            let hostingPromise: Promise<any>;
+            // prepare static file hosting
+            hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
+                util.log(message);
+            });
+
+            //wait for all component libaries to finish building, and the file hosting to start up (if enabled)
             await Promise.all([
                 ...compLibPromises,
                 hostingPromise

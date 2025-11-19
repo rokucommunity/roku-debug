@@ -645,6 +645,7 @@ export class Project {
 export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
+    install?: boolean;
 }
 
 export class ComponentLibraryProject extends Project {
@@ -652,9 +653,11 @@ export class ComponentLibraryProject extends Project {
         super(params);
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
+        this.install = params.install ?? false;
     }
     public outFile: string;
     public libraryIndex: number;
+    public install: boolean;
     /**
      * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
      */
