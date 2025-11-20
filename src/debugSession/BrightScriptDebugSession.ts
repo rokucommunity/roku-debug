@@ -1026,7 +1026,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         sourceDirs: componentLibrary.sourceDirs,
                         bsConst: componentLibrary.bsConst,
                         install: componentLibrary.install,
-                        overrideStaging: componentLibrary.overrideStaging,
+                        overwriteStaging: componentLibrary.overwriteStaging,
                         injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                         raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
                         libraryIndex: libraryIndex,

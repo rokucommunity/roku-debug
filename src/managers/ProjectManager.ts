@@ -646,7 +646,7 @@ export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
     install?: boolean;
-    overrideStaging?: boolean;
+    overwriteStaging?: boolean;
 }
 
 export class ComponentLibraryProject extends Project {
@@ -655,12 +655,12 @@ export class ComponentLibraryProject extends Project {
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
         this.install = params.install ?? false;
-        this.overrideStaging = params.overrideStaging ?? false;
+        this.overwriteStaging = params.overwriteStaging ?? false;
     }
     public outFile: string;
     public libraryIndex: number;
     public install: boolean;
-    public overrideStaging: boolean;
+    public overwriteStaging: boolean;
     /**
      * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
      */
@@ -711,7 +711,7 @@ export class ComponentLibraryProject extends Project {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
 
-        if (this.overrideStaging) {
+        if (this.overwriteStaging) {
             const rd = new RokuDeploy();
 
             let prevStagingDir = this.stagingDir;
@@ -758,12 +758,12 @@ export class ComponentLibraryProject extends Project {
      * back to their original component library whenever the debugger truncates the file path.
      */
     public get postfix() {
-        return this.overrideStaging ? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
+        return this.overwriteStaging ? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
     }
 
     public async postfixFiles() {
 
-        if (this.overrideStaging) {
+        if (this.overwriteStaging) {
             return;
         }
         let pathDetails = {};

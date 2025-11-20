@@ -31,9 +31,9 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     install?: boolean;
 
     /**
-     * Override staging folder path if true
+     * Overwrite staging folder path if true
      */
-    overrideStaging?: boolean;
+    overwriteStaging?: boolean;
 
     /**
      * Username for the developer page on the target Roku device. This is hardcoded to "rokudev"
@@ -389,9 +389,9 @@ export interface ComponentLibraryConfiguration {
      */
     install: boolean;
     /**
-     * Override staging folder path if true
+     * Overwrite staging folder path if true
      */
-    overrideStaging?: boolean;
+    overwriteStaging?: boolean;
     /**
      * The filename for the package.
      */
