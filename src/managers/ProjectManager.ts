@@ -646,6 +646,7 @@ export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
     install?: boolean;
+    overrideStaging?: boolean;
 }
 
 export class ComponentLibraryProject extends Project {
@@ -654,10 +655,12 @@ export class ComponentLibraryProject extends Project {
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
         this.install = params.install ?? false;
+        this.overrideStaging = params.overrideStaging ?? false;
     }
     public outFile: string;
     public libraryIndex: number;
     public install: boolean;
+    public overrideStaging: boolean;
     /**
      * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
      */
@@ -698,7 +701,6 @@ export class ComponentLibraryProject extends Project {
          This must be done BEFORE finding the manifest file location.
          */
         this.fileMappings = await this.getFileMappings();
-
         let expectedManifestDestPath = fileUtils.standardizePath(`${this.stagingDir}/manifest`).toLowerCase();
         //find the file entry with the `dest` value of `${stagingDir}/manifest` (case insensitive)
         let manifestFileEntry = this.fileMappings.find(x => x.dest.toLowerCase() === expectedManifestDestPath);
@@ -708,21 +710,45 @@ export class ComponentLibraryProject extends Project {
         } else {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
-        let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
 
-        let defaultStagingDir = this.stagingDir;
+        if (this.overrideStaging) {
+            const rd = new RokuDeploy();
 
-        //compute the staging folder path.
-        this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
+            let prevStagingDir = this.stagingDir;
+            // copy to out directory to show breakpoint
+            this.stagingDir = s`${this.outDir}/../.roku-deploy-staging`;
+            await rd.prepublishToStaging({
+                rootDir: this.rootDir,
+                stagingDir: this.stagingDir,
+                files: this.files,
+                outDir: this.outDir
+            });
 
-        /*
-          The fileMappings were created using the default stagingDir (because we need the manifest path
-          to compute the out file name and staging path), so we need to replace the default stagingDir
-          with the actual stagingDir.
-         */
-        for (let fileMapping of this.fileMappings) {
-            fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
+            this.stagingDir = prevStagingDir;
+            await rd.prepublishToStaging({
+                rootDir: this.rootDir,
+                stagingDir: this.stagingDir,
+                files: this.files,
+                outDir: this.outDir
+            });
+        } else {
+            let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
+
+            let defaultStagingDir = this.stagingDir;
+
+            //compute the staging folder path.
+            this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
+
+            /*
+              The fileMappings were created using the default stagingDir (because we need the manifest path
+              to compute the out file name and staging path), so we need to replace the default stagingDir
+              with the actual stagingDir.
+             */
+            for (let fileMapping of this.fileMappings) {
+                fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
+            }
         }
+
 
         return super.stage();
     }
@@ -732,10 +758,14 @@ export class ComponentLibraryProject extends Project {
      * back to their original component library whenever the debugger truncates the file path.
      */
     public get postfix() {
-        return `${componentLibraryPostfix}${this.libraryIndex}`;
+        return this.overrideStaging ? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
     }
 
     public async postfixFiles() {
+
+        if (this.overrideStaging) {
+            return;
+        }
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(
