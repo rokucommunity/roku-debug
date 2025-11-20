@@ -1542,6 +1542,164 @@ describe('BrightScriptDebugSession', () => {
             });
         });
     });
+
+    describe('prepareAndHostComponentLibraries', () => {
+        function stubDefaults() {
+            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
+            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].password = 'test123';
+        }
+
+        it('installs libraries sequentially when marked install=true', async () => {
+            stubDefaults();
+            const installOrder = [];
+            const publishStub = sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
+                installOrder.push(options.outFile);
+                await util.sleep(10);
+                return { message: 'success', results: [] };
+            });
+
+            await session['prepareAndHostComponentLibraries']([
+                { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
+                { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
+            ] as any, 8080);
+
+            expect(installOrder).to.eql(['lib1.zip', 'lib2.zip']);
+            expect(publishStub.callCount).to.equal(2);
+        });
+
+        it('skips libraries where install is not true', async () => {
+            stubDefaults();
+            const installOrder = [];
+            const publishStub = sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
+                installOrder.push(options.outFile);
+                await util.sleep(10);
+                return { message: 'success', results: [] };
+            });
+
+            await session['prepareAndHostComponentLibraries']([
+                { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
+                { rootDir: complib1Dir, outFile: 'lib2.zip', install: false },
+                { rootDir: complib1Dir, outFile: 'lib3.zip', install: undefined },
+                { rootDir: complib1Dir, outFile: 'lib4.zip', install: null },
+                { rootDir: complib1Dir, outFile: 'lib5.zip', install: 1 as any }
+            ] as any, 8080);
+
+            expect(publishStub.callCount).to.equal(1);
+            expect(installOrder).to.eql(['lib1.zip']);
+        });
+
+        it('sends proper form data for installation', async () => {
+            stubDefaults();
+            const publishStub = sinon.stub(rokuDeploy, 'publish').resolves({ message: 'success', results: [] });
+
+            await session['prepareAndHostComponentLibraries']([
+                { rootDir: complib1Dir, outFile: 'testLib.zip', install: true }
+            ] as any, 8080);
+
+            expect(publishStub.getCall(0).args[0]).to.include({
+                host: '192.168.1.100',
+                password: 'test123',
+                username: 'rokudev',
+                outFile: 'testLib.zip',
+                appType: 'dcl'
+            });
+        });
+
+        it('logs error when publish fails and includes lib index', async () => {
+            stubDefaults();
+            sinon.stub(rokuDeploy, 'publish').rejects(new Error('Network error'));
+
+            await session['prepareAndHostComponentLibraries']([
+                { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
+            ] as any, 8080);
+
+            expect(errorSpy.calledWith('Error installing component library 0')).to.be.true;
+        });
+
+        it('waits for stage and zip before installing (slow lib1, fast lib2)', async () => {
+            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
+            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].password = 'test123';
+
+            const events = [];
+            sinon.stub(ComponentLibraryProject.prototype, 'stage').callsFake(async function(this: ComponentLibraryProject) {
+                const delay = this['outFile'] === 'lib1.zip' ? 100 : 10;
+                events.push(`stage-start-${this['outFile']}`);
+                await util.sleep(delay);
+                events.push(`stage-end-${this['outFile']}`);
+            });
+            sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').callsFake(async function(this: ComponentLibraryProject) {
+                events.push(`zip-${this['outFile']}`);
+                await util.sleep(1);
+            });
+            sinon.stub(rokuDeploy, 'publish').callsFake((options) => {
+                events.push(`install-${options.outFile}`);
+                return Promise.resolve({ message: 'success', results: [] });
+            });
+
+            await session['prepareAndHostComponentLibraries']([
+                { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
+                { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
+            ] as any, 8080);
+
+            expect(events.indexOf('install-lib1.zip')).to.be.lessThan(events.indexOf('install-lib2.zip'));
+            expect(events.indexOf('stage-end-lib1.zip')).to.be.lessThan(events.indexOf('install-lib1.zip'));
+            expect(events.indexOf('zip-lib2.zip')).to.be.lessThan(events.indexOf('install-lib2.zip'));
+        });
+
+        it('fails build when complib promise fails', async () => {
+            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
+            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].password = 'test123';
+
+            sinon.stub(ComponentLibraryProject.prototype, 'stage').rejects(new Error('Stage failed'));
+
+            let errorThrown = false;
+            try {
+                await session['prepareAndHostComponentLibraries']([
+                    { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
+                ] as any, 8080);
+            } catch (e) {
+                errorThrown = true;
+                expect(e.message).to.include('Stage failed');
+            }
+            expect(errorThrown).to.be.true;
+        });
+
+        it('skips deleting complibs when none are marked install=true', async () => {
+            const deleteStub = sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
+
+            await session['prepareAndHostComponentLibraries']([
+                { rootDir: complib1Dir, outFile: 'lib1.zip', install: false },
+                { rootDir: complib1Dir, outFile: 'lib2.zip', install: undefined }
+            ] as any, 8080);
+
+            expect(deleteStub.called).to.be.false;
+        });
+
+        it('does not start server when no component libraries present', async () => {
+            const serverStub = sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
+
+            await session['prepareAndHostComponentLibraries']([], 8080);
+
+            expect(serverStub.called).to.be.false;
+        });
+    });
+
     describe('completionsRequest', () => {
         describe('getClosestCompletionDetails', () => {
             it('handles empty string columnsStartAt1 false', () => {

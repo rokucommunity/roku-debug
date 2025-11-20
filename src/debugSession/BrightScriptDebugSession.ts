@@ -1067,6 +1067,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 const compLibProject = this.projectManager.componentLibraryProjects[i];
 
                 if (compLibProject.install === true) {
+                    //wait for this complib to finish being staged and zipped
                     await compLibPromises[i];
 
                     const options: RokuDeployOptions = {
@@ -1077,30 +1078,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         failOnCompileError: true,
                         outDir: compLibProject.outDir,
                         outFile: compLibProject.outFile,
-                        packageUploadOverrides: {
-                            formData: {
-                                'app_type': 'dcl'
-                            }
-                        }
+                        appType: 'dcl'
                     };
 
                     try {
                         await rokuDeploy.publish(options);
                     } catch (error) {
-                        this.logger.error(`Error installing component libraries: ${compLibProject.libraryIndex}`, options);
+                        this.logger.error(`Error installing component library ${i}`, options);
                     }
                 }
             }
 
             let hostingPromise: Promise<any>;
-            if (compLibPromises) {
-                // prepare static file hosting
-                hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
-                    util.log(message);
-                });
-            }
+            // prepare static file hosting
+            hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
+                util.log(message);
+            });
 
-            //wait for all component libaries to finish building, and the file hosting to start up
+            //wait for all component libaries to finish building, and the file hosting to start up (if enabled)
             await Promise.all([
                 ...compLibPromises,
                 hostingPromise
