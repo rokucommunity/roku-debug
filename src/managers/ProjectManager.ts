@@ -646,7 +646,7 @@ export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
     install?: boolean;
-    overwriteStaging?: boolean;
+    avoidPostfix?: boolean;
 }
 
 export class ComponentLibraryProject extends Project {
@@ -655,12 +655,12 @@ export class ComponentLibraryProject extends Project {
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
         this.install = params.install ?? false;
-        this.overwriteStaging = params.overwriteStaging ?? false;
+        this.avoidPostfix = params.avoidPostfix ?? false;
     }
     public outFile: string;
     public libraryIndex: number;
     public install: boolean;
-    public overwriteStaging: boolean;
+    public avoidPostfix: boolean;
     /**
      * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
      */
@@ -711,44 +711,21 @@ export class ComponentLibraryProject extends Project {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
 
-        if (this.overwriteStaging) {
-            const rd = new RokuDeploy();
+        let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
 
-            let prevStagingDir = this.stagingDir;
-            // copy to out directory to show breakpoint
-            this.stagingDir = s`${this.outDir}/../.roku-deploy-staging`;
-            await rd.prepublishToStaging({
-                rootDir: this.rootDir,
-                stagingDir: this.stagingDir,
-                files: this.files,
-                outDir: this.outDir
-            });
+        let defaultStagingDir = this.stagingDir;
 
-            this.stagingDir = prevStagingDir;
-            await rd.prepublishToStaging({
-                rootDir: this.rootDir,
-                stagingDir: this.stagingDir,
-                files: this.files,
-                outDir: this.outDir
-            });
-        } else {
-            let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
+        //compute the staging folder path.
+        this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
 
-            let defaultStagingDir = this.stagingDir;
-
-            //compute the staging folder path.
-            this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
-
-            /*
-              The fileMappings were created using the default stagingDir (because we need the manifest path
-              to compute the out file name and staging path), so we need to replace the default stagingDir
-              with the actual stagingDir.
-             */
-            for (let fileMapping of this.fileMappings) {
-                fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
-            }
+        /*
+            The fileMappings were created using the default stagingDir (because we need the manifest path
+            to compute the out file name and staging path), so we need to replace the default stagingDir
+            with the actual stagingDir.
+            */
+        for (let fileMapping of this.fileMappings) {
+            fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
         }
-
 
         return super.stage();
     }
@@ -758,14 +735,11 @@ export class ComponentLibraryProject extends Project {
      * back to their original component library whenever the debugger truncates the file path.
      */
     public get postfix() {
-        return this.overwriteStaging ? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
+        return this.avoidPostfix ? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
     }
 
     public async postfixFiles() {
 
-        if (this.overwriteStaging) {
-            return;
-        }
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(

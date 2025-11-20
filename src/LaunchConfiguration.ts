@@ -31,9 +31,9 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     install?: boolean;
 
     /**
-     * Overwrite staging folder path if true
+     * Avoids adding postfix to the files when true
      */
-    overwriteStaging?: boolean;
+    avoidPostfix?: boolean;
 
     /**
      * Username for the developer page on the target Roku device. This is hardcoded to "rokudev"
@@ -389,9 +389,9 @@ export interface ComponentLibraryConfiguration {
      */
     install: boolean;
     /**
-     * Overwrite staging folder path if true
+     * Avoids adding postfix to the files when true
      */
-    overwriteStaging?: boolean;
+    avoidPostfix?: boolean;
     /**
      * The filename for the package.
      */
