@@ -31,14 +31,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     install?: boolean;
 
     /**
-<<<<<<< HEAD
      * Avoids adding postfix to the files when true
      */
     avoidPostfix?: boolean;
 
     /**
-=======
->>>>>>> master
      * Username for the developer page on the target Roku device. This is hardcoded to "rokudev"
      * @default "rokudev"
      */
