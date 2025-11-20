@@ -646,6 +646,7 @@ export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
     install?: boolean;
+    avoidPostfix?: boolean;
 }
 
 export class ComponentLibraryProject extends Project {
@@ -654,10 +655,12 @@ export class ComponentLibraryProject extends Project {
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
         this.install = params.install ?? false;
+        this.avoidPostfix = params.avoidPostfix ?? false;
     }
     public outFile: string;
     public libraryIndex: number;
     public install: boolean;
+    public avoidPostfix: boolean;
     /**
      * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
      */
@@ -698,7 +701,6 @@ export class ComponentLibraryProject extends Project {
          This must be done BEFORE finding the manifest file location.
          */
         this.fileMappings = await this.getFileMappings();
-
         let expectedManifestDestPath = fileUtils.standardizePath(`${this.stagingDir}/manifest`).toLowerCase();
         //find the file entry with the `dest` value of `${stagingDir}/manifest` (case insensitive)
         let manifestFileEntry = this.fileMappings.find(x => x.dest.toLowerCase() === expectedManifestDestPath);
@@ -708,6 +710,7 @@ export class ComponentLibraryProject extends Project {
         } else {
             throw new Error(`Could not find manifest path for component library at '${this.rootDir}'`);
         }
+
         let fileNameWithoutExtension = path.basename(this.outFile, path.extname(this.outFile));
 
         let defaultStagingDir = this.stagingDir;
@@ -716,10 +719,10 @@ export class ComponentLibraryProject extends Project {
         this.stagingDir = s`${this.outDir}/${fileNameWithoutExtension}`;
 
         /*
-          The fileMappings were created using the default stagingDir (because we need the manifest path
-          to compute the out file name and staging path), so we need to replace the default stagingDir
-          with the actual stagingDir.
-         */
+            The fileMappings were created using the default stagingDir (because we need the manifest path
+            to compute the out file name and staging path), so we need to replace the default stagingDir
+            with the actual stagingDir.
+            */
         for (let fileMapping of this.fileMappings) {
             fileMapping.dest = fileUtils.replaceCaseInsensitive(fileMapping.dest, defaultStagingDir, this.stagingDir);
         }
@@ -732,10 +735,11 @@ export class ComponentLibraryProject extends Project {
      * back to their original component library whenever the debugger truncates the file path.
      */
     public get postfix() {
-        return `${componentLibraryPostfix}${this.libraryIndex}`;
+        return this.avoidPostfix ? '' : `${componentLibraryPostfix}${this.libraryIndex}`;
     }
 
     public async postfixFiles() {
+
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(

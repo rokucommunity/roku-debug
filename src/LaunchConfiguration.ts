@@ -31,6 +31,11 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     install?: boolean;
 
     /**
+     * Avoids adding postfix to the files when true
+     */
+    avoidPostfix?: boolean;
+
+    /**
      * Username for the developer page on the target Roku device. This is hardcoded to "rokudev"
      * @default "rokudev"
      */
@@ -383,6 +388,10 @@ export interface ComponentLibraryConfiguration {
      * Install component library on device if true
      */
     install: boolean;
+    /**
+     * Avoids adding postfix to the files when true
+     */
+    avoidPostfix?: boolean;
     /**
      * The filename for the package.
      */
