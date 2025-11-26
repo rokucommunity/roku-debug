@@ -1701,7 +1701,7 @@ describe('BrightScriptDebugSession', () => {
 
         it('calls packageTask for each component library if packageTask defined', async () => {
             stubDefaults();
-            const sendEventStub = sinon.stub(session, 'sendCustomRequest').resolves();
+            const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
             await session['prepareAndHostComponentLibraries']([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true, packageTask: 'build:lib1' },
