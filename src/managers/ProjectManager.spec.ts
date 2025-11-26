@@ -722,6 +722,7 @@ describe('ComponentLibraryProject', () => {
                     <script type="text/brightscript" uri="common:/LibCore/v30/bslCore.brs"/>
                     <script type="text/brightscript" uri="CustomComponent.brs"/>
                     <script type="text/brightscript" uri="pkg:/source/utils.brs"/>
+                    <script type="text/brightscript" uri="libpkg:/components/component.brs"/>
                 </component>
             `);
             await project.postfixFiles();
@@ -732,6 +733,7 @@ describe('ComponentLibraryProject', () => {
                     <script type="text/brightscript" uri="common:/LibCore/v30/bslCore.brs"/>
                     <script type="text/brightscript" uri="CustomComponent__lib0.brs"/>
                     <script type="text/brightscript" uri="pkg:/source/utils__lib0.brs"/>
+                    <script type="text/brightscript" uri="libpkg:/components/component__lib0.brs"/>
                 </component>
             `);
         });
@@ -745,6 +747,7 @@ describe('ComponentLibraryProject', () => {
                     <script type="text/brightscript" uri = "common:/LibCore/v30/bslCore.brs"/>
                     <script type="text/brightscript" uri = "CustomComponent.brs"/>
                     <script type="text/brightscript" uri = "pkg:/source/utils.brs"/>
+                    <script type="text/brightscript" uri = "libpkg:/components/component.brs"/>
                 </component>
             `);
             await project.postfixFiles();
@@ -755,6 +758,7 @@ describe('ComponentLibraryProject', () => {
                     <script type="text/brightscript" uri = "common:/LibCore/v30/bslCore.brs"/>
                     <script type="text/brightscript" uri = "CustomComponent__lib0.brs"/>
                     <script type="text/brightscript" uri = "pkg:/source/utils__lib0.brs"/>
+                    <script type="text/brightscript" uri = "libpkg:/components/component__lib0.brs"/>
                 </component>
             `);
         });

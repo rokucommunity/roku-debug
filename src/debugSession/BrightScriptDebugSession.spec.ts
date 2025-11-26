@@ -1698,6 +1698,72 @@ describe('BrightScriptDebugSession', () => {
 
             expect(serverStub.called).to.be.false;
         });
+
+        it('calls packageTask for each component library if packageTask defined', async () => {
+            stubDefaults();
+            const sendEventStub = sinon.stub(session, 'sendCustomRequest').resolves();
+
+            await session['prepareAndHostComponentLibraries']([
+                { rootDir: complib1Dir, outFile: 'lib1.zip', install: true, packageTask: 'build:lib1' },
+                { rootDir: complib1Dir, outFile: 'lib2.zip', install: true, packageTask: 'build:lib2' },
+                { rootDir: complib1Dir, outFile: 'lib3.zip', install: true }
+            ] as any, 8080);
+
+            const calls = sendEventStub.getCalls();
+            expect(calls.length).to.equal(2);
+            expect(calls[0].args[0]).to.equal('executeTask');
+            expect(calls[0].args[1]).to.eql({ task: 'build:lib1' });
+            expect(calls[1].args[0]).to.equal('executeTask');
+            expect(calls[1].args[1]).to.eql({ task: 'build:lib2' });
+        });
+
+        it('handles packagePath and packageUploadOverrides for component libraries', async () => {
+            stubDefaults();
+            const installOrder = [];
+            sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
+                installOrder.push(options);
+                await util.sleep(10);
+                return { message: 'success', results: [] };
+            });
+
+            const packageUploadOverrides1 = {};
+            const packageUploadOverrides2 = {
+                route: '1234',
+                formData: {
+                    one: 'two',
+                    three: null
+                }
+            };
+
+            await session['prepareAndHostComponentLibraries']([
+                {
+                    rootDir: complib1Dir,
+                    outFile: 'lib1.zip',
+                    install: true,
+                    packagePath: s`${tempDir}/custom/cl1.zip`,
+                    packageUploadOverrides: packageUploadOverrides1
+                },
+                {
+                    rootDir: complib1Dir,
+                    outFile: 'lib2.zip',
+                    install: true,
+                    packagePath: s`${tempDir}/custom/cl2.zip`,
+                    packageUploadOverrides: packageUploadOverrides2
+                }
+            ] as any, 8080);
+
+            expect(installOrder.length).to.equal(2);
+            expect(installOrder[0]).to.include({
+                outFile: path.basename(s`${tempDir}/custom/cl1.zip`),
+                outDir: path.dirname(s`${tempDir}/custom/cl1.zip`),
+                packageUploadOverrides: packageUploadOverrides1
+            });
+            expect(installOrder[1]).to.include({
+                outFile: path.basename(s`${tempDir}/custom/cl2.zip`),
+                outDir: path.dirname(s`${tempDir}/custom/cl2.zip`),
+                packageUploadOverrides: packageUploadOverrides2
+            });
+        });
     });
 
     describe('completionsRequest', () => {
