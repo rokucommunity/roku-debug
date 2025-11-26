@@ -1069,6 +1069,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //wait for this complib to finish being staged and zipped
                     await compLibPromises[i];
 
+                    if (componentLibraries[i].packageTask) {
+                        await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
+                    }
+
                     const options: RokuDeployOptions = {
                         host: this.launchConfiguration.host,
                         password: this.launchConfiguration.password,
@@ -1077,13 +1081,19 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                         failOnCompileError: true,
                         outDir: compLibProject.outDir,
                         outFile: compLibProject.outFile,
-                        appType: 'dcl'
+                        appType: 'dcl',
+                        packageUploadOverrides: componentLibraries[i].packageUploadOverrides || {}
                     };
+
+                    if (componentLibraries[i].packagePath) {
+                        options.outDir = path.dirname(componentLibraries[i].packagePath);
+                        options.outFile = path.basename(componentLibraries[i].packagePath);
+                    }
 
                     try {
                         await rokuDeploy.publish(options);
                     } catch (error) {
-                        this.logger.error(`Error installing component library ${i}`, options);
+                        this.logger.error(`Error installing component library ${i}`, error);
                     }
                 }
             }

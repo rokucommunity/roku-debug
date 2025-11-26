@@ -759,7 +759,7 @@ export class ComponentLibraryProject extends Project {
             from: /uri\s*=\s*"(.+)\.brs"/gi,
             to: (match: string) => {
                 // only alter file ending if it is a) pkg:/ url or b) relative url
-                let isPkgUrl = !!/^uri\s*=\s*"pkg:\//i.exec(match);
+                let isPkgUrl = !!/^uri\s*=\s*"(pkg:|libpkg:)\//i.exec(match);
                 let isRelativeUrl = !/:\//i.exec(match);
                 if (isPkgUrl || isRelativeUrl) {
                     return match.replace('.brs', this.postfix + '.brs');
