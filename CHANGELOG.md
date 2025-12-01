@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.22.5](https://github.com/rokucommunity/roku-debug/compare/0.22.4...v0.22.5) - 2025-12-01
+### Added
+ - Support packageTask, packagePath, packageUploadOverrides for complibs ([#282](https://github.com/rokucommunity/roku-debug/pull/282))
+
+
+
 ## [0.22.4](https://github.com/rokucommunity/roku-debug/compare/0.22.3...v0.22.4) - 2025-11-19
 ### Added
  - Add ability to install component libraries on device ([#279](https://github.com/rokucommunity/roku-debug/pull/279))
@@ -1082,6 +1088,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - renamed `enableSocketDebugger` to `enableDebugProtocol`
 ### Fixed
  - Bug in the telnet debugger on windows devices that would crash the debug session when `stopOnEntry` was enabled.
+
 
 
 
