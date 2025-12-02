@@ -1,7 +1,7 @@
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
-import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, ECPSettingModeDisabledError } from 'roku-deploy';
+import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, ECPNetworkAccessDisabledError } from 'roku-deploy';
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
@@ -397,12 +397,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
-            if ((this.deviceInfo as any).ecpSettingMode === 'limited') {
-                return await this.shutdown(`Device at '${this.launchConfiguration.host}' is in limited mode which is not supported by this extension.. Please check your device settings.`);
+            if (this.deviceInfo.ecpSettingMode === 'limited') {
+                return await this.shutdown(`ECP access is limited on this roku. Please change it to Permissive or Enabled and try again. (device: ${this.launchConfiguration.host})`);
             }
         } catch (e) {
-            if (e instanceof ECPSettingModeDisabledError) {
-                return this.shutdown(`The device at '${this.launchConfiguration.host}' has ECP setting mode disabled. Please enable ECP setting mode on the Roku device and try again.`);
+            if (e instanceof ECPNetworkAccessDisabledError) {
+                return this.shutdown(`ECP access is disabled on this roku. Please change it to Permissive or Enabled and try again. (device: ${this.launchConfiguration.host})`);
             }
             return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
         }
