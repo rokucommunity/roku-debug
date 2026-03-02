@@ -413,11 +413,15 @@ export class PerfettoManager {
                 remotePort: this.config.remotePort
             });
 
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            if (thisFunctionStartedTracing) {
+                await this.stopTracing();
+            }
+
             this.emit('stop', {
                 type: 'heapSnapshot',
-                result: thisFunctionStartedTracing
-                    ? this.getResult(filePath, { skipEmpty: true })
-                    : undefined
+                result: this.getResult(filePath, { skipEmpty: true })
             });
         } catch (error) {
             //regardless of success or failure, we want to emit that the snapshot process is no longer active so the UI can update accordingly
