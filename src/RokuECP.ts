@@ -37,17 +37,12 @@ export class RokuECP {
      */
     public async captureHeapSnapshot(options: BaseOptions & { channelId: string }) {
         const response = await this.doRequest(`/perfetto/heapgraph/trigger/${options.channelId}`, options, 'post');
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-            throw new Error('Request failed with status code ' + response.statusCode + ': ' + response.body);
-        }
-        const body = response.body as string;
-        const rootKey = /<([a-zA-Z][\w-]*)/.exec(body)?.[1];
-        if (!rootKey) {
-            throw new Error(body ?? 'Unknown error');
-        }
-        return this.parseResponse(response, rootKey, (_parsed: ParsedEcpBase, status): BaseEcpResponse => {
-            //we don't know the actual structure, so just return the status for now
-            return { status: status };
+        return this.parseResponse(response, 'perfetto-heapgraph-trigger', (parsed: HeapSnapshotAsJson, status): EcpHeapSnapshotData => {
+            return {
+                timestamp: Number(parsed?.timestamp?.[0]),
+                timestampEnd: Number(parsed?.['timestamp-end']?.[0]),
+                status: status
+            };
         });
     }
 
@@ -230,6 +225,16 @@ type ExitAppAsJson = ParsedEcpBase;
 export interface EcpExitAppData {
     status: EcpStatus;
     errorMessage?: string;
+}
+
+interface HeapSnapshotAsJson extends ParsedEcpBase {
+    timestamp: [string];
+    'timestamp-end': [string];
+}
+
+export interface EcpHeapSnapshotData extends BaseEcpResponse {
+    timestamp: number;
+    timestampEnd: number;
 }
 
 
