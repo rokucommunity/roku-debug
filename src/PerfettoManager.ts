@@ -153,13 +153,20 @@ export class PerfettoManager {
             };
             this.socket.on('error', onError);
 
+            let backpressured = false;
             this.socket.on('message', (data: any, isBinary: boolean) => {
                 if (!isBinary || !this.writeStream) {
                     return;
                 }
-                if (!this.writeStream.write(data)) {
+                // Write the binary data to the file, handling backpressure by pausing the socket if the internal buffer is full
+                //only the FIRST message that causes backpressure should subscribe to the 'drain' event, to avoid multiple listeners
+                if (!this.writeStream.write(data) && !backpressured) {
+                    backpressured = true;
                     this.socket?.pause();
-                    this.writeStream.once('drain', () => this.socket?.resume());
+                    this.writeStream.once('drain', () => {
+                        backpressured = false;
+                        this.socket?.resume();
+                    });
                 }
             });
 
