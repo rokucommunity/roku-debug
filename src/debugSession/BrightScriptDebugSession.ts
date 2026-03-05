@@ -1,6 +1,7 @@
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
+import * as semver from 'semver';
 import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError } from 'roku-deploy';
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
@@ -165,6 +166,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private get enableDebugProtocol() {
         return this.launchConfiguration.enableDebugProtocol;
+    }
+
+    /**
+     * Check if the Roku firmware supports Perfetto tracing (requires OS 15.2 or higher)
+     */
+    private get supportsPerfettoTracing() {
+        this.logger.log('Checking if device supports Perfetto tracing', this.deviceInfo.softwareVersion);
+        return semver.satisfies(this.deviceInfo?.softwareVersion ?? '0.0', '>= 15.2');
     }
 
     /**
@@ -406,8 +415,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
         }
 
-        await this.initializeProfiling();
-
+        
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
@@ -420,11 +428,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
         }
-
+        
         if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
-
+        
+        await this.initializeProfiling();
         //initialize all file logging (rokuDevice, debugger, etc)
         this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
 
@@ -636,7 +645,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         });
 
         //enable profiling on the device right away if tracing is enabled in the launch config (this doesn't actually start the trace, it just enables the ability to start a trace from the UI or automatically based on the config)
-        if (this.launchConfiguration.profiling?.tracing?.enable) {
+        if (this.launchConfiguration.profiling?.tracing?.enable && this.supportsPerfettoTracing) {
             try {
                 await this.perfettoManager.enableTracing();
             } catch (e) {
@@ -649,7 +658,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * If profiling was marked "connectOnStart", try connecting right away
      */
     private async tryProfilingConnectOnStart() {
-        if (this.launchConfiguration.profiling?.tracing?.connectOnStart) {
+        if (this.launchConfiguration.profiling?.tracing?.connectOnStart && this.supportsPerfettoTracing) {
             try {
                 await this.perfettoManager.startTracing();
             } catch (e) {
