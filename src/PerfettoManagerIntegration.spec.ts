@@ -1,3 +1,4 @@
+/* eslint-disable no-template-curly-in-string */
 import { expect } from 'chai';
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
@@ -10,17 +11,6 @@ import { standardizePath as s } from 'brighterscript';
 
 const sinon = createSandbox();
 
-/**
- * Profiling/Tracing Integration Tests for roku-debug
- * 
- * These tests are designed to be re-run on demand when new changes are pushed.
- * Focus areas:
- * - Concurrency handling
- * - Repeated sessions
- * - Heap snapshot functionality
- * - Enable/disable behavior
- * - connectOnStart behavior
- */
 describe('Profiling/Tracing Integration Tests', () => {
     let perfettoManager: PerfettoManager;
     let mockSocket: any;
@@ -31,7 +21,7 @@ describe('Profiling/Tracing Integration Tests', () => {
             host: '192.168.1.100',
             enabled: true,
             dir: s`${tempDir}/profiling`,
-            filename: 'test_${timestamp}.perfetto-trace', // eslint-disable-line no-template-curly-in-string
+            filename: 'test_${timestamp}.perfetto-trace',
             rootDir: rootDir
         });
 
@@ -48,7 +38,7 @@ describe('Profiling/Tracing Integration Tests', () => {
         mockSocket.ping = sinon.stub();
         mockSocket.pause = sinon.stub();
         mockSocket.resume = sinon.stub();
-        sinon.stub(perfettoManager as any, 'createWebSocket').callsFake(function (this: any) {
+        sinon.stub(perfettoManager as any, 'createWebSocket').callsFake(function(this: any) {
             this.socket = mockSocket;
             return mockSocket;
         });
@@ -91,7 +81,7 @@ describe('Profiling/Tracing Integration Tests', () => {
     });
 
     describe('TC-05: Heap Snapshots During Active Tracing', () => {
-        it('should emit heapSnapshot events when capturing during active tracing', async () => {
+        it('should emit heapSnapshot events when capturing during active tracing', () => {
             const startSpy = sinon.spy();
             const stopSpy = sinon.spy();
             perfettoManager.on('start', startSpy);
@@ -163,13 +153,13 @@ describe('Profiling/Tracing Integration Tests', () => {
     describe('TC-11: Repeated Sessions', () => {
         it('should generate unique filenames across multiple sessions using timestamp', () => {
             const config1 = {
-                filename: '${appTitle}_${timestamp}.perfetto-trace', // eslint-disable-line no-template-curly-in-string
+                filename: '${appTitle}_${timestamp}.perfetto-trace',
                 rootDir: rootDir
             };
 
             // Generate filename
             const filename1 = (perfettoManager as any).getFilename();
-            
+
             // Small delay to ensure different timestamp
             const filename2 = (perfettoManager as any).getFilename();
 
@@ -184,7 +174,7 @@ describe('Profiling/Tracing Integration Tests', () => {
                 host: '192.168.1.100',
                 enabled: true,
                 dir: s`${tempDir}/profiling`,
-                filename: 'test_${sequence}.perfetto-trace', // eslint-disable-line no-template-curly-in-string
+                filename: 'test_${sequence}.perfetto-trace',
                 rootDir: rootDir
             });
 

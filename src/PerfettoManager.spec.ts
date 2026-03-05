@@ -1,3 +1,4 @@
+/* eslint-disable no-template-curly-in-string */
 import { expect } from 'chai';
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
@@ -19,7 +20,7 @@ describe('PerfettoManager', () => {
             host: '192.168.1.100',
             enabled: true,
             dir: s`${tempDir}/profiling`,
-            filename: 'test_${timestamp}.perfetto-trace', // eslint-disable-line no-template-curly-in-string
+            filename: 'test_${timestamp}.perfetto-trace',
             rootDir: rootDir
         });
 
@@ -294,8 +295,8 @@ describe('PerfettoManager', () => {
     });
 
     describe('getFilename', () => {
-        it('replaces ${timestamp} placeholder', () => { // eslint-disable-line no-template-curly-in-string
-            (perfettoManager as any).config.filename = 'trace_${timestamp}.perfetto-trace'; // eslint-disable-line no-template-curly-in-string
+        it('replaces ${timestamp} placeholder', () => {
+            (perfettoManager as any).config.filename = 'trace_${timestamp}.perfetto-trace';
 
             const filename = (perfettoManager as any).getFilename();
 
@@ -304,10 +305,10 @@ describe('PerfettoManager', () => {
             expect(filename).to.match(/trace_\d{1,2}-\d{1,2}-\d{4}.*\.perfetto-trace/);
         });
 
-        it('replaces ${appTitle} placeholder with value from manifest', () => { // eslint-disable-line no-template-curly-in-string
+        it('replaces ${appTitle} placeholder with value from manifest', () => {
             sinon.stub(fs, 'existsSync').returns(true);
             sinon.stub(fs, 'readFileSync').returns('title=MyApp\nversion=1.0.0');
-            (perfettoManager as any).config.filename = '${appTitle}_trace.perfetto-trace'; // eslint-disable-line no-template-curly-in-string
+            (perfettoManager as any).config.filename = '${appTitle}_trace.perfetto-trace';
 
             const filename = (perfettoManager as any).getFilename();
 
@@ -316,16 +317,16 @@ describe('PerfettoManager', () => {
 
         it('uses default "trace" when manifest not found', () => {
             sinon.stub(fs, 'existsSync').returns(false);
-            (perfettoManager as any).config.filename = '${appTitle}_trace.perfetto-trace'; // eslint-disable-line no-template-curly-in-string
+            (perfettoManager as any).config.filename = '${appTitle}_trace.perfetto-trace';
 
             const filename = (perfettoManager as any).getFilename();
 
             expect(filename).to.equal('trace_trace.perfetto-trace');
         });
 
-        it('removes ${sequence} when ${timestamp} is present', () => { // eslint-disable-line no-template-curly-in-string
+        it('removes ${sequence} when ${timestamp} is present', () => {
             sinon.stub(fs, 'existsSync').returns(false);
-            (perfettoManager as any).config.filename = '${appTitle}_${timestamp}_${sequence}.perfetto-trace'; // eslint-disable-line no-template-curly-in-string
+            (perfettoManager as any).config.filename = '${appTitle}_${timestamp}_${sequence}.perfetto-trace';
 
             const filename = (perfettoManager as any).getFilename();
 
@@ -340,17 +341,17 @@ describe('PerfettoManager', () => {
             const filename = (perfettoManager as any).getFilename();
 
             expect(filename).to.include('.perfetto-trace');
-            expect(filename).to.not.include('${'); // eslint-disable-line no-template-curly-in-string
+            expect(filename).to.not.include('${');
         });
 
-        it('replaces ${sequence} with next sequence number', () => { // eslint-disable-line no-template-curly-in-string
+        it('replaces ${sequence} with next sequence number', () => {
             sinon.stub(fs, 'existsSync').returns(true);
             sinon.stub(fs, 'readdirSync').returns([
                 'trace_1.perfetto-trace',
                 'trace_2.perfetto-trace',
                 'trace_3.perfetto-trace'
             ] as any);
-            (perfettoManager as any).config.filename = 'trace_${sequence}.perfetto-trace'; // eslint-disable-line no-template-curly-in-string
+            (perfettoManager as any).config.filename = 'trace_${sequence}.perfetto-trace';
 
             const filename = (perfettoManager as any).getFilename();
 
@@ -360,7 +361,7 @@ describe('PerfettoManager', () => {
         it('starts sequence at 1 when no matching files exist', () => {
             sinon.stub(fs, 'existsSync').returns(true);
             sinon.stub(fs, 'readdirSync').returns([] as any);
-            (perfettoManager as any).config.filename = 'trace_${sequence}.perfetto-trace'; // eslint-disable-line no-template-curly-in-string
+            (perfettoManager as any).config.filename = 'trace_${sequence}.perfetto-trace';
 
             const filename = (perfettoManager as any).getFilename();
 
@@ -369,7 +370,7 @@ describe('PerfettoManager', () => {
 
         it('starts sequence at 1 when traces directory does not exist', () => {
             sinon.stub(fs, 'existsSync').returns(false);
-            (perfettoManager as any).config.filename = 'trace_${sequence}.perfetto-trace'; // eslint-disable-line no-template-curly-in-string
+            (perfettoManager as any).config.filename = 'trace_${sequence}.perfetto-trace';
 
             const filename = (perfettoManager as any).getFilename();
 
@@ -384,7 +385,7 @@ describe('PerfettoManager', () => {
                 'MyApp_1.perfetto-trace',
                 'MyApp_2.perfetto-trace'
             ] as any);
-            (perfettoManager as any).config.filename = '${appTitle}_${sequence}.perfetto-trace'; // eslint-disable-line no-template-curly-in-string
+            (perfettoManager as any).config.filename = '${appTitle}_${sequence}.perfetto-trace';
 
             const filename = (perfettoManager as any).getFilename();
 
@@ -653,7 +654,7 @@ describe('PerfettoManager', () => {
             sinon.stub(fs, 'existsSync').returns(true);
             sinon.stub(fs, 'readdirSync').throws(new Error('Permission denied'));
 
-            const seq = (perfettoManager as any).getNextSequenceNumber('trace_${sequence}.perfetto-trace', '/tmp/traces'); // eslint-disable-line no-template-curly-in-string
+            const seq = (perfettoManager as any).getNextSequenceNumber('trace_${sequence}.perfetto-trace', '/tmp/traces');
 
             expect(seq).to.equal(1);
         });
@@ -667,7 +668,7 @@ describe('PerfettoManager', () => {
                 'trace_5.perfetto-trace'
             ] as any);
 
-            const seq = (perfettoManager as any).getNextSequenceNumber('trace_${sequence}.perfetto-trace', '/tmp/traces'); // eslint-disable-line no-template-curly-in-string
+            const seq = (perfettoManager as any).getNextSequenceNumber('trace_${sequence}.perfetto-trace', '/tmp/traces');
 
             expect(seq).to.equal(6);
         });
