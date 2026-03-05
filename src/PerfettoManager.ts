@@ -7,6 +7,7 @@ import type { ProfileType } from './debugSession/Events';
 import { standardizePath as s } from 'brighterscript';
 import { createLogger } from './logging';
 import { rokuECP } from './RokuECP';
+import { util } from './util';
 
 /**
  * Configuration interface for Perfetto tracing
@@ -413,7 +414,7 @@ export class PerfettoManager {
                 remotePort: this.config.remotePort
             });
 
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await util.sleep(1000);
 
             this.emit('stop', {
                 type: 'heapSnapshot',
