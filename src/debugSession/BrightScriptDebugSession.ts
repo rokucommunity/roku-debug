@@ -1,6 +1,7 @@
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
+import * as semver from 'semver';
 import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError } from 'roku-deploy';
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
@@ -38,7 +39,11 @@ import {
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
     CustomRequestEvent,
-    ClientToServerCustomEventName
+    ClientToServerCustomEventName,
+    ProfilingErrorEvent,
+    ProfilingStartEvent,
+    ProfilingStopEvent,
+    ProfilingEnabledEvent as ProfilingEnableEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -47,6 +52,7 @@ import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
+import { PerfettoManager } from '../PerfettoManager';
 import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
@@ -142,6 +148,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
 
+    private perfettoManager: PerfettoManager;
+
     private rendezvousTracker: RendezvousTracker;
 
     public tempVarPrefix = '__rokudebug__';
@@ -158,6 +166,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private get enableDebugProtocol() {
         return this.launchConfiguration.enableDebugProtocol;
+    }
+
+    /**
+     * Check if the Roku firmware supports Perfetto tracing (requires OS 15.2 or higher)
+     */
+    private get supportsPerfettoTracing() {
+        this.logger.log('Checking if device supports Perfetto tracing', this.deviceInfo.softwareVersion);
+        return semver.satisfies(this.deviceInfo?.softwareVersion ?? '0.0', '>= 15.2');
     }
 
     /**
@@ -182,7 +198,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.initRequestArgs = args;
         this.logger.log('initializeRequest');
 
-        response.body = response.body || {};
+        response.body ||= {};
 
         // This debug adapter implements the configurationDoneRequest.
         response.body.supportsConfigurationDoneRequest = true;
@@ -360,6 +376,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
+        if (config.profiling?.tracing?.enable) {
+            config.profiling.tracing.dir ??= s`${config.cwd}/traces/`;
+            // eslint-disable-next-line no-template-curly-in-string
+            config.profiling.tracing.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+        }
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
         if (typeof config.enableVariablesPanel !== 'boolean') {
@@ -394,6 +415,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
         }
 
+        
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
@@ -406,11 +428,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
         }
-
+        
         if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
-
+        
+        await this.initializeProfiling();
         //initialize all file logging (rokuDevice, debugger, etc)
         this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
 
@@ -461,11 +484,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //pass along the console output
             if (this.launchConfiguration.consoleOutput === 'full') {
                 this.rokuAdapter.on('console-output', (data) => {
-                    void this.sendLogOutput(data);
+                    this.sendLogOutput(data).catch(e => this.logger.error('Failed to send log output', e));
                 });
             } else {
                 this.rokuAdapter.on('unhandled-console-output', (data) => {
-                    void this.sendLogOutput(data);
+                    this.sendLogOutput(data).catch(e => this.logger.error('Failed to send log output', e));
                 });
             }
 
@@ -496,7 +519,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             // handle any compile errors
             this.rokuAdapter.on('diagnostics', (diagnostics: BSDebugDiagnostic[]) => {
-                void this.handleDiagnostics(diagnostics);
+                this.handleDiagnostics(diagnostics).catch(e => this.logger.error('Failed to handle diagnostics', e));
             });
 
             // close disconnect if required when the app is exited
@@ -515,11 +538,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
                     this.logger.log('[launchRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
-                    void this.rokuAdapter.once('connected').then(async () => {
+                    this.rokuAdapter.once('connected').then(async () => {
                         await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpoints);
-                    });
+                    }).catch(e => this.logger.error('Failed to set exception breakpoints after reconnect', e));
                 }
             });
+
+            //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
+            await this.tryProfilingConnectOnStart();
 
             await this.publish();
 
@@ -580,6 +606,65 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         logEnd();
+    }
+
+    /**
+     * Activate all required functionality for profiling
+     */
+    private async initializeProfiling() {
+
+        // Initialize PerfettoManager
+        this.perfettoManager = new PerfettoManager({
+            host: this.launchConfiguration.host,
+            rootDir: this.launchConfiguration.rootDir,
+            remotePort: this.launchConfiguration.remotePort,
+            ...this.launchConfiguration.profiling?.tracing
+        });
+
+        //send certain profiling events back to the client
+        this.perfettoManager.on('enable', (event) => {
+            this.sendEvent(new ProfilingEnableEvent({
+                types: event.types
+            }));
+        });
+        this.perfettoManager.on('start', (event) => {
+            this.sendEvent(new ProfilingStartEvent({
+                type: event.type
+            }));
+        });
+        this.perfettoManager.on('stop', (event) => {
+            this.sendEvent(new ProfilingStopEvent({
+                type: event.type,
+                result: event.result
+            }));
+        });
+        this.perfettoManager.on('error', (event) => {
+            this.sendEvent(new ProfilingErrorEvent({
+                error: event.error
+            }));
+        });
+
+        //enable profiling on the device right away if tracing is enabled in the launch config (this doesn't actually start the trace, it just enables the ability to start a trace from the UI or automatically based on the config)
+        if (this.launchConfiguration.profiling?.tracing?.enable && this.supportsPerfettoTracing) {
+            try {
+                await this.perfettoManager.enableTracing();
+            } catch (e) {
+                this.logger.error('Failed to enable perfetto tracing', e);
+            }
+        }
+    }
+
+    /**
+     * If profiling was marked "connectOnStart", try connecting right away
+     */
+    private async tryProfilingConnectOnStart() {
+        if (this.launchConfiguration.profiling?.tracing?.connectOnStart && this.supportsPerfettoTracing) {
+            try {
+                await this.perfettoManager.startTracing();
+            } catch (e) {
+                this.logger.error('Failed to start perfetto tracing on start', e);
+            }
+        }
     }
 
     /**
@@ -993,10 +1078,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * Accepts custom events and requests from the extension
      * @param command name of the command to execute
      */
-    protected customRequest(command: string, response: DebugProtocol.Response, args: any) {
+    protected async customRequest(command: string, response: DebugProtocol.Response, args: any) {
         if (command === 'rendezvous.clearHistory') {
             this.rokuAdapter.clearRendezvousHistory();
-
         } else if (command === 'chanperf.clearHistory') {
             this.rokuAdapter.clearChanperfHistory();
 
@@ -1005,6 +1089,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'popupMessageEventResponse') {
             this.emit('popupMessageEventResponse', args);
+
+        } else if (command === 'captureHeapSnapshot') {
+            this.perfettoManager.captureHeapSnapshot().catch((e) => this.logger.error('Failed to capture heap snapshot', e));
+
+        } else if (command === 'startPerfettoTracing') {
+            try {
+                await this.perfettoManager.startTracing();
+            } catch (e) {
+                response.success = false;
+                response.body = { message: e?.message || String(e) };
+            }
+
+        } else if (command === 'stopPerfettoTracing') {
+            try {
+                await this.perfettoManager.stopTracing();
+            } catch (e) {
+                response.success = false;
+                response.body = { message: e?.message || String(e) };
+            }
+
         }
         this.sendResponse(response);
     }
@@ -2272,7 +2376,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         // If the roku says it can't continue, we are no longer able to debug, so kill the debug session
         this.rokuAdapter.on('cannot-continue', () => {
-            void this.shutdown();
+            this.shutdown().catch(e => this.logger.error(e));
         });
 
         //make the connection
@@ -2626,6 +2730,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         } catch (e) {
             this.logger.error(e);
+        }
+        // stop perfetto tracing if it's running
+        try {
+            await this.perfettoManager.stopTracing();
+        } catch (e) {
+            this.logger.error('Error stopping perfetto tracing', e);
+        }
+
+        try {
+            await this.perfettoManager?.dispose?.();
+        } catch (e) {
+            this.logger.error('Error disposing perfetto manager', e);
         }
 
         //close the debugger connection

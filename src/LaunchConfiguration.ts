@@ -216,6 +216,30 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     injectRdbOnDeviceComponent: boolean;
 
     /**
+     * Configuration for profiling functionality
+     */
+    profiling?: {
+        tracing?: {
+            /**
+             * Whether perfetto event profiling is enabled
+             */
+            enable?: boolean;
+            /**
+             * Directory where perfetto profile files should be stored
+             */
+            dir?: string;
+            /**
+             * The name of the perfetto profile file. Can include variables like ${appTitle} and ${timestamp}
+             */
+            filename?: string;
+            /**
+             * Whether to connect to perfetto on debug session start
+             */
+            connectOnStart?: boolean;
+        };
+    };
+
+    /**
      * Base path to the folder containing RDB files for OnDeviceComponent
      */
     rdbFilesBasePath: string;
