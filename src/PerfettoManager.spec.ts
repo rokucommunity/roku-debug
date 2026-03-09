@@ -54,7 +54,8 @@ describe('PerfettoManager', () => {
         mockWriteStream.destroy = sinon.stub();
     });
 
-    afterEach(() => {
+    afterEach(async () => {
+        await perfettoManager?.dispose();
         (mockSocket as EventEmitter).removeAllListeners();
         (mockWriteStream as EventEmitter).removeAllListeners();
         sinon.restore();
