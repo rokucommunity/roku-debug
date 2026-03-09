@@ -7,20 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.22.6](https://github.com/rokucommunity/roku-debug/compare/0.22.5...v0.22.6) - 2026-03-09
-### Changed
- - Bump minimatch from 3.1.2 to 3.1.5 ([#296](https://github.com/rokucommunity/roku-debug/pull/296))
+### Added
  - Perfetto tracing ([#286](https://github.com/rokucommunity/roku-debug/pull/286))
- - combined the ifDateTime dateLocalized and timeLocalized vurtual variable into one time variable ([#295](https://github.com/rokucommunity/roku-debug/pull/295))
- - Bump minimatch from 3.1.2 to 3.1.4 ([#293](https://github.com/rokucommunity/roku-debug/pull/293))
- - Bump lodash from 4.17.21 to 4.17.23 ([#287](https://github.com/rokucommunity/roku-debug/pull/287))
- - Bump ajv from 6.12.6 to 6.14.0 ([#292](https://github.com/rokucommunity/roku-debug/pull/292))
- - Better messages when 'limited' or 'disabled' are detected for ecp-setting-mode ([#283](https://github.com/rokucommunity/roku-debug/pull/283))
+### Changed
+ - combined the `ifDateTime` `dateLocalized` and `timeLocalized` virtual variable into one time variable ([#295](https://github.com/rokucommunity/roku-debug/pull/295))
+ - Better messages when `limited` or `disabled` are detected for ecp-setting-mode ([#283](https://github.com/rokucommunity/roku-debug/pull/283))
  - upgrade to [roku-deploy@3.16.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3162---2026-03-09). Notable changes since 3.15.0:
-     - Bump minimatch from 3.1.2 to 3.1.5 ([#234](https://github.com/rokucommunity/roku-deploy/pull/234))
-     - Bump ajv from 6.12.6 to 6.14.0 ([#232](https://github.com/rokucommunity/roku-deploy/pull/232))
-     - Bump lodash from 4.17.21 to 4.17.23 ([#227](https://github.com/rokucommunity/roku-deploy/pull/227))
-     - Add ecpSettingMode to device-info interface ([#225](https://github.com/rokucommunity/roku-deploy/pull/225))
-     - Add support for detecting ecpNetworkAccessMode ([#223](https://github.com/rokucommunity/roku-deploy/pull/223))
+     - Add `ecpSettingMode` to device-info interface ([#225](https://github.com/rokucommunity/roku-deploy/pull/225))
+     - Add support for detecting `ecpNetworkAccessMode` ([#223](https://github.com/rokucommunity/roku-deploy/pull/223))
 
 
 
@@ -1106,6 +1100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - renamed `enableSocketDebugger` to `enableDebugProtocol`
 ### Fixed
  - Bug in the telnet debugger on windows devices that would crash the debug session when `stopOnEntry` was enabled.
+
 
 
 
