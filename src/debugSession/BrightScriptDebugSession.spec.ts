@@ -246,6 +246,82 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    it('calls tryProfilingConnectOnStart only after publish completes', async function() {
+        this.timeout(15_000);
+
+        //write some project files
+        fsExtra.outputFileSync(`${rootDir}/source/main.brs`, `
+            sub main()
+                print "hello"
+            end sub
+        `);
+        fsExtra.outputFileSync(`${rootDir}/manifest`, '');
+
+        //init the session
+        session.initializeRequest({} as any, {} as any);
+
+        sinon.stub(rokuDeploy, 'getDeviceInfo').returns(Promise.resolve({
+            developerEnabled: true,
+            softwareVersion: '15.2'
+        }));
+        sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+
+        // Stub methods that run before publish
+        sinon.stub(session as any, 'prepareMainProject').resolves();
+        sinon.stub(session as any, 'prepareAndHostComponentLibraries').resolves();
+        sinon.stub(session as any, 'initRendezvousTracking').resolves();
+        sinon.stub(session as any, 'createRokuAdapter').returns(undefined);
+        sinon.stub(session as any, 'connectRokuAdapter').callsFake(() => {
+            session['rokuAdapter'].connected = true;
+            return Promise.resolve(session['rokuAdapter']);
+        });
+        sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
+        sinon.stub(session.rokuDeploy, 'pressHomeButton').resolves();
+
+        // Track the order of calls
+        const callOrder: string[] = [];
+        let publishResolve: () => void;
+        const publishDeferred = new Promise<void>((resolve) => {
+            publishResolve = resolve;
+        });
+
+        // Stub the publish method to track when it's called and delay resolution
+        sinon.stub(session as any, 'publish').callsFake(async () => {
+            callOrder.push('publish:start');
+            await publishDeferred;
+            callOrder.push('publish:end');
+        });
+
+        // Stub tryProfilingConnectOnStart to track when it's called
+        sinon.stub(session as any, 'tryProfilingConnectOnStart').callsFake(async () => {
+            callOrder.push('tryProfilingConnectOnStart');
+        });
+
+        // Start launchRequest but don't await it yet
+        const launchPromise = session.launchRequest({} as any, {
+            cwd: tempDir,
+            rootDir: rootDir,
+            stagingDir: `${stagingDir}/staging`,
+            host: '192.168.1.100'
+        } as Partial<LaunchConfiguration> as LaunchConfiguration);
+
+        // Give time for publish to start
+        await util.sleep(50);
+
+        // At this point, publish should have started but tryProfilingConnectOnStart should NOT have been called yet
+        expect(callOrder).to.include('publish:start');
+        expect(callOrder).to.not.include('tryProfilingConnectOnStart');
+
+        // Now resolve publish
+        publishResolve();
+
+        // Wait for launchRequest to complete
+        await launchPromise;
+
+        // Verify tryProfilingConnectOnStart was called after publish completed
+        expect(callOrder.indexOf('publish:end')).to.be.lessThan(callOrder.indexOf('tryProfilingConnectOnStart'));
+    });
+
     describe('evaluateRequest', () => {
         it('resets local var counter on suspend', async () => {
             session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
