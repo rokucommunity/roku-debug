@@ -625,6 +625,19 @@ class Util {
         return value;
     }
 
+    /**
+     * Coerce any value into an Error object. If it's already an Error, return it as-is. If it's not, create a new Error with the stringified value as the message
+     * @param error
+     * @returns
+     */
+    public toError(error: any): Error {
+        if (error?.constructor.name === Error.constructor.name) {
+            return error;
+        } else {
+            return new Error(String(error));
+        }
+    }
+
 }
 
 export function defer<T>() {
