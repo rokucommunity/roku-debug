@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.22.6](https://github.com/rokucommunity/roku-debug/compare/0.22.5...v0.22.6) - 2026-03-09
+### Added
+ - Perfetto tracing ([#286](https://github.com/rokucommunity/roku-debug/pull/286))
+### Changed
+ - combined the `ifDateTime` `dateLocalized` and `timeLocalized` virtual variable into one time variable ([#295](https://github.com/rokucommunity/roku-debug/pull/295))
+ - Better messages when `limited` or `disabled` are detected for ecp-setting-mode ([#283](https://github.com/rokucommunity/roku-debug/pull/283))
+ - upgrade to [roku-deploy@3.16.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3162---2026-03-09). Notable changes since 3.15.0:
+     - Add `ecpSettingMode` to device-info interface ([#225](https://github.com/rokucommunity/roku-deploy/pull/225))
+     - Add support for detecting `ecpNetworkAccessMode` ([#223](https://github.com/rokucommunity/roku-deploy/pull/223))
+
+
+
 ## [0.22.5](https://github.com/rokucommunity/roku-debug/compare/0.22.4...v0.22.5) - 2025-12-01
 ### Added
  - Support packageTask, packagePath, packageUploadOverrides for complibs ([#282](https://github.com/rokucommunity/roku-debug/pull/282))
@@ -1088,6 +1100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - renamed `enableSocketDebugger` to `enableDebugProtocol`
 ### Fixed
  - Bug in the telnet debugger on windows devices that would crash the debug session when `stopOnEntry` was enabled.
+
 
 
 
