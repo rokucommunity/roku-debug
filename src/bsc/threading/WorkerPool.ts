@@ -73,9 +73,9 @@ export class WorkerPool {
     public dispose() {
         for (const worker of this.allWorkers) {
             try {
-                void worker.terminate().catch((e) => console.error(e));
+                void worker.terminate().catch((e) => this.logger.error(e));
             } catch (e) {
-                console.error(e);
+                this.logger.error(e);
             }
         }
         this.allWorkers = [];

@@ -6,6 +6,7 @@ import * as sinonActual from 'sinon';
 import { SourceNode } from 'source-map';
 import { fileUtils, standardizePath as s } from './FileUtils';
 import { SourceMapManager } from './managers/SourceMapManager';
+import { logger } from './logging';
 
 let sinon = sinonActual.createSandbox();
 const rootDir = path.normalize(path.dirname(__dirname));
@@ -78,7 +79,7 @@ describe('FileUtils', () => {
         });
 
         it('returns first result when multiple matches are found', async () => {
-            let stub = sinon.stub(console, 'warn').returns(undefined);
+            let stub = sinon.stub(logger, 'warn').returns(undefined);
 
             expect(await fileUtils.findPartialFileInDirectory('...lib.brs', 'SomeAppDir')).to.equal('source/lib1/lib.brs');
 

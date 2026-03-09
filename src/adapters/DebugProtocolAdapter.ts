@@ -323,7 +323,7 @@ export class DebugProtocolAdapter {
             });
 
             this.client.on('runtime-error', (data) => {
-                console.debug('hasRuntimeError!!', data);
+                this.logger.debug('hasRuntimeError!!', data);
                 this.emit('runtime-error', <BrightScriptRuntimeError>{
                     message: data.data.stopReasonDetail,
                     errorCode: data.data.stopReason
