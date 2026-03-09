@@ -293,7 +293,7 @@ describe('BrightScriptDebugSession', () => {
         });
 
         // Stub tryProfilingConnectOnStart to track when it's called
-        sinon.stub(session as any, 'tryProfilingConnectOnStart').callsFake(() => {
+        sinon.stub(session as any, 'tryProfilingConnectOnStart').callsFake(async() => {
             callOrder.push('tryProfilingConnectOnStart');
             await Promise.resolve();
         });
