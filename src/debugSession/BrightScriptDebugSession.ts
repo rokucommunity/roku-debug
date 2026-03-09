@@ -544,10 +544,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             });
 
+            await this.publish();
+            
             //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
             await this.tryProfilingConnectOnStart();
-
-            await this.publish();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
