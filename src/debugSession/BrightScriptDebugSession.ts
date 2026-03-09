@@ -543,11 +543,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     }).catch(e => this.logger.error('Failed to set exception breakpoints after reconnect', e));
                 }
             });
+            //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
+            await this.tryProfilingConnectOnStart();
 
             await this.publish();
             
-            //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
-            await this.tryProfilingConnectOnStart();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
