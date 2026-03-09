@@ -4,6 +4,7 @@ import * as glob from 'glob';
 import * as path from 'path';
 import { promisify } from 'util';
 import { util as rokuDeployUtil } from 'roku-deploy';
+import { logger } from './logging';
 const globp = promisify(glob);
 
 export class FileUtils {
@@ -89,7 +90,7 @@ export class FileUtils {
 
         //TODO is there something more we should do about finding multiple matches?
         if (results.length > 1) {
-            console.warn(
+            logger.warn(
                 `Found multiple paths in '${directoryPath}' that match '${partialFilePath}'. Returning the first result, but you should consider renaming files in longer file paths to something unique`
             );
         }
