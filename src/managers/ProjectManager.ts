@@ -676,7 +676,7 @@ export class ComponentLibraryProject extends Project {
         }
 
         //load the component libary name from the manifest
-        this.name = manifestValues.sg_component_libs_provided;
+        this.name = manifestValues.sg_component_libs_provided || manifestValues.bs_libs_provided;
 
         // search the outFile for replaceable values such as ${title}
         while ((renamingMatch = regexp.exec(this.outFile))) {
