@@ -1,10 +1,11 @@
 import { expect } from 'chai';
 import { createSandbox } from 'sinon';
 import { describe } from 'mocha';
-import type { EcpAppStateData, EcpRegistryData } from './RokuECP';
+import type { EcpAppStateData, EcpHeapSnapshotData, EcpRegistryData } from './RokuECP';
 import { AppState, EcpStatus, rokuECP } from './RokuECP';
 import { util } from './util';
 import { expectThrowsAsync } from './testHelpers.spec';
+import { undent } from 'undent';
 
 const sinon = createSandbox();
 
@@ -433,6 +434,90 @@ describe('RokuECP', () => {
 
             await rokuECP.exitApp(options);
             expect(stub.getCall(0).args).to.eql(['exit-app/dev', options, 'post']);
+        });
+    });
+
+    describe('captureHeapSnapshot', () => {
+        it('calls doRequest with correct route and options', async () => {
+            let options = {
+                host: '1.1.1.1',
+                remotePort: 8080,
+                channelId: 'dev'
+            };
+
+            let stub = sinon.stub(rokuECP as any, 'doRequest').resolves({
+                body: `
+                    <?xml version="1.0" encoding="UTF-8" ?>
+                    <perfetto-heapgraph-trigger>
+                        <timestamp>1772434731151</timestamp>
+                        <timestamp-end>1772434731188</timestamp-end>
+                        <status>OK</status>
+                    </perfetto-heapgraph-trigger>
+                `,
+                statusCode: 200
+            });
+
+            await rokuECP.captureHeapSnapshot(options);
+            expect(stub.getCall(0).args).to.eql(['/perfetto/heapgraph/trigger/dev', options, 'post']);
+        });
+
+        describe('non-error responses', () => {
+            it('handles ok response with timestamps', async () => {
+                sinon.stub(rokuECP as any, 'doRequest').resolves({
+                    body: `
+                        <?xml version="1.0" encoding="UTF-8" ?>
+                        <perfetto-heapgraph-trigger>
+                            <timestamp>1772434731151</timestamp>
+                            <timestamp-end>1772434731188</timestamp-end>
+                            <status>OK</status>
+                        </perfetto-heapgraph-trigger>
+                    `,
+                    statusCode: 200
+                });
+                let result = await rokuECP.captureHeapSnapshot({ host: '1.1.1.1', channelId: 'dev' });
+                expect(result).to.eql({
+                    timestamp: 1772434731151,
+                    timestampEnd: 1772434731188,
+                    status: EcpStatus.ok
+                } as EcpHeapSnapshotData);
+            });
+        });
+
+        describe('error responses', () => {
+            it('handles failed status with error message', async () => {
+                sinon.stub(rokuECP as any, 'doRequest').resolves({
+                    body: `
+                        <?xml version="1.0" encoding="UTF-8" ?>
+                        <perfetto-heapgraph-trigger>
+                            <status>FAILED</status>
+                            <error>Channel 'dev' not running, cannot fetch heap graph</error>
+                        </perfetto-heapgraph-trigger>
+                    `,
+                    statusCode: 200
+                });
+                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ host: '1.1.1.1', channelId: 'dev' }), `Channel 'dev' not running, cannot fetch heap graph`);
+            });
+
+            it('handles failed status with missing error', async () => {
+                sinon.stub(rokuECP as any, 'doRequest').resolves({
+                    body: undent`
+                        <?xml version="1.0" encoding="UTF-8" ?>
+                        <perfetto-heapgraph-trigger>
+                            <status>FAILED</status>
+                        </perfetto-heapgraph-trigger>
+                    `,
+                    statusCode: 200
+                });
+                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ host: '1.1.1.1', channelId: 'dev' }), 'Unknown error');
+            });
+
+            it('handles error response without xml', async () => {
+                sinon.stub(rokuECP as any, 'doRequest').resolves({
+                    body: `ECP command not allowed in Limited mode.`,
+                    statusCode: 403
+                });
+                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ host: '1.1.1.1', channelId: 'dev' }), 'ECP command not allowed in Limited mode.');
+            });
         });
     });
 
