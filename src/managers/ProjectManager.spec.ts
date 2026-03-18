@@ -818,5 +818,59 @@ describe('ComponentLibraryProject', () => {
                 await testManifestRead('not_even_close');
             });
         });
+
+        it('uses sg_component_libs_provided from manifest when present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nsg_component_libs_provided=MyLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('MyLibrary');
+        });
+
+        it('uses bs_libs_provided from manifest when sg_component_libs_provided is not present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nbs_libs_provided=MyBSLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('MyBSLibrary');
+        });
+
+        it('prioritizes sg_component_libs_provided over bs_libs_provided when both are present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nsg_component_libs_provided=SGLibrary\nbs_libs_provided=BSLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('SGLibrary');
+        });
     });
 });
