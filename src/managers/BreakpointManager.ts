@@ -1,4 +1,6 @@
 import * as fsExtra from 'fs-extra';
+import * as fastGlob from 'fast-glob';
+import * as path from 'path';
 import { orderBy } from 'natural-orderby';
 import type { CodeWithSourceMap } from 'source-map';
 import { SourceNode } from 'source-map';
@@ -23,6 +25,13 @@ export class BreakpointManager {
 
     private logger = logger.createLogger('[bpManager]');
 
+    /**
+     * File extensions that are supported for breakpoints on Roku devices.
+     * Only .brs and .xml files can have breakpoints — other file types (like .js, .ts, etc.)
+     * are not executed by the BrightScript/SceneGraph debugger
+     */
+    public static readonly SUPPORTED_BREAKPOINT_EXTENSIONS = ['.brs', '.xml'];
+
     public launchConfiguration: {
         sourceDirs: string[];
         rootDir: string;
@@ -31,7 +40,7 @@ export class BreakpointManager {
 
     private emitter = new EventEmitter();
 
-    private emit(eventName: 'breakpoints-verified', data: { breakpoints: AugmentedSourceBreakpoint[] });
+    private emit(eventName: 'breakpoints-changed', data: { breakpoints: AugmentedSourceBreakpoint[] });
     private emit(eventName: string, data: any) {
         this.emitter.emit(eventName, data);
     }
@@ -39,7 +48,7 @@ export class BreakpointManager {
     /**
      * Subscribe to an event
      */
-    public on(eventName: 'breakpoints-verified', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
+    public on(eventName: 'breakpoints-changed', handler: (data: { breakpoints: AugmentedSourceBreakpoint[] }) => any);
     public on(eventName: string, handler: (data: any) => any) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -50,10 +59,10 @@ export class BreakpointManager {
     /**
      * Get a promise that resolves the next time the specified event occurs
      */
-    public once(eventName: 'breakpoints-verified'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
+    public once(eventName: 'breakpoints-changed'): Promise<{ breakpoints: AugmentedSourceBreakpoint[] }>;
     public once(eventName: string): Promise<any> {
         return new Promise((resolve) => {
-            const disconnect = this.on(eventName as 'breakpoints-verified', (data) => {
+            const disconnect = this.on(eventName as 'breakpoints-changed', (data) => {
                 disconnect();
                 resolve(data);
             });
@@ -269,7 +278,7 @@ export class BreakpointManager {
         if (breakpoint) {
             breakpoint.verified = isVerified;
 
-            this.queueEvent('breakpoints-verified', breakpoint.srcHash);
+            this.queueEvent('breakpoints-changed', breakpoint.srcHash);
             return true;
         } else {
             //couldn't find the breakpoint. return false so the caller can handle that properly
@@ -285,7 +294,7 @@ export class BreakpointManager {
      * This queues up a future function that will emit a batch of all the specified breakpoints.
      * @param hash the breakpoint hash that identifies this specific breakpoint based on its features
      */
-    private queueEvent(event: 'breakpoints-verified', ref: BreakpointRef) {
+    private queueEvent(event: 'breakpoints-changed', ref: BreakpointRef) {
         //get the state (or create a new one)
         const state = this.queueEventStates.get(event) ?? (this.queueEventStates.set(event, { pendingRefs: [], isQueued: false }).get(event));
 
@@ -375,10 +384,16 @@ export class BreakpointManager {
 
     /**
      * Get a list of all breakpoint tasks that should be performed.
-     * This will also exclude files with breakpoints that are not in scope.
+     * This will also exclude files with breakpoints that are not in scope,
+     * and filter out breakpoints whose staging file is not a supported Roku file type (.brs, .xml)
+     * unless the file is referenced by a <script> tag in an XML component.
      */
     private async getBreakpointWork(project: Project) {
         let result = {} as Record<string, Array<BreakpointWorkItem>>;
+        let unsupported = [] as BreakpointWorkItem[];
+        // Lazily populated: the set of staging file paths referenced by <script> tags in XML files.
+        // Only built if we encounter a breakpoint in an unsupported file extension.
+        let scriptReferencedFiles: Set<string> | undefined;
 
         //iterate over every file that contains breakpoints
         for (let [sourceFilePath, breakpoints] of this.breakpointsByFilePath) {
@@ -439,6 +454,18 @@ export class BreakpointManager {
                     obj.destHash = this.getBreakpointDestHash(obj);
                     obj.deviceId = this.deviceIdByDestHash.get(obj.destHash)?.deviceId;
 
+                    // Filter out breakpoints that resolve to unsupported file types in staging.
+                    // .brs and .xml are always supported. For other extensions, check if the file
+                    // is referenced by a <script> tag in an XML component (Roku loads those as
+                    // BrightScript regardless of file extension).
+                    if (!this.isSupportedBreakpointExtension(stagingLocation.filePath)) {
+                        scriptReferencedFiles ??= this.getScriptReferencedFiles(project.stagingDir);
+                        if (!scriptReferencedFiles.has(stagingLocation.filePath)) {
+                            unsupported.push(obj);
+                            continue;
+                        }
+                    }
+
                     if (!result[stagingLocation.filePath]) {
                         result[stagingLocation.filePath] = [];
                     }
@@ -451,7 +478,7 @@ export class BreakpointManager {
             result[stagingFilePath] = this.sortAndRemoveDuplicateBreakpoints(result[stagingFilePath]);
         }
 
-        return result;
+        return { work: result, unsupported };
     }
 
     public sortAndRemoveDuplicateBreakpoints<T extends { line: number; column?: number }>(
@@ -472,10 +499,18 @@ export class BreakpointManager {
     }
 
     /**
-     * Write "stop" lines into source code for each breakpoint of each file in the given project
+     * Write "stop" lines into source code for each breakpoint of each file in the given project.
+     * After resolving staging paths, any breakpoints that land in unsupported file types
+     * (i.e. not .brs or .xml) are rejected and a 'breakpoints-unsupported' event is emitted
+     * so the client can mark them as failed.
      */
     public async writeBreakpointsForProject(project: Project) {
-        let breakpointsByStagingFilePath = await this.getBreakpointWork(project);
+        let { work: breakpointsByStagingFilePath, unsupported } = await this.getBreakpointWork(project);
+
+        // Mark any breakpoints that resolved to unsupported file types as failed
+        if (unsupported.length > 0) {
+            this.markBreakpointsUnsupported(unsupported);
+        }
 
         let promises = [] as Promise<any>[];
         for (let stagingFilePath in breakpointsByStagingFilePath) {
@@ -495,6 +530,117 @@ export class BreakpointManager {
         //sort all permanent breakpoints by line and column
         for (const [key, breakpoints] of this.permanentBreakpointsBySrcPath) {
             this.permanentBreakpointsBySrcPath.set(key, orderBy(breakpoints, [x => x.line, x => x.column]));
+        }
+    }
+
+    /**
+     * Check if a file path has a natively supported extension for breakpoints (.brs or .xml).
+     * Returns true if the extension can't be determined as a safety fallback.
+     */
+    private isSupportedBreakpointExtension(filePath: string): boolean {
+        try {
+            const ext = path.extname(filePath).toLowerCase();
+            // No extension (e.g. `manifest`) is not a debuggable file type.
+            // All supported file types (.brs, .xml) always have an extension.
+            if (!ext) {
+                return false;
+            }
+            return BreakpointManager.SUPPORTED_BREAKPOINT_EXTENSIONS.includes(ext);
+        } catch (e) {
+            // Never crash the debugger over extension validation — allow the breakpoint through
+            this.logger.debug('Error checking breakpoint file extension, allowing through', { filePath, error: e });
+            return true;
+        }
+    }
+
+    /**
+     * Cache of script-referenced files per staging directory. This is expensive to compute
+     * (globs + reads all XML files), so we cache the result. The cache is keyed by staging
+     * dir path. Call {@link clearScriptReferencedFilesCache} to invalidate (e.g. on new launch).
+     */
+    private scriptReferencedFilesCache = new Map<string, Set<string>>();
+
+    /**
+     * Clear the cached script-referenced file sets. Should be called when staging
+     * directory contents may have changed (e.g. at the start of a new debug session).
+     */
+    public clearScriptReferencedFilesCache() {
+        this.scriptReferencedFilesCache.clear();
+    }
+
+    /**
+     * Scan all XML files in the staging directory for `<script>` tags and collect
+     * the set of absolute staging file paths they reference. Roku loads any file
+     * referenced by a `<script uri="...">` as BrightScript, regardless of extension,
+     * so these files are valid breakpoint targets even if they don't have a .brs extension.
+     * Results are cached per staging directory.
+     */
+    private getScriptReferencedFiles(stagingDir: string): Set<string> {
+        const cacheKey = s`${stagingDir}`;
+        const cached = this.scriptReferencedFilesCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+        const result = new Set<string>();
+        try {
+            const xmlFiles = fastGlob.sync('**/*.xml', {
+                cwd: stagingDir,
+                absolute: true
+            });
+            // Match <script ... uri="<anything>" ... /> or <script ... uri="<anything>" ...>
+            // URI values can be:
+            //   pkg:/source/file.brs        — absolute from staging root
+            //   libpkg:/source/file.brs     — component library, also absolute from staging root
+            //   ./file.brs                  — relative to the XML file's directory
+            //   ../../source/file.brs       — relative path with parent traversal
+            const scriptUriRegex = /<script\b[^>]*\buri\s*=\s*"([^"]*)"[^>]*\/?>/gi;
+            for (const xmlFile of xmlFiles) {
+                try {
+                    const contents = fsExtra.readFileSync(xmlFile, 'utf-8');
+                    let match: RegExpExecArray;
+                    while ((match = scriptUriRegex.exec(contents))) {
+                        const uri = match[1];
+                        let absolutePath: string;
+                        const protocolIndex = uri.indexOf(':/');
+                        if (protocolIndex >= 0) {
+                            // Has a protocol (pkg:/, libpkg:/, etc.) — strip it and resolve from staging root
+                            const relativePath = uri.substring(protocolIndex + 2).replace(/^\//, '');
+                            absolutePath = s`${stagingDir}/${relativePath}`;
+                        } else {
+                            // Relative path — resolve from the XML file's directory
+                            absolutePath = s`${path.resolve(path.dirname(xmlFile), uri)}`;
+                        }
+                        result.add(absolutePath);
+                    }
+                } catch (e) {
+                    // Don't let a single unreadable XML file break all breakpoints
+                    this.logger.debug('Error reading XML file for script references', { xmlFile, error: e });
+                }
+            }
+        } catch (e) {
+            // If the glob fails entirely, return empty set — breakpoints will be
+            // rejected by extension, which is the safer default
+            this.logger.debug('Error scanning staging dir for XML script references', { stagingDir, error: e });
+        }
+        this.scriptReferencedFilesCache.set(cacheKey, result);
+        return result;
+    }
+
+    /**
+     * Mark breakpoints as unsupported (failed) because their staging file is not a .brs or .xml file.
+     * Uses the existing 'breakpoints-changed' event to notify the client of the state change.
+     */
+    private markBreakpointsUnsupported(breakpoints: BreakpointWorkItem[]) {
+        for (const bp of breakpoints) {
+            const srcBreakpoint = this.getBreakpoint(bp.srcHash);
+            if (srcBreakpoint) {
+                const ext = path.extname(bp.stagingFilePath);
+                srcBreakpoint.verified = false;
+                srcBreakpoint.reason = 'failed';
+                srcBreakpoint.message = `Breakpoint rejected: file resolves to '${ext}' in staging, which is not a supported Roku file type (.brs, .xml)`;
+                // Queue through the standard verification event so the client is notified
+                this.queueEvent('breakpoints-changed', srcBreakpoint.srcHash);
+            }
         }
     }
 
@@ -708,7 +854,7 @@ export class BreakpointManager {
         const workByProject = (await Promise.all(
             projects.map(project => this.getBreakpointWork(project))
         ));
-        for (const projectWork of workByProject) {
+        for (const { work: projectWork } of workByProject) {
             for (let key in projectWork) {
                 const work = projectWork[key];
                 for (const item of work) {
@@ -745,7 +891,7 @@ export class BreakpointManager {
             await Promise.all(
                 projects.map(async (project) => {
                     //get breakpoint data for every project
-                    const work = await this.getBreakpointWork(project);
+                    const { work } = await this.getBreakpointWork(project);
 
                     this.logger.debug('[bpmanager] getDiff breakpointWork', work);
 

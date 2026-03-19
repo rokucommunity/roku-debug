@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import { SourceMapConsumer, SourceNode } from 'source-map';
-import type { BreakpointWorkItem } from './BreakpointManager';
+import type { AugmentedSourceBreakpoint, BreakpointWorkItem } from './BreakpointManager';
 import { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryProject, Project, ProjectManager } from './ProjectManager';
@@ -568,6 +568,396 @@ describe('BreakpointManager', () => {
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
         });
+
+        describe('unsupported file type filtering', () => {
+
+            it('allows breakpoints in .brs files (no transpiling)', async () => {
+                // Scenario: no transpiling, breakpoint in source/main.brs → stagingDir/source/main.brs
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // Breakpoint should be written (STOP injected)
+                expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.contain('STOP');
+                // Breakpoint should be verified
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/source/main.brs`)[0];
+                expect(bp.verified).to.be.true;
+            });
+
+            it('allows breakpoints in .xml files', async () => {
+                fsExtra.writeFileSync(`${rootDir}/source/comp.xml`, `<component>\n  <script/>\n</component>`);
+                fsExtra.copyFileSync(`${rootDir}/source/comp.xml`, `${stagingDir}/source/comp.xml`);
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/comp.xml`, [{ line: 2 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // Breakpoint should be written
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/source/comp.xml`)[0];
+                expect(bp.verified).to.be.true;
+            });
+
+            it('allows breakpoints when .bs transpiles to .brs in staging', async () => {
+                // Scenario: BrighterScript transpiling. Breakpoint set in src/source/main.bs,
+                // transpiles to dist/source/main.brs, copied to stagingDir/source/main.brs.
+                // The staging file is .brs so the breakpoint should be accepted.
+                fsExtra.writeFileSync(`${sourceDir1}/source/main.bs`, `sub main()\n    print 1\nend sub`);
+                // The transpiled output lands in rootDir as .brs
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+                // Create a source map that maps staging .brs back to .bs source
+                const sourceNode = new SourceNode(null, null, null, [
+                    new SourceNode(1, 0, s`${sourceDir1}/source/main.bs`, 'sub main()\n'),
+                    new SourceNode(2, 0, s`${sourceDir1}/source/main.bs`, '    print 1\n'),
+                    new SourceNode(3, 0, s`${sourceDir1}/source/main.bs`, 'end sub')
+                ]);
+                const result = sourceNode.toStringWithSourceMap();
+                fsExtra.writeFileSync(`${stagingDir}/source/main.brs.map`, JSON.stringify(result.map));
+                sourceMapManager.set(`${stagingDir}/source/main.brs.map`, JSON.stringify(result.map));
+
+                bpManager.replaceBreakpoints(s`${sourceDir1}/source/main.bs`, [{ line: 2 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // Breakpoint should be verified because staging file is .brs
+                const bp = bpManager['getBreakpointsForFile'](s`${sourceDir1}/source/main.bs`)[0];
+                expect(bp.verified).to.be.true;
+            });
+
+            it('rejects breakpoints when staging file is not .brs or .xml (e.g. .json)', async () => {
+                // Scenario: Python that does NOT compile to BrightScript.
+                // src/source/script.py => dist/source/script.json => stagingDir/source/script.json
+                // The staging file is .json, so the breakpoint should be rejected.
+                fsExtra.writeFileSync(`${rootDir}/source/script.json`, `{"main": true}`);
+                fsExtra.copyFileSync(`${rootDir}/source/script.json`, `${stagingDir}/source/script.json`);
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/script.json`, [{ line: 1 }]);
+
+                let unsupportedEvent: { breakpoints: any[] } | undefined;
+                bpManager.on('breakpoints-changed', (data) => {
+                    unsupportedEvent = data;
+                });
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // The .json file should NOT have STOP injected
+                expect(fsExtra.readFileSync(`${stagingDir}/source/script.json`).toString()).not.to.contain('STOP');
+
+                // Breakpoint should be marked as failed
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/source/script.json`)[0];
+                expect(bp.verified).to.be.false;
+                expect(bp.reason).to.equal('failed');
+                expect(bp.message).to.contain('.json');
+                expect(bp.message).to.contain('not a supported Roku file type');
+
+                // The event is queued via process.nextTick, so wait for it
+                await new Promise<void>(resolve => {
+                    process.nextTick(resolve);
+                });
+                expect(unsupportedEvent).to.exist;
+                expect(unsupportedEvent.breakpoints).to.have.lengthOf(1);
+            });
+
+            it('rejects breakpoints for .py files that transpile to .json in staging', async () => {
+                // Scenario: Python → JSON (not BrightScript).
+                // Breakpoint in .py, source map points to .py, but staging file is .json.
+                fsExtra.writeFileSync(`${sourceDir1}/source/utils.py`, `def hello():\n    print("hi")\n`);
+                fsExtra.writeFileSync(`${rootDir}/source/utils.json`, `{"hello": true}\n`);
+                fsExtra.copyFileSync(`${rootDir}/source/utils.json`, `${stagingDir}/source/utils.json`);
+
+                // Source map from .json back to .py
+                const sourceNode = new SourceNode(null, null, null, [
+                    new SourceNode(1, 0, s`${sourceDir1}/source/utils.py`, '{"hello": true}\n'),
+                    new SourceNode(2, 0, s`${sourceDir1}/source/utils.py`, '\n'),
+                    new SourceNode(3, 0, s`${sourceDir1}/source/utils.py`, '')
+                ]);
+                const result = sourceNode.toStringWithSourceMap();
+                fsExtra.writeFileSync(`${stagingDir}/source/utils.json.map`, JSON.stringify(result.map));
+                sourceMapManager.set(`${stagingDir}/source/utils.json.map`, JSON.stringify(result.map));
+
+                bpManager.replaceBreakpoints(s`${sourceDir1}/source/utils.py`, [{ line: 2 }]);
+
+                let unsupportedEvent: { breakpoints: any[] } | undefined;
+                bpManager.on('breakpoints-changed', (data) => {
+                    unsupportedEvent = data;
+                });
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // .json file should NOT have STOP injected
+                expect(fsExtra.readFileSync(`${stagingDir}/source/utils.json`).toString()).not.to.contain('STOP');
+
+                // Breakpoint should be marked as failed
+                const bp = bpManager['getBreakpointsForFile'](s`${sourceDir1}/source/utils.py`)[0];
+                expect(bp.verified).to.be.false;
+                expect(bp.reason).to.equal('failed');
+
+                // The event is queued via process.nextTick, so wait for it
+                await new Promise<void>(resolve => {
+                    process.nextTick(resolve);
+                });
+                expect(unsupportedEvent).to.exist;
+            });
+
+            it('allows .py breakpoints when they transpile to .brs in staging', async () => {
+                // Scenario: Hypothetical py-to-brs tool.
+                // src/source/main.py => dist/source/main.brs => stagingDir/source/main.brs
+                // The staging file is .brs so the breakpoint should be accepted.
+                fsExtra.writeFileSync(`${sourceDir1}/source/main.py`, `sub main()\n    print 1\nend sub`);
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+                // Source map from .brs back to .py
+                const sourceNode = new SourceNode(null, null, null, [
+                    new SourceNode(1, 0, s`${sourceDir1}/source/main.py`, 'sub main()\n'),
+                    new SourceNode(2, 0, s`${sourceDir1}/source/main.py`, '    print 1\n'),
+                    new SourceNode(3, 0, s`${sourceDir1}/source/main.py`, 'end sub')
+                ]);
+                const result = sourceNode.toStringWithSourceMap();
+                fsExtra.writeFileSync(`${stagingDir}/source/main.brs.map`, JSON.stringify(result.map));
+                sourceMapManager.set(`${stagingDir}/source/main.brs.map`, JSON.stringify(result.map));
+
+                bpManager.replaceBreakpoints(s`${sourceDir1}/source/main.py`, [{ line: 2 }]);
+
+                const verifiedEvents: AugmentedSourceBreakpoint[] = [];
+                bpManager.on('breakpoints-changed', (data) => {
+                    verifiedEvents.push(...data.breakpoints);
+                });
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // Breakpoint SHOULD be verified because staging file is .brs
+                const bp = bpManager['getBreakpointsForFile'](s`${sourceDir1}/source/main.py`)[0];
+                expect(bp.verified).to.be.true;
+
+                // Wait for queued events, then verify none were marked as unsupported
+                await new Promise<void>(resolve => {
+                    process.nextTick(resolve);
+                });
+                expect(verifiedEvents.every(b => b.reason !== 'failed')).to.be.true;
+            });
+
+            it('does not include unsupported breakpoints in getDiff results', async () => {
+                // Breakpoints in unsupported files should not appear in diff work items
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+                fsExtra.writeFileSync(`${rootDir}/source/script.json`, `{"main": true}`);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+                fsExtra.copyFileSync(`${rootDir}/source/script.json`, `${stagingDir}/source/script.json`);
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+                bpManager.replaceBreakpoints(s`${rootDir}/source/script.json`, [{ line: 1 }]);
+
+                const project = new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                });
+
+                const diff = await bpManager.getDiff([project]);
+
+                // Only the .brs breakpoint should appear in the diff
+                expect(diff.added).to.have.lengthOf(1);
+                expect(diff.added[0].pkgPath).to.equal('pkg:/source/main.brs');
+            });
+
+            it('does not crash when file extension cannot be determined', async () => {
+                // Safety: if somehow a staging file has no extension, allow it through
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+
+                // This should not throw
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+            });
+
+            it('rejects breakpoints in manifest files', async () => {
+                // The manifest file is not a debuggable file type
+                fsExtra.writeFileSync(`${rootDir}/manifest`, `title=MyApp\nmajor_version=1\nminor_version=0`);
+                fsExtra.copyFileSync(`${rootDir}/manifest`, `${stagingDir}/manifest`);
+
+                bpManager.replaceBreakpoints(s`${rootDir}/manifest`, [{ line: 1 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // Breakpoint should be marked as failed
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/manifest`)[0];
+                expect(bp.verified).to.be.false;
+                expect(bp.reason).to.equal('failed');
+                expect(bp.message).to.contain('not a supported Roku file type');
+            });
+
+            it('allows breakpoints in non-standard extension files referenced by XML <script> tags', async () => {
+                // Roku loads any file referenced by <script uri="..."> as BrightScript,
+                // regardless of the file extension. So pkg:/source/lib.abc is valid if
+                // an XML component references it.
+                const libContent = `sub doStuff()\n    print "hello"\nend sub`;
+                fsExtra.writeFileSync(`${rootDir}/source/lib.abc`, libContent);
+                fsExtra.copyFileSync(`${rootDir}/source/lib.abc`, `${stagingDir}/source/lib.abc`);
+
+                // Create an XML component that references the .abc file via <script>
+                fsExtra.ensureDirSync(`${stagingDir}/components`);
+                fsExtra.writeFileSync(`${stagingDir}/components/MyComp.xml`, [
+                    '<component name="MyComp" extends="Group">',
+                    '    <script type="text/brightscript" uri="pkg:/source/lib.abc" />',
+                    '</component>'
+                ].join('\n'));
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/lib.abc`, [{ line: 2 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // Breakpoint should be verified because the file is referenced by a <script> tag
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/source/lib.abc`)[0];
+                expect(bp.verified).to.be.true;
+                // STOP should be injected into the file
+                expect(fsExtra.readFileSync(`${stagingDir}/source/lib.abc`).toString()).to.contain('STOP');
+            });
+
+            it('rejects breakpoints in non-standard extension files NOT referenced by XML <script> tags', async () => {
+                // A .abc file that is NOT referenced by any XML <script> tag should be rejected
+                const libContent = `some random content`;
+                fsExtra.writeFileSync(`${rootDir}/source/lib.abc`, libContent);
+                fsExtra.copyFileSync(`${rootDir}/source/lib.abc`, `${stagingDir}/source/lib.abc`);
+
+                // Create an XML component that does NOT reference lib.abc
+                fsExtra.ensureDirSync(`${stagingDir}/components`);
+                fsExtra.writeFileSync(`${stagingDir}/components/MyComp.xml`, [
+                    '<component name="MyComp" extends="Group">',
+                    '    <script type="text/brightscript" uri="pkg:/source/other.brs" />',
+                    '</component>'
+                ].join('\n'));
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/lib.abc`, [{ line: 1 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                // Breakpoint should be rejected
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/source/lib.abc`)[0];
+                expect(bp.verified).to.be.false;
+                expect(bp.reason).to.equal('failed');
+            });
+
+            it('allows breakpoints in files referenced by relative URI in <script> tags', async () => {
+                // <script uri="./Animator.brs" /> is relative to the XML file's directory
+                const libContent = `sub animate()\n    print "go"\nend sub`;
+                fsExtra.ensureDirSync(`${rootDir}/components`);
+                fsExtra.ensureDirSync(`${stagingDir}/components`);
+                fsExtra.writeFileSync(`${rootDir}/components/Animator.xyz`, libContent);
+                fsExtra.copyFileSync(`${rootDir}/components/Animator.xyz`, `${stagingDir}/components/Animator.xyz`);
+
+                fsExtra.writeFileSync(`${stagingDir}/components/Animator.xml`, [
+                    '<component name="Animator" extends="Node">',
+                    '    <script type="text/brightscript" uri="./Animator.xyz" />',
+                    '</component>'
+                ].join('\n'));
+
+                bpManager.replaceBreakpoints(s`${rootDir}/components/Animator.xyz`, [{ line: 2 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/components/Animator.xyz`)[0];
+                expect(bp.verified).to.be.true;
+            });
+
+            it('allows breakpoints in files referenced by parent-relative URI in <script> tags', async () => {
+                // <script uri="../../source/lib.dat" /> traverses up from the XML file
+                const libContent = `sub helper()\n    print "help"\nend sub`;
+                fsExtra.writeFileSync(`${rootDir}/source/lib.dat`, libContent);
+                fsExtra.copyFileSync(`${rootDir}/source/lib.dat`, `${stagingDir}/source/lib.dat`);
+
+                fsExtra.ensureDirSync(`${stagingDir}/components/nested`);
+                fsExtra.writeFileSync(`${stagingDir}/components/nested/Deep.xml`, [
+                    '<component name="Deep" extends="Node">',
+                    '    <script type="text/brightscript" uri="../../source/lib.dat" />',
+                    '</component>'
+                ].join('\n'));
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/lib.dat`, [{ line: 2 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/source/lib.dat`)[0];
+                expect(bp.verified).to.be.true;
+            });
+
+            it('allows breakpoints in files referenced by libpkg:/ URI in <script> tags', async () => {
+                // libpkg:/ is used for component library imports, resolves same as pkg:/
+                const libContent = `sub libFunc()\n    print "lib"\nend sub`;
+                fsExtra.writeFileSync(`${rootDir}/source/libcode.custom`, libContent);
+                fsExtra.copyFileSync(`${rootDir}/source/libcode.custom`, `${stagingDir}/source/libcode.custom`);
+
+                fsExtra.ensureDirSync(`${stagingDir}/components`);
+                fsExtra.writeFileSync(`${stagingDir}/components/LibComp.xml`, [
+                    '<component name="LibComp" extends="Node">',
+                    '    <script type="text/brightscript" uri="libpkg:/source/libcode.custom" />',
+                    '</component>'
+                ].join('\n'));
+
+                bpManager.replaceBreakpoints(s`${rootDir}/source/libcode.custom`, [{ line: 2 }]);
+
+                await bpManager.writeBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+
+                const bp = bpManager['getBreakpointsForFile'](s`${rootDir}/source/libcode.custom`)[0];
+                expect(bp.verified).to.be.true;
+            });
+        });
     });
 
     describe('writeBreakpointsToFile', () => {
@@ -800,6 +1190,7 @@ describe('BreakpointManager', () => {
                 s`${rootDir}/source/main.brs`
             ]);
         });
+
     });
 
     it('properly handles roku-deploy file overriding', async () => {

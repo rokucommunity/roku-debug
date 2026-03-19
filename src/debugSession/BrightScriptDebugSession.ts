@@ -81,8 +81,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
         this.breakpointManager = new BreakpointManager(this.sourceMapManager, this.locationManager);
-        //send newly-verified breakpoints to vscode
-        this.breakpointManager.on('breakpoints-verified', (data) => this.onDeviceBreakpointsChanged('changed', data));
+        //send breakpoint state changes to vscode
+        this.breakpointManager.on('breakpoints-changed', (data: { breakpoints: AugmentedSourceBreakpoint[] }) => this.onBreakpointChanged(data));
         this.projectManager = new ProjectManager({
             breakpointManager: this.breakpointManager,
             locationManager: this.locationManager
@@ -90,9 +90,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.fileLoggingManager = new FileLoggingManager();
     }
 
-    private onDeviceBreakpointsChanged(eventName: 'changed' | 'new', data: { breakpoints: AugmentedSourceBreakpoint[] }) {
-        this.logger.info('Sending verified device breakpoints to client', data);
-        //send all verified breakpoints to the client
+    private onBreakpointChanged(data: { breakpoints: AugmentedSourceBreakpoint[] }) {
+        this.logger.info('Sending breakpoint changes to client', data);
         for (const breakpoint of data.breakpoints) {
             const event: DebugProtocol.Breakpoint = {
                 line: breakpoint.line,
@@ -105,7 +104,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     path: breakpoint.srcPath
                 }
             };
-            this.sendEvent(new BreakpointEvent(eventName, event));
+            // Determine the DAP event reason from the breakpoint state:
+            // - 'failed' breakpoints (e.g. unsupported file types) should be removed from the client
+            // - all other state changes are updates to existing breakpoints
+            const reason = breakpoint.reason === 'failed' ? 'removed' : 'changed';
+            this.sendEvent(new BreakpointEvent(reason, event));
         }
     }
 
@@ -415,7 +418,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
         }
 
-        
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
@@ -428,11 +430,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
         }
-        
         if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
-        
         await this.initializeProfiling();
         //initialize all file logging (rokuDevice, debugger, etc)
         this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
@@ -547,7 +547,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.tryProfilingConnectOnStart();
 
             await this.publish();
-            
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
