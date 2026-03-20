@@ -1005,6 +1005,7 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('ends an active launch progress bar when shutdown is called mid-launch', async () => {
+            const clock = sinon.useFakeTimers();
             const events = [];
             sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
 
@@ -1012,7 +1013,9 @@ describe('BrightScriptDebugSession', () => {
             session['initRequestArgs'].supportsProgressReporting = true;
             session['launchProgressId'] = 'mid-launch-progress';
 
-            await session.shutdown();
+            const shutdownPromise = session.shutdown();
+            await clock.tickAsync(2000);
+            await shutdownPromise;
 
             const progressEndEvents = events.filter(e => e instanceof ProgressEndEvent);
             expect(progressEndEvents).to.have.lengthOf(1);
@@ -2111,38 +2114,38 @@ describe('BrightScriptDebugSession', () => {
 
         it('does nothing when supportsProgressReporting is false', () => {
             session['initRequestArgs'].supportsProgressReporting = false;
-            session['sendLaunchProgress']('start', 'Packaging...');
+            session['sendLaunchProgress']('start', 'Packaging');
             expect(events).to.be.empty;
         });
 
         it('does nothing when supportsProgressReporting is not set', () => {
             delete session['initRequestArgs'].supportsProgressReporting;
-            session['sendLaunchProgress']('start', 'Packaging...');
+            session['sendLaunchProgress']('start', 'Packaging');
             expect(events).to.be.empty;
         });
 
         it('sends ProgressStartEvent with the correct title and message', () => {
             session['initRequestArgs'].supportsProgressReporting = true;
-            session['sendLaunchProgress']('start', 'Packaging...');
+            session['sendLaunchProgress']('start', 'Packaging');
             expect(events).to.have.lengthOf(1);
             expect(events[0]).to.be.instanceOf(ProgressStartEvent);
-            expect(events[0].body.title).to.equal('Launching Roku app');
+            expect(events[0].body.title).to.equal('Launching');
             expect(events[0].body.message).to.equal('Packaging...');
         });
 
         it('assigns a launchProgressId on start', () => {
             session['initRequestArgs'].supportsProgressReporting = true;
             expect(session['launchProgressId']).to.be.undefined;
-            session['sendLaunchProgress']('start', 'Packaging...');
+            session['sendLaunchProgress']('start', 'Packaging');
             expect(session['launchProgressId']).to.be.a('string').and.not.be.empty;
         });
 
         it('sends ProgressUpdateEvent referencing the same progressId', () => {
             session['initRequestArgs'].supportsProgressReporting = true;
-            session['sendLaunchProgress']('start', 'Packaging...');
+            session['sendLaunchProgress']('start', 'Packaging');
             const progressId = session['launchProgressId'];
 
-            session['sendLaunchProgress']('update', 'Uploading to Roku...');
+            session['sendLaunchProgress']('update', 'Uploading to Roku');
 
             expect(events).to.have.lengthOf(2);
             expect(events[1]).to.be.instanceOf(ProgressUpdateEvent);
@@ -2150,22 +2153,29 @@ describe('BrightScriptDebugSession', () => {
             expect(events[1].body.message).to.equal('Uploading to Roku...');
         });
 
-        it('sends ProgressEndEvent and clears launchProgressId', () => {
+        it('sends ProgressEndEvent after delay and clears launchProgressId', () => {
+            const clock = sinon.useFakeTimers();
             session['initRequestArgs'].supportsProgressReporting = true;
-            session['sendLaunchProgress']('start', 'Packaging...');
+            session['sendLaunchProgress']('start', 'Packaging');
             const progressId = session['launchProgressId'];
 
             session['sendLaunchProgress']('end');
 
+            // 'end' immediately emits a ProgressUpdateEvent (final status message) and clears launchProgressId
             expect(events).to.have.lengthOf(2);
-            expect(events[1]).to.be.instanceOf(ProgressEndEvent);
-            expect(events[1].body.progressId).to.equal(progressId);
+            expect(events[1]).to.be.instanceOf(ProgressUpdateEvent);
             expect(session['launchProgressId']).to.be.undefined;
+
+            // After the delay, ProgressEndEvent is sent
+            clock.tick(1100);
+            expect(events).to.have.lengthOf(3);
+            expect(events[2]).to.be.instanceOf(ProgressEndEvent);
+            expect(events[2].body.progressId).to.equal(progressId);
         });
 
         it('update is a no-op when no progress is active', () => {
             session['initRequestArgs'].supportsProgressReporting = true;
-            session['sendLaunchProgress']('update', 'Uploading to Roku...');
+            session['sendLaunchProgress']('update', 'Uploading to Roku');
             expect(events).to.be.empty;
         });
 
@@ -2229,14 +2239,13 @@ describe('BrightScriptDebugSession', () => {
                 await session.launchRequest({} as any, launchConfiguration);
 
                 const progressEvents = getProgressEvents();
-                expect(progressEvents).to.have.lengthOf(4);
+                expect(progressEvents).to.have.lengthOf(3);
                 expect(progressEvents[0]).to.be.instanceOf(ProgressStartEvent);
                 expect((progressEvents[0].body as any).message).to.equal('Packaging...');
                 expect(progressEvents[1]).to.be.instanceOf(ProgressUpdateEvent);
                 expect((progressEvents[1].body as any).message).to.equal('Uploading to Roku...');
                 expect(progressEvents[2]).to.be.instanceOf(ProgressUpdateEvent);
-                expect((progressEvents[2].body as any).message).to.equal('Launching...');
-                expect(progressEvents[3]).to.be.instanceOf(ProgressEndEvent);
+                expect((progressEvents[2].body as any).message).to.equal('Waiting on application...');
             });
 
             it('all progress events share the same progressId', async function() {
