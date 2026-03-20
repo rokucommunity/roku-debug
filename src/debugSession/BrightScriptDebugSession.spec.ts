@@ -23,6 +23,7 @@ import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } f
 import { EventEmitter } from 'eventemitter3';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
+import { PerfettoManager } from '../PerfettoManager';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -2128,6 +2129,96 @@ describe('BrightScriptDebugSession', () => {
                 });
 
             });
+        });
+    });
+
+    describe('initializeProfiling', () => {
+        let enableTracingStub: SinonStub;
+
+        beforeEach(() => {
+            //set device info to support perfetto tracing (OS >= 15.2)
+            session['deviceInfo'] = { softwareVersion: '15.2.0' } as any;
+
+            //stub PerfettoManager prototype methods so no real connections are made
+            enableTracingStub = sinon.stub(PerfettoManager.prototype, 'enableTracing').resolves(true);
+            sinon.stub(PerfettoManager.prototype, 'on').returns(() => { });
+        });
+
+        it('calls enableTracing when profiling.tracing.enable is true and device supports perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(1);
+        });
+
+        it('does not call enableTracing when profiling.tracing.enable is false and device supports perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { enable: false } } as any;
+
+            await session['initializeProfiling']();
+
+            //there is no way to disable perfetto tracing on the device, so we just skip it
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when profiling.tracing.enable is undefined', async () => {
+            launchConfiguration.profiling = { tracing: {} } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when profiling.tracing is undefined', async () => {
+            launchConfiguration.profiling = {} as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when profiling is undefined', async () => {
+            launchConfiguration.profiling = undefined;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when enable is true but device does not support perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when enable is false but device does not support perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { enable: false } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('catches and logs error when enableTracing throws (enable=true)', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+            enableTracingStub.rejects(new Error('connection failed'));
+
+            await session['initializeProfiling']();
+
+            expect(errorSpy.callCount).to.be.greaterThan(0);
+            expect(errorSpy.getCall(0).args[0]).to.include('Failed to enable perfetto tracing');
+        });
+
+        it('does not call enableTracing when enable is false (no way to disable perfetto tracing)', async () => {
+            launchConfiguration.profiling = { tracing: { enable: false } } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
         });
     });
 
