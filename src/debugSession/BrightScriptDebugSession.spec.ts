@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
-import { DebugSession } from '@vscode/debugadapter';
+import { DebugSession, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
@@ -1002,6 +1002,33 @@ describe('BrightScriptDebugSession', () => {
                 'stagingPathA',
                 'stagingPathB'
             ]);
+        });
+
+        it('ends an active launch progress bar when shutdown is called mid-launch', async () => {
+            const events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+
+            // Simulate a progress bar that was opened before shutdown was called
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['launchProgressId'] = 'mid-launch-progress';
+
+            await session.shutdown();
+
+            const progressEndEvents = events.filter(e => e instanceof ProgressEndEvent);
+            expect(progressEndEvents).to.have.lengthOf(1);
+            expect(progressEndEvents[0].body.progressId).to.equal('mid-launch-progress');
+        });
+
+        it('does not send ProgressEndEvent when no launch progress is active', async () => {
+            const events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+
+            session['initRequestArgs'].supportsProgressReporting = true;
+            expect(session['launchProgressId']).to.be.undefined;
+
+            await session.shutdown();
+
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
         });
     });
 
@@ -2070,6 +2097,172 @@ describe('BrightScriptDebugSession', () => {
                     parentVariablePath: ['']
                 });
 
+            });
+        });
+    });
+
+    describe('sendLaunchProgress', () => {
+        let events: any[];
+
+        beforeEach(() => {
+            events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+        });
+
+        it('does nothing when supportsProgressReporting is false', () => {
+            session['initRequestArgs'].supportsProgressReporting = false;
+            session['sendLaunchProgress']('start', 'Packaging...');
+            expect(events).to.be.empty;
+        });
+
+        it('does nothing when supportsProgressReporting is not set', () => {
+            delete session['initRequestArgs'].supportsProgressReporting;
+            session['sendLaunchProgress']('start', 'Packaging...');
+            expect(events).to.be.empty;
+        });
+
+        it('sends ProgressStartEvent with the correct title and message', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Packaging...');
+            expect(events).to.have.lengthOf(1);
+            expect(events[0]).to.be.instanceOf(ProgressStartEvent);
+            expect(events[0].body.title).to.equal('Launching Roku app');
+            expect(events[0].body.message).to.equal('Packaging...');
+        });
+
+        it('assigns a launchProgressId on start', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            expect(session['launchProgressId']).to.be.undefined;
+            session['sendLaunchProgress']('start', 'Packaging...');
+            expect(session['launchProgressId']).to.be.a('string').and.not.be.empty;
+        });
+
+        it('sends ProgressUpdateEvent referencing the same progressId', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Packaging...');
+            const progressId = session['launchProgressId'];
+
+            session['sendLaunchProgress']('update', 'Uploading to Roku...');
+
+            expect(events).to.have.lengthOf(2);
+            expect(events[1]).to.be.instanceOf(ProgressUpdateEvent);
+            expect(events[1].body.progressId).to.equal(progressId);
+            expect(events[1].body.message).to.equal('Uploading to Roku...');
+        });
+
+        it('sends ProgressEndEvent and clears launchProgressId', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Packaging...');
+            const progressId = session['launchProgressId'];
+
+            session['sendLaunchProgress']('end');
+
+            expect(events).to.have.lengthOf(2);
+            expect(events[1]).to.be.instanceOf(ProgressEndEvent);
+            expect(events[1].body.progressId).to.equal(progressId);
+            expect(session['launchProgressId']).to.be.undefined;
+        });
+
+        it('update is a no-op when no progress is active', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('update', 'Uploading to Roku...');
+            expect(events).to.be.empty;
+        });
+
+        it('end is a no-op when no progress is active', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('end');
+            expect(events).to.be.empty;
+        });
+
+        it('each start call generates a unique progressId', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+
+            session['sendLaunchProgress']('start', 'First launch');
+            const firstId = session['launchProgressId'];
+            session['sendLaunchProgress']('end');
+
+            session['sendLaunchProgress']('start', 'Second launch');
+            const secondId = session['launchProgressId'];
+
+            expect(firstId).to.be.a('string').and.not.be.empty;
+            expect(secondId).to.be.a('string').and.not.be.empty;
+            expect(firstId).to.not.equal(secondId);
+        });
+    });
+
+    describe('launchRequest', () => {
+        function setupLaunchStubs() {
+            sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+            sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
+            sinon.stub(session, 'prepareMainProject').resolves();
+            sinon.stub(session as any, 'prepareAndHostComponentLibraries').resolves();
+            sinon.stub(session, 'initRendezvousTracking').resolves();
+            // Prevent createRokuAdapter from replacing the mock rokuAdapter with a real adapter
+            sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
+            sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
+            sinon.stub(session as any, 'publish').resolves();
+            rokuAdapter.connected = true;
+        }
+
+        describe('progress events', () => {
+            let events: any[];
+
+            beforeEach(() => {
+                events = [];
+                sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+            });
+
+            function getProgressEvents() {
+                return events.filter(e =>
+                    e instanceof ProgressStartEvent ||
+                    e instanceof ProgressUpdateEvent ||
+                    e instanceof ProgressEndEvent
+                );
+            }
+
+            it('emits progress events in the correct order', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                session['initRequestArgs'].supportsProgressReporting = true;
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                const progressEvents = getProgressEvents();
+                expect(progressEvents).to.have.lengthOf(4);
+                expect(progressEvents[0]).to.be.instanceOf(ProgressStartEvent);
+                expect((progressEvents[0].body as any).message).to.equal('Packaging...');
+                expect(progressEvents[1]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[1].body as any).message).to.equal('Uploading to Roku...');
+                expect(progressEvents[2]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[2].body as any).message).to.equal('Launching...');
+                expect(progressEvents[3]).to.be.instanceOf(ProgressEndEvent);
+            });
+
+            it('all progress events share the same progressId', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                session['initRequestArgs'].supportsProgressReporting = true;
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                const progressEvents = getProgressEvents();
+                expect(progressEvents.length).to.be.greaterThan(0);
+                const progressId = progressEvents[0].body.progressId;
+                expect(progressId).to.be.a('string').and.not.be.empty;
+                for (const event of progressEvents) {
+                    expect(event.body.progressId).to.equal(progressId);
+                }
+            });
+
+            it('sends no progress events when client does not support progress reporting', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                session['initRequestArgs'].supportsProgressReporting = false;
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                expect(getProgressEvents()).to.be.empty;
             });
         });
     });

@@ -10,6 +10,9 @@ import {
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
+    ProgressEndEvent,
+    ProgressStartEvent,
+    ProgressUpdateEvent,
     Source,
     StackFrame,
     StoppedEvent,
@@ -153,6 +156,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private rendezvousTracker: RendezvousTracker;
 
     public tempVarPrefix = '__rokudebug__';
+
+    /**
+     * The progressId of the active launch progress bar, if any.
+     * Cleared once the ProgressEndEvent is sent.
+     */
+    private launchProgressId: string | undefined;
 
     /**
      * The first encountered compile error, will be used to send to the client as a runtime error (nicer UI presentation)
@@ -415,7 +424,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
         }
 
-        
+
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
@@ -428,11 +437,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
         }
-        
+
         if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
-        
+
         await this.initializeProfiling();
         //initialize all file logging (rokuDevice, debugger, etc)
         this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
@@ -446,6 +455,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
             const packageEnd = this.logger.timeStart('log', 'Packaging');
+            this.sendLaunchProgress('start', 'Packaging...');
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
@@ -546,8 +556,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
             await this.tryProfilingConnectOnStart();
 
+            this.sendLaunchProgress('update', 'Uploading to Roku...');
             await this.publish();
-            
+
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
@@ -557,6 +568,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //tell the adapter adapter that the channel has been launched.
+            this.sendLaunchProgress('update', 'Launching...');
             await this.rokuAdapter.activate();
             if (this.rokuAdapter.isDestroyed) {
                 throw new Error('Debug session encountered an error');
@@ -576,6 +588,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } else {
                 throw error;
             }
+
+            this.sendLaunchProgress('end');
 
             //at this point, the project has been deployed. If we need to use a deep link, launch it now.
             if (this.launchConfiguration.deepLinkUrl) {
@@ -2630,6 +2644,29 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     /**
+     * Sends a launch progress event to the client if the client supports progress reporting.
+     * - `'start'`: begins a new progress bar with the given message. Assigns a new progressId.
+     * - `'update'`: updates the message on the active progress bar.
+     * - `'end'`: dismisses the active progress bar with an optional final message.
+     */
+    private sendLaunchProgress(type: 'start' | 'update' | 'end', message?: string) {
+        if (!this.initRequestArgs?.supportsProgressReporting) {
+            return;
+        }
+        if (type === 'start') {
+            this.launchProgressId = `rokudebug-launch-${this.idCounter++}`;
+            this.sendEvent(new ProgressStartEvent(this.launchProgressId, 'Launching Roku app', message));
+        } else if (this.launchProgressId) {
+            if (type === 'update') {
+                this.sendEvent(new ProgressUpdateEvent(this.launchProgressId, message));
+            } else {
+                this.sendEvent(new ProgressEndEvent(this.launchProgressId, message));
+                this.launchProgressId = undefined;
+            }
+        }
+    }
+
+    /**
      * Tells the client to re-request all variables because we've invalidated them
      * @param threadId
      * @param stackFrameId
@@ -2720,6 +2757,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
+        // Ensure any active launch progress bar is dismissed before showing error messages or the terminated event.
+        this.sendLaunchProgress('end');
+
         //send the message FIRST before anything else. This improves the chances that the message will be displayed to the user
         try {
             if (errorMessage) {
