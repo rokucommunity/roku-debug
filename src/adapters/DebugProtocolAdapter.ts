@@ -117,6 +117,7 @@ export class DebugProtocolAdapter {
     public on(eventName: 'close', handler: () => any);
     public on(eventName: 'app-exit', handler: () => any);
     public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => any);
+    public on(eventName: 'launch-status', handler: (message: string) => any);
     public on(eventName: 'connected', handler: (params: boolean) => any);
     public on(eventname: 'console-output', handler: (output: string) => any); // TODO: might be able to remove this at some point.
     public on(eventname: 'protocol-version', handler: (output: ProtocolVersionDetails) => any);
@@ -136,6 +137,7 @@ export class DebugProtocolAdapter {
     private emit(eventName: 'suspend');
     private emit(eventName: 'breakpoints-verified', event: BreakpointsVerifiedEvent);
     private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
+    private emit(eventName: 'launch-status', message: string);
     private emit(eventName: 'app-exit' | 'app-ready' | 'cannot-continue' | 'chanperf' | 'close' | 'connected' | 'console-output' | 'protocol-version' | 'rendezvous' | 'runtime-error' | 'start' | 'unhandled-console-output' | 'waiting-for-debugger' | 'device-unresponsive', data?);
     private emit(eventName: string, data?) {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
@@ -369,6 +371,8 @@ export class DebugProtocolAdapter {
 
             this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
             this.connected = true;
+            this.isAppRunning = true;
+            this.handleStartupIfReady();
             this.emit('connected', this.connected);
             this.emit('app-ready');
 
@@ -416,6 +420,10 @@ export class DebugProtocolAdapter {
             this.compileErrorProcessor.on('diagnostics', (errors) => {
                 this.compileClient.end();
                 this.emit('diagnostics', errors);
+            });
+
+            this.compileErrorProcessor.on('launch-status', (message) => {
+                this.emit('launch-status', message);
             });
 
             //if the connection fails, reject the connect promise

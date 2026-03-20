@@ -10,6 +10,9 @@ import {
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
+    ProgressEndEvent,
+    ProgressStartEvent,
+    ProgressUpdateEvent,
     Source,
     StackFrame,
     StoppedEvent,
@@ -153,6 +156,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private rendezvousTracker: RendezvousTracker;
 
     public tempVarPrefix = '__rokudebug__';
+
+    /**
+     * The progressId of the active launch progress bar, if any.
+     * Cleared once the ProgressEndEvent is sent.
+     */
+    private launchProgressId: string | undefined;
 
     /**
      * The first encountered compile error, will be used to send to the client as a runtime error (nicer UI presentation)
@@ -445,6 +454,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
             const packageEnd = this.logger.timeStart('log', 'Packaging');
+            this.sendLaunchProgress('start', 'Packaging');
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
@@ -545,6 +555,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
             await this.tryProfilingConnectOnStart();
 
+            this.sendLaunchProgress('update', 'Uploading to Roku');
             await this.publish();
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
@@ -555,6 +566,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //tell the adapter adapter that the channel has been launched.
+            this.sendLaunchProgress('update', 'Waiting on application');
             await this.rokuAdapter.activate();
             if (this.rokuAdapter.isDestroyed) {
                 throw new Error('Debug session encountered an error');
@@ -576,7 +588,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //at this point, the project has been deployed. If we need to use a deep link, launch it now.
-            if (this.launchConfiguration.deepLinkUrl) {
+            if (this.launchConfiguration.deepLinkUrl && !this.enableDebugProtocol) {
                 //wait until the first entry breakpoint has been hit
                 await this.firstRunDeferred.promise;
                 //if we are at a breakpoint, continue
@@ -600,6 +612,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
                 await this.shutdown(message as string, true);
+            } else {
+                this.sendLaunchProgress('end', 'Aborted (compile error)');
             }
         }
 
@@ -749,6 +763,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //find the first compile error (i.e. first DiagnosticSeverity.Error) if there is one
         this.compileError = diagnostics.find(x => x.severity === DiagnosticSeverity.Error);
         if (this.compileError) {
+            this.sendLaunchProgress('end', 'Aborted (compile error)');
             this.sendEvent(new StoppedEvent(
                 StoppedEventReason.exception,
                 this.COMPILE_ERROR_THREAD_ID,
@@ -2362,9 +2377,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     private async connectRokuAdapter() {
         this.rokuAdapter.on('start', () => {
+            this.sendLaunchProgress('end', 'Complete');
             if (!this.firstRunDeferred.isCompleted) {
                 this.firstRunDeferred.resolve();
             }
+        });
+
+        this.rokuAdapter.on('launch-status', (message) => {
+            this.sendLaunchProgress('update', message);
         });
 
         //when the debugger suspends (pauses for debugger input)
@@ -2638,6 +2658,33 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     /**
+     * Sends a launch progress event to the client if the client supports progress reporting.
+     * - `'start'`: begins a new progress bar with the given message. Assigns a new progressId.
+     * - `'update'`: updates the message on the active progress bar.
+     * - `'end'`: dismisses the active progress bar with an optional final message.
+     */
+    private sendLaunchProgress(type: 'start' | 'update' | 'end', message?: string) {
+        if (!this.initRequestArgs?.supportsProgressReporting) {
+            return;
+        }
+        if (type === 'start') {
+            this.launchProgressId = `rokudebug-launch-${this.idCounter++}`;
+            this.sendEvent(new ProgressStartEvent(this.launchProgressId, 'Launching', `${message}...`));
+        } else if (this.launchProgressId) {
+            if (type === 'update') {
+                this.sendEvent(new ProgressUpdateEvent(this.launchProgressId, `${message}...`));
+            } else {
+                const lastId = this.launchProgressId;
+                this.sendEvent(new ProgressUpdateEvent(lastId, message));
+                setTimeout(() => {
+                    this.sendEvent(new ProgressEndEvent(lastId, message));
+                }, 1000); // add a slight delay before ending the progress to improve UX
+                this.launchProgressId = undefined;
+            }
+        }
+    }
+
+    /**
      * Tells the client to re-request all variables because we've invalidated them
      * @param threadId
      * @param stackFrameId
@@ -2728,6 +2775,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
+        // Ensure any active launch progress bar is dismissed before showing error messages or the terminated event.
+        this.sendLaunchProgress('end', 'Complete');
+
         //send the message FIRST before anything else. This improves the chances that the message will be displayed to the user
         try {
             if (errorMessage) {

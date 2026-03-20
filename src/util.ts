@@ -455,7 +455,7 @@ class Util {
         ).some(x => !this.isNullish(x));
     }
 
-    private minPort = 1;
+    private minPort = 1024;
 
     public async getPort() {
         let port: number;
@@ -465,7 +465,7 @@ class Util {
                 port: this.minPort
             });
         } catch {
-            this.minPort = 1;
+            this.minPort = 1024;
             port = await portfinder.getPortPromise({
                 //startPort
                 port: this.minPort

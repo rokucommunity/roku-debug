@@ -95,6 +95,7 @@ export class TelnetAdapter {
     public on(eventName: 'close', handler: () => any);
     public on(eventName: 'app-exit', handler: () => any);
     public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => any);
+    public on(eventName: 'launch-status', handler: (message: string) => any);
     public on(eventName: 'connected', handler: (params: boolean) => any);
     public on(eventname: 'console-output', handler: (output: string) => any);
     public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => any);
@@ -112,6 +113,7 @@ export class TelnetAdapter {
     }
 
     private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
+    private emit(eventName: 'launch-status', message: string);
     private emit(
         /* eslint-disable @typescript-eslint/indent */
         eventName:
@@ -316,6 +318,10 @@ export class TelnetAdapter {
             //listen for any compile errors
             this.compileErrorProcessor.on('diagnostics', (errors) => {
                 this.emit('diagnostics', errors);
+            });
+
+            this.compileErrorProcessor.on('launch-status', (message) => {
+                this.emit('launch-status', message);
             });
 
             //listen for any console output that was not handled by other methods in the adapter
