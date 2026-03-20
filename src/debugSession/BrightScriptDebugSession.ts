@@ -415,7 +415,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
         }
 
-        
         // fetches the device info and parses the xml data to JSON object
         try {
             this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
@@ -428,11 +427,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
         }
-        
+
         if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
             return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
         }
-        
+
         await this.initializeProfiling();
         //initialize all file logging (rokuDevice, debugger, etc)
         this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
@@ -547,7 +546,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.tryProfilingConnectOnStart();
 
             await this.publish();
-            
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
@@ -644,13 +642,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }));
         });
 
-        //enable profiling on the device right away if tracing is enabled in the launch config (this doesn't actually start the trace, it just enables the ability to start a trace from the UI or automatically based on the config)
+        //tracing is explicitly enabled. Turn it on
         if (this.launchConfiguration.profiling?.tracing?.enable && this.supportsPerfettoTracing) {
+            this.logger.info('Enabling perfetto tracing because it is supported by the device and enabled in the launch configuration');
             try {
                 await this.perfettoManager.enableTracing();
             } catch (e) {
                 this.logger.error('Failed to enable perfetto tracing', e);
             }
+
+            //tracing is expicitly DISabled. turn it off
+        } else if (this.launchConfiguration.profiling?.tracing?.enable === false && this.supportsPerfettoTracing) {
+            this.logger.info('Disabling perfetto tracing because it is disabled in the launch configuration');
+            //TODO implement a way to disable perfetto tracing on the device
+
+            //profiling.tracing.enabled is set to `undefined`, which means we should do nothing
+        } else {
+            this.logger.info('Skipping perfetto initalization because `profiling.tracing.enable` is not defined in the launch configuration');
         }
     }
 
