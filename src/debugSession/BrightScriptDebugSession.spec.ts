@@ -15,7 +15,7 @@ import { HighLevelType } from '../interfaces';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brighterscript';
-import { DefaultFiles, rokuDeploy } from 'roku-deploy';
+import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
@@ -1036,6 +1036,33 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('handleDiagnostics', () => {
+        it('ends launch progress when a compile error diagnostic is received', async () => {
+            const clock = sinon.useFakeTimers();
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+
+            const events: any[] = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Waiting on application');
+
+            await session['handleDiagnostics']([{
+                message: 'Syntax error',
+                path: 'SomeComponent.xml',
+                range: bscUtil.createRange(1, 2, 3, 4),
+                severity: DiagnosticSeverity.Error
+            }]);
+
+            // sendLaunchProgress('end') immediately emits a ProgressUpdateEvent, then ProgressEndEvent after delay
+            const updateEvent = events.find(e => e instanceof ProgressUpdateEvent);
+            expect(updateEvent).to.exist;
+            expect((updateEvent.body as any).message).to.equal('Aborted (compile error)');
+            expect(session['launchProgressId']).to.be.undefined;
+
+            clock.tick(1100);
+            const endEvent = events.find(e => e instanceof ProgressEndEvent);
+            expect(endEvent).to.exist;
+        });
+
         it('finds source location for file-only path', async () => {
             session['rokuAdapter'] = { destroy: () => { } } as any;
             session.projectManager.mainProject = new Project({
@@ -2262,6 +2289,22 @@ describe('BrightScriptDebugSession', () => {
                 for (const event of progressEvents) {
                     expect(event.body.progressId).to.equal(progressId);
                 }
+            });
+
+            it('ends progress with abort message when publish throws a CompileError', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                // Override the publish stub to throw a CompileError
+                (session as any).publish.restore();
+                sinon.stub(session as any, 'publish').rejects(new CompileError('compile failed', [], {} as any));
+                session['initRequestArgs'].supportsProgressReporting = true;
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                const progressUpdateEvents = events.filter(e => e instanceof ProgressUpdateEvent);
+                const abortEvent = progressUpdateEvents.find(e => (e.body as any).message === 'Aborted (compile error)');
+                expect(abortEvent).to.exist;
+                expect(session['launchProgressId']).to.be.undefined;
             });
 
             it('sends no progress events when client does not support progress reporting', async function() {

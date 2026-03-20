@@ -614,6 +614,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
                 await this.shutdown(message as string, true);
+            } else {
+                this.sendLaunchProgress('end', 'Aborted (compile error)');
             }
         }
 
@@ -753,6 +755,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //find the first compile error (i.e. first DiagnosticSeverity.Error) if there is one
         this.compileError = diagnostics.find(x => x.severity === DiagnosticSeverity.Error);
         if (this.compileError) {
+            this.sendLaunchProgress('end', 'Aborted (compile error)');
             this.sendEvent(new StoppedEvent(
                 StoppedEventReason.exception,
                 this.COMPILE_ERROR_THREAD_ID,
