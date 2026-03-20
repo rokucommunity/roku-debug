@@ -95,13 +95,13 @@ describe('CompileErrorProcessor', () => {
 
             it('emits "Loading markup" for scrpt.load.mkup', () => {
                 expect(getLaunchStatusMessages(
-                    `03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'FuboTV'`
+                    `03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'APP_NAME'`
                 )).to.eql(['Loading markup']);
             });
 
             it('emits "Scripts compiled" for scrpt.ctx.cmpl.time', () => {
                 expect(getLaunchStatusMessages(
-                    `03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'FuboTV', id 'dev' in 155 ms (BCVer:0), thrd 6515`
+                    `03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'APP_NAME', id 'dev' in 155 ms (BCVer:0), thrd 6515`
                 )).to.eql(['Scripts compiled']);
             });
 
@@ -125,7 +125,7 @@ describe('CompileErrorProcessor', () => {
 
             it('emits "Running" for the Running banner line', () => {
                 expect(getLaunchStatusMessages(
-                    `------ Running dev 'FuboTV' main ------`
+                    `------ Running dev 'APP_NAME' main ------`
                 )).to.eql(['Running']);
             });
 
@@ -143,7 +143,7 @@ describe('CompileErrorProcessor', () => {
 
             it('does not emit for unrecognized lines', () => {
                 expect(getLaunchStatusMessages(
-                    `03-20 14:33:26.266 app  [scrpt.unload.mkup] Unloading markup dev 'FuboTV'`
+                    `03-20 14:33:26.266 app  [scrpt.unload.mkup] Unloading markup dev 'APP_NAME'`
                 )).to.eql([]);
             });
 
@@ -151,17 +151,17 @@ describe('CompileErrorProcessor', () => {
                 const messages = getLaunchStatusMessages(dedent`
                     03-20 14:33:26.231 app  [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
                     03-20 14:33:26.231 app  [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)
-                    03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'FuboTV'
-                    03-20 14:33:26.266 app  [scrpt.unload.mkup] Unloading markup dev 'FuboTV'
-                    03-20 14:33:26.272 app  [scrpt.parse.mkup.time] Parsed markup dev 'FuboTV' in 7 milliseconds
+                    03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'APP_NAME'
+                    03-20 14:33:26.266 app  [scrpt.unload.mkup] Unloading markup dev 'APP_NAME'
+                    03-20 14:33:26.272 app  [scrpt.parse.mkup.time] Parsed markup dev 'APP_NAME' in 7 milliseconds
 
-                    ------ Compiling dev 'FuboTV' ------
-                    03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'FuboTV', id 'dev' in 155 ms (BCVer:0), thrd 6515
+                    ------ Compiling dev 'APP_NAME' ------
+                    03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'APP_NAME', id 'dev' in 155 ms (BCVer:0), thrd 6515
                     03-20 14:33:26.549 app  [beacon.signal] |AppCompileComplete --------> Duration(319 ms)
                     03-20 14:33:26.646 app  [beacon.signal] |AppSplashInitiate ---------> TimeBase(15 ms)
                     03-20 14:33:27.389 app  [beacon.signal] |AppSplashComplete ---------> Duration(743 ms)
 
-                    ------ Running dev 'FuboTV' main ------
+                    ------ Running dev 'APP_NAME' main ------
                     03-20 14:33:27.949 sdkl [plg.dbg.conn.wait] Waiting for debugging connection
                     03-20 14:33:27.979 sdkl [plg.dbg.conn.ok] remote debugger connected
                 `);
@@ -183,17 +183,17 @@ describe('CompileErrorProcessor', () => {
                 const messages = getLaunchStatusMessages(dedent`
                     03-20 14:33:26.231 app  [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
                     03-20 14:33:26.231 app  [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)
-                    03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'FuboTV'
-                    03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'FuboTV', id 'dev' in 155 ms (BCVer:0), thrd 6515
+                    03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'APP_NAME'
+                    03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'APP_NAME', id 'dev' in 155 ms (BCVer:0), thrd 6515
                     03-20 14:33:26.549 app  [beacon.signal] |AppCompileComplete --------> Duration(319 ms)
                     03-20 14:33:26.646 app  [beacon.signal] |AppSplashInitiate ---------> TimeBase(15 ms)
                     03-20 14:33:27.389 app  [beacon.signal] |AppSplashComplete ---------> Duration(743 ms)
                     03-20 14:33:27.567 sdkl [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
-                    03-20 14:33:27.587 sdkl [scrpt.load.mkup] Loading markup dev 'FuboTV'
-                    03-20 14:33:27.779 sdkl [scrpt.ctx.cmpl.time] Compiled 'FuboTV', id 'dev' in 170 ms (BCVer:0), thrd 22276
+                    03-20 14:33:27.587 sdkl [scrpt.load.mkup] Loading markup dev 'APP_NAME'
+                    03-20 14:33:27.779 sdkl [scrpt.ctx.cmpl.time] Compiled 'APP_NAME', id 'dev' in 170 ms (BCVer:0), thrd 22276
                     03-20 14:33:27.784 sdkl [beacon.signal] |AppCompileComplete --------> Duration(314 ms)
 
-                    ------ Running dev 'FuboTV' main ------
+                    ------ Running dev 'APP_NAME' main ------
                     03-20 14:33:27.949 sdkl [plg.dbg.conn.wait] Waiting for debugging connection
                     03-20 14:33:27.979 sdkl [plg.dbg.conn.ok] remote debugger connected
                 `);
