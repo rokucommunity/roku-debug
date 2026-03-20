@@ -455,7 +455,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
             const packageEnd = this.logger.timeStart('log', 'Packaging');
-            this.sendLaunchProgress('start', 'Packaging...');
+            this.sendLaunchProgress('start', 'Packaging');
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
@@ -556,7 +556,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
             await this.tryProfilingConnectOnStart();
 
-            this.sendLaunchProgress('update', 'Uploading to Roku...');
+            this.sendLaunchProgress('update', 'Uploading to Roku');
             await this.publish();
 
 
@@ -568,7 +568,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //tell the adapter adapter that the channel has been launched.
-            this.sendLaunchProgress('update', 'Launching...');
+            this.sendLaunchProgress('update', 'Waiting on application');
             await this.rokuAdapter.activate();
             if (this.rokuAdapter.isDestroyed) {
                 throw new Error('Debug session encountered an error');
@@ -589,10 +589,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 throw error;
             }
 
-            this.sendLaunchProgress('end');
-
             //at this point, the project has been deployed. If we need to use a deep link, launch it now.
-            if (this.launchConfiguration.deepLinkUrl) {
+            if (this.launchConfiguration.deepLinkUrl && !this.enableDebugProtocol) {
                 //wait until the first entry breakpoint has been hit
                 await this.firstRunDeferred.promise;
                 //if we are at a breakpoint, continue
@@ -2368,9 +2366,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     private async connectRokuAdapter() {
         this.rokuAdapter.on('start', () => {
+            this.sendLaunchProgress('end', 'Complete');
             if (!this.firstRunDeferred.isCompleted) {
                 this.firstRunDeferred.resolve();
             }
+        });
+
+        this.rokuAdapter.on('launch-status', (message) => {
+            this.sendLaunchProgress('update', message);
         });
 
         //when the debugger suspends (pauses for debugger input)
@@ -2655,12 +2658,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
         if (type === 'start') {
             this.launchProgressId = `rokudebug-launch-${this.idCounter++}`;
-            this.sendEvent(new ProgressStartEvent(this.launchProgressId, 'Launching Roku app', message));
+            this.sendEvent(new ProgressStartEvent(this.launchProgressId, 'Launching', `${message}...`));
         } else if (this.launchProgressId) {
             if (type === 'update') {
-                this.sendEvent(new ProgressUpdateEvent(this.launchProgressId, message));
+                this.sendEvent(new ProgressUpdateEvent(this.launchProgressId, `${message}...`));
             } else {
-                this.sendEvent(new ProgressEndEvent(this.launchProgressId, message));
+                const lastId = this.launchProgressId;
+                this.sendEvent(new ProgressUpdateEvent(lastId, message));
+                setTimeout(() => {
+                    this.sendEvent(new ProgressEndEvent(lastId, message));
+                }, 1000); // add a slight delay before ending the progress to improve UX
                 this.launchProgressId = undefined;
             }
         }
@@ -2758,7 +2765,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
         // Ensure any active launch progress bar is dismissed before showing error messages or the terminated event.
-        this.sendLaunchProgress('end');
+        this.sendLaunchProgress('end', 'Complete');
 
         //send the message FIRST before anything else. This improves the chances that the message will be displayed to the user
         try {
