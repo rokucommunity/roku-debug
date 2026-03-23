@@ -15,7 +15,7 @@ export class ThreadsResponse {
         return response;
     }
 
-    public static fromBuffer(buffer: Buffer) {
+    public static fromBuffer(buffer: Buffer, supportsAdditionalThreadResponseFields?: boolean) {
         const response = new ThreadsResponse();
         protocolUtil.bufferLoaderHelper(response, buffer, 16, (smartBuffer: SmartBuffer) => {
             protocolUtil.loadCommonResponseFields(response, smartBuffer);
@@ -36,6 +36,12 @@ export class ThreadsResponse {
                 thread.functionName = protocolUtil.readStringNT(smartBuffer); // function_name
                 thread.filePath = protocolUtil.readStringNT(smartBuffer); // file_path
                 thread.codeSnippet = protocolUtil.readStringNT(smartBuffer); // code_snippet
+                
+                if (supportsAdditionalThreadResponseFields) {
+                    thread.osThreadId = protocolUtil.readStringNT(smartBuffer); // id
+                    thread.name = protocolUtil.readStringNT(smartBuffer); // name
+                    thread.type = protocolUtil.readStringNT(smartBuffer); // type
+                }
 
                 response.data.threads.push(thread);
             }
@@ -58,6 +64,16 @@ export class ThreadsResponse {
             smartBuffer.writeStringNT(thread.functionName); // function_name
             smartBuffer.writeStringNT(thread.filePath); // file_path
             smartBuffer.writeStringNT(thread.codeSnippet); // code_snippet
+
+            if (thread.osThreadId) {
+                smartBuffer.writeStringNT(thread.osThreadId);
+            }
+            if (thread.name) {
+                smartBuffer.writeStringNT(thread.name);
+            }
+            if (thread.type) {
+                smartBuffer.writeStringNT(thread.type);
+            }
         }
         protocolUtil.insertCommonResponseFields(this, smartBuffer);
         return smartBuffer.toBuffer();
@@ -115,6 +131,18 @@ export interface ThreadInfo {
      * The code causing the stop or failure.
      */
     codeSnippet: string;
+    /**
+     * The ID of the thread (optional for debug protocol version ).
+     */
+    osThreadId?: string;
+    /**
+     * The name of the thread (optional).
+     */
+    name?: string;
+    /**
+     * The type of the thread (optional).
+     */
+    type?: string;
 }
 
 enum ThreadInfoFlags {
