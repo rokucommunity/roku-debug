@@ -164,6 +164,10 @@ export class DebugProtocolClient {
         return semver.satisfies(this.protocolVersion, '>=3.3.0');
     }
 
+    public get supportsAdditionalThreadResponseFields() {
+        return semver.satisfies(this.protocolVersion, '>=3.5.0');
+    }
+
     /**
      * Get a promise that resolves after an event occurs exactly once
      */
@@ -927,14 +931,14 @@ export class DebugProtocolClient {
             //requestId 0 means this is an update
             const request = this.activeRequests.get(genericResponse.data.requestId);
             if (request) {
-                return DebugProtocolClient.getResponse(this.buffer, request.data.command);
+                return DebugProtocolClient.getResponse(this.buffer, request.data.command, this.supportsAdditionalThreadResponseFields);
             }
         } else {
             return this.getUpdate(this.buffer);
         }
     }
 
-    public static getResponse(buffer: Buffer, command: Command) {
+    public static getResponse(buffer: Buffer, command: Command, supportsAdditionalThreadResponseFields?: boolean) {
         switch (command) {
             case Command.Stop:
             case Command.Continue:
@@ -955,7 +959,7 @@ export class DebugProtocolClient {
             case Command.StackTrace:
                 return StackTraceV3Response.fromBuffer(buffer);
             case Command.Threads:
-                return ThreadsResponse.fromBuffer(buffer);
+                return ThreadsResponse.fromBuffer(buffer, supportsAdditionalThreadResponseFields);
             case Command.SetExceptionBreakpoints:
                 return SetExceptionBreakpointsResponse.fromBuffer(buffer);
             default:
