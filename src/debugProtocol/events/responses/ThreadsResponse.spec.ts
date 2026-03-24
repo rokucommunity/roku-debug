@@ -242,7 +242,6 @@ describe('ThreadsResponse', () => {
     });
 
     it('reads additional fields when supportsAdditionalFields is true', () => {
-        const { SmartBuffer } = require('smart-buffer');
         let response = ThreadsResponse.fromJson({
             requestId: 3,
             threads: [{
@@ -259,7 +258,7 @@ describe('ThreadsResponse', () => {
             }]
         });
 
-        response = ThreadsResponse.fromBuffer(response.toBuffer(), true);
+        response = ThreadsResponse.fromBuffer(response.toBuffer());
 
         expect(
             response.data
