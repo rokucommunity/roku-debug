@@ -1136,9 +1136,9 @@ export interface Thread {
     functionName: string;
     lineContents: string;
     threadId: number;
-    osThreadId: string;
-    name: string;
-    type: string;
+    osThreadId?: string;
+    name?: string;
+    type?: string;
 }
 
 interface BrightScriptRuntimeError {
