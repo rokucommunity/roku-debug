@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.22.7](https://github.com/rokucommunity/roku-debug/compare/0.22.6...v0.22.7) - 2026-03-24
+### Added
+ - Support for ProgressStart ProgressUpdate and ProgressEnd DAP events ([#300](https://github.com/rokucommunity/roku-debug/pull/300))
+### Changed
+ - Support `bs_libs_provided` when computing complib out file name ([#298](https://github.com/rokucommunity/roku-debug/pull/298))
+ - upgrade to [brighterscript@0.70.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0704---2026-03-24). Notable changes since 0.70.3:
+### Fixed
+ - default profiling enablement flow ([#302](https://github.com/rokucommunity/roku-debug/pull/302))
+
+
+
 ## [0.22.6](https://github.com/rokucommunity/roku-debug/compare/0.22.5...v0.22.6) - 2026-03-09
 ### Added
  - Perfetto tracing ([#286](https://github.com/rokucommunity/roku-debug/pull/286))
