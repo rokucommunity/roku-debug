@@ -1334,17 +1334,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     0,
                     'Compile Error',
                     new Source(path.basename(this.compileError.path), this.compileError.path),
-                    //diagnostics are 0 based, vscode expects 1 based
-                    this.compileError.range.start.line + 1,
-                    this.compileError.range.start.character + 1
+                    // range is 0-based; toClientLine/toClientColumn handle client coordinate conversion
+                    this.toClientLine(this.compileError.range.start.line),
+                    this.toClientColumn(this.compileError.range.start.character)
                 ));
             } else if (args.threadId === 1001) {
                 frames.push(new StackFrame(
                     0,
                     'ERROR: threads would not stop',
                     new Source('main.brs', s`${this.launchConfiguration.stagingDir}/manifest`),
-                    1,
-                    1
+                    this.toClientLine(0),
+                    this.toClientColumn(0)
                 ));
                 this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn').catch((error) => {
                     this.logger.error('Error showing popup message', { error });
@@ -1385,8 +1385,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             debugFrame.frameId,
                             `${debugFrame.functionIdentifier}`,
                             new Source(path.basename(filePath), filePath),
-                            sourceLocation?.lineNumber ?? debugFrame.lineNumber,
-                            1
+                            // lineNumber is 1-based from Roku; toClientLine expects 0-based
+                            this.toClientLine((sourceLocation?.lineNumber ?? debugFrame.lineNumber) - 1),
+                            this.toClientColumn(0)
                         );
                         if (!sourceLocation) {
                             frame.presentationHint = 'subtle';
