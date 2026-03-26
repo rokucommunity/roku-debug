@@ -2409,4 +2409,51 @@ describe('BrightScriptDebugSession', () => {
             });
         });
     });
+
+    describe('threadsRequest', () => {
+        beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+        });
+
+        async function getThreadsResponse() {
+            const response = { body: undefined } as DebugProtocol.ThreadsResponse;
+            await session['threadsRequest'](response);
+            return response;
+        }
+
+        it('returns empty thread list when not at debugger prompt', async () => {
+            rokuAdapter.isAtDebuggerPrompt = false;
+            const response = await getThreadsResponse();
+            expect(response.body.threads).to.eql([]);
+        });
+
+        it('names normal threads without a suffix', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: false, lineNumber: 1, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+
+        it('appends [detached] to the name of detached threads', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: false, lineNumber: 1, filePath: '', functionName: '', lineContents: '' },
+                { threadId: 1, isSelected: false, isDetached: true, lineNumber: 2, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+            expect(response.body.threads[1].name).to.equal('Thread 1 [detached]');
+        });
+
+        it('handles undefined isDetached as not detached', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: undefined, lineNumber: 1, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+    });
 });

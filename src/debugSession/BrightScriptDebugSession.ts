@@ -1297,8 +1297,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 let rokuThreads = await this.rokuAdapter.getThreads();
 
                 for (let thread of rokuThreads) {
+                    const threadName = thread.isDetached
+                        ? `Thread ${thread.threadId} [detached]`
+                        : `Thread ${thread.threadId}`;
                     threads.push(
-                        new Thread(thread.threadId, `Thread ${thread.threadId}`)
+                        new Thread(thread.threadId, threadName)
                     );
                 }
 

@@ -857,6 +857,7 @@ export class DebugProtocolAdapter {
                     // NOTE: Rely on the thead index from the threads update event.
                     isSelected: this.client.primaryThread === i,
                     // isSelected: threadInfo.isPrimary,
+                    isDetached: threadInfo.isDetached,
                     filePath: threadInfo.filePath,
                     functionName: threadInfo.functionName,
                     lineNumber: threadInfo.lineNumber, //threadInfo.lineNumber is 1-based. Thread requires 1-based line numbers
@@ -1125,6 +1126,7 @@ export enum KeyType {
 
 export interface Thread {
     isSelected: boolean;
+    isDetached?: boolean;
     /**
      * The 1-based line number for the thread
      */
