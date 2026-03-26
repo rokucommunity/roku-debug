@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
-import { DebugSession, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
+import { DebugSession, Logger as DapLogger, logger as dapLogger, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
@@ -459,6 +459,35 @@ describe('BrightScriptDebugSession', () => {
             expect(
                 response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
             ).to.exist;
+        });
+    });
+
+    describe('start', () => {
+        let setupStub: sinonActual.SinonStub;
+        let superStartStub: sinonActual.SinonStub;
+
+        beforeEach(() => {
+            setupStub = sinon.stub(dapLogger, 'setup');
+            // stub the base class start() so we don't need real streams
+            superStartStub = sinon.stub(DebugSession.prototype, 'start').returns(undefined);
+        });
+
+        it('does not configure DAP logging when ROKU_DAP_LOG_FILE is not set', () => {
+            delete process.env.ROKU_DAP_LOG_FILE;
+            session.start(null as any, null as any);
+            expect(setupStub.called).to.be.false;
+        });
+
+        it('calls dapLogger.setup with the env var path when ROKU_DAP_LOG_FILE is set', () => {
+            process.env.ROKU_DAP_LOG_FILE = '/tmp/test-dap.log';
+            try {
+                session.start(null as any, null as any);
+                expect(setupStub.calledOnce).to.be.true;
+                expect(setupStub.firstCall.args[0]).to.equal(DapLogger.LogLevel.Error);
+                expect(setupStub.firstCall.args[1]).to.equal('/tmp/test-dap.log');
+            } finally {
+                delete process.env.ROKU_DAP_LOG_FILE;
+            }
         });
     });
 
