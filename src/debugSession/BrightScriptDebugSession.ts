@@ -6,7 +6,9 @@ import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionReset
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
-    DebugSession as BaseDebugSession,
+    LoggingDebugSession as BaseDebugSession,
+    Logger as DapLogger,
+    logger as dapLogger,
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
@@ -91,6 +93,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             locationManager: this.locationManager
         });
         this.fileLoggingManager = new FileLoggingManager();
+    }
+
+    public start(inStream: NodeJS.ReadableStream, outStream: NodeJS.WritableStream): void {
+        super.start(inStream, outStream);
+        // Set up DAP protocol logging as early as possible — immediately after start() so we capture
+        // the initialize request and all early DAP traffic before launchRequest config is available.
+        // The log file path is injected as ROKU_DAP_LOG_FILE by the extension's DebugAdapterDescriptorFactory,
+        // which resolves the path from the `brightscript.debug.debugAdapterProtocolLogging` workspace setting
+        // (or the equivalent launch.json property) before the debug adapter process is spawned.
+        const dapLogFile = process.env.ROKU_DAP_LOG_FILE;
+        if (dapLogFile) {
+            // Use LogLevel.Error (not Verbose) as the console threshold so DAP messages are written
+            // to the log file but are NOT forwarded to VS Code as OutputEvents, which would flood
+            // the debug console and break the extension's output parsing.
+            // Note: InternalLogger always writes ALL messages to the file stream regardless of level,
+            // so the log file will still contain everything.
+            dapLogger.setup(DapLogger.LogLevel.Error, dapLogFile);
+        }
     }
 
     private onDeviceBreakpointsChanged(eventName: 'changed' | 'new', data: { breakpoints: AugmentedSourceBreakpoint[] }) {
