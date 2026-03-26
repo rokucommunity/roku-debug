@@ -354,6 +354,115 @@ describe('Project', () => {
         });
     });
 
+    describe('fixSourceMapSources', () => {
+        afterEach(() => {
+            try {
+                fsExtra.removeSync(tempPath);
+            } catch (e) { }
+        });
+
+        it('rewrites sources paths in map files that were moved to staging', async () => {
+            // Simulate a .map file that was compiled in a source dir, then copied to a different stagingDir
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            // The map's original location is in srcDir
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // The original .bs file is one level up from the map file
+            const originalSourceMap = {
+                version: 3,
+                sources: ['../../rootDir/source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            // Copy to staging (simulating what prepublishToStaging does)
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            // Set up fileMappings to record the move
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['fixSourceMapSources']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            // Resolve what the source path should be after rewriting
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../rootDir/source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('does not modify a map file that was not moved (src === dest)', async () => {
+            fsExtra.ensureDirSync(stagingDir);
+            const mapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(mapPath));
+            const originalSourceMap = { version: 3, sources: ['../source/main.bs'], mappings: '' };
+            fsExtra.writeJsonSync(mapPath, originalSourceMap);
+
+            project.fileMappings = [
+                { src: mapPath, dest: mapPath }
+            ];
+
+            await project['fixSourceMapSources']();
+
+            const unchanged = fsExtra.readJsonSync(mapPath);
+            expect(unchanged.sources[0]).to.equal('../source/main.bs');
+        });
+
+        it('does not modify a map file that is not in fileMappings (generated in staging)', async () => {
+            fsExtra.ensureDirSync(stagingDir);
+            const mapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(mapPath));
+            const originalSourceMap = { version: 3, sources: ['../source/main.bs'], mappings: '' };
+            fsExtra.writeJsonSync(mapPath, originalSourceMap);
+
+            // fileMappings does NOT include this map file
+            project.fileMappings = [];
+
+            await project['fixSourceMapSources']();
+
+            const unchanged = fsExtra.readJsonSync(mapPath);
+            expect(unchanged.sources[0]).to.equal('../source/main.bs');
+        });
+
+        it('respects sourceRoot when resolving original source paths', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // sourceRoot is a path relative to the map file; sources are relative to sourceRoot
+            const originalSourceMap = {
+                version: 3,
+                sourceRoot: '../rootDir',
+                sources: ['source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['fixSourceMapSources']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../rootDir', 'source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+    });
+
     describe('updateManifestBsConsts', () => {
         let constsLine: string;
         let startingFileContents: string;
