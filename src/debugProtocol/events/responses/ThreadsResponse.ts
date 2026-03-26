@@ -29,6 +29,7 @@ export class ThreadsResponse {
                 const thread = {} as ThreadInfo;
                 const flags = smartBuffer.readUInt8();
                 thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
+                thread.isDetached = (flags & ThreadInfoFlags.isDetached) > 0;
                 thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
                 thread.stopReasonDetail = protocolUtil.readStringNT(smartBuffer); // stop_reason_detail
                 thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
@@ -48,6 +49,7 @@ export class ThreadsResponse {
         for (const thread of this.data.threads ?? []) {
             let flags = 0;
             flags |= thread.isPrimary ? 1 : 0;
+            flags |= thread.isDetached ? 2 : 0;
             smartBuffer.writeUInt8(flags); //flags
             //stop_reason is an 8-bit value (same as the other locations in this protocol); however, it is sent in this response as a 32bit value for historical purposes
             smartBuffer.writeUInt32LE(StopReasonCode[thread.stopReason]); // stop_reason
@@ -86,6 +88,10 @@ export interface ThreadInfo {
      */
     isPrimary: boolean;
     /**
+     * Indicates whether this thread likely caused the stop or failure
+     */
+    isDetached: boolean;
+    /**
      * An enum describing why the thread was stopped.
      */
     stopReason: StopReason;
@@ -112,5 +118,6 @@ export interface ThreadInfo {
 }
 
 enum ThreadInfoFlags {
-    isPrimary = 0x01
+    isPrimary = 0x01,
+    isDetached = 0x02
 }
