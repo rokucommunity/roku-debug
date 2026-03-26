@@ -415,7 +415,7 @@ export class DebugProtocolClient {
         const result = await this.processThreadsRequest(
             ThreadsRequest.fromJson({
                 requestId: this.requestIdSequence++,
-                threads_request_flags: ThreadRequestFlags.includeThreadInfo
+                threadsRequestFlags: ThreadRequestFlags.includeThreadInfo
             })
         );
         return result;
