@@ -128,6 +128,7 @@ describe('DebugProtocolAdapter', function() {
                     lineNumber: 12,
                     functionName: 'main',
                     isPrimary: true,
+                    isDetached: false,
                     codeSnippet: '',
                     stopReason: StopReason.Break,
                     stopReasonDetail: 'because'

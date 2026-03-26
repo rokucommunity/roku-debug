@@ -20,6 +20,7 @@ describe('ThreadsResponse', () => {
     function t(extra?: Record<string, any>) {
         return {
             isPrimary: true,
+            isDetached: false,
             stopReason: StopReason.Break,
             stopReasonDetail: 'because',
             lineNumber: 2,
@@ -63,6 +64,7 @@ describe('ThreadsResponse', () => {
             requestId: 3,
             threads: [{
                 isPrimary: true,
+                isDetached: false,
                 stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,
@@ -78,6 +80,7 @@ describe('ThreadsResponse', () => {
             errorCode: ErrorCode.OK,
             threads: [{
                 isPrimary: true,
+                isDetached: false,
                 stopReason: 'Break',
                 stopReasonDetail: 'because',
                 lineNumber: 2,
@@ -164,6 +167,7 @@ describe('ThreadsResponse', () => {
             requestId: 3,
             threads: [{
                 isPrimary: true,
+                isDetached: false,
                 stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,
@@ -199,6 +203,7 @@ describe('ThreadsResponse', () => {
             requestId: 3,
             threads: [{
                 isPrimary: true,
+                isDetached: false,
                 stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,
@@ -207,6 +212,7 @@ describe('ThreadsResponse', () => {
                 codeSnippet: 'sub main()'
             }, {
                 isPrimary: true,
+                isDetached: false,
                 stopReason: StopReason.StopStatement,
                 stopReasonDetail: 'because',
                 lineNumber: 3,
