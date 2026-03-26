@@ -66,13 +66,16 @@ export class SourceMapManager {
             //remove the file from cache
             delete this.cache[key];
             //standardize the source map paths
+            const mapDir = path.dirname(sourceMapPath);
+            // Resolve sourceRoot relative to the map file's directory (handles relative sourceRoot correctly)
+            const sourceRoot = parsedSourceMap.sourceRoot
+                ? path.resolve(mapDir, parsedSourceMap.sourceRoot)
+                : mapDir;
             parsedSourceMap.sources = parsedSourceMap.sources.map(source => fileUtils.standardizePath(
-                path.resolve(
-                    //use the map's sourceRoot, or the map's folder path (to support relative paths)
-                    parsedSourceMap.sourceRoot || path.dirname(sourceMapPath),
-                    source
-                )
+                path.resolve(sourceRoot, source)
             ));
+            // Clear sourceRoot since sources are now absolute — prevents SourceMapConsumer from double-applying it
+            parsedSourceMap.sourceRoot = '';
             this.cache[key] = parsedSourceMap;
         } catch (e) {
             this.cache[key] = null;
