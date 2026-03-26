@@ -45,6 +45,19 @@ describe('ThreadsResponse', () => {
         expect(response.data.threads.map(x => x.isPrimary)).to.eql([false, true, false]);
     });
 
+    it('serializes and deserializes isDetached flag', () => {
+        const response = ThreadsResponse.fromBuffer(
+            ThreadsResponse.fromJson({
+                threads: [
+                    t({ isDetached: false }),
+                    t({ isDetached: true }),
+                    t({ isDetached: undefined })
+                ]
+            } as any).toBuffer()
+        );
+        expect(response.data.threads.map(x => x.isDetached)).to.eql([false, true, false]);
+    });
+
     it('serializes and deserializes multiple breakpoints properly', () => {
         let response = ThreadsResponse.fromJson({
             requestId: 3,
@@ -86,6 +99,7 @@ describe('ThreadsResponse', () => {
             threads: [{
                 // flags // 4 bytes
                 isPrimary: true, // 0 bytes - part of flags
+                isDetached: false, // 0 bytes - part of flags
                 stopReason: 'Break', // 1 byte
                 stopReasonDetail: 'because', // 8 bytes
                 lineNumber: 2, // 4 bytes
@@ -170,6 +184,7 @@ describe('ThreadsResponse', () => {
         expect(response.success).to.be.false;
         expect(response.data.threads).to.eql([{
             isPrimary: true,
+            isDetached: false,
             stopReason: 'Break',
             stopReasonDetail: 'because',
             lineNumber: 2,
@@ -210,6 +225,7 @@ describe('ThreadsResponse', () => {
         expect(response.success).to.be.false;
         expect(response.data.threads).to.eql([{
             isPrimary: true,
+            isDetached: false,
             stopReason: StopReason.Break,
             stopReasonDetail: 'because',
             lineNumber: 2,
