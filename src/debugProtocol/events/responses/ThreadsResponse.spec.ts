@@ -241,7 +241,7 @@ describe('ThreadsResponse', () => {
         }]);
     });
 
-    it('reads additional fields when supportsAdditionalFields is true', () => {
+    it('reads additional fields', () => {
         let response = ThreadsResponse.fromJson({
             requestId: 3,
             threads: [{

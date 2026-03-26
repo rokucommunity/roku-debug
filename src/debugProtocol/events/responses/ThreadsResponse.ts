@@ -15,55 +15,34 @@ export class ThreadsResponse {
         return response;
     }
 
-    private static readThread(smartBuffer: SmartBuffer, includeOptionalFields: boolean): ThreadInfo {
-        const thread = {} as ThreadInfo;
-        const flags = smartBuffer.readUInt8();
-        thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
-        thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
-        thread.stopReasonDetail = protocolUtil.readStringNT(smartBuffer); // stop_reason_detail
-        thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
-        thread.functionName = protocolUtil.readStringNT(smartBuffer); // function_name
-        thread.filePath = protocolUtil.readStringNT(smartBuffer); // file_path
-        thread.codeSnippet = protocolUtil.readStringNT(smartBuffer); // code_snippet
-
-        if (includeOptionalFields) {
-            thread.osThreadId = protocolUtil.readStringNT(smartBuffer); // id
-            thread.name = protocolUtil.readStringNT(smartBuffer); // name
-            thread.type = protocolUtil.readStringNT(smartBuffer); // type
-        }
-
-        return thread;
-    }
-
-    public static fromBuffer(buffer: Buffer) {
+     public static fromBuffer(buffer: Buffer) {
         const response = new ThreadsResponse();
         protocolUtil.bufferLoaderHelper(response, buffer, 16, (smartBuffer: SmartBuffer) => {
             protocolUtil.loadCommonResponseFields(response, smartBuffer);
 
             const threadsCount = smartBuffer.readUInt32LE(); // threads_count
-            const offsetAfterThreadsCount = smartBuffer.readOffset;
 
             response.data.threads = [];
 
             // build the list of threads
-            try {
-                // Try reading with optional fields first (new format)
-                for (let i = 0; i < threadsCount; i++) {
-                    response.data.threads.push(this.readThread(smartBuffer, true));  // ← New format first
+            for (let i = 0; i < threadsCount; i++) {
+                const thread = {} as ThreadInfo;
+                const flags = smartBuffer.readUInt8();
+                thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
+                thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
+                thread.stopReasonDetail = protocolUtil.readStringNT(smartBuffer); // stop_reason_detail
+                thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
+                thread.functionName = protocolUtil.readStringNT(smartBuffer); // function_name
+                thread.filePath = protocolUtil.readStringNT(smartBuffer); // file_path
+                thread.codeSnippet = protocolUtil.readStringNT(smartBuffer); // code_snippet
+
+                if ((flags & ThreadInfoFlags.isIdentityInfo) > 0) {
+                    thread.osThreadId = protocolUtil.readStringNT(smartBuffer); // id
+                    thread.name = protocolUtil.readStringNT(smartBuffer); // name
+                    thread.type = protocolUtil.readStringNT(smartBuffer); // type
                 }
 
-                // Check if we read the correct amount of data
-                if (smartBuffer.readOffset !== response.data.packetLength) {
-                    throw new Error('Packet length mismatch');
-                }
-            } catch (e) {
-                // Fallback to old format without optional fields
-                smartBuffer.readOffset = offsetAfterThreadsCount;
-                response.data.threads = [];
-
-                for (let i = 0; i < threadsCount; i++) {
-                    response.data.threads.push(this.readThread(smartBuffer, false));  // ← Fallback to old
-                }
+                response.data.threads.push(thread);
             }
         });
         return response;
@@ -76,8 +55,8 @@ export class ThreadsResponse {
         const hasOptionalFields = this.data.threads?.some(t => t.osThreadId || t.name || t.type) ?? false;
         for (const thread of this.data.threads ?? []) {
             let flags = 0;
-            flags |= thread.isPrimary ? 1 : 0;
-            flags |= thread.isDetached ? 2 : 0;
+            flags |= thread.isPrimary ? ThreadInfoFlags.isPrimary : 0;
+            flags |= hasOptionalFields ? ThreadInfoFlags.isIdentityInfo : 0;
             smartBuffer.writeUInt8(flags); //flags
             //stop_reason is an 8-bit value (same as the other locations in this protocol); however, it is sent in this response as a 32bit value for historical purposes
             smartBuffer.writeUInt32LE(StopReasonCode[thread.stopReason]); // stop_reason
@@ -166,4 +145,5 @@ export interface ThreadInfo {
 enum ThreadInfoFlags {
     isPrimary = 0x01,
     isDetached = 0x02
+    isIdentityInfo = 0x04,
 }

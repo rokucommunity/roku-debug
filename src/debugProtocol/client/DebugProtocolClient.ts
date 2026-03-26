@@ -18,7 +18,7 @@ import { RemoveBreakpointsRequest } from '../events/requests/RemoveBreakpointsRe
 import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsRequest';
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { StackTraceRequest } from '../events/requests/StackTraceRequest';
-import { ThreadsRequest } from '../events/requests/ThreadsRequest';
+import { ThreadsRequest, ThreadRequestFlags } from '../events/requests/ThreadsRequest';
 import type { ExceptionBreakpoint } from '../events/requests/SetExceptionBreakpointsRequest';
 import { SetExceptionBreakpointsRequest } from '../events/requests/SetExceptionBreakpointsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
@@ -414,7 +414,8 @@ export class DebugProtocolClient {
     public async threads() {
         const result = await this.processThreadsRequest(
             ThreadsRequest.fromJson({
-                requestId: this.requestIdSequence++
+                requestId: this.requestIdSequence++,
+                threads_request_flags: ThreadRequestFlags.includeThreadInfo
             })
         );
         return result;
