@@ -15,7 +15,7 @@ export class ThreadsResponse {
         return response;
     }
 
-     public static fromBuffer(buffer: Buffer) {
+    public static fromBuffer(buffer: Buffer) {
         const response = new ThreadsResponse();
         protocolUtil.bufferLoaderHelper(response, buffer, 16, (smartBuffer: SmartBuffer) => {
             protocolUtil.loadCommonResponseFields(response, smartBuffer);
@@ -140,5 +140,5 @@ export interface ThreadInfo {
 
 enum ThreadInfoFlags {
     isPrimary = 0x01,
-    isIdentityInfo = 0x04,
+    isIdentityInfo = 0x04
 }

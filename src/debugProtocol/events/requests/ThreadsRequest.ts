@@ -5,11 +5,11 @@ import type { ProtocolRequest } from '../ProtocolEvent';
 
 export class ThreadsRequest implements ProtocolRequest {
 
-    public static fromJson(data: { requestId: number, threads_request_flags?: number }) {
+    public static fromJson(data: { requestId: number; threadsRequestFlags?: number }) {
         const request = new ThreadsRequest();
         protocolUtil.loadJson(request, data);
-        if (data.threads_request_flags !== undefined) {
-            request.data.threads_request_flags = data.threads_request_flags;
+        if (data.threadsRequestFlags !== undefined) {
+            request.data.threadsRequestFlags = data.threadsRequestFlags;
         }
         return request;
     }
@@ -19,7 +19,7 @@ export class ThreadsRequest implements ProtocolRequest {
         protocolUtil.bufferLoaderHelper(request, buffer, 12, (smartBuffer) => {
             protocolUtil.loadCommonRequestFields(request, smartBuffer);
             if (smartBuffer.remaining() >= 4) {
-                request.data.threads_request_flags = smartBuffer.readUInt32LE();
+                request.data.threadsRequestFlags = smartBuffer.readUInt32LE();
             }
         });
         return request;
@@ -27,8 +27,8 @@ export class ThreadsRequest implements ProtocolRequest {
 
     public toBuffer(): Buffer {
         const smartBuffer = new SmartBuffer();
-        if (this.data.threads_request_flags !== undefined) {
-            smartBuffer.writeUInt32LE(this.data.threads_request_flags);
+        if (this.data.threadsRequestFlags !== undefined) {
+            smartBuffer.writeUInt32LE(this.data.threadsRequestFlags);
         }
         protocolUtil.insertCommonRequestFields(this, smartBuffer);
         return smartBuffer.toBuffer();
@@ -44,12 +44,12 @@ export class ThreadsRequest implements ProtocolRequest {
         packetLength: number;
         requestId: number;
         command: Command;
-        threads_request_flags?: number; 
+        threadsRequestFlags?: number; 
     } = {
-        packetLength: undefined as number,
-        requestId: undefined as number,
-        command: Command.Threads,
-    };
+            packetLength: undefined as number,
+            requestId: undefined as number,
+            command: Command.Threads
+        };
 }
 
 export enum ThreadRequestFlags {
