@@ -2593,4 +2593,93 @@ describe('BrightScriptDebugSession', () => {
             });
         });
     });
+
+    describe('setupSuspendedState', () => {
+        beforeEach(() => {
+            session.projectManager.mainProject = new Project({
+                rootDir: rootDir,
+                outDir: stagingDir
+            } as Partial<AddProjectParams> as any);
+            session.projectManager.mainProject.fileMappings = [];
+            sinon.stub(rokuAdapter, 'syncBreakpoints').resolves();
+        });
+
+        it('does not crash when thread has corrupted filePath and failedDeletions is non-empty', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'Main',
+                lineNumber: 1295673717,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves({
+                filePath: s`${rootDir}/components/Component.brs`,
+                lineNumber: 33,
+                columnIndex: 0
+            });
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            // should not throw
+            await session['setupSuspendedState']();
+        });
+
+        it('corrects thread.filePath from stack trace when lineNumber mismatch is detected', async () => {
+            const getSourceLocationStub = sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'Main',
+                lineNumber: 1295673717,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            await session['setupSuspendedState']();
+
+            // getSourceLocation should have been called with the corrected pkg path, not 'Main'
+            expect(getSourceLocationStub.args[0][0]).to.equal('pkg:/components/Component.brs');
+        });
+
+        it('does not crash when getSourceLocation returns undefined', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            // should not throw even when getSourceLocation returns undefined
+            await session['setupSuspendedState']();
+        });
+    });
 });

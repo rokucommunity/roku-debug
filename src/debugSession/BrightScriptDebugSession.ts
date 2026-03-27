@@ -2583,9 +2583,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             threads.map(async (thread) => {
                 const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
                 const stackTraceLineNumber = stackTrace[0]?.lineNumber;
+                const stackTraceFilePath = stackTrace[0]?.filePath;
                 if (stackTraceLineNumber !== thread.lineNumber) {
                     this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
                     thread.lineNumber = stackTraceLineNumber;
+                    thread.filePath = stackTraceFilePath;
                 }
             })
         );
@@ -2595,7 +2597,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 let sourceLocation = await this.projectManager.getSourceLocation(thread.filePath, thread.lineNumber);
                 // This stop was due to a breakpoint that we tried to delete, but couldn't.
                 // Now that we are stopped, we can delete it. We won't stop here again unless you re-add the breakpoint. You're welcome.
-                if ((bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
+                if (sourceLocation && (bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
                     this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info').catch((error) => {
                         this.logger.error('Error showing popup message', { error });
                     });
