@@ -6,7 +6,7 @@ import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionReset
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
-    LoggingDebugSession as BaseDebugSession,
+    LoggingDebugSession,
     Logger as DapLogger,
     logger as dapLogger,
     InitializedEvent,
@@ -73,7 +73,7 @@ import { SocketConnectionInUseError } from '../Exceptions';
 
 const diagnosticSource = 'roku-debug';
 
-export class BrightScriptDebugSession extends BaseDebugSession {
+export class BrightScriptDebugSession extends LoggingDebugSession {
     public constructor() {
         super();
 
