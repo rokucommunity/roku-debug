@@ -19,7 +19,7 @@ import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } from './Events';
+import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
@@ -188,6 +188,7 @@ describe('BrightScriptDebugSession', () => {
             developerEnabled: true
         }));
         sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+        sinon.stub(session, 'setupProcessErrorHandlers');
 
         let sendEvent = session.sendEvent.bind(session);
         sinon.stub(session, 'sendEvent').callsFake((event) => {
@@ -464,12 +465,14 @@ describe('BrightScriptDebugSession', () => {
 
     describe('start', () => {
         let setupStub: sinonActual.SinonStub;
-        let superStartStub: sinonActual.SinonStub;
 
         beforeEach(() => {
             setupStub = sinon.stub(dapLogger, 'setup');
             // stub the base class start() so we don't need real streams
-            superStartStub = sinon.stub(DebugSession.prototype, 'start').returns(undefined);
+            sinon.stub(DebugSession.prototype, 'start').returns(undefined);
+            // stub so process error handlers aren't registered for real during tests
+            // (those are covered by logging.spec.ts)
+            sinon.stub(session, 'setupProcessErrorHandlers');
         });
 
         it('does not configure DAP logging when ROKU_DAP_LOG_FILE is not set', () => {
@@ -488,6 +491,67 @@ describe('BrightScriptDebugSession', () => {
             } finally {
                 delete process.env.ROKU_DAP_LOG_FILE;
             }
+        });
+    });
+
+    describe('setupProcessErrorHandlers', () => {
+        let sendEventStub: sinonActual.SinonStub;
+        let exitStub: sinonActual.SinonStub;
+
+        beforeEach(() => {
+            sendEventStub = sinon.stub(session, 'sendEvent');
+            exitStub = sinon.stub(process, 'exit');
+            session['processErrorHandlersRegistered'] = false;
+        });
+
+        afterEach(() => {
+            session.teardownProcessErrorHandlers();
+        });
+
+        it('registers handlers only once even when called multiple times', () => {
+            const onSpy = sinon.spy(process, 'on');
+            session.setupProcessErrorHandlers();
+            session.setupProcessErrorHandlers();
+            expect(onSpy.withArgs('uncaughtException').callCount).to.equal(1);
+        });
+
+        it('sends ProcessCrashEvent for uncaughtException', () => {
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('test crash'));
+            expect(sendEventStub.calledOnce).to.be.true;
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.type).to.equal('uncaughtException');
+            expect(event.body.message).to.equal('test crash');
+        });
+
+        it('sends ProcessCrashEvent for unhandledRejection', () => {
+            session.setupProcessErrorHandlers();
+            session['_unhandledRejectionHandler'](new Error('rejected'));
+            expect(sendEventStub.calledOnce).to.be.true;
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.type).to.equal('unhandledRejection');
+            expect(event.body.message).to.equal('rejected');
+        });
+
+        it('schedules process.exit(1) after 5 seconds on uncaughtException', () => {
+            const clock = sinon.useFakeTimers();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            expect(exitStub.called).to.be.false;
+            clock.tick(5000);
+            expect(exitStub.calledWith(1)).to.be.true;
+            clock.restore();
+        });
+
+        it('does not call process.exit for unhandledRejection', () => {
+            const clock = sinon.useFakeTimers();
+            session.setupProcessErrorHandlers();
+            session['_unhandledRejectionHandler'](new Error('rejected'));
+            clock.tick(5000);
+            expect(exitStub.called).to.be.false;
+            clock.restore();
         });
     });
 
@@ -2359,6 +2423,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
             sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
             sinon.stub(session as any, 'publish').resolves();
+            sinon.stub(session, 'setupProcessErrorHandlers');
             rokuAdapter.connected = true;
         }
 

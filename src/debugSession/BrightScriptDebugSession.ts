@@ -48,7 +48,8 @@ import {
     ProfilingErrorEvent,
     ProfilingStartEvent,
     ProfilingStopEvent,
-    ProfilingEnabledEvent as ProfilingEnableEvent
+    ProfilingEnabledEvent as ProfilingEnableEvent,
+    ProcessCrashEvent
 } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
@@ -113,6 +114,43 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
     }
 
+    public setupProcessErrorHandlers() {
+        if (this.processErrorHandlersRegistered) {
+            return;
+        }
+        this.processErrorHandlersRegistered = true;
+
+        const handleError = (type: 'uncaughtException' | 'unhandledRejection', error: unknown) => {
+            const logger = this.logger.createLogger(`${type}`);
+            const message = error instanceof Error ? error.message : String(error);
+            const stack = error instanceof Error ? error.stack : undefined;
+            logger.error(message, stack);
+            try {
+                this.sendLogOutput(JSON.stringify(error));
+            } catch (e) { /** We might not be able to send log output yet so just eat the error */ }
+            this.sendEvent(new ProcessCrashEvent({ type, message, stack }));
+            setTimeout(() => process.exit(1), 5000);
+        };
+
+        this._uncaughtExceptionHandler = (error) => handleError('uncaughtException', error);
+        this._unhandledRejectionHandler = (reason) => handleError('unhandledRejection', reason);
+
+        process.on('uncaughtException', this._uncaughtExceptionHandler);
+        process.on('unhandledRejection', this._unhandledRejectionHandler);
+    }
+
+    public teardownProcessErrorHandlers() {
+        if (this._uncaughtExceptionHandler) {
+            process.removeListener('uncaughtException', this._uncaughtExceptionHandler);
+            this._uncaughtExceptionHandler = undefined;
+        }
+        if (this._unhandledRejectionHandler) {
+            process.removeListener('unhandledRejection', this._unhandledRejectionHandler);
+            this._unhandledRejectionHandler = undefined;
+        }
+        this.processErrorHandlersRegistered = false;
+    }
+
     private onDeviceBreakpointsChanged(eventName: 'changed' | 'new', data: { breakpoints: AugmentedSourceBreakpoint[] }) {
         this.logger.info('Sending verified device breakpoints to client', data);
         //send all verified breakpoints to the client
@@ -146,6 +184,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public projectManager: ProjectManager;
 
     public fileLoggingManager: FileLoggingManager;
+
+    private processErrorHandlersRegistered = false;
+    private _uncaughtExceptionHandler: ((error: Error) => void) | undefined;
+    private _unhandledRejectionHandler: ((reason: unknown) => void) | undefined;
 
     public breakpointManager: BreakpointManager;
 
@@ -464,6 +506,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         await this.initializeProfiling();
         //initialize all file logging (rokuDevice, debugger, etc)
         this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
+        this.setupProcessErrorHandlers();
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
