@@ -747,14 +747,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.sendLaunchProgress('end', 'Aborted (compile error)');
             }
         }
-
-        // setTimeout(() => {
-        //     throw new Error('simulated uncaught error after launch');
-        // }, 0);
-
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        Promise.reject(new Error('simulated unhandled rejection after launch'));
-
         logEnd();
     }
 
