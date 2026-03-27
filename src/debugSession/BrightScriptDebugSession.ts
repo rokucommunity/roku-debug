@@ -126,64 +126,74 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const stack = error instanceof Error ? error.stack : undefined;
             logger.error(message, stack);
 
-            const debuggerVersion: string = (fsExtra.readJsonSync('../../package.json') as { version: string }).version;
-            const clientName = this.initRequestArgs?.clientName ?? 'unknown';
-            const clientId = this.initRequestArgs?.clientID ?? 'unknown';
+            let output: string;
+            try {
+                const debuggerVersion = (fsExtra.readJsonSync( path.resolve(__dirname, '../../package.json')) as { version: string }).version;
 
-            const issueBodyPrefix = [
-                `**Debugger version:** ${debuggerVersion}`,
-                `**Client:** ${clientName} (${clientId})`,
-                `**Error type:** ${type}`,
-                `**Message:** ${message}`,
-                '',
-                '**Stack trace:**',
-                '```',
-                ''
-            ].join('\n');
-            const issueBodySuffix = '\n```';
+                const clientName = this.initRequestArgs?.clientName ?? 'unknown';
+                const clientId = this.initRequestArgs?.clientID ?? 'unknown';
 
-            const issueTitle = encodeURIComponent(`[crash] ${type}: ${message}`);
-            const baseUrl = 'https://github.com/RokuCommunity/roku-debug/issues/new';
-            const maxUrlLength = 2000;
-            const urlOverhead = `${baseUrl}?title=${issueTitle}&body=`.length;
-            const bodyBudget = maxUrlLength - urlOverhead;
-            const encodedPrefix = encodeURIComponent(issueBodyPrefix);
-            const encodedSuffix = encodeURIComponent(issueBodySuffix);
-            const stackBudget = bodyBudget - encodedPrefix.length - encodedSuffix.length;
-            let truncatedStack: string;
-            if (!stack) {
-                truncatedStack = '(no stack trace)';
-            } else if (encodeURIComponent(stack).length <= stackBudget) {
-                truncatedStack = stack;
-            } else {
-                truncatedStack = decodeURIComponent(encodeURIComponent(stack).slice(0, stackBudget)) + '\n...(truncated)';
+                const issueBodyPrefix = [
+                    `**Debugger version:** ${debuggerVersion}`,
+                    `**Client:** ${clientName} (${clientId})`,
+                    `**Error type:** ${type}`,
+                    `**Message:** ${message}`,
+                    '',
+                    '**Stack trace:**',
+                    '```',
+                    ''
+                ].join('\n');
+                const issueBodySuffix = '\n```';
+
+                const issueTitle = encodeURIComponent(`[crash] ${type}: ${message}`);
+                const baseUrl = 'https://github.com/RokuCommunity/roku-debug/issues/new';
+                const maxUrlLength = 2000;
+                const urlOverhead = `${baseUrl}?title=${issueTitle}&body=`.length;
+                const bodyBudget = maxUrlLength - urlOverhead;
+                const encodedPrefix = encodeURIComponent(issueBodyPrefix);
+                const encodedSuffix = encodeURIComponent(issueBodySuffix);
+                const stackBudget = bodyBudget - encodedPrefix.length - encodedSuffix.length;
+                let truncatedStack: string;
+                if (!stack) {
+                    truncatedStack = '(no stack trace)';
+                } else if (encodeURIComponent(stack).length <= stackBudget) {
+                    truncatedStack = stack;
+                } else {
+                    truncatedStack = decodeURIComponent(encodeURIComponent(stack).slice(0, stackBudget)) + '\n...(truncated)';
+                }
+                const issueUrl = `${baseUrl}?title=${issueTitle}&body=${encodedPrefix}${encodeURIComponent(truncatedStack)}${encodedSuffix}`;
+
+                output = [
+                    '',
+                    '================================================================',
+                    '  BRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
+                    '  This is a crash in the debug adapter, not in your application.',
+                    '================================================================',
+                    `  Error type:        ${type}`,
+                    `  Message:           ${message}`,
+                    `  Debugger version:  ${debuggerVersion}`,
+                    `  Client:            ${clientName} (${clientId})`,
+                    '',
+                    '  Stack trace:',
+                    ...(stack ?? '(no stack trace)').split('\n').map(l => `  ${l}`),
+                    '',
+                    '  Please report this at:',
+                    `  ${issueUrl}`,
+                    '================================================================',
+                    ''
+                ].join('\n');
+            } catch (e) {
+                output = JSON.stringify({
+                    name: e.name,
+                    message: e.message,
+                    stack: e.stack
+                });
             }
-            const issueUrl = `${baseUrl}?title=${issueTitle}&body=${encodedPrefix}${encodeURIComponent(truncatedStack)}${encodedSuffix}`;
-
-            const output = [
-                '',
-                '================================================================',
-                '  BRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
-                '  This is a crash in the debug adapter, not in your application.',
-                '================================================================',
-                `  Error type:        ${type}`,
-                `  Message:           ${message}`,
-                `  Debugger version:  ${debuggerVersion}`,
-                `  Client:            ${clientName} (${clientId})`,
-                '',
-                '  Stack trace:',
-                ...(stack ?? '(no stack trace)').split('\n').map(l => `  ${l}`),
-                '',
-                '  Please report this at:',
-                `  ${issueUrl}`,
-                '================================================================',
-                ''
-            ].join('\n');
 
             void this.sendLogOutput(output).catch(() => { /** best-effort */ });
             this.isCrashed = true;
             this.sendEvent(new ProcessCrashEvent({ type, message, stack }));
-            setTimeout(() => process.exit(1), 2000);
+            setTimeout(() => process.exit(1), 5000);
         };
 
         this._uncaughtExceptionHandler = (error) => handleError('uncaughtException', error);
@@ -525,6 +535,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
 
         this.launchConfiguration = this.normalizeLaunchConfig(config);
+        this.setupProcessErrorHandlers();
 
         //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
         bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
@@ -561,7 +572,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         await this.initializeProfiling();
         //initialize all file logging (rokuDevice, debugger, etc)
         this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
-        this.setupProcessErrorHandlers();
 
         this.projectManager.launchConfiguration = this.launchConfiguration;
         this.breakpointManager.launchConfiguration = this.launchConfiguration;
@@ -740,7 +750,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // }, 0);
 
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        // Promise.reject(new Error('simulated unhandled rejection after launch'));
+        Promise.reject(new Error('simulated unhandled rejection after launch'));
 
         logEnd();
     }
