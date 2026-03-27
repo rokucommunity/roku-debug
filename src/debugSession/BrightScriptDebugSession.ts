@@ -125,9 +125,66 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const message = error instanceof Error ? error.message : String(error);
             const stack = error instanceof Error ? error.stack : undefined;
             logger.error(message, stack);
-            void this.sendLogOutput(JSON.stringify(error)).catch(() => { /** best-effort */ });
+
+            // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+            const debuggerVersion: string = (require('../../package.json') as { version: string }).version;
+            const clientName = this.initRequestArgs?.clientName ?? 'unknown';
+            const clientId = this.initRequestArgs?.clientID ?? 'unknown';
+
+            const issueBodyPrefix = [
+                `**Debugger version:** ${debuggerVersion}`,
+                `**Client:** ${clientName} (${clientId})`,
+                `**Error type:** ${type}`,
+                `**Message:** ${message}`,
+                '',
+                '**Stack trace:**',
+                '```',
+                ''
+            ].join('\n');
+            const issueBodySuffix = '\n```';
+
+            const issueTitle = encodeURIComponent(`[crash] ${type}: ${message}`);
+            const baseUrl = 'https://github.com/RokuCommunity/roku-debug/issues/new';
+            const maxUrlLength = 2000;
+            const urlOverhead = `${baseUrl}?title=${issueTitle}&body=`.length;
+            const bodyBudget = maxUrlLength - urlOverhead;
+            const encodedPrefix = encodeURIComponent(issueBodyPrefix);
+            const encodedSuffix = encodeURIComponent(issueBodySuffix);
+            const stackBudget = bodyBudget - encodedPrefix.length - encodedSuffix.length;
+            let truncatedStack: string;
+            if (!stack) {
+                truncatedStack = '(no stack trace)';
+            } else if (encodeURIComponent(stack).length <= stackBudget) {
+                truncatedStack = stack;
+            } else {
+                truncatedStack = decodeURIComponent(encodeURIComponent(stack).slice(0, stackBudget)) + '\n...(truncated)';
+            }
+            const issueUrl = `${baseUrl}?title=${issueTitle}&body=${encodedPrefix}${encodeURIComponent(truncatedStack)}${encodedSuffix}`;
+
+            const output = [
+                '',
+                '================================================================',
+                '  BRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
+                '  This is a crash in the debug adapter, not in your application.',
+                '================================================================',
+                `  Error type:        ${type}`,
+                `  Message:           ${message}`,
+                `  Debugger version:  ${debuggerVersion}`,
+                `  Client:            ${clientName} (${clientId})`,
+                '',
+                '  Stack trace:',
+                ...(stack ?? '(no stack trace)').split('\n').map(l => `  ${l}`),
+                '',
+                '  Please report this at:',
+                `  ${issueUrl}`,
+                '================================================================',
+                ''
+            ].join('\n');
+
+            void this.sendLogOutput(output).catch(() => { /** best-effort */ });
+            this.isCrashed = true;
             this.sendEvent(new ProcessCrashEvent({ type, message, stack }));
-            setTimeout(() => process.exit(1), 5000);
+            setTimeout(() => process.exit(1), 2000);
         };
 
         this._uncaughtExceptionHandler = (error) => handleError('uncaughtException', error);
@@ -184,6 +241,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public fileLoggingManager: FileLoggingManager;
 
     private processErrorHandlersRegistered = false;
+    private isCrashed = false;
     private _uncaughtExceptionHandler: ((error: Error) => void) | undefined;
     private _unhandledRejectionHandler: ((reason: unknown) => void) | undefined;
 
@@ -678,6 +736,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
         }
 
+        // setTimeout(() => {
+        //     throw new Error('simulated uncaught error after launch');
+        // }, 0);
+
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        // Promise.reject(new Error('simulated unhandled rejection after launch'));
+
         logEnd();
     }
 
@@ -919,6 +984,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param logOutput
      */
     private sendLogOutput(logOutput: string) {
+        if (this.isCrashed) {
+            return Promise.resolve();
+        }
         this.fileLoggingManager.writeRokuDeviceLog(logOutput);
 
         this.pendingSendLogPromise = this.pendingSendLogPromise.then(async () => {
