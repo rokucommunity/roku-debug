@@ -496,11 +496,11 @@ describe('BrightScriptDebugSession', () => {
 
     describe('setupProcessErrorHandlers', () => {
         let sendEventStub: sinonActual.SinonStub;
-        let exitStub: sinonActual.SinonStub;
+        let shutdownStub: sinonActual.SinonStub;
 
         beforeEach(() => {
             sendEventStub = sinon.stub(session, 'sendEvent');
-            exitStub = sinon.stub(process, 'exit');
+            shutdownStub = sinon.stub(session, 'shutdown').resolves();
             session['processErrorHandlersRegistered'] = false;
         });
 
@@ -535,22 +535,112 @@ describe('BrightScriptDebugSession', () => {
             expect(event.body.message).to.equal('rejected');
         });
 
-        it('schedules process.exit(1) after 5 seconds on uncaughtException', () => {
+        it('includes error stack in ProcessCrashEvent', () => {
+            const error = new Error('test crash');
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const event = sendEventStub.firstCall.args[0];
+            expect(event.body.stack).to.equal(error.stack);
+        });
+
+        it('sets isCrashed to true', () => {
+            expect(session['isCrashed']).to.be.false;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            expect(session['isCrashed']).to.be.true;
+        });
+
+        it('handles non-Error thrown values', () => {
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler']('string error' as any);
+            const event = sendEventStub.firstCall.args[0];
+            expect(event.body.message).to.equal('string error');
+            expect(event.body.stack).to.be.undefined;
+        });
+
+        it('calls sendLogOutput with formatted crash output', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            expect(sendLogOutputStub.calledOnce).to.be.true;
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('BRIGHTSCRIPT DEBUGGER INTERNAL ERROR');
+            expect(output).to.include('uncaughtException');
+            expect(output).to.include('boom');
+            expect(output).to.include('https://github.com/RokuCommunity/roku-debug/issues/new');
+        });
+
+        it('includes client name and id from initRequestArgs in output', () => {
+            session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('VS Code');
+            expect(output).to.include('vscode');
+        });
+
+        it('uses "unknown" for client info when initRequestArgs is not set', () => {
+            session['initRequestArgs'] = undefined;
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('unknown (unknown)');
+        });
+
+        it('uses "(no stack trace)" in output when error has no stack', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler']('not an error' as any);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('(no stack trace)');
+        });
+
+        it('truncates a very long stack trace in the issue URL', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const longStack = 'x'.repeat(3000);
+            const error = new Error('boom');
+            error.stack = longStack;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('...(truncated)');
+        });
+
+        it('falls back to JSON output when readJsonSync throws', () => {
+            sinon.stub(fsExtra, 'readJsonSync').throws(new Error('file not found'));
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            // fallback is JSON-stringified error from catch block
+            expect(output).to.include('file not found');
+        });
+
+        it('schedules shutdown() after 5 seconds on uncaughtException', () => {
             const clock = sinon.useFakeTimers();
             session.setupProcessErrorHandlers();
             session['_uncaughtExceptionHandler'](new Error('boom'));
-            expect(exitStub.called).to.be.false;
+            expect(shutdownStub.called).to.be.false;
             clock.tick(5000);
-            expect(exitStub.calledWith(1)).to.be.true;
+            expect(shutdownStub.calledOnce).to.be.true;
             clock.restore();
         });
 
-        it('does not call process.exit for unhandledRejection', () => {
+        it('schedules shutdown() after 5 seconds on unhandledRejection', () => {
             const clock = sinon.useFakeTimers();
             session.setupProcessErrorHandlers();
             session['_unhandledRejectionHandler'](new Error('rejected'));
+            expect(shutdownStub.called).to.be.false;
             clock.tick(5000);
-            expect(exitStub.called).to.be.false;
+            expect(shutdownStub.calledOnce).to.be.true;
             clock.restore();
         });
     });

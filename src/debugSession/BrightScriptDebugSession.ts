@@ -196,7 +196,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             void this.sendLogOutput(output).catch(() => { /** best-effort */ });
             this.isCrashed = true;
             this.sendEvent(new ProcessCrashEvent({ type, message, stack }));
-            setTimeout(() => process.exit(1), 5000);
+            setTimeout(() => void this.shutdown(), 5000);
         };
 
         this._uncaughtExceptionHandler = (error) => handleError('uncaughtException', error);
@@ -3000,6 +3000,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.log('super.shutdown()');
             super.shutdown();
             this.logger.log('shutdown complete');
+        } catch (e) {
+            this.logger.error(e);
+        }
+
+        try {
+            this.teardownProcessErrorHandlers();
         } catch (e) {
             this.logger.error(e);
         }
