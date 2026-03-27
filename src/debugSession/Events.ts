@@ -243,6 +243,26 @@ export function isShowPopupMessageCustomRequest(event: any): event is CustomRequ
     return !!event && event.event === CustomRequestEvent.name && event.body.name === 'showPopupMessage';
 }
 
+export interface ProcessCrashEventData {
+    type: 'uncaughtException' | 'unhandledRejection';
+    message: string;
+    stack?: string;
+}
+
+/**
+ * Emitted when the debug adapter process encounters an uncaught exception or unhandled rejection.
+ * The client should display an error to the user and terminate the debug session.
+ */
+export class ProcessCrashEvent extends CustomEvent<ProcessCrashEventData> {
+    constructor(data: ProcessCrashEventData) {
+        super(data);
+    }
+}
+
+export function isProcessCrashEvent(event: any): event is ProcessCrashEvent {
+    return !!event && event.event === ProcessCrashEvent.name;
+}
+
 export enum ClientToServerCustomEventName {
     customRequestEventResponse = 'customRequestEventResponse'
 }
