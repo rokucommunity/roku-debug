@@ -1431,7 +1431,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
                 for (let thread of rokuThreads) {
                     threads.push(
-                        new Thread(thread.threadId, `Thread ${thread.threadId}`)
+                        new Thread(
+                            thread.threadId, 
+                            thread.osThreadId && thread.name && thread.type
+                                ? `Thread: ${thread.threadId}|${thread.osThreadId} Name:${thread.name} Type:${thread.type}` 
+                                : `Thread ${thread.threadId}`
+                        )
                     );
                 }
 

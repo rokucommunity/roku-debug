@@ -218,4 +218,44 @@ describe('ThreadsResponse', () => {
             codeSnippet: 'sub main()'
         }]);
     });
+
+    it('reads additional fields', () => {
+        let response = ThreadsResponse.fromJson({
+            requestId: 3,
+            threads: [{
+                isPrimary: true,
+                stopReason: StopReason.Break,
+                stopReasonDetail: 'because',
+                lineNumber: 2,
+                functionName: 'main',
+                filePath: 'pkg:/source/main.brs',
+                codeSnippet: 'sub main()',
+                osThreadId: '0D111',
+                name: 'myMain',
+                type: 'main'
+            }]
+        });
+
+        response = ThreadsResponse.fromBuffer(response.toBuffer());
+
+        expect(
+            response.data
+        ).to.eql({
+            packetLength: 88,
+            requestId: 3,
+            errorCode: ErrorCode.OK,
+            threads: [{
+                isPrimary: true,
+                stopReason: 'Break',
+                stopReasonDetail: 'because',
+                lineNumber: 2,
+                functionName: 'main',
+                filePath: 'pkg:/source/main.brs',
+                codeSnippet: 'sub main()', 
+                osThreadId: '0D111',
+                name: 'myMain',
+                type: 'main'
+            }]
+        });
+    });
 });
