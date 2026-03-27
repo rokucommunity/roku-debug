@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [0.23.0](https://github.com/rokucommunity/roku-debug/compare/0.22.7...v0.23.0) - 2026-03-27
+### Added
+ - Experimental DAP level communication logging ([#310](https://github.com/rokucommunity/roku-debug/pull/310))
+ - Logs and custom events for crashes that would silently exit the process ([#310](https://github.com/rokucommunity/roku-debug/pull/310))
+
 ### Changed
- - DAP level communication logging and process crash event handling ([#310](https://github.com/rokucommunity/roku-debug/pull/310))
  - Bump picomatch from 2.3.1 to 2.3.2 ([#305](https://github.com/rokucommunity/roku-debug/pull/305))
 
 
