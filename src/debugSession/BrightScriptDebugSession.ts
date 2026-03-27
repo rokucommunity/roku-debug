@@ -139,6 +139,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     `**Error type:** ${type}`,
                     `**Message:** ${message}`,
                     '',
+                    `**Steps to reproduce:**`,
+                    `<!-- Please describe what you were doing when this crash occurred -->`,
+                    '',
                     '**Stack trace:**',
                     '```',
                     ''
