@@ -126,8 +126,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const stack = error instanceof Error ? error.stack : undefined;
             logger.error(message, stack);
 
-            // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-            const debuggerVersion: string = (require('../../package.json') as { version: string }).version;
+            const debuggerVersion: string = (fsExtra.readJsonSync('../../package.json') as { version: string }).version;
             const clientName = this.initRequestArgs?.clientName ?? 'unknown';
             const clientId = this.initRequestArgs?.clientID ?? 'unknown';
 
