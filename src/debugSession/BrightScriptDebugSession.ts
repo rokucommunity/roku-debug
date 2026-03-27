@@ -125,9 +125,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             const message = error instanceof Error ? error.message : String(error);
             const stack = error instanceof Error ? error.stack : undefined;
             logger.error(message, stack);
-            try {
-                this.sendLogOutput(JSON.stringify(error));
-            } catch (e) { /** We might not be able to send log output yet so just eat the error */ }
+            void this.sendLogOutput(JSON.stringify(error)).catch(() => { /** best-effort */ });
             this.sendEvent(new ProcessCrashEvent({ type, message, stack }));
             setTimeout(() => process.exit(1), 5000);
         };
