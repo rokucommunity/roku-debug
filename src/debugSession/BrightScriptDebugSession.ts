@@ -1200,11 +1200,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
-        //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-        if (!this.enableDebugProtocol) {
-
-            await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
-        }
+        //validate breakpoints for all debugger types, only inject STOP statements for telnet
+        await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject, {
+            injectStops: !this.enableDebugProtocol
+        });
 
         if (this.launchConfiguration.packageTask) {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
@@ -1308,10 +1307,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 // Add breakpoint lines to the staging files and before publishing
                 util.log('Adding stop statements for active breakpoints in Component Libraries');
 
-                //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-                if (!this.enableDebugProtocol) {
-                    await this.breakpointManager.writeBreakpointsForProject(compLibProject);
-                }
+                //validate breakpoints for all debugger types, only inject STOP statements for telnet
+                await this.breakpointManager.writeBreakpointsForProject(compLibProject, {
+                    injectStops: !this.enableDebugProtocol
+                });
 
                 await compLibProject.postfixFiles();
 
