@@ -300,6 +300,10 @@ describe('BreakpointManager', () => {
         });
 
         it('re-verifies breakpoint after launch toggle', async () => {
+            //put a valid brs file in the project's staging dir so the breakpoint can be mapped
+            const mainProjectStagingDir = projectManager.mainProject.stagingDir;
+            fsExtra.outputFileSync(s`${mainProjectStagingDir}/file.brs`, 'sub foo()\n    x = 1\nend sub');
+
             //set the breakpoint before launch
             let breakpoints = bpManager.replaceBreakpoints(s`${rootDir}/file.brs`, [{
                 line: 2
@@ -311,8 +315,8 @@ describe('BreakpointManager', () => {
                 verified: false
             });
 
-            //write the breakpoints to the files
-            await projectManager['breakpointManager'].writeBreakpointsForProject(projectManager.mainProject);
+            //write the breakpoints to the files (injectStops=true = telnet mode, which verifies breakpoints)
+            await projectManager['breakpointManager'].writeBreakpointsForProject(projectManager.mainProject, { injectStops: true });
 
             expect(breakpoints[0]).to.deep.include({
                 line: 2,
@@ -399,7 +403,7 @@ describe('BreakpointManager', () => {
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
-            }));
+            }), { injectStops: true });
 
             //it wrote the breakpoint in the correct location
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
@@ -440,7 +444,8 @@ describe('BreakpointManager', () => {
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1],
                     stagingDir: stagingDir
-                })
+                }),
+                { injectStops: true }
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
@@ -478,7 +483,8 @@ describe('BreakpointManager', () => {
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
                     stagingDir: stagingDir
-                })
+                }),
+                { injectStops: true }
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
@@ -521,7 +527,8 @@ describe('BreakpointManager', () => {
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
                     stagingDir: stagingDir
-                })
+                }),
+                { injectStops: true }
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`
@@ -563,10 +570,154 @@ describe('BreakpointManager', () => {
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
                     stagingDir: stagingDir
-                })
+                }),
+                { injectStops: true }
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
+        });
+
+        it('does not inject STOPs when injectStops is not set', async () => {
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\n    print 2\nend sub`);
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+
+            await bpManager.writeBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            //no STOP should be injected
+            expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\n    print 2\nend sub`);
+        });
+
+        it('marks breakpoints on non-executable lines as failed and emits a message', async () => {
+            //the file exists in staging; line 1 is `sub main()` — the function header, not executable
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 1 }]);
+            expect(bp.reason).to.be.undefined;
+
+            await bpManager.writeBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.verified).to.be.false;
+            expect(bp.reason).to.equal('failed');
+            expect(bp.message).to.equal('No executable code at this line');
+        });
+
+        it('sets message to undefined when failing breakpoints in unknown file types', async () => {
+            //a .json file outside the project tree — no staging mapping exists for it
+            const outsidePath = s`${tmpDir}/other/data.json`;
+            const [bp] = bpManager.replaceBreakpoints(outsidePath, [{ line: 1 }]);
+
+            await bpManager.writeBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.reason).to.equal('failed');
+            //unknown file types get no message so other debuggers can claim the breakpoint
+            expect(bp.message).to.be.undefined;
+        });
+
+        it('does not fail a breakpoint that is already in failed state', async () => {
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+
+            //manually pre-fail the breakpoint
+            bp.reason = 'failed';
+            bp.message = 'custom failure';
+
+            await bpManager.writeBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            //message should be unchanged
+            expect(bp.message).to.equal('custom failure');
+        });
+
+        it('skips non-.brs/.xml files that are not script-referenced', async () => {
+            fsExtra.writeFileSync(`${rootDir}/source/data.json`, '{"key":"value"}');
+            fsExtra.copyFileSync(`${rootDir}/source/data.json`, `${stagingDir}/source/data.json`);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/data.json`, [{ line: 1 }]);
+
+            await bpManager.writeBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.reason).to.equal('failed');
+        });
+
+        it('allows breakpoints in files referenced by an XML script tag', async () => {
+            const code = `sub main()\n    print 1\nend sub`;
+            fsExtra.writeFileSync(`${rootDir}/source/helper.brs`, code);
+            fsExtra.copyFileSync(`${rootDir}/source/helper.brs`, `${stagingDir}/source/helper.brs`);
+
+            //XML component that references helper.brs via a pkg:/ uri
+            fsExtra.outputFileSync(`${stagingDir}/components/MyComp.xml`, `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="pkg:/source/helper.brs"/>
+                </component>
+            `);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/helper.brs`, [{ line: 2 }]);
+
+            await bpManager.writeBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }), { injectStops: true });
+
+            expect(bp.verified).to.be.true;
+            expect(bp.reason).to.be.undefined;
+        });
+    });
+
+    describe('inline breakpoints', () => {
+        it('marks inline breakpoints as failed immediately', () => {
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                column: 4
+            }]);
+
+            expect(bp.reason).to.equal('failed');
+            expect(bp.message).to.equal('Error: inline break points are not supported');
+        });
+
+        it('does not clear the failed reason when the breakpoint hash changes', () => {
+            //first set a standard breakpoint to create a hash
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+
+            //now replace with an inline breakpoint — hash changes but reason must stay 'failed'
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                column: 4
+            }]);
+
+            expect(bp.reason).to.equal('failed');
+        });
+
+        it('clears a stale failed reason when a breakpoint moves to a new location', () => {
+            //set a breakpoint and manually fail it
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+            bp.reason = 'failed';
+
+            //move the breakpoint to a different line — hash changes, reason should be cleared
+            const [moved] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+
+            expect(moved.reason).to.be.undefined;
         });
     });
 
@@ -621,7 +772,7 @@ describe('BreakpointManager', () => {
                 outDir: s`${tmpDir}/out`,
                 stagingDir: stagingDir,
                 enhanceREPLCompletions: false
-            }));
+            }), { injectStops: true });
 
             //the breakpoints should be placed in the proper locations
             expect(fsExtra.readFileSync(s`${stagingDir}/main.brs`).toString()).to.eql(
@@ -729,7 +880,7 @@ describe('BreakpointManager', () => {
                 outDir: outDir,
                 rootDir: rootDir,
                 enhanceREPLCompletions: false
-            }));
+            }), { injectStops: true });
 
             //use sourcemap to look up original location
             let location = await locationManager.getSourceLocation({
@@ -791,7 +942,7 @@ describe('BreakpointManager', () => {
                 outDir: outDir,
                 rootDir: rootDir,
                 enhanceREPLCompletions: false
-            }));
+            }), { injectStops: true });
 
             //the in-memory cached source map should have been updated to point to rootDir
             expect(
@@ -812,9 +963,9 @@ describe('BreakpointManager', () => {
             end sub
         `);
 
-        //write breakpoints
+        //write breakpoints — line 2 is the sub header (not executable), line 3 is `return "base"`
         bpManager.setBreakpoint(baseFilePath, {
-            line: 2,
+            line: 3,
             column: 0
         });
         let project = new Project({
@@ -832,7 +983,7 @@ describe('BreakpointManager', () => {
             enhanceREPLCompletions: false
         });
         await project.stage();
-        await bpManager.writeBreakpointsForProject(project);
+        await bpManager.writeBreakpointsForProject(project, { injectStops: true });
 
         //the source map for version.brs should point to base, not main
         let source = await sourceMapManager.getSourceMap(s`${stagingDir}/source/environment.brs.map`);
@@ -1166,6 +1317,189 @@ describe('BreakpointManager', () => {
             diff = await bpManager.getDiff(projectManager.getAllProjects());
 
             expect(diff.removed[0].deviceId).to.eql(3);
+        });
+    });
+
+    describe('isStagingLineExecutable', () => {
+        let stagingFile: string;
+
+        /**
+         * Write code to the staging file and return an array of booleans — one per line —
+         * indicating whether each line is considered executable.
+         * Leading/trailing whitespace is trimmed before writing so line numbers in
+         * the test match the line numbers in the array (1-based → index 0-based).
+         */
+        function executable(code: string): boolean[] {
+            const trimmed = code.trim();
+            fsExtra.outputFileSync(stagingFile, trimmed);
+            (bpManager as any).stagingFileAstCache.clear();
+            return trimmed.split('\n').map((_, i) => (bpManager as any).isStagingLineExecutable(stagingFile, i + 1));
+        }
+
+        beforeEach(() => {
+            stagingFile = s`${stagingDir}/source/test.brs`;
+            fsExtra.ensureDirSync(s`${stagingDir}/source`);
+        });
+
+        it('marks regular assignment and print statements as executable', () => {
+            const results = executable(`
+                sub foo()
+                    x = 1
+                    print x
+                end sub
+            `);
+            // sub header → false; assignments → true; end sub → true
+            expect(results).to.eql([false, true, true, true]);
+        });
+
+        it('marks `end sub` as executable', () => {
+            const results = executable(`
+                sub foo()
+                    x = 1
+                end sub
+            `);
+            // sub foo() | x = 1 | end sub
+            expect(results).to.eql([false, true, true]);
+        });
+
+        it('marks `end function` as executable', () => {
+            const results = executable(`
+                function getValue()
+                    return 42
+                end function
+            `);
+            // function header | return | end function
+            expect(results).to.eql([false, true, true]);
+        });
+
+        it('marks `end if` as executable', () => {
+            const results = executable(`
+                sub foo()
+                    if true then
+                        x = 1
+                    end if
+                end sub
+            `);
+            // sub | if | x=1 | end if | end sub
+            expect(results).to.eql([false, true, true, true, true]);
+        });
+
+        it('marks `end if` as executable when the block has an else branch', () => {
+            const results = executable(`
+                sub foo()
+                    if true then
+                        x = 1
+                    else
+                        x = 2
+                    end if
+                end sub
+            `);
+            // sub | if | x=1 | else (not executable) | x=2 | end if | end sub
+            expect(results).to.eql([false, true, true, false, true, true, true]);
+        });
+
+        it('marks `else if` as executable', () => {
+            const results = executable(`
+                sub foo()
+                    if true then
+                        x = 1
+                    else if false then
+                        x = 2
+                    end if
+                end sub
+            `);
+            // `else if` is modeled as a nested IfStatement in the AST with start.line on that line
+            // sub | if | x=1 | else if | x=2 | end if | end sub
+            expect(results).to.eql([false, true, true, true, true, true, true]);
+        });
+
+        it('marks `end for` as executable', () => {
+            const results = executable(`
+                sub foo()
+                    for i = 0 to 10
+                        x = i
+                    end for
+                end sub
+            `);
+            // sub | for | x=i | end for | end sub
+            expect(results).to.eql([false, true, true, true, true]);
+        });
+
+        it('marks `end for` as executable in a for-each loop', () => {
+            const results = executable(`
+                sub foo()
+                    for each item in arr
+                        x = item
+                    end for
+                end sub
+            `);
+            // sub | for each | x=item | end for | end sub
+            expect(results).to.eql([false, true, true, true, true]);
+        });
+
+        it('marks `end while` as executable', () => {
+            const results = executable(`
+                sub foo()
+                    while true
+                        x = 1
+                    end while
+                end sub
+            `);
+            // sub | while | x=1 | end while | end sub
+            expect(results).to.eql([false, true, true, true, true]);
+        });
+
+        it('marks blank lines as not executable', () => {
+            const results = executable(`
+                sub foo()
+
+                    x = 1
+
+                end sub
+            `);
+            // sub | blank | x=1 | blank | end sub
+            expect(results).to.eql([false, false, true, false, true]);
+        });
+
+        it('marks comment lines as not executable', () => {
+            const results = executable(`
+                sub foo()
+                    ' this is a comment
+                    x = 1
+                end sub
+            `);
+            // sub | comment | x=1 | end sub
+            expect(results).to.eql([false, false, true, true]);
+        });
+
+        it('marks the sub/function header line as not executable', () => {
+            const results = executable(`
+                sub foo()
+                    x = 1
+                end sub
+            `);
+            expect(results[0]).to.be.false;
+        });
+
+        it('does not mark `end namespace` as executable', () => {
+            const results = executable(`
+                namespace Foo
+                end namespace
+            `);
+            expect(results).to.eql([false, false]);
+        });
+
+        it('does not mark `end class` as executable', () => {
+            const results = executable(`
+                class Bar
+                end class
+            `);
+            expect(results).to.eql([false, false]);
+        });
+
+        it('fails open when the file cannot be read', () => {
+            const result = (bpManager as any).isStagingLineExecutable(s`${stagingDir}/nonexistent.brs`, 1);
+            expect(result).to.be.true;
         });
     });
 });

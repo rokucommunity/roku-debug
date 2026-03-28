@@ -10,6 +10,10 @@ import {
     isBody,
     isFunctionStatement,
     isMethodStatement,
+    isIfStatement,
+    isForStatement,
+    isForEachStatement,
+    isWhileStatement,
     isCommentStatement,
     isEndStatement,
     isImportStatement,
@@ -160,15 +164,16 @@ export class BreakpointManager {
         //all breakpoints default to false if not already set to true
         bp.verified ??= false;
 
-        if (bp.column > 0) {
-            bp.message = `Error: inline break points are not supported`;
-            bp.reason = 'failed';
-        }
-
         //if the breakpoint hash changed, mark the breakpoint as unverified and clear any previous failure reason
+        //this must run before the inline-breakpoint check so that the 'failed' reason set below is not cleared
         if (existingBreakpoint?.srcHash !== bp.srcHash) {
             bp.verified = false;
             bp.reason = undefined;
+        }
+
+        if (bp.column > 0) {
+            bp.message = `Error: inline break points are not supported`;
+            bp.reason = 'failed';
         }
 
         //if this is a new breakpoint, add it to the list. (otherwise, the existing breakpoint is edited in-place)
@@ -672,19 +677,32 @@ export class BreakpointManager {
             //positions in BrighterScript are 0-based; breakpoint line numbers are 1-based
             const targetLine = lineNumber - 1;
             let found: AstNode | null = null;
+            let isBlockEndLine = false;
             parsed.ast.walk((node) => {
-                if (found) {
+                if (found || isBlockEndLine) {
                     return;
                 }
                 const r = node.range;
                 if (r?.start.line === targetLine && !isBlock(node) && !isBody(node)) {
                     found = node;
+                } else if (r?.end.line === targetLine && (
+                    isFunctionStatement(node) ||
+                    isMethodStatement(node) ||
+                    isIfStatement(node) ||
+                    isForStatement(node) ||
+                    isForEachStatement(node) ||
+                    isWhileStatement(node)
+                )) {
+                    // `end function`/`end sub`/`end if`/`end for`/`end while` lines are executable
+                    // even though no AST node starts there — the closing keyword is part of the
+                    // parent node's range, not a child node
+                    isBlockEndLine = true;
                 }
             }, { walkMode: WalkMode.visitAllRecursive });
 
             if (!found) {
-                //blank line or continuation line inside a multi-line expression — not executable
-                return false;
+                //blank line, continuation line, or non-executable structural keyword — not executable
+                return isBlockEndLine;
             }
 
             return isStatement(found) && !(
