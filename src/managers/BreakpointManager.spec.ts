@@ -315,8 +315,8 @@ describe('BreakpointManager', () => {
                 verified: false
             });
 
-            //write the breakpoints to the files (injectStops=true = telnet mode, which verifies breakpoints)
-            await projectManager['breakpointManager'].writeBreakpointsForProject(projectManager.mainProject, { injectStops: true });
+            //write the breakpoints to the files (telnet mode, which verifies breakpoints)
+            await projectManager['breakpointManager'].injectBreakpointsForProject(projectManager.mainProject);
 
             expect(breakpoints[0]).to.deep.include({
                 line: 2,
@@ -362,7 +362,7 @@ describe('BreakpointManager', () => {
         });
     });
 
-    describe('writeBreakpointsForProject', () => {
+    describe('resolveBreakpointsForProject / injectBreakpointsForProject', () => {
         let tmpDir = s`${cwd}/.tmp`;
         let rootDir = s`${tmpDir}/rokuProject`;
         let outDir = s`${tmpDir}/out`;
@@ -399,11 +399,11 @@ describe('BreakpointManager', () => {
             //sourcemap was not yet created
             expect(fsExtra.pathExistsSync(`${stagingDir}/source/main.brs.map`)).to.be.false;
 
-            await bpManager.writeBreakpointsForProject(new Project(<any>{
+            await bpManager.injectBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
-            }), { injectStops: true });
+            }));
 
             //it wrote the breakpoint in the correct location
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
@@ -438,14 +438,13 @@ describe('BreakpointManager', () => {
             //sourcemap was not yet created
             expect(fsExtra.pathExistsSync(`${stagingDir}/source/main.brs.map`)).to.be.false;
 
-            await bpManager.writeBreakpointsForProject(
+            await bpManager.injectBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1],
                     stagingDir: stagingDir
-                }),
-                { injectStops: true }
+                })
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
@@ -477,14 +476,13 @@ describe('BreakpointManager', () => {
                 column: 0
             }]);
 
-            await bpManager.writeBreakpointsForProject(
+            await bpManager.injectBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
                     stagingDir: stagingDir
-                }),
-                { injectStops: true }
+                })
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
@@ -521,14 +519,13 @@ describe('BreakpointManager', () => {
                 hitCondition: '3'
             }]);
 
-            await bpManager.writeBreakpointsForProject(
+            await bpManager.injectBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
                     stagingDir: stagingDir
-                }),
-                { injectStops: true }
+                })
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`
@@ -564,26 +561,25 @@ describe('BreakpointManager', () => {
                 column: 0
             }]);
 
-            await bpManager.writeBreakpointsForProject(
+            await bpManager.injectBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
                     sourceDirs: [sourceDir1, sourceDir2],
                     stagingDir: stagingDir
-                }),
-                { injectStops: true }
+                })
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
         });
 
-        it('does not inject STOPs when injectStops is not set', async () => {
+        it('does not inject STOPs when using resolveBreakpointsForProject', async () => {
             fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\n    print 2\nend sub`);
             fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
 
             bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
 
-            await bpManager.writeBreakpointsForProject(new Project(<any>{
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
@@ -601,7 +597,7 @@ describe('BreakpointManager', () => {
             const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 1 }]);
             expect(bp.reason).to.be.undefined;
 
-            await bpManager.writeBreakpointsForProject(new Project(<any>{
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
@@ -617,7 +613,7 @@ describe('BreakpointManager', () => {
             const outsidePath = s`${tmpDir}/other/data.json`;
             const [bp] = bpManager.replaceBreakpoints(outsidePath, [{ line: 1 }]);
 
-            await bpManager.writeBreakpointsForProject(new Project(<any>{
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
@@ -635,7 +631,7 @@ describe('BreakpointManager', () => {
             bp.reason = 'failed';
             bp.message = 'custom failure';
 
-            await bpManager.writeBreakpointsForProject(new Project(<any>{
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
@@ -651,7 +647,7 @@ describe('BreakpointManager', () => {
 
             const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/data.json`, [{ line: 1 }]);
 
-            await bpManager.writeBreakpointsForProject(new Project(<any>{
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
@@ -674,11 +670,11 @@ describe('BreakpointManager', () => {
 
             const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/helper.brs`, [{ line: 2 }]);
 
-            await bpManager.writeBreakpointsForProject(new Project(<any>{
+            await bpManager.injectBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
-            }), { injectStops: true });
+            }));
 
             expect(bp.verified).to.be.true;
             expect(bp.reason).to.be.undefined;
@@ -764,7 +760,7 @@ describe('BreakpointManager', () => {
                 line: 7
             });
 
-            await bpManager.writeBreakpointsForProject(new Project({
+            await bpManager.injectBreakpointsForProject(new Project({
                 files: [
                     'main.brs'
                 ],
@@ -772,7 +768,7 @@ describe('BreakpointManager', () => {
                 outDir: s`${tmpDir}/out`,
                 stagingDir: stagingDir,
                 enhanceREPLCompletions: false
-            }), { injectStops: true });
+            }));
 
             //the breakpoints should be placed in the proper locations
             expect(fsExtra.readFileSync(s`${stagingDir}/main.brs`).toString()).to.eql(
@@ -872,7 +868,7 @@ describe('BreakpointManager', () => {
                 column: 0
             });
 
-            await bpManager.writeBreakpointsForProject(new Project({
+            await bpManager.injectBreakpointsForProject(new Project({
                 files: [
                     'source/main.brs'
                 ],
@@ -880,7 +876,7 @@ describe('BreakpointManager', () => {
                 outDir: outDir,
                 rootDir: rootDir,
                 enhanceREPLCompletions: false
-            }), { injectStops: true });
+            }));
 
             //use sourcemap to look up original location
             let location = await locationManager.getSourceLocation({
@@ -934,7 +930,7 @@ describe('BreakpointManager', () => {
                 column: 0
             });
 
-            await bpManager.writeBreakpointsForProject(new Project({
+            await bpManager.injectBreakpointsForProject(new Project({
                 files: [
                     'source/main.brs'
                 ],
@@ -942,7 +938,7 @@ describe('BreakpointManager', () => {
                 outDir: outDir,
                 rootDir: rootDir,
                 enhanceREPLCompletions: false
-            }), { injectStops: true });
+            }));
 
             //the in-memory cached source map should have been updated to point to rootDir
             expect(
@@ -983,7 +979,7 @@ describe('BreakpointManager', () => {
             enhanceREPLCompletions: false
         });
         await project.stage();
-        await bpManager.writeBreakpointsForProject(project, { injectStops: true });
+        await bpManager.injectBreakpointsForProject(project);
 
         //the source map for version.brs should point to base, not main
         let source = await sourceMapManager.getSourceMap(s`${stagingDir}/source/environment.brs.map`);

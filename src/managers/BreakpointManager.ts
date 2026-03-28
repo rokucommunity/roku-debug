@@ -522,33 +522,19 @@ export class BreakpointManager {
 
     /**
      * Validate breakpoints against the project's staging files and fail any that cannot be placed
-     * (non-executable lines, unsupported file types, files not in the project). This runs for
-     * all debugger types. STOP injection only happens when `injectStops` is true (telnet only).
+     * (non-executable lines, unsupported file types, files not in the project).
+     * Called for all debugger types. Returns the resolved breakpoints keyed by staging file path.
      */
-    public async writeBreakpointsForProject(project: Project, options?: { injectStops?: boolean }) {
-        let breakpointsByStagingFilePath = await this.getBreakpointWork(project);
+    public async resolveBreakpointsForProject(project: Project) {
+        const breakpointsByStagingFilePath = await this.getBreakpointWork(project);
 
         //track which breakpoints were successfully mapped to a staging location
         const stagedSrcHashes = new Set<string>();
-
-        let promises = [] as Promise<any>[];
-        for (let stagingFilePath in breakpointsByStagingFilePath) {
-            const breakpoints = breakpointsByStagingFilePath[stagingFilePath];
-            if (options?.injectStops) {
-                promises.push(this.writeBreakpointsToFile(stagingFilePath, breakpoints));
-            }
-            for (const breakpoint of breakpoints) {
+        for (const stagingFilePath in breakpointsByStagingFilePath) {
+            for (const breakpoint of breakpointsByStagingFilePath[stagingFilePath]) {
                 stagedSrcHashes.add(breakpoint.srcHash);
-                if (options?.injectStops) {
-                    //mark this breakpoint as verified and register as permanent (telnet only)
-                    this.setBreakpointDeviceId(breakpoint.srcHash, breakpoint.destHash, breakpoint.id);
-                    this.verifyBreakpoint(breakpoint.id, true);
-                    this.registerPermanentBreakpoint(breakpoint);
-                }
             }
         }
-
-        await Promise.all(promises);
 
         //fail any breakpoints that had no staging location
         for (const [, breakpoints] of this.breakpointsByFilePath) {
@@ -566,6 +552,31 @@ export class BreakpointManager {
                 }
             }
         }
+
+        return breakpointsByStagingFilePath;
+    }
+
+    /**
+     * Inject STOP statements into the project's staging files for each breakpoint location.
+     * Marks injected breakpoints as verified and registers them as permanent.
+     * Only called for telnet debuggers.
+     */
+    public async injectBreakpointsForProject(project: Project) {
+        const breakpointsByStagingFilePath = await this.resolveBreakpointsForProject(project);
+
+        const promises = [] as Promise<any>[];
+        for (const stagingFilePath in breakpointsByStagingFilePath) {
+            const breakpoints = breakpointsByStagingFilePath[stagingFilePath];
+            promises.push(this.writeBreakpointsToFile(stagingFilePath, breakpoints));
+            for (const breakpoint of breakpoints) {
+                //mark this breakpoint as verified and register as permanent
+                this.setBreakpointDeviceId(breakpoint.srcHash, breakpoint.destHash, breakpoint.id);
+                this.verifyBreakpoint(breakpoint.id, true);
+                this.registerPermanentBreakpoint(breakpoint);
+            }
+        }
+
+        await Promise.all(promises);
 
         //sort all permanent breakpoints by line and column
         for (const [key, breakpoints] of this.permanentBreakpointsBySrcPath) {
