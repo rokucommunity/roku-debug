@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.1](https://github.com/rokucommunity/roku-debug/compare/0.23.0...v0.23.1) - 2026-03-27
+### Changed
+ - Bump brace-expansion from 1.1.12 to 1.1.13 ([#312](https://github.com/rokucommunity/roku-debug/pull/312))
+ - upgrade to [brighterscript@0.71.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0710---2026-03-27). Notable changes since 0.70.4:
+     - bugfix/small perf improvements ([#1663](https://github.com/rokucommunity/brighterscript/pull/1663))
+### Fixed
+ - Fix crash when breakpoint deletion fails while device is running ([#313](https://github.com/rokucommunity/roku-debug/pull/313))
+
+
+
+## [0.23.0](https://github.com/rokucommunity/roku-debug/compare/0.22.7...v0.23.0) - 2026-03-27
+### Added
+ - Experimental DAP level communication logging ([#310](https://github.com/rokucommunity/roku-debug/pull/310))
+ - Logs and custom events for crashes that would silently exit the process ([#310](https://github.com/rokucommunity/roku-debug/pull/310))
+
+### Changed
+ - Bump picomatch from 2.3.1 to 2.3.2 ([#305](https://github.com/rokucommunity/roku-debug/pull/305))
+
+
+
 ## [0.22.7](https://github.com/rokucommunity/roku-debug/compare/0.22.6...v0.22.7) - 2026-03-24
 ### Added
  - Support for ProgressStart ProgressUpdate and ProgressEnd DAP events ([#300](https://github.com/rokucommunity/roku-debug/pull/300))
