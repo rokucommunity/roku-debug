@@ -1179,6 +1179,7 @@ export interface Thread {
      * Is this thread selected
      */
     isSelected: boolean;
+    isDetached?: boolean;
     /**
      * The 1-based line number
      */
