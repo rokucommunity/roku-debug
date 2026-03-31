@@ -1097,16 +1097,15 @@ describe('BrightScriptDebugSession', () => {
             args.source.path = s`${rootDir}/source/main.brs`;
 
             fsExtra.outputFileSync(s`${rootDir}/manifest`, '');
-            // line 2 is executable (`print`); line 1 is the function header (non-executable)
-            fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, 'sub main()\n    print "hello"\nend sub');
-            args.breakpoints = [{ line: 2 }];
+            fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, 'sub main()\nend sub');
+            args.breakpoints = [{ line: 1 }];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints[0]).to.deep.include({
-                line: 2,
+                line: 1,
                 verified: false
             });
 
-            //simulate "launch" — stages the file and creates a permanent breakpoint for line 2
+            //simulate "launch"
             await session.prepareMainProject();
 
             //remove the breakpoint
@@ -1114,17 +1113,17 @@ describe('BrightScriptDebugSession', () => {
             await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //re-add the previously-staged breakpoint (line 2) plus a new one (line 3).
-            //line 2 was already staged so it comes back verified; line 3 is new so it is not.
-            args.breakpoints = [{ line: 2 }, { line: 3 }];
+            //add breakpoint during live debug session. one was there before, the other is new.
+            //line 1 was already staged so it comes back verified; line 2 is new so it is not.
+            args.breakpoints = [{ line: 1 }, { line: 2 }];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(
                 response.body.breakpoints.map(x => ({ line: x.line, verified: x.verified }))
             ).to.eql([{
-                line: 2,
+                line: 1,
                 verified: true
             }, {
-                line: 3,
+                line: 2,
                 verified: false
             }]);
         });
