@@ -128,6 +128,7 @@ describe('DebugProtocolAdapter', function() {
                     lineNumber: 12,
                     functionName: 'main',
                     isPrimary: true,
+                    isDetached: false,
                     codeSnippet: '',
                     stopReason: StopReason.Break,
                     stopReasonDetail: 'because'
@@ -463,6 +464,16 @@ describe('DebugProtocolAdapter', function() {
             ];
             expect(reqs).not.to.include(AddBreakpointsRequest.name);
             expect(reqs).to.include(AddConditionalBreakpointsRequest.name);
+        });
+
+        it('does not crash when client is undefined', async () => {
+            // Do NOT call initialize() — this leaves adapter['client'] as undefined,
+            // simulating a breakpoint being set before the debug protocol client connects.
+            // isAtDebuggerPrompt is a getter that returns false when client is undefined,
+            // so no stubbing needed.
+
+            // Should not throw
+            await adapter._syncBreakpoints();
         });
     });
 

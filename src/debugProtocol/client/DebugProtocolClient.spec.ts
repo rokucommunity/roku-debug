@@ -239,6 +239,7 @@ describe('DebugProtocolClient', () => {
         function thread(extra?: Partial<ThreadInfo>) {
             return {
                 isPrimary: true,
+                isDetached: false,
                 stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,

@@ -857,6 +857,7 @@ export class DebugProtocolAdapter {
                     // NOTE: Rely on the thead index from the threads update event.
                     isSelected: this.client.primaryThread === i,
                     // isSelected: threadInfo.isPrimary,
+                    isDetached: threadInfo.isDetached,
                     filePath: threadInfo.filePath,
                     functionName: threadInfo.functionName,
                     lineNumber: threadInfo.lineNumber, //threadInfo.lineNumber is 1-based. Thread requires 1-based line numbers
@@ -998,7 +999,7 @@ export class DebugProtocolAdapter {
         //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
         //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
         if (!this.client?.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
-            this.logger.info('Cannot sync breakpoints because the debugger', this.client.supportsBreakpointRegistrationWhileRunning ? 'does not support sending breakpoints while running' : 'is not paused');
+            this.logger.info('Cannot sync breakpoints because the debugger', this.client?.supportsBreakpointRegistrationWhileRunning ? 'does not support sending breakpoints while running' : 'is not paused');
             return;
         }
 
@@ -1125,6 +1126,7 @@ export enum KeyType {
 
 export interface Thread {
     isSelected: boolean;
+    isDetached?: boolean;
     /**
      * The 1-based line number for the thread
      */
