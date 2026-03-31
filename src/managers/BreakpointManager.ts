@@ -6,12 +6,7 @@ import {
     Parser as BrsParser,
     WalkMode,
     isStatement,
-    isIfStatement,
-    isForStatement,
-    isForEachStatement,
-    isWhileStatement,
     isCommentStatement,
-    isEndStatement,
     isImportStatement,
     isLibraryStatement,
     isNamespaceStatement,
@@ -21,8 +16,6 @@ import {
     isInterfaceStatement,
     isInterfaceFieldStatement,
     isInterfaceMethodStatement,
-    isLabelStatement,
-    isDimStatement,
     isConstStatement,
     isFieldStatement,
     isTypeStatement,
@@ -694,15 +687,9 @@ export class BreakpointManager {
 
             // Walk depth-first (parent before children).
             // - Track the innermost statement whose start line equals targetLine.
-            // - Track whether a control-flow block (if/for/while — NOT function/sub)
-            //   ends on targetLine. That signals an `end if`/`end for`/`end while`
-            //   line, which is executable even though no statement *starts* there.
-            //   `end function`/`end sub` are intentionally excluded: the function
-            //   header IS a valid breakpoint location, but the closing line is not.
             // - Cancel as soon as a node starts past targetLine.
             const handle = new CancellationTokenSource();
             let deepestStatement: AstNode | undefined;
-            let hasBlockEnd = false;
 
             parsed.ast.walk((node) => {
                 if (!node.range) {
@@ -711,12 +698,6 @@ export class BreakpointManager {
                 if (node.range.start.line > targetLine) {
                     handle.cancel();
                     return;
-                }
-                if (node.range.end.line === targetLine && node.range.start.line < targetLine && (
-                    isIfStatement(node) || isForStatement(node) ||
-                    isForEachStatement(node) || isWhileStatement(node)
-                )) {
-                    hasBlockEnd = true;
                 }
                 if (isStatement(node) && node.range.start.line === targetLine) {
                     deepestStatement = node;
@@ -727,12 +708,11 @@ export class BreakpointManager {
             });
 
             if (!deepestStatement) {
-                // No statement starts here: blank line, `else`, continuation line, etc.
-                // The only executable case is a block-closing keyword (`end if`, etc.).
-                return { isExecutable: hasBlockEnd };
+                // No statement starts here: blank line, `else`, `end if/for/while/sub/function`, etc.
+                return { isExecutable: false };
             }
 
-            if (isNonExecutableLine(deepestStatement, targetLine)) {
+            if (isNonExecutableLine(deepestStatement)) {
                 return { isExecutable: false };
             }
 
@@ -1222,18 +1202,20 @@ export interface LineValidationResult {
  *
  * Blacklisted categories:
  * - Pure-declaration or structural statements: comments, imports, namespace/class/
- *   enum/interface/type declarations, labels, constants, class fields, `dim`.
- * - The standalone `end` program-terminator keyword (isEndStatement).
+ *   enum/interface/type declarations, constants, class fields.
  *
- * Function/method header lines are NOT blacklisted — the `sub`/`function` line is
- * a valid breakpoint location. The closing `end sub`/`end function` line is handled
- * separately: it is excluded from the block-end check so it naturally falls through
- * as non-executable.
+ * Notably NOT blacklisted (all are valid breakpoint locations):
+ * - Function/method headers (`sub`/`function` line)
+ * - `dim` statements
+ * - Label statements
+ * - The standalone `end` program-terminator
+ *
+ * Lines where no statement starts (blank lines, `else`, `end if/for/while/sub/function`)
+ * are handled before this function is called and always return non-executable.
  */
-function isNonExecutableLine(node: AstNode, _targetLine: number): boolean {
+function isNonExecutableLine(node: AstNode): boolean {
     return (
         isCommentStatement(node) ||
-        isEndStatement(node) ||
         isImportStatement(node) ||
         isLibraryStatement(node) ||
         isNamespaceStatement(node) ||
@@ -1243,8 +1225,6 @@ function isNonExecutableLine(node: AstNode, _targetLine: number): boolean {
         isInterfaceStatement(node) ||
         isInterfaceFieldStatement(node) ||
         isInterfaceMethodStatement(node) ||
-        isLabelStatement(node) ||
-        isDimStatement(node) ||
         isConstStatement(node) ||
         isFieldStatement(node) ||
         isTypeStatement(node)

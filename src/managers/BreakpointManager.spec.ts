@@ -1351,101 +1351,101 @@ describe('BreakpointManager', () => {
 
         it('marks regular assignment and print statements as executable', () => {
             executable(
-                ['sub foo()',  true],   // function header IS a valid breakpoint
+                ['sub foo()', true],   // function header IS a valid breakpoint
                 ['    x = 1', true],
                 ['    print x', true],
-                ['end sub',   false]   // end sub is NOT executable
+                ['end sub', false]   // end sub is NOT executable
             );
         });
 
         it('marks sub/function header as executable and end as not', () => {
             executable(
-                ['sub foo()',          true],
-                ['    x = 1',         true],
-                ['end sub',           false]
+                ['sub foo()', true],
+                ['    x = 1', true],
+                ['end sub', false]
             );
             executable(
                 ['function getValue()', true],
-                ['    return 42',       true],
-                ['end function',        false]
+                ['    return 42', true],
+                ['end function', false]
             );
         });
 
-        it('marks `if` / `end if` as executable', () => {
+        it('marks `if` as executable, `end if` as not', () => {
             executable(
-                ['sub foo()',      true],
+                ['sub foo()', true],
                 ['    if true then', true],
                 ['        x = 1', true],
-                ['    end if',    true],
-                ['end sub',       false]
+                ['    end if', false],
+                ['end sub', false]
             );
         });
 
-        it('marks `else` as not executable but `end if` as executable', () => {
+        it('marks `else` and `end if` as not executable', () => {
             executable(
-                ['sub foo()',      true],
+                ['sub foo()', true],
                 ['    if true then', true],
                 ['        x = 1', true],
-                ['    else',      false],  // bare `else` — not executable
+                ['    else', false],
                 ['        x = 2', true],
-                ['    end if',    true],
-                ['end sub',       false]
+                ['    end if', false],
+                ['end sub', false]
             );
         });
 
         it('marks `else if` as executable', () => {
             // BSC models `else if` as a nested IfStatement starting on that line
             executable(
-                ['sub foo()',           true],
-                ['    if true then',    true],
-                ['        x = 1',      true],
+                ['sub foo()', true],
+                ['    if true then', true],
+                ['        x = 1', true],
                 ['    else if false then', true],
-                ['        x = 2',      true],
-                ['    end if',         true],
-                ['end sub',            false]
+                ['        x = 2', true],
+                ['    end if', false],
+                ['end sub', false]
             );
         });
 
-        it('marks `for` / `end for` as executable', () => {
+        it('marks `for` as executable, `end for` as not', () => {
             executable(
-                ['sub foo()',          true],
+                ['sub foo()', true],
                 ['    for i = 0 to 10', true],
-                ['        x = i',     true],
-                ['    end for',       true],
-                ['end sub',           false]
+                ['        x = i', true],
+                ['    end for', false],
+                ['end sub', false]
             );
         });
 
-        it('marks `for each` / `end for` as executable', () => {
+        it('marks `for each` as executable, `end for` as not', () => {
             executable(
-                ['sub foo()',               true],
+                ['sub foo()', true],
                 ['    for each item in arr', true],
-                ['        x = item',        true],
-                ['    end for',             true],
-                ['end sub',                 false]
+                ['        x = item', true],
+                ['    end for', false],
+                ['end sub', false]
             );
         });
 
-        it('marks `while` / `end while` as executable', () => {
+        it('marks `while` as executable, `end while` as not', () => {
             executable(
-                ['sub foo()',     true],
+                ['sub foo()', true],
                 ['    while true', true],
                 ['        x = 1', true],
-                ['    end while', true],
-                ['end sub',      false]
+                ['    end while', false],
+                ['end sub', false]
             );
         });
 
         it('marks function call and return as executable', () => {
             executable(
-                ['sub foo()',    true],
-                ['    bar()',    true],
-                ['end sub',     false]
+                ['sub foo()', true],
+                ['    bar()', true],
+                ['end sub', false]
             );
             executable(
                 ['function foo()', true],
-                ['    return 42',  true],
-                ['end function',   false]
+                ['    return 42', true],
+                ['end function', false]
             );
         });
 
@@ -1454,19 +1454,19 @@ describe('BreakpointManager', () => {
         it('marks blank lines as not executable', () => {
             executable(
                 ['sub foo()', true],
-                ['',          false],  // blank line
+                ['', false],  // blank line
                 ['    x = 1', true],
-                ['',          false],  // blank line
-                ['end sub',   false]
+                ['', false],  // blank line
+                ['end sub', false]
             );
         });
 
         it('marks comment lines as not executable', () => {
             executable(
-                ['sub foo()',            true],
+                ['sub foo()', true],
                 ['    \' this is a comment', false],
-                ['    x = 1',           true],
-                ['end sub',             false]
+                ['    x = 1', true],
+                ['end sub', false]
             );
         });
 
@@ -1484,84 +1484,84 @@ describe('BreakpointManager', () => {
 
         it('marks namespace header and `end namespace` as not executable', () => {
             executable(
-                ['namespace MyNS',       false],
+                ['namespace MyNS', false],
                 ['    function helper()', true],   // method header IS executable
-                ['        return 1',     true],
-                ['    end function',     false],   // end function is NOT executable
-                ['end namespace',        false]
+                ['        return 1', true],
+                ['    end function', false],   // end function is NOT executable
+                ['end namespace', false]
             );
         });
 
         it('marks class header, fields, and `end class` as not executable; method header as executable', () => {
             executable(
-                ['class MyClass',            false],
+                ['class MyClass', false],
                 ['    public name as string', false],  // field declaration
-                ['    function greet()',      true],   // method header IS executable
-                ['        print m.name',     true],
-                ['    end function',         false],   // end function is NOT executable
-                ['end class',                false]
+                ['    function greet()', true],   // method header IS executable
+                ['        print m.name', true],
+                ['    end function', false],   // end function is NOT executable
+                ['end class', false]
             );
         });
 
         it('marks enum block (header, members, end) as not executable', () => {
             executable(
-                ['enum Color',        false],
-                ['    red = "red"',   false],  // enum member
+                ['enum Color', false],
+                ['    red = "red"', false],  // enum member
                 ['    blue = "blue"', false],  // enum member
-                ['end enum',          false]
+                ['end enum', false]
             );
         });
 
         it('marks interface block (header, fields, methods, end) as not executable', () => {
             executable(
-                ['interface IFoo',                  false],
-                ['    name as string',              false],  // interface field
-                ['    function doThing() as void',  false],  // interface method
-                ['end interface',                   false]
+                ['interface IFoo', false],
+                ['    name as string', false],  // interface field
+                ['    function doThing() as void', false],  // interface method
+                ['end interface', false]
             );
         });
 
-        it('marks label statement as not executable', () => {
+        it('marks label statement as executable', () => {
             executable(
-                ['sub foo()',   true],
-                ['    myLabel:', false],
-                ['    x = 1',  true],
-                ['end sub',    false]
+                ['sub foo()', true],
+                ['    myLabel:', true],
+                ['    x = 1', true],
+                ['end sub', false]
             );
         });
 
-        it('marks `dim` statement as not executable', () => {
+        it('marks `dim` statement as executable', () => {
             executable(
-                ['sub foo()',       true],
-                ['    dim arr[10]', false],
+                ['sub foo()', true],
+                ['    dim arr[10]', true],
                 ['    arr[0] = 1', true],
-                ['end sub',        false]
+                ['end sub', false]
             );
         });
 
         it('marks `const` statement as not executable', () => {
             executable(
                 ['const MAX = 100', false],
-                ['sub foo()',       true],
-                ['    x = MAX',    true],
-                ['end sub',        false]
+                ['sub foo()', true],
+                ['    x = MAX', true],
+                ['end sub', false]
             );
         });
 
         it('marks `type` alias statement as not executable', () => {
             executable(
                 ['type MyType = string', false],
-                ['sub foo()',            true],
-                ['    x = "hello"',     true],
-                ['end sub',             false]
+                ['sub foo()', true],
+                ['    x = "hello"', true],
+                ['end sub', false]
             );
         });
 
-        it('marks standalone `end` program terminator as not executable', () => {
+        it('marks standalone `end` program terminator as executable', () => {
             executable(
                 ['sub foo()', true],
-                ['    end',   false],  // program terminator, not `end sub`
-                ['end sub',   false]
+                ['    end', true],   // program terminator — valid breakpoint
+                ['end sub', false]
             );
         });
 
