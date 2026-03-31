@@ -1319,183 +1319,255 @@ describe('BreakpointManager', () => {
     describe('isStagingLineExecutable', () => {
         let stagingFile: string;
 
-        /**
-         * Write code to the staging file and return an array of booleans — one per line —
-         * indicating whether each line is considered executable.
-         * Leading/trailing whitespace is trimmed before writing so line numbers in
-         * the test match the line numbers in the array (1-based → index 0-based).
-         */
-        function executable(code: string): boolean[] {
-            const trimmed = code.trim();
-            fsExtra.outputFileSync(stagingFile, trimmed);
-            (bpManager as any).stagingFileAstCache.clear();
-            return trimmed.split('\n').map((_, i) => (bpManager as any).isStagingLineExecutable(stagingFile, i + 1));
-        }
-
         beforeEach(() => {
             stagingFile = s`${stagingDir}/source/test.brs`;
             fsExtra.ensureDirSync(s`${stagingDir}/source`);
         });
 
+        /**
+         * Write the given lines to the staging file and assert the executable result
+         * for each one. Each entry is a [sourceText, expectedExecutable] tuple so the
+         * expected value sits right next to the line it describes.
+         *
+         * @example
+         * executable(
+         *     ['sub foo()',  false],  // function header — not executable
+         *     ['    x = 1', true],
+         *     ['end sub',   true],   // end sub IS executable
+         * );
+         */
+        function executable(...lines: [string, boolean][]) {
+            const code = lines.map(([line]) => line).join('\n');
+            fsExtra.outputFileSync(stagingFile, code);
+            (bpManager as any).stagingFileAstCache.clear();
+            for (let i = 0; i < lines.length; i++) {
+                const [lineText, expected] = lines[i];
+                const actual = (bpManager as any).isStagingLineExecutable(stagingFile, i + 1).isExecutable;
+                expect(actual, `line ${i + 1}: \`${lineText.trim()}\``).to.equal(expected);
+            }
+        }
+
+        // ─── executable statements ───────────────────────────────────────────────
+
         it('marks regular assignment and print statements as executable', () => {
-            const results = executable(`
-                sub foo()
-                    x = 1
-                    print x
-                end sub
-            `);
-            // sub header → false; assignments → true; end sub → true
-            expect(results).to.eql([false, true, true, true]);
+            executable(
+                ['sub foo()',  true],   // function header IS a valid breakpoint
+                ['    x = 1', true],
+                ['    print x', true],
+                ['end sub',   false]   // end sub is NOT executable
+            );
         });
 
-        it('marks `end sub` as executable', () => {
-            const results = executable(`
-                sub foo()
-                    x = 1
-                end sub
-            `);
-            // sub foo() | x = 1 | end sub
-            expect(results).to.eql([false, true, true]);
+        it('marks sub/function header as executable and end as not', () => {
+            executable(
+                ['sub foo()',          true],
+                ['    x = 1',         true],
+                ['end sub',           false]
+            );
+            executable(
+                ['function getValue()', true],
+                ['    return 42',       true],
+                ['end function',        false]
+            );
         });
 
-        it('marks `end function` as executable', () => {
-            const results = executable(`
-                function getValue()
-                    return 42
-                end function
-            `);
-            // function header | return | end function
-            expect(results).to.eql([false, true, true]);
+        it('marks `if` / `end if` as executable', () => {
+            executable(
+                ['sub foo()',      true],
+                ['    if true then', true],
+                ['        x = 1', true],
+                ['    end if',    true],
+                ['end sub',       false]
+            );
         });
 
-        it('marks `end if` as executable', () => {
-            const results = executable(`
-                sub foo()
-                    if true then
-                        x = 1
-                    end if
-                end sub
-            `);
-            // sub | if | x=1 | end if | end sub
-            expect(results).to.eql([false, true, true, true, true]);
-        });
-
-        it('marks `end if` as executable when the block has an else branch', () => {
-            const results = executable(`
-                sub foo()
-                    if true then
-                        x = 1
-                    else
-                        x = 2
-                    end if
-                end sub
-            `);
-            // sub | if | x=1 | else (not executable) | x=2 | end if | end sub
-            expect(results).to.eql([false, true, true, false, true, true, true]);
+        it('marks `else` as not executable but `end if` as executable', () => {
+            executable(
+                ['sub foo()',      true],
+                ['    if true then', true],
+                ['        x = 1', true],
+                ['    else',      false],  // bare `else` — not executable
+                ['        x = 2', true],
+                ['    end if',    true],
+                ['end sub',       false]
+            );
         });
 
         it('marks `else if` as executable', () => {
-            const results = executable(`
-                sub foo()
-                    if true then
-                        x = 1
-                    else if false then
-                        x = 2
-                    end if
-                end sub
-            `);
-            // `else if` is modeled as a nested IfStatement in the AST with start.line on that line
-            // sub | if | x=1 | else if | x=2 | end if | end sub
-            expect(results).to.eql([false, true, true, true, true, true, true]);
+            // BSC models `else if` as a nested IfStatement starting on that line
+            executable(
+                ['sub foo()',           true],
+                ['    if true then',    true],
+                ['        x = 1',      true],
+                ['    else if false then', true],
+                ['        x = 2',      true],
+                ['    end if',         true],
+                ['end sub',            false]
+            );
         });
 
-        it('marks `end for` as executable', () => {
-            const results = executable(`
-                sub foo()
-                    for i = 0 to 10
-                        x = i
-                    end for
-                end sub
-            `);
-            // sub | for | x=i | end for | end sub
-            expect(results).to.eql([false, true, true, true, true]);
+        it('marks `for` / `end for` as executable', () => {
+            executable(
+                ['sub foo()',          true],
+                ['    for i = 0 to 10', true],
+                ['        x = i',     true],
+                ['    end for',       true],
+                ['end sub',           false]
+            );
         });
 
-        it('marks `end for` as executable in a for-each loop', () => {
-            const results = executable(`
-                sub foo()
-                    for each item in arr
-                        x = item
-                    end for
-                end sub
-            `);
-            // sub | for each | x=item | end for | end sub
-            expect(results).to.eql([false, true, true, true, true]);
+        it('marks `for each` / `end for` as executable', () => {
+            executable(
+                ['sub foo()',               true],
+                ['    for each item in arr', true],
+                ['        x = item',        true],
+                ['    end for',             true],
+                ['end sub',                 false]
+            );
         });
 
-        it('marks `end while` as executable', () => {
-            const results = executable(`
-                sub foo()
-                    while true
-                        x = 1
-                    end while
-                end sub
-            `);
-            // sub | while | x=1 | end while | end sub
-            expect(results).to.eql([false, true, true, true, true]);
+        it('marks `while` / `end while` as executable', () => {
+            executable(
+                ['sub foo()',     true],
+                ['    while true', true],
+                ['        x = 1', true],
+                ['    end while', true],
+                ['end sub',      false]
+            );
         });
+
+        it('marks function call and return as executable', () => {
+            executable(
+                ['sub foo()',    true],
+                ['    bar()',    true],
+                ['end sub',     false]
+            );
+            executable(
+                ['function foo()', true],
+                ['    return 42',  true],
+                ['end function',   false]
+            );
+        });
+
+        // ─── non-executable: structural / declaration lines ──────────────────────
 
         it('marks blank lines as not executable', () => {
-            const results = executable(`
-                sub foo()
-
-                    x = 1
-
-                end sub
-            `);
-            // sub | blank | x=1 | blank | end sub
-            expect(results).to.eql([false, false, true, false, true]);
+            executable(
+                ['sub foo()', true],
+                ['',          false],  // blank line
+                ['    x = 1', true],
+                ['',          false],  // blank line
+                ['end sub',   false]
+            );
         });
 
         it('marks comment lines as not executable', () => {
-            const results = executable(`
-                sub foo()
-                    ' this is a comment
-                    x = 1
-                end sub
-            `);
-            // sub | comment | x=1 | end sub
-            expect(results).to.eql([false, false, true, true]);
+            executable(
+                ['sub foo()',            true],
+                ['    \' this is a comment', false],
+                ['    x = 1',           true],
+                ['end sub',             false]
+            );
         });
 
-        it('marks the sub/function header line as not executable', () => {
-            const results = executable(`
-                sub foo()
-                    x = 1
-                end sub
-            `);
-            expect(results[0]).to.be.false;
+        it('marks `import` statement as not executable', () => {
+            executable(
+                ['import "pkg:/source/utils.brs"', false]
+            );
         });
 
-        it('does not mark `end namespace` as executable', () => {
-            const results = executable(`
-                namespace Foo
-                end namespace
-            `);
-            expect(results).to.eql([false, false]);
+        it('marks `library` statement as not executable', () => {
+            executable(
+                ['library "v30/bslCore.brs"', false]
+            );
         });
 
-        it('does not mark `end class` as executable', () => {
-            const results = executable(`
-                class Bar
-                end class
-            `);
-            expect(results).to.eql([false, false]);
+        it('marks namespace header and `end namespace` as not executable', () => {
+            executable(
+                ['namespace MyNS',       false],
+                ['    function helper()', true],   // method header IS executable
+                ['        return 1',     true],
+                ['    end function',     false],   // end function is NOT executable
+                ['end namespace',        false]
+            );
+        });
+
+        it('marks class header, fields, and `end class` as not executable; method header as executable', () => {
+            executable(
+                ['class MyClass',            false],
+                ['    public name as string', false],  // field declaration
+                ['    function greet()',      true],   // method header IS executable
+                ['        print m.name',     true],
+                ['    end function',         false],   // end function is NOT executable
+                ['end class',                false]
+            );
+        });
+
+        it('marks enum block (header, members, end) as not executable', () => {
+            executable(
+                ['enum Color',        false],
+                ['    red = "red"',   false],  // enum member
+                ['    blue = "blue"', false],  // enum member
+                ['end enum',          false]
+            );
+        });
+
+        it('marks interface block (header, fields, methods, end) as not executable', () => {
+            executable(
+                ['interface IFoo',                  false],
+                ['    name as string',              false],  // interface field
+                ['    function doThing() as void',  false],  // interface method
+                ['end interface',                   false]
+            );
+        });
+
+        it('marks label statement as not executable', () => {
+            executable(
+                ['sub foo()',   true],
+                ['    myLabel:', false],
+                ['    x = 1',  true],
+                ['end sub',    false]
+            );
+        });
+
+        it('marks `dim` statement as not executable', () => {
+            executable(
+                ['sub foo()',       true],
+                ['    dim arr[10]', false],
+                ['    arr[0] = 1', true],
+                ['end sub',        false]
+            );
+        });
+
+        it('marks `const` statement as not executable', () => {
+            executable(
+                ['const MAX = 100', false],
+                ['sub foo()',       true],
+                ['    x = MAX',    true],
+                ['end sub',        false]
+            );
+        });
+
+        it('marks `type` alias statement as not executable', () => {
+            executable(
+                ['type MyType = string', false],
+                ['sub foo()',            true],
+                ['    x = "hello"',     true],
+                ['end sub',             false]
+            );
+        });
+
+        it('marks standalone `end` program terminator as not executable', () => {
+            executable(
+                ['sub foo()', true],
+                ['    end',   false],  // program terminator, not `end sub`
+                ['end sub',   false]
+            );
         });
 
         it('fails open when the file cannot be read', () => {
             const result = (bpManager as any).isStagingLineExecutable(s`${stagingDir}/nonexistent.brs`, 1);
-            expect(result).to.be.true;
+            expect(result.isExecutable).to.be.true;
         });
     });
 });

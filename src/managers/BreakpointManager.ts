@@ -6,10 +6,6 @@ import {
     Parser as BrsParser,
     WalkMode,
     isStatement,
-    isBlock,
-    isBody,
-    isFunctionStatement,
-    isMethodStatement,
     isIfStatement,
     isForStatement,
     isForEachStatement,
@@ -21,12 +17,16 @@ import {
     isNamespaceStatement,
     isClassStatement,
     isEnumStatement,
+    isEnumMemberStatement,
     isInterfaceStatement,
+    isInterfaceFieldStatement,
+    isInterfaceMethodStatement,
     isLabelStatement,
     isDimStatement,
     isConstStatement,
     isFieldStatement,
-    isTypeStatement
+    isTypeStatement,
+    CancellationTokenSource
 } from 'brighterscript';
 import { orderBy } from 'natural-orderby';
 import type { CodeWithSourceMap } from 'source-map';
@@ -449,7 +449,7 @@ export class BreakpointManager {
 
                     //skip breakpoints on lines that aren't executable statements (comments, blank
                     //lines, sub/end sub headers, etc.) according to the parsed AST
-                    if (!this.isStagingLineExecutable(stagingLocation.filePath, stagingLocation.lineNumber)) {
+                    if (!this.isStagingLineExecutable(stagingLocation.filePath, stagingLocation.lineNumber).isExecutable) {
                         continue;
                     }
                     let relativeStagingPath = fileUtils.replaceCaseInsensitive(
@@ -669,14 +669,18 @@ export class BreakpointManager {
     }
 
     /**
-     * Returns true if the given 1-based line number in a staging file corresponds to an
-     * executable statement — something the Roku debugger can actually break on.
-     * Non-executable lines include blank lines, comments, sub/function/end headers,
-     * import statements, and continuation lines inside multi-line expressions.
-     * Fails open: if the file can't be read or parsed, returns true so the breakpoint
-     * is not silently dropped.
+     * Validates whether a 1-based line number in a staging file is executable —
+     * i.e. something the Roku debugger can actually break on.
+     *
+     * Uses a blacklist: finds the innermost statement at the target line, then
+     * rejects known non-executable statement types. Fails open so breakpoints are
+     * never silently dropped due to a parse error.
+     *
+     * The returned object is designed to support future breakpoint-correction: callers
+     * can check `correctedLine` to move the breakpoint to a nearby executable line
+     * (like other debuggers do), rather than simply dropping it.
      */
-    private isStagingLineExecutable(stagingFilePath: string, lineNumber: number): boolean {
+    private isStagingLineExecutable(stagingFilePath: string, lineNumber: number): LineValidationResult {
         try {
             const cacheKey = s`${stagingFilePath}`;
             if (!this.stagingFileAstCache.has(cacheKey)) {
@@ -685,58 +689,58 @@ export class BreakpointManager {
             }
             const parsed = this.stagingFileAstCache.get(cacheKey);
 
-            //positions in BrighterScript are 0-based; breakpoint line numbers are 1-based
+            // BrightScript AST uses 0-based lines; breakpoint line numbers are 1-based
             const targetLine = lineNumber - 1;
-            let found: AstNode | null = null;
-            let isBlockEndLine = false;
+
+            // Walk depth-first (parent before children).
+            // - Track the innermost statement whose start line equals targetLine.
+            // - Track whether a control-flow block (if/for/while — NOT function/sub)
+            //   ends on targetLine. That signals an `end if`/`end for`/`end while`
+            //   line, which is executable even though no statement *starts* there.
+            //   `end function`/`end sub` are intentionally excluded: the function
+            //   header IS a valid breakpoint location, but the closing line is not.
+            // - Cancel as soon as a node starts past targetLine.
+            const handle = new CancellationTokenSource();
+            let deepestStatement: AstNode | undefined;
+            let hasBlockEnd = false;
+
             parsed.ast.walk((node) => {
-                if (found || isBlockEndLine) {
+                if (!node.range) {
                     return;
                 }
-                const r = node.range;
-                if (r?.start.line === targetLine && !isBlock(node) && !isBody(node)) {
-                    found = node;
-                } else if (r?.end.line === targetLine && (
-                    isFunctionStatement(node) ||
-                    isMethodStatement(node) ||
-                    isIfStatement(node) ||
-                    isForStatement(node) ||
-                    isForEachStatement(node) ||
-                    isWhileStatement(node)
-                )) {
-                    // `end function`/`end sub`/`end if`/`end for`/`end while` lines are executable
-                    // even though no AST node starts there — the closing keyword is part of the
-                    // parent node's range, not a child node
-                    isBlockEndLine = true;
+                if (node.range.start.line > targetLine) {
+                    handle.cancel();
+                    return;
                 }
-            }, { walkMode: WalkMode.visitAllRecursive });
+                if (node.range.end.line === targetLine && node.range.start.line < targetLine && (
+                    isIfStatement(node) || isForStatement(node) ||
+                    isForEachStatement(node) || isWhileStatement(node)
+                )) {
+                    hasBlockEnd = true;
+                }
+                if (isStatement(node) && node.range.start.line === targetLine) {
+                    deepestStatement = node;
+                }
+            }, {
+                walkMode: WalkMode.visitAllRecursive,
+                cancel: handle.token
+            });
 
-            if (!found) {
-                //blank line, continuation line, or non-executable structural keyword — not executable
-                return isBlockEndLine;
+            if (!deepestStatement) {
+                // No statement starts here: blank line, `else`, continuation line, etc.
+                // The only executable case is a block-closing keyword (`end if`, etc.).
+                return { isExecutable: hasBlockEnd };
             }
 
-            return isStatement(found) && !(
-                isFunctionStatement(found) ||
-                isMethodStatement(found) ||
-                isCommentStatement(found) ||
-                isEndStatement(found) ||
-                isImportStatement(found) ||
-                isLibraryStatement(found) ||
-                isNamespaceStatement(found) ||
-                isClassStatement(found) ||
-                isEnumStatement(found) ||
-                isInterfaceStatement(found) ||
-                isLabelStatement(found) ||
-                isDimStatement(found) ||
-                isConstStatement(found) ||
-                isFieldStatement(found) ||
-                isTypeStatement(found)
-            );
+            if (isNonExecutableLine(deepestStatement, targetLine)) {
+                return { isExecutable: false };
+            }
+
+            return { isExecutable: true };
         } catch (e) {
-            //never block a breakpoint due to a parse error — fail open
+            // never block a breakpoint due to a parse error — fail open
             this.logger.debug('Error checking if staging line is executable, allowing through', { stagingFilePath, lineNumber, error: e });
-            return true;
+            return { isExecutable: true };
         }
     }
 
@@ -1199,3 +1203,50 @@ export type Breakpoint = DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpo
  * - `Breakpoint & {srcPath: string}` - an object with all the properties of a breakpoint _and_ an explicitly defined `srcPath`
  */
 export type BreakpointRef = string | AugmentedSourceBreakpoint | { srcHash: string } | (Breakpoint & { srcPath: string });
+
+/**
+ * Result of validating whether a staging-file line is executable.
+ * `correctedLine` is reserved for future breakpoint-correction support: when a
+ * breakpoint is placed on a non-executable line the debugger can suggest a nearby
+ * executable line (like VS Code does for other languages) rather than silently
+ * dropping the breakpoint.
+ */
+export interface LineValidationResult {
+    isExecutable: boolean;
+    /** Future: 1-based line to move the breakpoint to, if different from the requested line. */
+    correctedLine?: number;
+}
+
+/**
+ * Returns true when `node` at `targetLine` (0-based) is known to be non-executable.
+ *
+ * Blacklisted categories:
+ * - Pure-declaration or structural statements: comments, imports, namespace/class/
+ *   enum/interface/type declarations, labels, constants, class fields, `dim`.
+ * - The standalone `end` program-terminator keyword (isEndStatement).
+ *
+ * Function/method header lines are NOT blacklisted — the `sub`/`function` line is
+ * a valid breakpoint location. The closing `end sub`/`end function` line is handled
+ * separately: it is excluded from the block-end check so it naturally falls through
+ * as non-executable.
+ */
+function isNonExecutableLine(node: AstNode, _targetLine: number): boolean {
+    return (
+        isCommentStatement(node) ||
+        isEndStatement(node) ||
+        isImportStatement(node) ||
+        isLibraryStatement(node) ||
+        isNamespaceStatement(node) ||
+        isClassStatement(node) ||
+        isEnumStatement(node) ||
+        isEnumMemberStatement(node) ||
+        isInterfaceStatement(node) ||
+        isInterfaceFieldStatement(node) ||
+        isInterfaceMethodStatement(node) ||
+        isLabelStatement(node) ||
+        isDimStatement(node) ||
+        isConstStatement(node) ||
+        isFieldStatement(node) ||
+        isTypeStatement(node)
+    );
+}
