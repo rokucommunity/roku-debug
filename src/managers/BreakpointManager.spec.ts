@@ -589,12 +589,12 @@ describe('BreakpointManager', () => {
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\n    print 2\nend sub`);
         });
 
-        it('marks breakpoints on non-executable lines as failed and emits a message', async () => {
-            //the file exists in staging; line 1 is `sub main()` — the function header, not executable
+        it('marks breakpoints on invalid breakpoint locations as failed and emits a message', async () => {
+            //the file exists in staging; line 3 is `end sub` — not a valid breakpoint location
             fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
             fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
 
-            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 1 }]);
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
             expect(bp.reason).to.be.undefined;
 
             await bpManager.resolveBreakpointsForProject(new Project(<any>{
@@ -1316,7 +1316,7 @@ describe('BreakpointManager', () => {
         });
     });
 
-    describe('isStagingLineExecutable', () => {
+    describe('isValidBreakpointLine', () => {
         let stagingFile: string;
 
         beforeEach(() => {
@@ -1325,54 +1325,54 @@ describe('BreakpointManager', () => {
         });
 
         /**
-         * Write the given lines to the staging file and assert the executable result
-         * for each one. Each entry is a [sourceText, expectedExecutable] tuple so the
+         * Write the given lines to the staging file and assert the breakpoint validity
+         * for each one. Each entry is a [sourceText, expectedValid] tuple so the
          * expected value sits right next to the line it describes.
          *
          * @example
-         * executable(
-         *     ['sub foo()',  false],  // function header — not executable
+         * checkLines(
+         *     ['sub foo()',  true],   // function header — valid breakpoint location
          *     ['    x = 1', true],
-         *     ['end sub',   true],   // end sub IS executable
+         *     ['end sub',   false],  // end sub is NOT a valid breakpoint location
          * );
          */
-        function executable(...lines: [string, boolean][]) {
+        function checkLines(...lines: [string, boolean][]) {
             const code = lines.map(([line]) => line).join('\n');
             fsExtra.outputFileSync(stagingFile, code);
             (bpManager as any).stagingFileAstCache.clear();
             for (let i = 0; i < lines.length; i++) {
                 const [lineText, expected] = lines[i];
-                const actual = (bpManager as any).isStagingLineExecutable(stagingFile, i + 1).isExecutable;
+                const actual = (bpManager as any).isValidBreakpointLine(stagingFile, i + 1).isValid;
                 expect(actual, `line ${i + 1}: \`${lineText.trim()}\``).to.equal(expected);
             }
         }
 
-        // ─── executable statements ───────────────────────────────────────────────
+        // ─── valid breakpoint locations ──────────────────────────────────────────
 
-        it('marks regular assignment and print statements as executable', () => {
-            executable(
+        it('marks regular assignment and print statements as valid breakpoint locations', () => {
+            checkLines(
                 ['sub foo()', true],   // function header IS a valid breakpoint
                 ['    x = 1', true],
                 ['    print x', true],
-                ['end sub', false]   // end sub is NOT executable
+                ['end sub', false]   // end sub is NOT a valid breakpoint location
             );
         });
 
-        it('marks sub/function header as executable and end as not', () => {
-            executable(
+        it('marks sub/function header as valid and end as invalid breakpoint location', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    x = 1', true],
                 ['end sub', false]
             );
-            executable(
+            checkLines(
                 ['function getValue()', true],
                 ['    return 42', true],
                 ['end function', false]
             );
         });
 
-        it('marks `if` as executable, `end if` as not', () => {
-            executable(
+        it('marks `if` as a valid breakpoint location, `end if` as invalid', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    if true then', true],
                 ['        x = 1', true],
@@ -1381,8 +1381,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `else` and `end if` as not executable', () => {
-            executable(
+        it('marks `else` and `end if` as invalid breakpoint locations', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    if true then', true],
                 ['        x = 1', true],
@@ -1393,9 +1393,9 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `else if` as executable', () => {
+        it('marks `else if` as a valid breakpoint location', () => {
             // BSC models `else if` as a nested IfStatement starting on that line
-            executable(
+            checkLines(
                 ['sub foo()', true],
                 ['    if true then', true],
                 ['        x = 1', true],
@@ -1406,8 +1406,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `for` as executable, `end for` as not', () => {
-            executable(
+        it('marks `for` as a valid breakpoint location, `end for` as invalid', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    for i = 0 to 10', true],
                 ['        x = i', true],
@@ -1416,8 +1416,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `for each` as executable, `end for` as not', () => {
-            executable(
+        it('marks `for each` as a valid breakpoint location, `end for` as invalid', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    for each item in arr', true],
                 ['        x = item', true],
@@ -1426,8 +1426,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `while` as executable, `end while` as not', () => {
-            executable(
+        it('marks `while` as a valid breakpoint location, `end while` as invalid', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    while true', true],
                 ['        x = 1', true],
@@ -1436,23 +1436,23 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks function call and return as executable', () => {
-            executable(
+        it('marks function call and return as valid breakpoint locations', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    bar()', true],
                 ['end sub', false]
             );
-            executable(
+            checkLines(
                 ['function foo()', true],
                 ['    return 42', true],
                 ['end function', false]
             );
         });
 
-        // ─── non-executable: structural / declaration lines ──────────────────────
+        // ─── invalid breakpoint locations ────────────────────────────────────────
 
-        it('marks blank lines as not executable', () => {
-            executable(
+        it('marks blank lines as invalid breakpoint locations', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['', false],  // blank line
                 ['    x = 1', true],
@@ -1461,8 +1461,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks comment lines as not executable', () => {
-            executable(
+        it('marks comment lines as invalid breakpoint locations', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    \' this is a comment', false],
                 ['    x = 1', true],
@@ -1470,41 +1470,41 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `import` statement as not executable', () => {
-            executable(
+        it('marks `import` statement as an invalid breakpoint location', () => {
+            checkLines(
                 ['import "pkg:/source/utils.brs"', false]
             );
         });
 
-        it('marks `library` statement as not executable', () => {
-            executable(
+        it('marks `library` statement as an invalid breakpoint location', () => {
+            checkLines(
                 ['library "v30/bslCore.brs"', false]
             );
         });
 
-        it('marks namespace header and `end namespace` as not executable', () => {
-            executable(
+        it('marks namespace header and `end namespace` as invalid breakpoint locations', () => {
+            checkLines(
                 ['namespace MyNS', false],
-                ['    function helper()', true],   // method header IS executable
+                ['    function helper()', true],   // method header IS a valid breakpoint location
                 ['        return 1', true],
-                ['    end function', false],   // end function is NOT executable
+                ['    end function', false],
                 ['end namespace', false]
             );
         });
 
-        it('marks class header, fields, and `end class` as not executable; method header as executable', () => {
-            executable(
+        it('marks class header, fields, and `end class` as invalid; method header as valid breakpoint location', () => {
+            checkLines(
                 ['class MyClass', false],
                 ['    public name as string', false],  // field declaration
-                ['    function greet()', true],   // method header IS executable
+                ['    function greet()', true],   // method header IS a valid breakpoint location
                 ['        print m.name', true],
-                ['    end function', false],   // end function is NOT executable
+                ['    end function', false],
                 ['end class', false]
             );
         });
 
-        it('marks enum block (header, members, end) as not executable', () => {
-            executable(
+        it('marks enum block (header, members, end) as invalid breakpoint locations', () => {
+            checkLines(
                 ['enum Color', false],
                 ['    red = "red"', false],  // enum member
                 ['    blue = "blue"', false],  // enum member
@@ -1512,8 +1512,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks interface block (header, fields, methods, end) as not executable', () => {
-            executable(
+        it('marks interface block (header, fields, methods, end) as invalid breakpoint locations', () => {
+            checkLines(
                 ['interface IFoo', false],
                 ['    name as string', false],  // interface field
                 ['    function doThing() as void', false],  // interface method
@@ -1521,8 +1521,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks label statement as executable', () => {
-            executable(
+        it('marks label statement as a valid breakpoint location', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    myLabel:', true],
                 ['    x = 1', true],
@@ -1530,8 +1530,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `dim` statement as executable', () => {
-            executable(
+        it('marks `dim` statement as a valid breakpoint location', () => {
+            checkLines(
                 ['sub foo()', true],
                 ['    dim arr[10]', true],
                 ['    arr[0] = 1', true],
@@ -1539,8 +1539,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `const` statement as not executable', () => {
-            executable(
+        it('marks `const` statement as an invalid breakpoint location', () => {
+            checkLines(
                 ['const MAX = 100', false],
                 ['sub foo()', true],
                 ['    x = MAX', true],
@@ -1548,8 +1548,8 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks `type` alias statement as not executable', () => {
-            executable(
+        it('marks `type` alias statement as an invalid breakpoint location', () => {
+            checkLines(
                 ['type MyType = string', false],
                 ['sub foo()', true],
                 ['    x = "hello"', true],
@@ -1557,17 +1557,17 @@ describe('BreakpointManager', () => {
             );
         });
 
-        it('marks standalone `end` program terminator as executable', () => {
-            executable(
+        it('marks standalone `end` program terminator as a valid breakpoint location', () => {
+            checkLines(
                 ['sub foo()', true],
-                ['    end', true],   // program terminator — valid breakpoint
+                ['    end', true],   // program terminator — valid breakpoint location
                 ['end sub', false]
             );
         });
 
         it('fails open when the file cannot be read', () => {
-            const result = (bpManager as any).isStagingLineExecutable(s`${stagingDir}/nonexistent.brs`, 1);
-            expect(result.isExecutable).to.be.true;
+            const result = (bpManager as any).isValidBreakpointLine(s`${stagingDir}/nonexistent.brs`, 1);
+            expect(result.isValid).to.be.true;
         });
     });
 });

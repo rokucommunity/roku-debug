@@ -440,9 +440,8 @@ export class BreakpointManager {
                         }
                     }
 
-                    //skip breakpoints on lines that aren't executable statements (comments, blank
-                    //lines, sub/end sub headers, etc.) according to the parsed AST
-                    if (!this.isStagingLineExecutable(stagingLocation.filePath, stagingLocation.lineNumber).isExecutable) {
+                    //skip breakpoints on lines that are not valid breakpoint locations
+                    if (!this.isValidBreakpointLine(stagingLocation.filePath, stagingLocation.lineNumber).isValid) {
                         continue;
                     }
                     let relativeStagingPath = fileUtils.replaceCaseInsensitive(
@@ -649,7 +648,7 @@ export class BreakpointManager {
 
     /**
      * Cache of parsed ASTs keyed by staging file path.
-     * Populated lazily in isStagingLineExecutable. Clear on new debug session.
+     * Populated lazily in isValidBreakpointLine. Clear on new debug session.
      */
     private stagingFileAstCache = new Map<string, ReturnType<typeof BrsParser.parse>>();
 
@@ -662,18 +661,20 @@ export class BreakpointManager {
     }
 
     /**
-     * Validates whether a 1-based line number in a staging file is executable —
-     * i.e. something the Roku debugger can actually break on.
+     * Returns whether a 1-based line number in a staging file is a valid breakpoint
+     * location — i.e. somewhere the Roku debugger can actually break.
      *
-     * Uses a blacklist: finds the innermost statement at the target line, then
-     * rejects known non-executable statement types. Fails open so breakpoints are
-     * never silently dropped due to a parse error.
+     * Uses a blacklist: finds the innermost statement at the target line and rejects
+     * known invalid types (declarations, structural keywords, etc.). Lines where no
+     * statement starts (blank lines, `else`, `end if/for/while/sub/function`) are
+     * always invalid. Fails open so breakpoints are never silently dropped due to a
+     * parse error.
      *
      * The returned object is designed to support future breakpoint-correction: callers
-     * can check `correctedLine` to move the breakpoint to a nearby executable line
+     * can check `correctedLine` to suggest moving the breakpoint to a nearby valid line
      * (like other debuggers do), rather than simply dropping it.
      */
-    private isStagingLineExecutable(stagingFilePath: string, lineNumber: number): LineValidationResult {
+    private isValidBreakpointLine(stagingFilePath: string, lineNumber: number): LineValidationResult {
         try {
             const cacheKey = s`${stagingFilePath}`;
             if (!this.stagingFileAstCache.has(cacheKey)) {
@@ -709,18 +710,18 @@ export class BreakpointManager {
 
             if (!deepestStatement) {
                 // No statement starts here: blank line, `else`, `end if/for/while/sub/function`, etc.
-                return { isExecutable: false };
+                return { isValid: false };
             }
 
-            if (isNonExecutableLine(deepestStatement)) {
-                return { isExecutable: false };
+            if (isInvalidBreakpointLine(deepestStatement)) {
+                return { isValid: false };
             }
 
-            return { isExecutable: true };
+            return { isValid: true };
         } catch (e) {
             // never block a breakpoint due to a parse error — fail open
             this.logger.debug('Error checking if staging line is executable, allowing through', { stagingFilePath, lineNumber, error: e });
-            return { isExecutable: true };
+            return { isValid: true };
         }
     }
 
@@ -1192,13 +1193,13 @@ export type BreakpointRef = string | AugmentedSourceBreakpoint | { srcHash: stri
  * dropping the breakpoint.
  */
 export interface LineValidationResult {
-    isExecutable: boolean;
+    isValid: boolean;
     /** Future: 1-based line to move the breakpoint to, if different from the requested line. */
     correctedLine?: number;
 }
 
 /**
- * Returns true when `node` at `targetLine` (0-based) is known to be non-executable.
+ * Returns true when `node` is known to be an invalid breakpoint location.
  *
  * Blacklisted categories:
  * - Pure-declaration or structural statements: comments, imports, namespace/class/
@@ -1211,9 +1212,9 @@ export interface LineValidationResult {
  * - The standalone `end` program-terminator
  *
  * Lines where no statement starts (blank lines, `else`, `end if/for/while/sub/function`)
- * are handled before this function is called and always return non-executable.
+ * are handled before this function is called and always return invalid.
  */
-function isNonExecutableLine(node: AstNode): boolean {
+function isInvalidBreakpointLine(node: AstNode): boolean {
     return (
         isCommentStatement(node) ||
         isImportStatement(node) ||
