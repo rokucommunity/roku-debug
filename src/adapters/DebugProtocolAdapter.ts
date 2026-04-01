@@ -426,9 +426,12 @@ export class DebugProtocolAdapter {
                 this.emit('launch-status', message);
             });
 
-            //if the connection fails, reject the connect promise
+            //if the connection fails, reject the connect promise.
+            //Use tryReject (not reject) because this handler persists for the socket's lifetime.
+            //After a successful connection the deferred is already resolved, so a post-connection
+            //socket error (e.g. ECONNRESET on device disconnect) must not crash the process.
             this.compileClient.on('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
+                deferred.tryReject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
             this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
             this.compileClient.connect(this.options.brightScriptConsolePort, this.options.host, () => {
