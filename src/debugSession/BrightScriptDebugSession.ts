@@ -51,6 +51,7 @@ import {
     ProfilingEnabledEvent as ProfilingEnableEvent,
     ProcessCrashEvent
 } from './Events';
+import type { ProcessCrashEventData } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
@@ -127,17 +128,34 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             logger.error(message, stack);
 
             let output: string;
+            let debuggerVersion: string;
+            let additionalInfo: ProcessCrashEventData['additionalInfo'];
             try {
-                const debuggerVersion = (fsExtra.readJsonSync( path.resolve(__dirname, '../../package.json')) as { version: string }).version;
+                debuggerVersion = (fsExtra.readJsonSync( path.resolve(__dirname, '../../package.json')) as { version: string }).version;
 
                 const clientName = this.initRequestArgs?.clientName ?? 'unknown';
-                const clientId = this.initRequestArgs?.clientID ?? 'unknown';
+
+                additionalInfo = {
+                    clientName: clientName,
+                    rokuDebugVersion: debuggerVersion,
+                    ecpMode: this.deviceInfo?.ecpSettingMode,
+                    developerMode: this.deviceInfo?.developerEnabled,
+                    firmware: this.deviceInfo ? `${this.deviceInfo?.softwareVersion}.${this.deviceInfo?.softwareBuild}` : undefined,
+                    protocolVersion: this.deviceInfo?.brightscriptDebuggerVersion,
+                    protocolEnabled: this.enableDebugProtocol
+                };
+
+                const lines = Object.entries(additionalInfo as Record<string, unknown>).map(([key, value]) => {
+                    // Insert a space before all uppercase letters preceded by a lowercase letter, then uppercase the first char
+                    const spacedString = key.replace(/([a-z])([A-Z])/g, '$1 $2');
+                    const formattedKey = spacedString.charAt(0).toUpperCase() + spacedString.slice(1);
+                    return `**${formattedKey}:** ${JSON.stringify(value)}`;
+                });
 
                 const issueBodyPrefix = [
-                    `**Debugger version:** ${debuggerVersion}`,
-                    `**Client:** ${clientName} (${clientId})`,
                     `**Error type:** ${type}`,
                     `**Message:** ${message}`,
+                    ...lines,
                     '',
                     `**Steps to reproduce:**`,
                     `<!-- Please describe what you were doing when this crash occurred -->`,
@@ -174,8 +192,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     '================================================================',
                     `  Error type:        ${type}`,
                     `  Message:           ${message}`,
-                    `  Debugger version:  ${debuggerVersion}`,
-                    `  Client:            ${clientName} (${clientId})`,
+                    ...lines.map(l => `  ${l}`),
                     '',
                     '  Stack trace:',
                     ...(stack ?? '(no stack trace)').split('\n').map(l => `  ${l}`),
@@ -195,7 +212,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             void this.sendLogOutput(output).catch(() => { /** best-effort */ });
             this.isCrashed = true;
-            this.sendEvent(new ProcessCrashEvent({ type, message, stack }));
+            this.sendEvent(new ProcessCrashEvent({ type, message, stack, additionalInfo: additionalInfo ?? {} }));
             setTimeout(() => void this.shutdown(), 5000);
         };
 
@@ -304,7 +321,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private COMPILE_ERROR_THREAD_ID = 7_777;
 
     private get enableDebugProtocol() {
-        return this.launchConfiguration.enableDebugProtocol;
+        return this.launchConfiguration?.enableDebugProtocol;
     }
 
     /**

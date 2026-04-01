@@ -247,6 +247,19 @@ export interface ProcessCrashEventData {
     type: 'uncaughtException' | 'unhandledRejection';
     message: string;
     stack?: string;
+    /**
+     * Optional extra diagnostic data provided by the debugger. Keys are human-readable labels;
+     * values are serialized as JSON when displayed to the user.
+     */
+    additionalInfo?: {
+        clientName?: string;
+        rokuDebugVersion?: string;
+        ecpMode?: string;
+        developerMode?: boolean;
+        firmware?: string;
+        protocolVersion?: string;
+        protocolEnabled?: boolean;
+    };
 }
 
 /**
