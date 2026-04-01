@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
-import { DebugSession, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
+import { DebugSession, Logger as DapLogger, logger as dapLogger, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
@@ -19,7 +19,7 @@ import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } from './Events';
+import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
@@ -188,6 +188,7 @@ describe('BrightScriptDebugSession', () => {
             developerEnabled: true
         }));
         sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+        sinon.stub(session, 'setupProcessErrorHandlers');
 
         let sendEvent = session.sendEvent.bind(session);
         sinon.stub(session, 'sendEvent').callsFake((event) => {
@@ -459,6 +460,198 @@ describe('BrightScriptDebugSession', () => {
             expect(
                 response.body.variables.find(x => x.name.startsWith(session.tempVarPrefix))
             ).to.exist;
+        });
+    });
+
+    describe('start', () => {
+        let setupStub: sinonActual.SinonStub;
+
+        beforeEach(() => {
+            setupStub = sinon.stub(dapLogger, 'setup');
+            // stub the base class start() so we don't need real streams
+            sinon.stub(DebugSession.prototype, 'start').returns(undefined);
+            // stub so process error handlers aren't registered for real during tests
+            // (those are covered by logging.spec.ts)
+            sinon.stub(session, 'setupProcessErrorHandlers');
+        });
+
+        it('does not configure DAP logging when ROKU_DAP_LOG_FILE is not set', () => {
+            delete process.env.ROKU_DAP_LOG_FILE;
+            session.start(null as any, null as any);
+            expect(setupStub.called).to.be.false;
+        });
+
+        it('calls dapLogger.setup with the env var path when ROKU_DAP_LOG_FILE is set', () => {
+            process.env.ROKU_DAP_LOG_FILE = '/tmp/test-dap.log';
+            try {
+                session.start(null as any, null as any);
+                expect(setupStub.calledOnce).to.be.true;
+                expect(setupStub.firstCall.args[0]).to.equal(DapLogger.LogLevel.Error);
+                expect(setupStub.firstCall.args[1]).to.equal('/tmp/test-dap.log');
+            } finally {
+                delete process.env.ROKU_DAP_LOG_FILE;
+            }
+        });
+    });
+
+    describe('setupProcessErrorHandlers', () => {
+        let sendEventStub: sinonActual.SinonStub;
+        let shutdownStub: sinonActual.SinonStub;
+
+        beforeEach(() => {
+            sendEventStub = sinon.stub(session, 'sendEvent');
+            shutdownStub = sinon.stub(session, 'shutdown').resolves();
+            session['processErrorHandlersRegistered'] = false;
+        });
+
+        afterEach(() => {
+            session.teardownProcessErrorHandlers();
+        });
+
+        it('registers handlers only once even when called multiple times', () => {
+            const onSpy = sinon.spy(process, 'on');
+            session.setupProcessErrorHandlers();
+            session.setupProcessErrorHandlers();
+            expect(onSpy.withArgs('uncaughtException').callCount).to.equal(1);
+        });
+
+        it('sends ProcessCrashEvent for uncaughtException', () => {
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('test crash'));
+            expect(sendEventStub.calledOnce).to.be.true;
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.type).to.equal('uncaughtException');
+            expect(event.body.message).to.equal('test crash');
+        });
+
+        it('sends ProcessCrashEvent for unhandledRejection', () => {
+            session.setupProcessErrorHandlers();
+            session['_unhandledRejectionHandler'](new Error('rejected'));
+            expect(sendEventStub.calledOnce).to.be.true;
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.type).to.equal('unhandledRejection');
+            expect(event.body.message).to.equal('rejected');
+        });
+
+        it('includes error stack in ProcessCrashEvent', () => {
+            const error = new Error('test crash');
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const event = sendEventStub.firstCall.args[0];
+            expect(event.body.stack).to.equal(error.stack);
+        });
+
+        it('sets isCrashed to true', () => {
+            expect(session['isCrashed']).to.be.false;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            expect(session['isCrashed']).to.be.true;
+        });
+
+        it('handles non-Error thrown values', () => {
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler']('string error' as any);
+            const event = sendEventStub.firstCall.args[0];
+            expect(event.body.message).to.equal('string error');
+            expect(event.body.stack).to.be.undefined;
+        });
+
+        it('calls sendLogOutput with formatted crash output', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            expect(sendLogOutputStub.calledOnce).to.be.true;
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('BRIGHTSCRIPT DEBUGGER INTERNAL ERROR');
+            expect(output).to.include('uncaughtException');
+            expect(output).to.include('boom');
+            expect(output).to.include('https://github.com/RokuCommunity/roku-debug/issues/new');
+        });
+
+        it('includes client name from initRequestArgs in output', () => {
+            session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('**Client Name:** "VS Code"');
+        });
+
+        it('uses "unknown" for client name when initRequestArgs is not set', () => {
+            session['initRequestArgs'] = undefined;
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('**Client Name:** "unknown"');
+        });
+
+        it('includes additionalInfo fields in ProcessCrashEvent body', () => {
+            session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.additionalInfo).to.exist;
+            expect(event.body.additionalInfo.clientName).to.equal('VS Code');
+            expect(event.body.additionalInfo.rokuDebugVersion).to.be.a('string');
+        });
+
+        it('uses "(no stack trace)" in output when error has no stack', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler']('not an error' as any);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('(no stack trace)');
+        });
+
+        it('truncates a very long stack trace in the issue URL', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const longStack = 'x'.repeat(3000);
+            const error = new Error('boom');
+            error.stack = longStack;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('...(truncated)');
+        });
+
+        it('falls back to JSON output when readJsonSync throws', () => {
+            sinon.stub(fsExtra, 'readJsonSync').throws(new Error('file not found'));
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            // fallback is JSON-stringified error from catch block
+            expect(output).to.include('file not found');
+        });
+
+        it('schedules shutdown() after 5 seconds on uncaughtException', () => {
+            const clock = sinon.useFakeTimers();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            expect(shutdownStub.called).to.be.false;
+            clock.tick(5000);
+            expect(shutdownStub.calledOnce).to.be.true;
+            clock.restore();
+        });
+
+        it('schedules shutdown() after 5 seconds on unhandledRejection', () => {
+            const clock = sinon.useFakeTimers();
+            session.setupProcessErrorHandlers();
+            session['_unhandledRejectionHandler'](new Error('rejected'));
+            expect(shutdownStub.called).to.be.false;
+            clock.tick(5000);
+            expect(shutdownStub.calledOnce).to.be.true;
+            clock.restore();
         });
     });
 
@@ -2330,6 +2523,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
             sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
             sinon.stub(session as any, 'publish').resolves();
+            sinon.stub(session, 'setupProcessErrorHandlers');
             rokuAdapter.connected = true;
         }
 
@@ -2407,6 +2601,142 @@ describe('BrightScriptDebugSession', () => {
 
                 expect(getProgressEvents()).to.be.empty;
             });
+        });
+    });
+
+    describe('threadsRequest', () => {
+        beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+        });
+
+        async function getThreadsResponse() {
+            const response = { body: undefined } as DebugProtocol.ThreadsResponse;
+            await session['threadsRequest'](response);
+            return response;
+        }
+
+        it('returns empty thread list when not at debugger prompt', async () => {
+            rokuAdapter.isAtDebuggerPrompt = false;
+            const response = await getThreadsResponse();
+            expect(response.body.threads).to.eql([]);
+        });
+
+        it('names normal threads without a suffix', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: false, lineNumber: 1, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+
+        it('appends [detached] to the name of detached threads', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: false, lineNumber: 1, filePath: '', functionName: '', lineContents: '' },
+                { threadId: 1, isSelected: false, isDetached: true, lineNumber: 2, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+            expect(response.body.threads[1].name).to.equal('Thread 1 [detached]');
+        });
+
+        it('handles undefined isDetached as not detached', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: undefined, lineNumber: 1, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+    });
+
+    describe('setupSuspendedState', () => {
+        beforeEach(() => {
+            session.projectManager.mainProject = new Project({
+                rootDir: rootDir,
+                outDir: stagingDir
+            } as Partial<AddProjectParams> as any);
+            session.projectManager.mainProject.fileMappings = [];
+            sinon.stub(rokuAdapter, 'syncBreakpoints').resolves();
+        });
+
+        it('does not crash when thread has corrupted filePath and failedDeletions is non-empty', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'Main',
+                lineNumber: 1295673717,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves({
+                filePath: s`${rootDir}/components/Component.brs`,
+                lineNumber: 33,
+                columnIndex: 0
+            });
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            // should not throw
+            await session['setupSuspendedState']();
+        });
+
+        it('corrects thread.filePath from stack trace when lineNumber mismatch is detected', async () => {
+            const getSourceLocationStub = sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'Main',
+                lineNumber: 1295673717,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            await session['setupSuspendedState']();
+
+            // getSourceLocation should have been called with the corrected pkg path, not 'Main'
+            expect(getSourceLocationStub.args[0][0]).to.equal('pkg:/components/Component.brs');
+        });
+
+        it('does not crash when getSourceLocation returns undefined', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            // should not throw even when getSourceLocation returns undefined
+            await session['setupSuspendedState']();
         });
     });
 });

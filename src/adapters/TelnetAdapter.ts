@@ -274,9 +274,12 @@ export class TelnetAdapter {
                 this.emit('close');
             });
 
-            //if the connection fails, reject the connect promise
+            //if the connection fails, reject the connect promise.
+            //Use tryReject (not reject) because this handler persists for the socket's lifetime.
+            //After a successful connection the deferred is already resolved, so a post-connection
+            //socket error (e.g. ETIMEDOUT on device disconnect) must not crash the process.
             telnetSocket.on('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
+                deferred.tryReject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
             const settlePromise = this.settleTelnetConnection(telnetSocket);
@@ -1179,6 +1182,7 @@ export interface Thread {
      * Is this thread selected
      */
     isSelected: boolean;
+    isDetached?: boolean;
     /**
      * The 1-based line number
      */

@@ -6,7 +6,9 @@ import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionReset
 import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
-    DebugSession as BaseDebugSession,
+    LoggingDebugSession,
+    Logger as DapLogger,
+    logger as dapLogger,
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
@@ -46,8 +48,10 @@ import {
     ProfilingErrorEvent,
     ProfilingStartEvent,
     ProfilingStopEvent,
-    ProfilingEnabledEvent as ProfilingEnableEvent
+    ProfilingEnabledEvent as ProfilingEnableEvent,
+    ProcessCrashEvent
 } from './Events';
+import type { ProcessCrashEventData } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
@@ -70,7 +74,7 @@ import { SocketConnectionInUseError } from '../Exceptions';
 
 const diagnosticSource = 'roku-debug';
 
-export class BrightScriptDebugSession extends BaseDebugSession {
+export class BrightScriptDebugSession extends LoggingDebugSession {
     public constructor() {
         super();
 
@@ -91,6 +95,144 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             locationManager: this.locationManager
         });
         this.fileLoggingManager = new FileLoggingManager();
+    }
+
+    public start(inStream: NodeJS.ReadableStream, outStream: NodeJS.WritableStream): void {
+        super.start(inStream, outStream);
+        // Set up DAP protocol logging as early as possible — immediately after start() so we capture
+        // the initialize request and all early DAP traffic before launchRequest config is available.
+        // The log file path is injected as ROKU_DAP_LOG_FILE by the extension's DebugAdapterDescriptorFactory,
+        // which resolves the path from the `brightscript.debug.debugAdapterProtocolLogging` workspace setting
+        // (or the equivalent launch.json property) before the debug adapter process is spawned.
+        const dapLogFile = process.env.ROKU_DAP_LOG_FILE;
+        if (dapLogFile) {
+            // Use LogLevel.Error (not Verbose) as the console threshold so DAP messages are written
+            // to the log file but are NOT forwarded to VS Code as OutputEvents, which would flood
+            // the debug console and break the extension's output parsing.
+            // Note: InternalLogger always writes ALL messages to the file stream regardless of level,
+            // so the log file will still contain everything.
+            dapLogger.setup(DapLogger.LogLevel.Error, dapLogFile);
+        }
+    }
+
+    public setupProcessErrorHandlers() {
+        if (this.processErrorHandlersRegistered) {
+            return;
+        }
+        this.processErrorHandlersRegistered = true;
+
+        const handleError = (type: 'uncaughtException' | 'unhandledRejection', error: unknown) => {
+            const logger = this.logger.createLogger(`${type}`);
+            const message = error instanceof Error ? error.message : String(error);
+            const stack = error instanceof Error ? error.stack : undefined;
+            logger.error(message, stack);
+
+            let output: string;
+            let debuggerVersion: string;
+            let additionalInfo: ProcessCrashEventData['additionalInfo'];
+            try {
+                debuggerVersion = (fsExtra.readJsonSync( path.resolve(__dirname, '../../package.json')) as { version: string }).version;
+
+                const clientName = this.initRequestArgs?.clientName ?? 'unknown';
+
+                additionalInfo = {
+                    clientName: clientName,
+                    rokuDebugVersion: debuggerVersion,
+                    ecpMode: this.deviceInfo?.ecpSettingMode,
+                    developerMode: this.deviceInfo?.developerEnabled,
+                    firmware: this.deviceInfo ? `${this.deviceInfo?.softwareVersion}.${this.deviceInfo?.softwareBuild}` : undefined,
+                    protocolVersion: this.deviceInfo?.brightscriptDebuggerVersion,
+                    protocolEnabled: this.enableDebugProtocol
+                };
+
+                const lines = Object.entries(additionalInfo as Record<string, unknown>).map(([key, value]) => {
+                    // Insert a space before all uppercase letters preceded by a lowercase letter, then uppercase the first char
+                    const spacedString = key.replace(/([a-z])([A-Z])/g, '$1 $2');
+                    const formattedKey = spacedString.charAt(0).toUpperCase() + spacedString.slice(1);
+                    return `**${formattedKey}:** ${JSON.stringify(value)}`;
+                });
+
+                const issueBodyPrefix = [
+                    `**Error type:** ${type}`,
+                    `**Message:** ${message}`,
+                    ...lines,
+                    '',
+                    `**Steps to reproduce:**`,
+                    `<!-- Please describe what you were doing when this crash occurred -->`,
+                    '',
+                    '**Stack trace:**',
+                    '```',
+                    ''
+                ].join('\n');
+                const issueBodySuffix = '\n```';
+
+                const issueTitle = encodeURIComponent(`[crash] ${type}: ${message}`);
+                const baseUrl = 'https://github.com/RokuCommunity/roku-debug/issues/new';
+                const maxUrlLength = 2000;
+                const urlOverhead = `${baseUrl}?title=${issueTitle}&body=`.length;
+                const bodyBudget = maxUrlLength - urlOverhead;
+                const encodedPrefix = encodeURIComponent(issueBodyPrefix);
+                const encodedSuffix = encodeURIComponent(issueBodySuffix);
+                const stackBudget = bodyBudget - encodedPrefix.length - encodedSuffix.length;
+                let truncatedStack: string;
+                if (!stack) {
+                    truncatedStack = '(no stack trace)';
+                } else if (encodeURIComponent(stack).length <= stackBudget) {
+                    truncatedStack = stack;
+                } else {
+                    truncatedStack = decodeURIComponent(encodeURIComponent(stack).slice(0, stackBudget)) + '\n...(truncated)';
+                }
+                const issueUrl = `${baseUrl}?title=${issueTitle}&body=${encodedPrefix}${encodeURIComponent(truncatedStack)}${encodedSuffix}`;
+
+                output = [
+                    '',
+                    '================================================================',
+                    '\tBRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
+                    '\tThis is a crash in the debug adapter, not in your application.',
+                    '================================================================',
+                    `\tError type: ${type}`,
+                    `\tMessage: ${message}`,
+                    ...lines.map(l => `\t${l}`),
+                    '',
+                    '\tStack trace:',
+                    ...(stack ?? '(no stack trace)').split('\n').map(l => `\t${l}`),
+                    '',
+                    '\tPlease report this at:',
+                    `\t${issueUrl}`,
+                    '================================================================',
+                    ''
+                ].join('\n');
+            } catch (e) {
+                output = JSON.stringify({
+                    name: e.name,
+                    message: e.message,
+                    stack: e.stack
+                });
+            }
+
+            void this.sendLogOutput(output).catch(() => { /** best-effort */ });
+            this.isCrashed = true;
+            this.sendEvent(new ProcessCrashEvent({ type, message, stack, additionalInfo: additionalInfo ?? {} }));
+            setTimeout(() => void this.shutdown(), 5000);
+        };
+
+        this._uncaughtExceptionHandler = (error) => handleError('uncaughtException', error);
+        this._unhandledRejectionHandler = (reason) => handleError('unhandledRejection', reason);
+
+        process.on('uncaughtException', this._uncaughtExceptionHandler);
+        process.on('unhandledRejection', this._unhandledRejectionHandler);
+    }
+
+    public teardownProcessErrorHandlers() {
+        if (this._uncaughtExceptionHandler) {
+            process.removeListener('uncaughtException', this._uncaughtExceptionHandler);
+            this._uncaughtExceptionHandler = undefined;
+        }
+        if (this._unhandledRejectionHandler) {
+            process.removeListener('unhandledRejection', this._unhandledRejectionHandler);
+            this._unhandledRejectionHandler = undefined;
+        }
+        this.processErrorHandlersRegistered = false;
     }
 
     private onDeviceBreakpointsChanged(eventName: 'changed' | 'new', data: { breakpoints: AugmentedSourceBreakpoint[] }) {
@@ -126,6 +268,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public projectManager: ProjectManager;
 
     public fileLoggingManager: FileLoggingManager;
+
+    private processErrorHandlersRegistered = false;
+    private isCrashed = false;
+    private _uncaughtExceptionHandler: ((error: Error) => void) | undefined;
+    private _unhandledRejectionHandler: ((reason: unknown) => void) | undefined;
 
     public breakpointManager: BreakpointManager;
 
@@ -174,7 +321,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private COMPILE_ERROR_THREAD_ID = 7_777;
 
     private get enableDebugProtocol() {
-        return this.launchConfiguration.enableDebugProtocol;
+        return this.launchConfiguration?.enableDebugProtocol;
     }
 
     /**
@@ -408,6 +555,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
 
         this.launchConfiguration = this.normalizeLaunchConfig(config);
+        this.setupProcessErrorHandlers();
 
         //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
         bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
@@ -616,7 +764,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.sendLaunchProgress('end', 'Aborted (compile error)');
             }
         }
-
         logEnd();
     }
 
@@ -858,6 +1005,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param logOutput
      */
     private sendLogOutput(logOutput: string) {
+        if (this.isCrashed) {
+            return Promise.resolve();
+        }
         this.fileLoggingManager.writeRokuDeviceLog(logOutput);
 
         this.pendingSendLogPromise = this.pendingSendLogPromise.then(async () => {
@@ -1297,8 +1447,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 let rokuThreads = await this.rokuAdapter.getThreads();
 
                 for (let thread of rokuThreads) {
+                    const threadName = thread.isDetached
+                        ? `Thread ${thread.threadId} [detached]`
+                        : `Thread ${thread.threadId}`;
                     threads.push(
-                        new Thread(thread.threadId, `Thread ${thread.threadId}`)
+                        new Thread(thread.threadId, threadName)
                     );
                 }
 
@@ -2451,9 +2604,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             threads.map(async (thread) => {
                 const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
                 const stackTraceLineNumber = stackTrace[0]?.lineNumber;
+                const stackTraceFilePath = stackTrace[0]?.filePath;
                 if (stackTraceLineNumber !== thread.lineNumber) {
                     this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
                     thread.lineNumber = stackTraceLineNumber;
+                    thread.filePath = stackTraceFilePath;
                 }
             })
         );
@@ -2463,7 +2618,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 let sourceLocation = await this.projectManager.getSourceLocation(thread.filePath, thread.lineNumber);
                 // This stop was due to a breakpoint that we tried to delete, but couldn't.
                 // Now that we are stopped, we can delete it. We won't stop here again unless you re-add the breakpoint. You're welcome.
-                if ((bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
+                if (sourceLocation && (bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
                     this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info').catch((error) => {
                         this.logger.error('Error showing popup message', { error });
                     });
@@ -2868,6 +3023,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.log('super.shutdown()');
             super.shutdown();
             this.logger.log('shutdown complete');
+        } catch (e) {
+            this.logger.error(e);
+        }
+
+        try {
+            this.teardownProcessErrorHandlers();
         } catch (e) {
             this.logger.error(e);
         }
