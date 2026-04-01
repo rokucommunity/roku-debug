@@ -572,7 +572,7 @@ describe('BrightScriptDebugSession', () => {
             expect(output).to.include('https://github.com/RokuCommunity/roku-debug/issues/new');
         });
 
-        it('includes client name and id from initRequestArgs in output', () => {
+        it('includes client name from initRequestArgs in output', () => {
             session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
             const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
             const error = new Error('boom');
@@ -580,11 +580,10 @@ describe('BrightScriptDebugSession', () => {
             session.setupProcessErrorHandlers();
             session['_uncaughtExceptionHandler'](error);
             const output: string = sendLogOutputStub.firstCall.args[0];
-            expect(output).to.include('VS Code');
-            expect(output).to.include('vscode');
+            expect(output).to.include('**Client Name:** "VS Code"');
         });
 
-        it('uses "unknown" for client info when initRequestArgs is not set', () => {
+        it('uses "unknown" for client name when initRequestArgs is not set', () => {
             session['initRequestArgs'] = undefined;
             const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
             const error = new Error('boom');
@@ -592,7 +591,18 @@ describe('BrightScriptDebugSession', () => {
             session.setupProcessErrorHandlers();
             session['_uncaughtExceptionHandler'](error);
             const output: string = sendLogOutputStub.firstCall.args[0];
-            expect(output).to.include('unknown (unknown)');
+            expect(output).to.include('**Client Name:** "unknown"');
+        });
+
+        it('includes additionalInfo fields in ProcessCrashEvent body', () => {
+            session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.additionalInfo).to.exist;
+            expect(event.body.additionalInfo.clientName).to.equal('VS Code');
+            expect(event.body.additionalInfo.rokuDebugVersion).to.be.a('string');
         });
 
         it('uses "(no stack trace)" in output when error has no stack', () => {
