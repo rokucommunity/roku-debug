@@ -8,9 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.23.2](https://github.com/rokucommunity/roku-debug/compare/0.23.1...v0.23.2) - 2026-04-01
 ### Added
- - Added additionalInfo to ProcessCrashEvent ([#319](https://github.com/rokucommunity/roku-debug/pull/319))
- - added thread detached visulization ([#306](https://github.com/rokucommunity/roku-debug/pull/306))
-### Changed
+ - additionalInfo to ProcessCrashEvent ([#319](https://github.com/rokucommunity/roku-debug/pull/319))
+ - thread detached visulization ([#306](https://github.com/rokucommunity/roku-debug/pull/306))
+### Fixed
  - prevent crash in _syncBreakpoints when client is undefined ([#316](https://github.com/rokucommunity/roku-debug/pull/316))
 
 
