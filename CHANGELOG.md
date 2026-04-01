@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.2](https://github.com/rokucommunity/roku-debug/compare/0.23.1...v0.23.2) - 2026-04-01
+### Added
+ - additionalInfo to ProcessCrashEvent ([#319](https://github.com/rokucommunity/roku-debug/pull/319))
+ - thread detached visulization ([#306](https://github.com/rokucommunity/roku-debug/pull/306))
+### Fixed
+ - prevent crash in _syncBreakpoints when client is undefined ([#316](https://github.com/rokucommunity/roku-debug/pull/316))
+
+
+
 ## [0.23.1](https://github.com/rokucommunity/roku-debug/compare/0.23.0...v0.23.1) - 2026-03-27
 ### Changed
  - Bump brace-expansion from 1.1.12 to 1.1.13 ([#312](https://github.com/rokucommunity/roku-debug/pull/312))
