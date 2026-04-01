@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.3](https://github.com/rokucommunity/roku-debug/compare/0.23.2...v0.23.3) - 2026-04-01
+### Fixed
+ - Respect client line and col numbers for stack frames and compile errors ([#309](https://github.com/rokucommunity/roku-debug/pull/309))
+ - Fix crash when socket errors after a successful connection is established ([#321](https://github.com/rokucommunity/roku-debug/pull/321))
+
+
+
 ## [0.23.2](https://github.com/rokucommunity/roku-debug/compare/0.23.1...v0.23.2) - 2026-04-01
 ### Added
  - additionalInfo to ProcessCrashEvent ([#319](https://github.com/rokucommunity/roku-debug/pull/319))
