@@ -129,7 +129,7 @@ export class RendezvousTracker {
             }
         } catch (e) {
             //if there was an error pinging rendezvous, log the error but don't bring down the app
-            console.error('There was an error fetching rendezvous data', e?.stack);
+            this.logger.error('There was an error fetching rendezvous data', e?.stack);
         }
     }
 
