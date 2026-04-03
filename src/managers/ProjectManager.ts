@@ -366,6 +366,8 @@ export class Project {
             outDir: this.outDir
         });
 
+        await this.fixSourceMapSources();
+
         if (this.enhanceREPLCompletions) {
             //activate our background brighterscript ProgramBuilder now that the staging directory contains the final production project
             this.stagingBscProject.activate({
@@ -433,6 +435,61 @@ export class Project {
                 }
             })
         ]);
+    }
+
+    /**
+     * Find all .map files in the staging directory and update their `sources` paths to be
+     * relative to the staging map file location instead of the original source location.
+     * This ensures source maps work correctly when the stagingDir differs from the original
+     * source directory (e.g. when using sourceDirs or a customized stagingDir).
+     */
+    private async fixSourceMapSources() {
+        // Build a lookup from staging dest path -> original src path
+        const stagingToSrcMap = new Map<string, string>();
+        for (const mapping of this.fileMappings) {
+            stagingToSrcMap.set(mapping.dest, mapping.src);
+        }
+
+        // Find all .map files currently in the staging directory
+        const mapFiles = (await globAsync('**/*.map', { cwd: this.stagingDir, absolute: true }))
+            .map(f => fileUtils.standardizePath(f));
+
+        await Promise.all(mapFiles.map(async (stagingMapPath) => {
+            const originalMapPath = stagingToSrcMap.get(stagingMapPath);
+
+            // If not in fileMappings or location is unchanged, no rewriting needed
+            if (!originalMapPath || originalMapPath === stagingMapPath) {
+                return;
+            }
+
+            try {
+                const content = await fsExtra.readFile(stagingMapPath, 'utf-8');
+                const sourceMap = JSON.parse(content);
+
+                if (!Array.isArray(sourceMap.sources) || sourceMap.sources.length === 0) {
+                    return;
+                }
+
+                // Resolve sources relative to original map's base dir (honouring sourceRoot if present)
+                const originalBaseDir = sourceMap.sourceRoot
+                    ? path.resolve(path.dirname(originalMapPath), sourceMap.sourceRoot as string)
+                    : path.dirname(originalMapPath);
+
+                const stagingMapDir = path.dirname(stagingMapPath);
+
+                sourceMap.sources = sourceMap.sources.map((source: string) => {
+                    const absoluteSourcePath = path.resolve(originalBaseDir, source);
+                    return fileUtils.standardizePath(path.relative(stagingMapDir, absoluteSourcePath));
+                });
+
+                // Clear sourceRoot since sources are now relative to the map file's new location
+                delete sourceMap.sourceRoot;
+
+                await fsExtra.writeFile(stagingMapPath, JSON.stringify(sourceMap));
+            } catch (e) {
+                this.logger.error(`Error updating source map sources for '${stagingMapPath}'`, e);
+            }
+        }));
     }
 
     /**
