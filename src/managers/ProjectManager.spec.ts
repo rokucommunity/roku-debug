@@ -430,13 +430,44 @@ describe('Project', () => {
             expect(unchanged.sources[0]).to.equal('../source/main.bs');
         });
 
-        it('respects sourceRoot when resolving original source paths', async () => {
+        it('rewrites sources correctly when sourceRoot is omitted', async () => {
             const srcDir = s`${tempPath}/srcDir/source`;
             fsExtra.ensureDirSync(srcDir);
             fsExtra.ensureDirSync(stagingDir);
 
             const originalMapPath = s`${srcDir}/main.brs.map`;
-            // sourceRoot is a path relative to the map file; sources are relative to sourceRoot
+            // No sourceRoot — sources are relative to the map file's directory
+            const originalSourceMap = {
+                version: 3,
+                sources: ['../../rootDir/source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['fixSourceMapSources']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../rootDir/source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites sources correctly when sourceRoot is a relative path', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // sourceRoot is relative to the map file's directory; sources are relative to sourceRoot
             const originalSourceMap = {
                 version: 3,
                 sourceRoot: '../rootDir',
@@ -457,6 +488,39 @@ describe('Project', () => {
 
             const updated = fsExtra.readJsonSync(stagingMapPath);
             const absoluteSource = path.resolve(path.dirname(originalMapPath), '../rootDir', 'source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites sources correctly when sourceRoot is an absolute path', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            const absoluteSourceRoot = s`${tempPath}/rootDir`;
+            // sourceRoot is absolute; sources are relative to sourceRoot
+            const originalSourceMap = {
+                version: 3,
+                sourceRoot: absoluteSourceRoot,
+                sources: ['source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['fixSourceMapSources']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(absoluteSourceRoot, 'source/main.bs');
             const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
             expect(updated.sources[0]).to.equal(expectedRelative);
             expect(updated.sourceRoot).to.be.undefined;
