@@ -15,7 +15,8 @@ import { Cache } from 'brighterscript/dist/Cache';
 import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
 import type { ScopeFunction } from '../bsc/BscProject';
 import type { Position } from 'brighterscript';
-import { SourceMap, SourceMapPayload } from 'module';
+import type { SourceMapPayload } from 'module';
+import { SourceMap } from 'module';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
