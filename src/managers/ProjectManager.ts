@@ -15,6 +15,7 @@ import { Cache } from 'brighterscript/dist/Cache';
 import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
 import type { ScopeFunction } from '../bsc/BscProject';
 import type { Position } from 'brighterscript';
+import { SourceMap, SourceMapPayload } from 'module';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -463,21 +464,20 @@ export class Project {
             }
 
             try {
-                const content = await fsExtra.readFile(stagingMapPath, 'utf-8');
-                const sourceMap = JSON.parse(content);
+                const sourceMap = await fsExtra.readJsonSync(stagingMapPath) as SourceMapPayload;
 
                 if (!Array.isArray(sourceMap.sources) || sourceMap.sources.length === 0) {
                     return;
                 }
 
-                // Resolve sources relative to original map's base dir (honouring sourceRoot if present)
-                const originalBaseDir = sourceMap.sourceRoot
-                    ? path.resolve(path.dirname(originalMapPath), sourceMap.sourceRoot as string)
-                    : path.dirname(originalMapPath);
+                // Resolve sources relative to original map's base dir (honoring sourceRoot if present)
+                const originalBaseDir = path.resolve(
+                    sourceMap.sourceRoot ?? path.dirname(originalMapPath)
+                );
 
                 const stagingMapDir = path.dirname(stagingMapPath);
 
-                sourceMap.sources = sourceMap.sources.map((source: string) => {
+                sourceMap.sources = sourceMap.sources.map((source) => {
                     const absoluteSourcePath = path.resolve(originalBaseDir, source);
                     return fileUtils.standardizePath(path.relative(stagingMapDir, absoluteSourcePath));
                 });
