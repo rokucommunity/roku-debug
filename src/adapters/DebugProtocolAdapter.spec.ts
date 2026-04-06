@@ -27,6 +27,7 @@ import { RemoveBreakpointsRequest } from '../debugProtocol/events/requests/Remov
 import type { AfterSendRequestEvent } from '../debugProtocol/client/DebugProtocolClientPlugin';
 import { GenericV3Response } from '../debugProtocol/events/responses/GenericV3Response';
 import { RendezvousTracker } from '../RendezvousTracker';
+import { Socket } from 'net';
 const sinon = createSandbox();
 
 let cwd = s`${process.cwd()}`;
@@ -128,6 +129,7 @@ describe('DebugProtocolAdapter', function() {
                     lineNumber: 12,
                     functionName: 'main',
                     isPrimary: true,
+                    isDetached: false,
                     codeSnippet: '',
                     stopReason: StopReason.Break,
                     stopReasonDetail: 'because'
@@ -464,6 +466,16 @@ describe('DebugProtocolAdapter', function() {
             expect(reqs).not.to.include(AddBreakpointsRequest.name);
             expect(reqs).to.include(AddConditionalBreakpointsRequest.name);
         });
+
+        it('does not crash when client is undefined', async () => {
+            // Do NOT call initialize() — this leaves adapter['client'] as undefined,
+            // simulating a breakpoint being set before the debug protocol client connects.
+            // isAtDebuggerPrompt is a getter that returns false when client is undefined,
+            // so no stubbing needed.
+
+            // Should not throw
+            await adapter._syncBreakpoints();
+        });
     });
 
     describe('getVariable', () => {
@@ -623,6 +635,32 @@ describe('DebugProtocolAdapter', function() {
             undefined
         );
         expect(container.children[0].evaluateName).to.eql('m[0]');
+    });
+
+    describe('processTelnetOutput', () => {
+        it('does not crash and triggers shutdown when the socket errors after the connection is established', async () => {
+            // Stub the settle method so processTelnetOutput completes without a real connection
+            sinon.stub(adapter as any, 'settleCompileClient').resolves('');
+            // Stub Socket.prototype.connect so it doesn't attempt a real connection
+            sinon.stub(Socket.prototype, 'connect').callsFake(function(this: Socket) {
+                return this;
+            });
+
+            await adapter.processTelnetOutput();
+
+            // The deferred is now resolved. Emitting an error on the still-live socket
+            // (simulating ECONNRESET on device disconnect) must not throw.
+            expect(() => {
+                adapter['compileClient'].emit('error', new Error('read ECONNRESET'));
+            }).not.to.throw();
+
+            // Node.js always fires 'close' after 'error' on a socket. Verify that the
+            // close handler resolves compileClientClosed, which is the signal used by
+            // destroyCompileClient() to know teardown is complete.
+            expect(adapter['compileClientClosed'].isResolved).to.be.false;
+            adapter['compileClient'].emit('close');
+            expect(adapter['compileClientClosed'].isResolved).to.be.true;
+        });
     });
 
 });
