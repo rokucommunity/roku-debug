@@ -472,7 +472,9 @@ export class Project {
 
                 // Resolve sources relative to original map's base dir (honoring sourceRoot if present)
                 const originalBaseDir = path.resolve(
-                    sourceMap.sourceRoot ?? path.dirname(originalMapPath)
+                    //sourceRoot should resolve relative to originalMapDir, or keep it as-is if it's an absolute path
+                    path.dirname(originalMapPath),
+                    sourceMap.sourceRoot ?? ''
                 );
 
                 const stagingMapDir = path.dirname(stagingMapPath);
