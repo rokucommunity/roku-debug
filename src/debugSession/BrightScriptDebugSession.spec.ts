@@ -2738,5 +2738,109 @@ describe('BrightScriptDebugSession', () => {
             // should not throw even when getSourceLocation returns undefined
             await session['setupSuspendedState']();
         });
+
+        it('does not crash when getStackTrace returns empty and failedDeletions is non-empty', async () => {
+            // Thread has a valid filePath from getThreads() but getStackTrace returns empty.
+            // The original filePath must be preserved (not clobbered with undefined) so the
+            // failedDeletions loop can safely call getSourceLocation.
+            const getSourceLocationStub = sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: false,
+                isDetached: false,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 10,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/source/main.brs`,
+                line: 10
+            } as any);
+
+            // should not throw — filePath from getThreads() is preserved even when stack trace is empty
+            await session['setupSuspendedState']();
+
+            // getSourceLocation is called with the original filePath, not undefined
+            expect(getSourceLocationStub.args[0][0]).to.equal('pkg:/source/main.brs');
+        });
+
+        it('calls getStackTrace for all threads including those already flagged isDetached by the device', async () => {
+            // Even threads pre-flagged isDetached must go through getStackTrace so the adapter cache
+            // is populated — otherwise stackTraceRequest would make a second round-trip and might
+            // not show the [detached] label if the device returns something unexpected.
+            const getStackTraceStub = sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([
+                { isSelected: true, isDetached: true, filePath: 'pkg:/source/main.brs', lineNumber: 1, lineContents: '', threadId: 0 },
+                { isSelected: false, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 2, lineContents: '', threadId: 1 }
+            ]);
+
+            await session['setupSuspendedState']();
+
+            expect(getStackTraceStub.callCount).to.equal(2);
+        });
+
+        it('returns all threads including detached ones so VS Code can display them', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([
+                { isSelected: true, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 1, lineContents: '', threadId: 0 },
+                { isSelected: false, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 2, lineContents: '', threadId: 1 }
+            ]);
+            sinon.stub(rokuAdapter, 'getStackTrace')
+                .onFirstCall().resolves([{ filePath: 'pkg:/source/main.brs', lineNumber: 1, functionIdentifier: 'main', frameId: 0 }])
+                .onSecondCall().resolves([]);
+
+            const threads = await session['setupSuspendedState']();
+
+            expect(threads).to.have.length(2);
+        });
+
+        it('does not clobber thread.filePath when line correction stack trace returns no frames', async () => {
+            const threads = [{
+                isSelected: true,
+                isDetached: false,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 10,
+                lineContents: '',
+                threadId: 0
+            }];
+            sinon.stub(rokuAdapter, 'getThreads').resolves(threads);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            await session['setupSuspendedState']();
+
+            // original filePath must be preserved — never overwritten with undefined
+            expect(threads[0].filePath).to.equal('pkg:/source/main.brs');
+        });
+    });
+
+    describe('stackTraceRequest', () => {
+        beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+            rokuAdapter.isAtDebuggerPrompt = true;
+        });
+
+        async function getStackTraceResponse(threadId: number) {
+            const response = { body: undefined } as DebugProtocol.StackTraceResponse;
+            await session['stackTraceRequest'](response, { threadId: threadId, startFrame: 0, levels: 20 });
+            return response;
+        }
+
+        it('returns a label frame when getStackTrace returns empty (detached thread)', async () => {
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            const response = await getStackTraceResponse(0);
+
+            expect(response.body.stackFrames).to.have.length(1);
+            expect(response.body.stackFrames[0].presentationHint).to.equal('label');
+            expect(response.body.stackFrames[0].name).to.equal('[unavailable]');
+        });
+
+        it('label frame for detached thread has no source', async () => {
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            const response = await getStackTraceResponse(0);
+
+            expect(response.body.stackFrames[0].source).to.be.undefined;
+        });
     });
 });
