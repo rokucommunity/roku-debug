@@ -159,6 +159,35 @@ describe('DebugProtocolAdapter', function() {
                 await adapter.getStackTrace(-1)
             ).to.eql([]);
         });
+
+        it('returns empty array when device responds with THREAD_DETACHED', async () => {
+            await initialize();
+            // clear the cache so a new request is sent for thread 0
+            delete adapter['cache']['stack trace for thread 0'];
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    requestId: undefined,
+                    errorCode: ErrorCode.THREAD_DETACHED
+                })
+            );
+            expect(
+                await adapter.getStackTrace(0)
+            ).to.eql([]);
+        });
+
+        it('returns empty array for any non-OK error code', async () => {
+            await initialize();
+            delete adapter['cache']['stack trace for thread 0'];
+            plugin.pushResponse(
+                GenericV3Response.fromJson({
+                    requestId: undefined,
+                    errorCode: ErrorCode.OTHER_ERR
+                })
+            );
+            expect(
+                await adapter.getStackTrace(0)
+            ).to.eql([]);
+        });
     });
 
     describe('syncBreakpoints', () => {
