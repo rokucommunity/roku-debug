@@ -1202,6 +1202,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     //wait for this complib to finish being staged and zipped
                     await compLibPromises[i];
 
+                    await compLibProject.fixMainProjectLibraryDependency(this.projectManager.mainProject.stagingDir);
+                    await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
+
                     if (componentLibraries[i].packageTask) {
                         await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
                     }
