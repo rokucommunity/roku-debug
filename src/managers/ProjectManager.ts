@@ -3,9 +3,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import { rokuDeploy, RokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
-import * as glob from 'glob';
-import { promisify } from 'util';
-const globAsync = promisify(glob);
+import * as fastGlob from 'fast-glob';
 import type { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
@@ -298,10 +296,14 @@ export interface AddProjectParams {
 
 export class Project {
     constructor(params: AddProjectParams) {
-        assert(params?.rootDir, 'rootDir is required');
+        if (!params?.rootDir) {
+            throw new Error('rootDir is required');
+        }
         this.rootDir = fileUtils.standardizePath(params.rootDir);
 
-        assert(params?.outDir, 'outDir is required');
+        if (!params?.outDir) {
+            throw new Error('outDir is required');
+        }
         this.outDir = fileUtils.standardizePath(params.outDir);
         this.stagingDir = params.stagingDir ?? rokuDeploy.getOptions(this).stagingDir;
         this.bsConst = params.bsConst;
@@ -368,7 +370,7 @@ export class Project {
             outDir: this.outDir
         });
 
-        await this.fixSourceMapSources();
+        await this.preprocessStagingFiles();
 
         if (this.enhanceREPLCompletions) {
             //activate our background brighterscript ProgramBuilder now that the staging directory contains the final production project
@@ -440,59 +442,135 @@ export class Project {
     }
 
     /**
-     * Find all .map files in the staging directory and update their `sources` paths to be
-     * relative to the staging map file location instead of the original source location.
-     * This ensures source maps work correctly when the stagingDir differs from the original
-     * source directory (e.g. when using sourceDirs or a customized stagingDir).
+     * Walk every staged file once and apply all necessary rewrites for files that were moved
+     * from a different source location:
+     *  - .map files: rewrite `sources` paths to be relative to the new staging location
+     *  - .brs/.xml files: rewrite the sourceMappingURL comment path to point to the staged map
      */
-    private async fixSourceMapSources() {
-        // Build a lookup from staging dest path -> original src path
-        const stagingToSrcMap = new Map<string, string>();
+    private async preprocessStagingFiles() {
+        const srcToDestMap = new Map<string, string>();
+        const destToSrcMap = new Map<string, string>();
         for (const mapping of this.fileMappings) {
-            stagingToSrcMap.set(mapping.dest, mapping.src);
+            srcToDestMap.set(mapping.src, mapping.dest);
+            destToSrcMap.set(mapping.dest, mapping.src);
         }
 
-        // Find all .map files currently in the staging directory
-        const mapFiles = (await globAsync('**/*.map', { cwd: this.stagingDir, absolute: true }))
-            .map(f => fileUtils.standardizePath(f));
+        //walk over every file
+        const stagedFiles: string[] = (await fastGlob('**/*', { cwd: this.stagingDir, absolute: true, onlyFiles: true }))
+            .map((f: string) => fileUtils.standardizePath(f));
 
-        await Promise.all(mapFiles.map(async (stagingMapPath) => {
-            const originalMapPath = stagingToSrcMap.get(stagingMapPath);
+        await Promise.all(stagedFiles.map(async (stagingFilePath: string) => {
+            const originalSrcPath = destToSrcMap.get(stagingFilePath);
 
-            // If not in fileMappings or location is unchanged, no rewriting needed
-            if (!originalMapPath || originalMapPath === stagingMapPath) {
+            // Skip files not in fileMappings (e.g. generated after staging)
+            if (!originalSrcPath) {
                 return;
             }
 
-            try {
-                const sourceMap = await fsExtra.readJsonSync(stagingMapPath) as SourceMapPayload;
+            const ext = path.extname(stagingFilePath).toLowerCase();
 
-                if (!Array.isArray(sourceMap.sources) || sourceMap.sources.length === 0) {
-                    return;
-                }
-
-                // Resolve sources relative to original map's base dir (honoring sourceRoot if present)
-                const originalBaseDir = path.resolve(
-                    //sourceRoot should resolve relative to originalMapDir, or keep it as-is if it's an absolute path
-                    path.dirname(originalMapPath),
-                    sourceMap.sourceRoot ?? ''
-                );
-
-                const stagingMapDir = path.dirname(stagingMapPath);
-
-                sourceMap.sources = sourceMap.sources.map((source) => {
-                    const absoluteSourcePath = path.resolve(originalBaseDir, source);
-                    return fileUtils.standardizePath(path.relative(stagingMapDir, absoluteSourcePath));
-                });
-
-                // Clear sourceRoot since sources are now relative to the map file's new location
-                delete sourceMap.sourceRoot;
-
-                await fsExtra.writeFile(stagingMapPath, JSON.stringify(sourceMap));
-            } catch (e) {
-                this.logger.error(`Error updating source map sources for '${stagingMapPath}'`, e);
+            if (ext === '.map') {
+                await this.fixSourceMapSources(stagingFilePath, originalSrcPath);
+            } else if (ext === '.brs' || ext === '.xml') {
+                await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap);
             }
         }));
+    }
+
+    /**
+     * Rewrite the `sources` paths in a staged .map file so they are relative to the map's
+     * new staging location rather than the original source directory.
+     */
+    private async fixSourceMapSources(stagingMapPath: string, originalMapPath: string) {
+        try {
+            const sourceMap = await fsExtra.readJsonSync(stagingMapPath) as SourceMapPayload;
+            if (!Array.isArray(sourceMap.sources) || sourceMap.sources.length === 0) {
+                return;
+            }
+            // Resolve sources relative to original map's base dir (honoring sourceRoot if present)
+            const originalBaseDir = path.resolve(
+                //sourceRoot should resolve relative to originalMapDir, or keep as-is when absolute path
+                path.dirname(originalMapPath),
+                sourceMap.sourceRoot ?? ''
+            );
+
+            const stagingMapDir = path.dirname(stagingMapPath);
+
+            sourceMap.sources = sourceMap.sources.map((source) => {
+                const absoluteSourcePath = path.resolve(originalBaseDir, source);
+                return fileUtils.standardizePath(path.relative(stagingMapDir, absoluteSourcePath));
+            });
+
+            // Clear sourceRoot since sources are now relative to the map file's new location
+            delete sourceMap.sourceRoot;
+
+            await fsExtra.writeFile(stagingMapPath, JSON.stringify(sourceMap));
+        } catch (e) {
+            this.logger.error(`Error updating source map sources for '${stagingMapPath}'`, e);
+        }
+    }
+
+    /**
+     * Rewrite the sourceMappingURL comment in a staged .brs or .xml file so the path points
+     * to the map file's new staging location.
+     *
+     * BRS format:  '//# sourceMappingURL=<path>
+     * XML format:  <!--//# sourceMappingURL=<path> -->
+     */
+    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
+        try {
+            let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
+            const commentMatch = /('|<!--)\/\/# sourceMappingURL=([^\s]+?)(\s*-->)?$/m.exec(contents);
+            const ext = path.extname(originalSrcPath).toLowerCase();
+            const isXml = ext === '.xml';
+
+            let absoluteMapPath: string;
+            let originalCommentPath: string | undefined;
+
+            if (commentMatch) {
+                originalCommentPath = commentMatch[2];
+                absoluteMapPath = fileUtils.standardizePath(
+                    path.resolve(path.dirname(originalSrcPath), originalCommentPath)
+                );
+            } else {
+                // No comment — check if a sidecar map exists next to the original source file
+                const sidecarMapPath = fileUtils.standardizePath(originalSrcPath + '.map');
+                if (!await fsExtra.pathExists(sidecarMapPath)) {
+                    return;
+                }
+                // If the sidecar was also staged, the debugger will find it automatically — no comment needed
+                if (srcToDestMap.has(sidecarMapPath)) {
+                    return;
+                }
+                absoluteMapPath = sidecarMapPath;
+            }
+
+            // If the map was also staged, point at its new location; otherwise point directly
+            // at the absolute map path from the original source tree (e.g. map outside rootDir)
+            const mapTarget = srcToDestMap.get(absoluteMapPath) ?? absoluteMapPath;
+            const newRelativePath = fileUtils.standardizePath(
+                path.relative(path.dirname(stagingFilePath), mapTarget)
+            );
+            if (newRelativePath === originalCommentPath) {
+                return;
+            }
+
+            if (commentMatch) {
+                contents = contents.replace(
+                    /('|<!--)\/\/# sourceMappingURL=[^\s]+?(\s*-->)?$/m,
+                    (_, open, close) => `${open}//# sourceMappingURL=${newRelativePath}${close ?? ''}`
+                );
+            } else {
+                // Inject the comment at the end of the file
+                const comment = isXml
+                    ? `\n<!--//# sourceMappingURL=${newRelativePath} -->`
+                    : `\n'//# sourceMappingURL=${newRelativePath}`;
+                contents += comment;
+            }
+            await fsExtra.writeFile(stagingFilePath, contents, 'utf8');
+        } catch (e) {
+            this.logger.error(`Error updating sourceMappingURL comment in '${stagingFilePath}'`, e);
+        }
     }
 
     /**
@@ -601,10 +679,10 @@ export class Project {
             return;
         }
         try {
-            let files = await globAsync(`${this.rdbFilesBasePath}/**/*`, {
+            let files: string[] = await fastGlob(`${this.rdbFilesBasePath}/**/*`, {
                 cwd: './',
                 absolute: false,
-                follow: true
+                followSymbolicLinks: true
             });
             for (let filePathAbsolute of files) {
                 const promises = [];
