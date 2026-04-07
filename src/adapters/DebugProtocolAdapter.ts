@@ -586,6 +586,12 @@ export class DebugProtocolAdapter {
             let thread = await this.getThreadByThreadId(threadIndex);
             let frames: StackFrame[] = [];
             let stackTraceData = await this.client.getStackTrace(threadIndex);
+
+            // Non-OK error code (e.g. THREAD_DETACHED) means we can not provide the stack trace
+            if (stackTraceData?.data?.errorCode !== undefined && stackTraceData.data.errorCode !== ErrorCode.OK) {
+                this.logger.warn(`getStackTrace for thread ${threadIndex} failed with errorCode ${stackTraceData.data.errorCode}`);
+                return frames;
+            }
             for (let i = 0; i < (stackTraceData?.data?.entries?.length ?? 0); i++) {
                 let frameData = stackTraceData.data.entries[i];
                 let stackFrame: StackFrame = {
@@ -601,7 +607,7 @@ export class DebugProtocolAdapter {
                 this.stackFramesCache[stackFrame.frameId] = stackFrame;
                 frames.push(stackFrame);
             }
-            //if the first frame is missing any data, suppliment with thread information
+            //if the first frame is missing any data, supplement with thread information
             if (frames[0]) {
                 frames[0].filePath ??= thread.filePath;
                 frames[0].lineNumber ??= thread.lineNumber;
