@@ -778,7 +778,9 @@ export class ComponentLibraryProject extends Project {
             from: /Library\s+"(.+)\.brs"/gi,
             to: (match: string) => {
                 const pathMatch = /"([^"]+)"/.exec(match);
-                if (!pathMatch) return match;
+                if (!pathMatch) {
+                    return match;
+                }
 
                 const internalPath = pathMatch[1];
                 const fileNameWithoutExtension = internalPath.replace(/\.brs$/i, '');
