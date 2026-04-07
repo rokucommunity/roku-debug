@@ -771,22 +771,23 @@ describe('Project', () => {
              * When the map WAS staged (at a different relative location), the comment
              * should point at the staged copy, not the original.
              */
-            it('rewrites the comment to point at the staged map when the map was also staged', async () => {
-                const srcBrsDir = s`${tempPath}/src/components/views`;
-                const srcMapDir = s`${tempPath}/src/components/maps`;
-                const stagingSourceDir = s`${stagingDir}/source`;
+            it('rewrites the comment to point at the staged map when the map was also staged (.brs)', async () => {
+                // Source layout:
+                //   src/components/views/main.brs  → comment: '../maps/main.brs.map'
+                //   src/components/maps/main.brs.map
+                // Staging layout (both siblings in source/):
+                //   staging/source/main.brs        → comment should become: 'main.brs.map'
+                //   staging/source/main.brs.map
+                const originalBrsPath = s`${tempPath}/src/components/views/main.brs`;
+                const originalMapPath = s`${tempPath}/src/components/maps/main.brs.map`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
 
-                fsExtra.ensureDirSync(srcBrsDir);
-                fsExtra.ensureDirSync(srcMapDir);
-                fsExtra.ensureDirSync(stagingSourceDir);
+                fsExtra.ensureDirSync(path.dirname(originalBrsPath));
+                fsExtra.ensureDirSync(path.dirname(originalMapPath));
+                fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
 
-                const originalBrsPath = s`${srcBrsDir}/main.brs`;
-                const originalMapPath = s`${srcMapDir}/main.brs.map`;
-                const stagingBrsPath = s`${stagingSourceDir}/main.brs`;
-                const stagingMapPath = s`${stagingSourceDir}/main.brs.map`;
-
-                const originalRelative = s`${path.relative(srcBrsDir, originalMapPath)}`;
-                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=${originalRelative}`);
+                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=../maps/main.brs.map`);
                 fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
 
                 fsExtra.copySync(originalBrsPath, stagingBrsPath);
@@ -799,9 +800,7 @@ describe('Project', () => {
 
                 await project['preprocessStagingFiles']();
 
-                const updatedContents = fsExtra.readFileSync(stagingBrsPath, 'utf8');
-                // Both were staged as siblings, so comment should just be the filename
-                expect(updatedContents).to.contain(`'//# sourceMappingURL=main.brs.map`);
+                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(`sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`);
             });
 
             it('does not rewrite the comment when the relative path is already correct after staging', async () => {
@@ -836,21 +835,22 @@ describe('Project', () => {
             });
 
             it('rewrites the XML format comment (<!--//# sourceMappingURL=... -->)', async () => {
-                const srcXmlDir = s`${tempPath}/src/components/views`;
-                const srcMapDir = s`${tempPath}/src/components/maps`;
-                const stagingSourceDir = s`${stagingDir}/source`;
+                // Source layout:
+                //   src/components/views/MainScene.xml  → comment: '../maps/MainScene.xml.map'
+                //   src/components/maps/MainScene.xml.map
+                // Staging layout (both siblings in source/):
+                //   staging/source/MainScene.xml        → comment should become: 'MainScene.xml.map'
+                //   staging/source/MainScene.xml.map
+                const originalXmlPath = s`${tempPath}/src/components/views/MainScene.xml`;
+                const originalMapPath = s`${tempPath}/src/components/maps/MainScene.xml.map`;
+                const stagingXmlPath = s`${stagingDir}/source/MainScene.xml`;
+                const stagingMapPath = s`${stagingDir}/source/MainScene.xml.map`;
 
-                fsExtra.ensureDirSync(srcXmlDir);
-                fsExtra.ensureDirSync(srcMapDir);
-                fsExtra.ensureDirSync(stagingSourceDir);
+                fsExtra.ensureDirSync(path.dirname(originalXmlPath));
+                fsExtra.ensureDirSync(path.dirname(originalMapPath));
+                fsExtra.ensureDirSync(path.dirname(stagingXmlPath));
 
-                const originalXmlPath = s`${srcXmlDir}/MainScene.xml`;
-                const originalMapPath = s`${srcMapDir}/MainScene.xml.map`;
-                const stagingXmlPath = s`${stagingSourceDir}/MainScene.xml`;
-                const stagingMapPath = s`${stagingSourceDir}/MainScene.xml.map`;
-
-                const originalRelative = s`${path.relative(srcXmlDir, originalMapPath)}`;
-                fsExtra.writeFileSync(originalXmlPath, `<component name="MainScene">\n</component>\n<!--//# sourceMappingURL=${originalRelative} -->`);
+                fsExtra.writeFileSync(originalXmlPath, `<component name="MainScene">\n</component>\n<!--//# sourceMappingURL=../maps/MainScene.xml.map -->`);
                 fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
 
                 fsExtra.copySync(originalXmlPath, stagingXmlPath);
@@ -863,8 +863,7 @@ describe('Project', () => {
 
                 await project['preprocessStagingFiles']();
 
-                const updatedContents = fsExtra.readFileSync(stagingXmlPath, 'utf8');
-                expect(updatedContents).to.contain(`<!--//# sourceMappingURL=MainScene.xml.map -->`);
+                expect(fsExtra.readFileSync(stagingXmlPath, 'utf8')).to.equal(`<component name="MainScene">\n</component>\n<!--//# sourceMappingURL=MainScene.xml.map -->`);
             });
 
             it('injects a comment when there is none but a sidecar .map exists next to the original source', async () => {
@@ -930,6 +929,53 @@ describe('Project', () => {
                 await project['preprocessStagingFiles']();
 
                 // No comment should have been injected — the map is already a sibling in staging
+                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
+            });
+
+            it('rewrites the comment in an arbitrary text-based file format', async () => {
+                // Source layout:
+                //   src/components/views/main.md  → comment: '../maps/main.md.map'
+                //   src/components/maps/main.md.map
+                // Staging layout (both siblings in source/):
+                //   staging/source/main.md        → comment should become: 'main.md.map'
+                //   staging/source/main.md.map
+                const originalFilePath = s`${tempPath}/src/components/views/main.md`;
+                const originalMapPath = s`${tempPath}/src/components/maps/main.md.map`;
+                const stagingFilePath = s`${stagingDir}/source/main.md`;
+                const stagingMapPath = s`${stagingDir}/source/main.md.map`;
+
+                fsExtra.outputFileSync(originalFilePath, `# hello\n//# sourceMappingURL=../maps/main.md.map`);
+                fsExtra.outputJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+
+                fsExtra.copySync(originalFilePath, stagingFilePath);
+                fsExtra.copySync(originalMapPath, stagingMapPath);
+
+                project.fileMappings = [
+                    { src: originalFilePath, dest: stagingFilePath },
+                    { src: originalMapPath, dest: stagingMapPath }
+                ];
+
+                await project['preprocessStagingFiles']();
+
+                expect(fsExtra.readFileSync(stagingFilePath, 'utf8')).to.equal(`# hello\n//# sourceMappingURL=main.md.map`);
+            });
+
+            it('does not rewrite the comment when the path is absolute', async () => {
+                const originalBrsPath = s`${tempPath}/src/source/main.brs`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+
+                fsExtra.ensureDirSync(path.dirname(originalBrsPath));
+                fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+
+                const absoluteMapPath = s`${tempPath}/src/source/main.brs.map`;
+                const originalContents = `sub main()\nend sub\n'//# sourceMappingURL=${absoluteMapPath}`;
+                fsExtra.writeFileSync(originalBrsPath, originalContents);
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+
+                project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
+
+                await project['preprocessStagingFiles']();
+
                 expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
             });
 

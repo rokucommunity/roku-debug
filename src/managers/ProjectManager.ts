@@ -471,7 +471,7 @@ export class Project {
 
             if (ext === '.map') {
                 await this.fixSourceMapSources(stagingFilePath, originalSrcPath);
-            } else if (ext === '.brs' || ext === '.xml') {
+            } else {
                 await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap);
             }
         }));
@@ -520,9 +520,7 @@ export class Project {
     private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
         try {
             let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
-            const commentMatch = /('|<!--)\/\/# sourceMappingURL=([^\s]+?)(\s*-->)?$/m.exec(contents);
-            const ext = path.extname(originalSrcPath).toLowerCase();
-            const isXml = ext === '.xml';
+            const commentMatch = /('|<!--)?\/\/# sourceMappingURL=([^\s]+?)(\s*-->)?$/m.exec(contents);
 
             let absoluteMapPath: string;
             let originalCommentPath: string | undefined;
@@ -557,14 +555,20 @@ export class Project {
 
             if (commentMatch) {
                 contents = contents.replace(
-                    /('|<!--)\/\/# sourceMappingURL=[^\s]+?(\s*-->)?$/m,
-                    (_, open, close) => `${open}//# sourceMappingURL=${newRelativePath}${close ?? ''}`
+                    /('|<!--)?\/\/# sourceMappingURL=[^\s]+?(\s*-->)?$/m,
+                    (_, open, close) => `${open ?? ''}//# sourceMappingURL=${newRelativePath}${close ?? ''}`
                 );
             } else {
                 // Inject the comment at the end of the file
-                const comment = isXml
-                    ? `\n<!--//# sourceMappingURL=${newRelativePath} -->`
-                    : `\n'//# sourceMappingURL=${newRelativePath}`;
+                const ext = path.extname(stagingFilePath).toLowerCase();
+                let comment: string;
+                if (ext === '.xml') {
+                    comment = `\n<!--//# sourceMappingURL=${newRelativePath} -->`;
+                } else if (ext === '.brs') {
+                    comment = `\n'//# sourceMappingURL=${newRelativePath}`;
+                } else {
+                    comment = `\n//# sourceMappingURL=${newRelativePath}`;
+                }
                 contents += comment;
             }
             await fsExtra.writeFile(stagingFilePath, contents, 'utf8');
