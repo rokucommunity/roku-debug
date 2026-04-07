@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.4](https://github.com/rokucommunity/roku-debug/compare/0.23.3...v0.23.4) - 2026-04-07
+### Added
+ - Resolve relative source maps and honor sourceRoot ([#307](https://github.com/rokucommunity/roku-debug/pull/307))
+### Fixed
+ - upgrade to [roku-deploy@3.16.4](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3164---2026-04-07). Notable changes since 3.16.3:
+     - Fix `zipFolder` bug that wasn't properly handling absolute stagingDir path ([#245](https://github.com/rokucommunity/roku-deploy/pull/245))
+ - Handle THREAD_DETACHED gracefully and show [unavailable] for inaccessible threads ([#324](https://github.com/rokucommunity/roku-debug/pull/324))
+ - Sourcemap staging bugs when maps are from different depth than staging dir ([#308](https://github.com/rokucommunity/roku-debug/pull/308))
+
+
+
 ## [0.23.3](https://github.com/rokucommunity/roku-debug/compare/0.23.2...v0.23.3) - 2026-04-01
 ### Fixed
  - Respect client line and col numbers for stack frames and compile errors ([#309](https://github.com/rokucommunity/roku-debug/pull/309))
