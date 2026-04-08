@@ -9,6 +9,7 @@ import {
     LoggingDebugSession,
     Logger as DapLogger,
     logger as dapLogger,
+    CapabilitiesEvent,
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
@@ -365,37 +366,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // make VS Code to use 'evaluate' when hovering over source
         response.body.supportsEvaluateForHovers = true;
 
-        // make VS Code to show a 'step back' button
-        response.body.supportsStepBack = false;
-
         // This debug adapter supports conditional breakpoints
         response.body.supportsConditionalBreakpoints = true;
 
-        response.body.supportsExceptionFilterOptions = true;
-        response.body.supportsExceptionOptions = true;
-
-        //the list of exception breakpoints (we have to send them all the time, even if the device doesn't support them)
-        response.body.exceptionBreakpointFilters = [{
-            filter: 'caught',
-            supportsCondition: true,
-            conditionDescription: '__brs_err__.rethrown = true',
-            label: 'Caught Exceptions',
-            description: `Breaks on all errors, even if they're caught later.`,
-            default: false
-        }, {
-            filter: 'uncaught',
-            supportsCondition: true,
-            conditionDescription: '__brs_err__.rethrown = true',
-            label: 'Uncaught Exceptions',
-            description: 'Breaks only on errors that are not handled.',
-            default: true
-        }];
-
         // This debug adapter supports breakpoints that break execution after a specified number of hits
         response.body.supportsHitConditionalBreakpoints = true;
-
-        // This debug adapter supports log points by interpreting the 'logMessage' attribute of the SourceBreakpoint
-        response.body.supportsLogPoints = true;
 
         response.body.supportsCompletionsRequest = true;
         response.body.completionTriggerCharacters = ['.', '(', '{', ',', ' '];
@@ -410,11 +385,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 )
             );
         });
-
-        // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
-        // we request them early by sending an 'initializeRequest' to the frontend.
-        // The frontend will end the configuration sequence by calling 'configurationDone' request.
-        this.sendEvent(new InitializedEvent());
 
         this.logger.log('initializeRequest finished');
     }
@@ -598,7 +568,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
 
-        let error: Error;
         this.logger.log('[launchRequest] Packaging and deploying to roku');
         try {
             const packageEnd = this.logger.timeStart('log', 'Packaging');
@@ -630,6 +599,58 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.connectRokuAdapter();
             connectAdapterEnd();
 
+            // some capabilities depend on adapter type and are sent now that we know which adapter is in use
+            const supportsExceptionBreakpoints = this.rokuAdapter.supportsExceptionBreakpoints;
+            this.sendEvent(new CapabilitiesEvent({
+                // log points are only supported by the telnet adapter
+                supportsLogPoints: !this.enableDebugProtocol,
+                supportsExceptionFilterOptions: supportsExceptionBreakpoints,
+                supportsExceptionOptions: supportsExceptionBreakpoints,
+                exceptionBreakpointFilters: supportsExceptionBreakpoints ? [{
+                    filter: 'caught',
+                    supportsCondition: true,
+                    conditionDescription: '__brs_err__.rethrown = true',
+                    label: 'Caught Exceptions',
+                    description: `Breaks on all errors, even if they're caught later.`,
+                    default: false
+                }, {
+                    filter: 'uncaught',
+                    supportsCondition: true,
+                    conditionDescription: '__brs_err__.rethrown = true',
+                    label: 'Uncaught Exceptions',
+                    description: 'Breaks only on errors that are not handled.',
+                    default: true
+                }] : []
+            }));
+
+            // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
+            // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
+            this.sendEvent(new InitializedEvent());
+
+        } catch (e) {
+            //if the message is anything other than compile errors, we want to display the error
+            if (!(e instanceof CompileError)) {
+                util.log('Encountered an issue during the launch process');
+                util.log((e as Error)?.stack);
+
+                //send any compile errors to the client
+                await this.rokuAdapter?.sendErrors();
+
+                const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
+                await this.shutdown(message as string, true);
+            } else {
+                this.sendLaunchProgress('end', 'Aborted (compile error)');
+            }
+        }
+        logEnd();
+    }
+
+    protected async configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
+        this.logger.log('configurationDoneRequest');
+        super.configurationDoneRequest(response, args);
+
+        let error: Error;
+        try {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
@@ -693,7 +714,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     await this.shutdown();
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
-                    this.logger.log('[launchRequest]', message);
+                    this.logger.log('[configurationDoneRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
                     this.rokuAdapter.once('connected').then(async () => {
                         await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpoints);
@@ -764,7 +785,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 this.sendLaunchProgress('end', 'Aborted (compile error)');
             }
         }
-        logEnd();
     }
 
     /**
@@ -1403,10 +1423,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             this.sendResponse = old;
         };
         super.sourceRequest(response, args);
-    }
-
-    protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
-        this.logger.log('configurationDoneRequest');
     }
 
     /**
