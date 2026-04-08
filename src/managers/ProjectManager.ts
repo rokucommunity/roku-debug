@@ -593,17 +593,16 @@ export class Project {
                 const leadingWhitespaceAndCommentChars = commentMatch[1];
                 const newComment = `${leadingWhitespaceAndCommentChars.trimEnd()}//# sourceMappingURL=${newRelativePath}`;
                 contents = contents.replace(commentMatch[0], newComment);
-                return;
-            }
-
-            //At this point we HAVE a sourcemap and no comment. The sourcemap is NOT located in staging,
-            //so we need to write a sourcemap comment into the source file to reference the original map location
-            if (ext === '.brs') {
-                contents += `${newline}'//# sourceMappingURL=${newRelativePath}`;
-            } else if (ext === '.xml') {
-                contents += `${newline}<!--//# sourceMappingURL=${newRelativePath} -->`;
             } else {
-                contents += `${newline}//# sourceMappingURL=${newRelativePath}`;
+                //At this point we HAVE a sourcemap and no comment. The sourcemap is NOT located in staging,
+                //so we need to write a sourcemap comment into the source file to reference the original map location
+                if (ext === '.brs') {
+                    contents += `${newline}'//# sourceMappingURL=${newRelativePath}`;
+                } else if (ext === '.xml') {
+                    contents += `${newline}<!--//# sourceMappingURL=${newRelativePath} -->`;
+                } else {
+                    contents += `${newline}//# sourceMappingURL=${newRelativePath}`;
+                }
             }
             await fsExtra.writeFile(stagingFilePath, contents, 'utf8');
         } catch (e) {
