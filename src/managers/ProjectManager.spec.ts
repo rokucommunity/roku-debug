@@ -747,11 +747,11 @@ describe('Project', () => {
             }
 
             /**
-             * Stage a source file with NO sourceMappingURL comment but with a sidecar .map
+             * Stage a source file with NO sourceMappingURL comment but with a colocated .map
              * next to the original, then run preprocessStagingFiles and return the staged
              * file contents.
              */
-            async function stageFileWithSidecar(ext: string, opts: { stageMap?: boolean; crlf?: boolean } = {}) {
+            async function stageFileWithColocatedMap(ext: string, opts: { stageMap?: boolean; crlf?: boolean } = {}) {
                 const { stageMap = false, crlf = false } = opts;
                 const srcDir = s`${tempPath}/rootDir/source`;
                 const originalPath = s`${srcDir}/main${ext}`;
@@ -830,26 +830,26 @@ describe('Project', () => {
                 expect(result).to.equal(`content\n'//# sourceMappingURL=${absoluteMapPath}`);
             });
 
-            // ── sidecar injection ─────────────────────────────────────────────────────
-            it('injects a comment when there is none but a sidecar .map exists next to the original source', async () => {
+            // ── colocated injection ─────────────────────────────────────────────────────
+            it('injects a comment when there is none but a colocated .map exists next to the original source', async () => {
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
                 const originalMapPath = s`${tempPath}/rootDir/source/main.brs.map`;
 
-                const result = await stageFileWithSidecar('.brs');
+                const result = await stageFileWithColocatedMap('.brs');
 
                 const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(result);
                 expect(commentMatch, 'sourceMappingURL comment should have been injected').to.exist;
                 expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(originalMapPath);
             });
 
-            it('does not inject a comment when there is none but the sidecar .map was staged alongside the .brs', async () => {
+            it('does not inject a comment when there is none but the colocated .map was staged alongside the .brs', async () => {
                 const original = `sub main()\nend sub`;
-                const result = await stageFileWithSidecar('.brs', { stageMap: true });
+                const result = await stageFileWithColocatedMap('.brs', { stageMap: true });
                 expect(result).to.equal(original);
             });
 
             it('uses CRLF when injecting a comment into a CRLF file', async () => {
-                const result = await stageFileWithSidecar('.brs', { crlf: true });
+                const result = await stageFileWithColocatedMap('.brs', { crlf: true });
                 expect(result).to.match(/\r\n'\/\/# sourceMappingURL=/);
             });
 
@@ -875,7 +875,7 @@ describe('Project', () => {
                 }
             });
 
-            // ── no comment, no sidecar ────────────────────────────────────────────────
+            // ── no comment, no colocated ────────────────────────────────────────────────
             it('does not crash when .brs has no sourceMappingURL comment', async () => {
                 const originalBrsPath = s`${tempPath}/src/source/main.brs`;
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
@@ -893,7 +893,7 @@ describe('Project', () => {
                 expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
             });
 
-            it('leaves the file untouched when there is no comment and no sidecar map next to the original source', async () => {
+            it('leaves the file untouched when there is no comment and no colocated map next to the original source', async () => {
                 const originalBrsPath = s`${tempPath}/src/source/main.brs`;
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
 

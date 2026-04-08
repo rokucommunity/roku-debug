@@ -568,16 +568,16 @@ export class Project {
                     path.resolve(path.dirname(originalSrcPath), originalCommentPath)
                 );
             } else {
-                // No comment — check if a sidecar map exists next to the original source file
-                const sidecarMapPath = fileUtils.standardizePath(originalSrcPath + '.map');
-                if (!await fsExtra.pathExists(sidecarMapPath)) {
+                // No comment — check if a colocated map exists next to the original source file
+                const colocatedMapPath = fileUtils.standardizePath(originalSrcPath + '.map');
+                if (!await fsExtra.pathExists(colocatedMapPath)) {
                     return;
                 }
-                // If the sidecar was also staged, the debugger will find it automatically — no comment needed
-                if (srcToDestMap.has(sidecarMapPath)) {
+                // If the colocated was also staged, the debugger will find it automatically — no comment needed
+                if (srcToDestMap.has(colocatedMapPath)) {
                     return;
                 }
-                absoluteMapPath = sidecarMapPath;
+                absoluteMapPath = colocatedMapPath;
             }
 
             // If the original comment path was absolute, leave it as-is
