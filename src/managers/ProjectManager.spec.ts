@@ -957,7 +957,7 @@ describe('Project', () => {
                     expect(await stageFileWithComment('.xml', `<!--//#sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
                 });
 
-                // other (markdown) variants
+                // other (markdown) variants — prefix is normalized (whitespace collapsed, @ → #, // ensured)
                 it('other: rewrites legacy @ form  (//@ sourceMappingURL=...)', async () => {
                     expect(await stageFileWithComment('.md', `//@ sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
                 });

@@ -553,17 +553,17 @@ export class Project {
             let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
             const newline = /\r?\n/.exec(contents)?.[0] ?? '\n';
 
-            // Match brs:   '  optionally followed by //  then [#|@] sourceMappingURL=<path>
-            // Match xml:   <!-- optionally followed by // then [#|@] sourceMappingURL=<path>  -->
-            // Match other: // optionally followed by whitespace then [#|@] sourceMappingURL=<path>
-            //https://regex101.com/r/5Wvsvt/1
-            const commentMatch = /('[ \t]*(?:\/\/)?[ \t]*|<!--[ \t]*(?:\/\/)?[ \t]*|\/\/[ \t]*)[#@][ \t]*sourceMappingURL=([^\s]+?)([ \t]*-->)?$/m.exec(contents);
-
+            //https://regex101.com/r/FMRJNy/1
+            const matches = [
+                ...contents.matchAll(/^([ \t]*(?:'|<!--)?[ \t]*)((?:\/\/)?[ \t]*[#@][ \t]*sourceMappingURL=(.+\b))(?:|-->)?/gm)
+            ];
+            // in case there are multiple comments, use the last one since that's what tools typically do
+            const commentMatch = matches?.[matches?.length - 1];
             const ext = path.extname(stagingFilePath).toLowerCase();
 
             let absoluteMapPath: string;
             if (commentMatch) {
-                const commentPath = commentMatch[2];
+                const commentPath = commentMatch[3];
                 absoluteMapPath = fileUtils.standardizePath(
                     path.isAbsolute(commentPath)
                         ? commentPath
@@ -575,8 +575,8 @@ export class Project {
                 if (!await fsExtra.pathExists(colocatedMapPath)) {
                     return;
                 }
-                // If the colocated map was also staged, the debugger will find it automatically — no comment needed
-                if (srcToDestMap.has(colocatedMapPath)) {
+                // If the colocated map was staged right next to this file, the debugger will find it automatically — no comment needed
+                if (srcToDestMap.get(colocatedMapPath) === stagingFilePath + '.map') {
                     return;
                 }
                 absoluteMapPath = colocatedMapPath;
@@ -588,23 +588,22 @@ export class Project {
                 path.relative(path.dirname(stagingFilePath), mapTarget)
             );
 
-            // Build the canonical comment for this file type
-            let canonical: string;
-            if (ext === '.xml') {
-                canonical = `<!--//# sourceMappingURL=${newRelativePath} -->`;
-            } else if (ext === '.brs') {
-                canonical = `'//# sourceMappingURL=${newRelativePath}`;
-            } else {
-                canonical = `//# sourceMappingURL=${newRelativePath}`;
+            //if we found a comment matching our exact pattern, do a replacement
+            if (commentMatch) {
+                const leadingWhitespaceAndCommentChars = commentMatch[1];
+                const newComment = `${leadingWhitespaceAndCommentChars.trimEnd()}//# sourceMappingURL=${newRelativePath}`;
+                contents = contents.replace(commentMatch[0], newComment);
+                return;
             }
 
-            if (commentMatch) {
-                contents = contents.replace(
-                    /('[ \t]*(?:\/\/)?[ \t]*|<!--[ \t]*(?:\/\/)?[ \t]*|\/\/[ \t]*)[#@][ \t]*sourceMappingURL=[^\s]+?([ \t]*-->)?$/m,
-                    canonical
-                );
+            //At this point we HAVE a sourcemap and no comment. The sourcemap is NOT located in staging,
+            //so we need to write a sourcemap comment into the source file to reference the original map location
+            if (ext === '.brs') {
+                contents += `${newline}'//# sourceMappingURL=${newRelativePath}`;
+            } else if (ext === '.xml') {
+                contents += `${newline}<!--//# sourceMappingURL=${newRelativePath} -->`;
             } else {
-                contents += `${newline}${canonical}`;
+                contents += `${newline}//# sourceMappingURL=${newRelativePath}`;
             }
             await fsExtra.writeFile(stagingFilePath, contents, 'utf8');
         } catch (e) {
