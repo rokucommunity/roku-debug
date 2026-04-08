@@ -356,6 +356,7 @@ export class Project {
             for (let fileMapping of this.fileMappings) {
                 relativeFileMappings.push({
                     src: fileMapping.src,
+                    //build a relative path to the dest, and remove any leading slashes
                     dest: fileUtils.replaceCaseInsensitive(fileMapping.dest, this.stagingDir, '').replace(/^[/\\]+/, '')
                 });
             }
@@ -510,6 +511,26 @@ export class Project {
         }
     }
 
+
+    public static readonly binaryExtensions = new Set([
+        // images
+        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.ico', '.svg',
+        '.heic', '.heif', '.avif', '.raw', '.cr2', '.nef', '.arw', '.dng',
+        // video
+        '.mp4', '.mkv', '.mov', '.avi', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg',
+        '.m2v', '.ts', '.mts', '.m2ts', '.vob', '.ogv', '.3gp', '.3g2',
+        // audio
+        '.mp3', '.wav', '.aac', '.ogg', '.flac', '.m4a', '.wma', '.opus', '.aiff', '.aif',
+        // fonts
+        '.ttf', '.otf', '.woff', '.woff2', '.eot',
+        // archives / binary containers
+        '.zip', '.gz', '.tar', '.bz2', '.xz', '.7z', '.rar', '.pkg', '.exe', '.dll', '.so',
+        // documents / other binary formats
+        '.pdf', '.psd', '.ai', '.eps', '.indd',
+        // roku-specific
+        '.roku', '.rdb', '.squashfs'
+    ]);
+
     /**
      * Rewrite the sourceMappingURL comment in a staged .brs or .xml file so the path points
      * to the map file's new staging location.
@@ -526,6 +547,9 @@ export class Project {
      */
     private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
         try {
+            if (Project.binaryExtensions.has(path.extname(stagingFilePath).toLowerCase())) {
+                return;
+            }
             let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
             const newline = /\r?\n/.exec(contents)?.[0] ?? '\n';
 

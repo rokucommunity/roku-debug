@@ -853,6 +853,28 @@ describe('Project', () => {
                 expect(result).to.match(/\r\n'\/\/# sourceMappingURL=/);
             });
 
+            it(`skips binary files`, async () => {
+                // ── binary / media files ──────────────────────────────────────────────────
+                // Iterate over every extension in Project.binaryExtensions and verify each is skipped.
+                // We write a fake "binary" payload (non-UTF-8 bytes) and assert the file is untouched.
+                for (const ext of Project.binaryExtensions) {
+                    const originalPath = s`${tempPath}/src/source/file${ext}`;
+                    const stagingPath = s`${stagingDir}/source/file${ext}`;
+
+                    fsExtra.ensureDirSync(path.dirname(originalPath));
+                    fsExtra.ensureDirSync(path.dirname(stagingPath));
+
+                    const binaryContents = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+                    fsExtra.writeFileSync(originalPath, binaryContents);
+                    fsExtra.copySync(originalPath, stagingPath);
+
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+                    await project['preprocessStagingFiles']();
+
+                    expect(Buffer.compare(fsExtra.readFileSync(stagingPath), binaryContents)).to.equal(0);
+                }
+            });
+
             // ── no comment, no sidecar ────────────────────────────────────────────────
             it('does not crash when .brs has no sourceMappingURL comment', async () => {
                 const originalBrsPath = s`${tempPath}/src/source/main.brs`;
