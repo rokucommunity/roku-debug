@@ -446,23 +446,6 @@ describe('Project', () => {
             expect(updated.sourceRoot).to.be.undefined;
         });
 
-        it('does not modify a map file that was not moved (src === dest)', async () => {
-            fsExtra.ensureDirSync(stagingDir);
-            const mapPath = s`${stagingDir}/source/main.brs.map`;
-            fsExtra.ensureDirSync(path.dirname(mapPath));
-            const originalSourceMap = { version: 3, sources: ['../source/main.bs'], mappings: '' };
-            fsExtra.writeJsonSync(mapPath, originalSourceMap);
-
-            project.fileMappings = [
-                { src: mapPath, dest: mapPath }
-            ];
-
-            await project['preprocessStagingFiles']();
-
-            const unchanged = fsExtra.readJsonSync(mapPath);
-            expect(unchanged.sources[0]).to.equal('../source/main.bs');
-        });
-
         it('does not modify a map file that is not in fileMappings (generated in staging)', async () => {
             fsExtra.ensureDirSync(stagingDir);
             const mapPath = s`${stagingDir}/source/main.brs.map`;
@@ -993,6 +976,25 @@ describe('Project', () => {
                 fsExtra.writeFileSync(originalBrsPath, originalContents);
                 fsExtra.copySync(originalBrsPath, stagingBrsPath);
 
+                project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
+
+                await project['preprocessStagingFiles']();
+
+                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
+            });
+
+            it('leaves the file untouched when there is no comment and no sidecar map next to the original source', async () => {
+                const originalBrsPath = s`${tempPath}/src/source/main.brs`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+
+                fsExtra.ensureDirSync(path.dirname(originalBrsPath));
+                fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+
+                const originalContents = `sub main()\nend sub\n`;
+                fsExtra.writeFileSync(originalBrsPath, originalContents);
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+
+                // No .map file exists next to the original source
                 project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
 
                 await project['preprocessStagingFiles']();

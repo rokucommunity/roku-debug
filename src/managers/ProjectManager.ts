@@ -467,11 +467,6 @@ export class Project {
                 return;
             }
 
-            // Skip files that were not moved (src === dest) — no paths need rewriting
-            if (originalSrcPath === stagingFilePath) {
-                return;
-            }
-
             const ext = path.extname(stagingFilePath).toLowerCase();
 
             if (ext === '.map') {
