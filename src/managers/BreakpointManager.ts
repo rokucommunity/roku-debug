@@ -1,4 +1,26 @@
+import * as path from 'path';
 import * as fsExtra from 'fs-extra';
+import * as fastGlob from 'fast-glob';
+import type { AstNode } from 'brighterscript';
+import {
+    Parser as BrsParser,
+    WalkMode,
+    isStatement,
+    isCommentStatement,
+    isImportStatement,
+    isLibraryStatement,
+    isNamespaceStatement,
+    isClassStatement,
+    isEnumStatement,
+    isEnumMemberStatement,
+    isInterfaceStatement,
+    isInterfaceFieldStatement,
+    isInterfaceMethodStatement,
+    isConstStatement,
+    isFieldStatement,
+    isTypeStatement,
+    CancellationTokenSource
+} from 'brighterscript';
 import { orderBy } from 'natural-orderby';
 import type { CodeWithSourceMap } from 'source-map';
 import { SourceNode } from 'source-map';
@@ -135,14 +157,16 @@ export class BreakpointManager {
         //all breakpoints default to false if not already set to true
         bp.verified ??= false;
 
+        //if the breakpoint hash changed, mark the breakpoint as unverified and clear any previous failure reason
+        //this must run before the inline-breakpoint check so that the 'failed' reason set below is not cleared
+        if (existingBreakpoint?.srcHash !== bp.srcHash) {
+            bp.verified = false;
+            bp.reason = undefined;
+        }
+
         if (bp.column > 0) {
             bp.message = `Error: inline break points are not supported`;
             bp.reason = 'failed';
-        }
-
-        //if the breakpoint hash changed, mark the breakpoint as unverified
-        if (existingBreakpoint?.srcHash !== bp.srcHash) {
-            bp.verified = false;
         }
 
         //if this is a new breakpoint, add it to the list. (otherwise, the existing breakpoint is edited in-place)
@@ -379,6 +403,7 @@ export class BreakpointManager {
      */
     private async getBreakpointWork(project: Project) {
         let result = {} as Record<string, Array<BreakpointWorkItem>>;
+        let scriptReferencedFiles: Set<string> | undefined;
 
         //iterate over every file that contains breakpoints
         for (let [sourceFilePath, breakpoints] of this.breakpointsByFilePath) {
@@ -403,6 +428,22 @@ export class BreakpointManager {
                 );
 
                 for (let stagingLocation of stagingLocationsResult.locations) {
+                    //skip files we can't inject breakpoints into (e.g. JSON, etc.)
+                    //if the extension isn't natively supported, check if the file is referenced
+                    //by a <script> tag in an XML component — Roku loads those as BrightScript
+                    //regardless of extension
+                    const ext = path.extname(stagingLocation.filePath).toLowerCase();
+                    if (!['.brs', '.xml'].includes(ext)) {
+                        scriptReferencedFiles ??= this.getScriptReferencedFiles(project.stagingDir);
+                        if (!scriptReferencedFiles.has(s`${stagingLocation.filePath}`)) {
+                            continue;
+                        }
+                    }
+
+                    //skip breakpoints on lines that are not valid breakpoint locations
+                    if (!this.isValidBreakpointLine(stagingLocation.filePath, stagingLocation.lineNumber).isValid) {
+                        continue;
+                    }
                     let relativeStagingPath = fileUtils.replaceCaseInsensitive(
                         stagingLocation.filePath,
                         fileUtils.standardizePath(
@@ -472,20 +513,57 @@ export class BreakpointManager {
     }
 
     /**
-     * Write "stop" lines into source code for each breakpoint of each file in the given project
+     * Validate breakpoints against the project's staging files and fail any that cannot be placed
+     * (non-executable lines, unsupported file types, files not in the project).
+     * Called for all debugger types. Returns the resolved breakpoints keyed by staging file path.
      */
-    public async writeBreakpointsForProject(project: Project) {
-        let breakpointsByStagingFilePath = await this.getBreakpointWork(project);
+    public async resolveBreakpointsForProject(project: Project) {
+        const breakpointsByStagingFilePath = await this.getBreakpointWork(project);
 
-        let promises = [] as Promise<any>[];
-        for (let stagingFilePath in breakpointsByStagingFilePath) {
+        //track which breakpoints were successfully mapped to a staging location
+        const stagedSrcHashes = new Set<string>();
+        for (const stagingFilePath in breakpointsByStagingFilePath) {
+            for (const breakpoint of breakpointsByStagingFilePath[stagingFilePath]) {
+                stagedSrcHashes.add(breakpoint.srcHash);
+            }
+        }
+
+        //fail any breakpoints that had no staging location
+        for (const [, breakpoints] of this.breakpointsByFilePath) {
+            for (const bp of breakpoints) {
+                if (!stagedSrcHashes.has(bp.srcHash) && bp.reason !== 'failed') {
+                    bp.verified = false;
+                    bp.reason = 'failed';
+                    //only set a message for file types we understand — for unknown file types
+                    //(JSON, etc.) leave the message empty so other debuggers can claim the breakpoint
+                    const srcExt = path.extname(bp.srcPath).toLowerCase();
+                    bp.message = ['.brs', '.bs', '.xml'].includes(srcExt)
+                        ? 'No executable code at this line'
+                        : undefined;
+                    this.queueEvent('breakpoints-verified', bp.srcHash);
+                }
+            }
+        }
+
+        return breakpointsByStagingFilePath;
+    }
+
+    /**
+     * Inject STOP statements into the project's staging files for each breakpoint location.
+     * Marks injected breakpoints as verified and registers them as permanent.
+     * Only called for telnet debuggers.
+     */
+    public async injectBreakpointsForProject(project: Project) {
+        const breakpointsByStagingFilePath = await this.resolveBreakpointsForProject(project);
+
+        const promises = [] as Promise<any>[];
+        for (const stagingFilePath in breakpointsByStagingFilePath) {
             const breakpoints = breakpointsByStagingFilePath[stagingFilePath];
             promises.push(this.writeBreakpointsToFile(stagingFilePath, breakpoints));
             for (const breakpoint of breakpoints) {
-                //mark this breakpoint as verified
+                //mark this breakpoint as verified and register as permanent
                 this.setBreakpointDeviceId(breakpoint.srcHash, breakpoint.destHash, breakpoint.id);
                 this.verifyBreakpoint(breakpoint.id, true);
-                //add this breakpoint to the list of "permanent" breakpoints
                 this.registerPermanentBreakpoint(breakpoint);
             }
         }
@@ -509,6 +587,143 @@ export class BreakpointManager {
      * The list of breakpoints that were permanently written to a file at the start of a debug session. Used for line offset calculations.
      */
     private permanentBreakpointsBySrcPath = new Map<string, BreakpointWorkItem[]>();
+
+    /**
+     * Cache of script-referenced file paths per staging directory.
+     * Keyed by staging dir. Invalidated at the start of each debug session.
+     */
+    private scriptReferencedFilesCache = new Map<string, Set<string>>();
+
+    /**
+     * Scan all XML files in the staging directory for <script> tags and return the set of
+     * absolute file paths they reference. Roku loads any file referenced by a <script> tag
+     * as BrightScript regardless of its extension, so these are valid breakpoint targets.
+     * Results are cached per staging directory.
+     */
+    private getScriptReferencedFiles(stagingDir: string): Set<string> {
+        const cacheKey = s`${stagingDir}`;
+        if (this.scriptReferencedFilesCache.has(cacheKey)) {
+            return this.scriptReferencedFilesCache.get(cacheKey);
+        }
+        const result = new Set<string>();
+        try {
+            const xmlFiles = fastGlob.sync('**/*.xml', { cwd: stagingDir, absolute: true });
+            const scriptUriRegex = /<script\b[^>]*\buri\s*=\s*"([^"]*)"[^>]*\/?>/gi;
+            for (const xmlFile of xmlFiles) {
+                try {
+                    const contents = fsExtra.readFileSync(xmlFile, 'utf-8');
+                    let match: RegExpExecArray;
+                    while ((match = scriptUriRegex.exec(contents)) !== null) {
+                        const uri = match[1];
+                        const protocolIndex = uri.indexOf(':/');
+                        let absolutePath: string;
+                        if (protocolIndex >= 0) {
+                            //pkg:/ or libpkg:/ — resolve from staging root
+                            const relativePath = uri.substring(protocolIndex + 2).replace(/^\//, '');
+                            absolutePath = s`${stagingDir}/${relativePath}`;
+                        } else {
+                            //relative path — resolve from the XML file's directory
+                            absolutePath = s`${path.resolve(path.dirname(xmlFile), uri)}`;
+                        }
+                        result.add(absolutePath);
+                    }
+                } catch (e) {
+                    this.logger.debug('Error reading XML file for script references', { xmlFile, error: e });
+                }
+            }
+        } catch (e) {
+            this.logger.debug('Error scanning staging dir for XML script references', { stagingDir, error: e });
+        }
+        this.scriptReferencedFilesCache.set(cacheKey, result);
+        return result;
+    }
+
+    /**
+     * Clear the script-referenced files cache. Should be called when staging directory
+     * contents may have changed (e.g. at the start of a new debug session).
+     */
+    public clearScriptReferencedFilesCache() {
+        this.scriptReferencedFilesCache.clear();
+    }
+
+    /**
+     * Cache of parsed ASTs keyed by staging file path.
+     * Populated lazily in isValidBreakpointLine. Clear on new debug session.
+     */
+    private stagingFileAstCache = new Map<string, ReturnType<typeof BrsParser.parse>>();
+
+    /**
+     * Clear the staging file AST cache. Should be called at the start of each debug session
+     * so stale parsed ASTs don't carry over after files are re-staged.
+     */
+    public clearStagingFileAstCache() {
+        this.stagingFileAstCache.clear();
+    }
+
+    /**
+     * Returns whether a 1-based line number in a staging file is a valid breakpoint
+     * location — i.e. somewhere the Roku debugger can actually break.
+     *
+     * Uses a blacklist: finds the innermost statement at the target line and rejects
+     * known invalid types (declarations, structural keywords, etc.). Lines where no
+     * statement starts (blank lines, `else`, `end if/for/while/sub/function`) are
+     * always invalid. Fails open so breakpoints are never silently dropped due to a
+     * parse error.
+     *
+     * The returned object is designed to support future breakpoint-correction: callers
+     * can check `correctedLine` to suggest moving the breakpoint to a nearby valid line
+     * (like other debuggers do), rather than simply dropping it.
+     */
+    private isValidBreakpointLine(stagingFilePath: string, lineNumber: number): LineValidationResult {
+        try {
+            const cacheKey = s`${stagingFilePath}`;
+            if (!this.stagingFileAstCache.has(cacheKey)) {
+                const contents = fsExtra.readFileSync(stagingFilePath, 'utf-8');
+                this.stagingFileAstCache.set(cacheKey, BrsParser.parse(contents));
+            }
+            const parsed = this.stagingFileAstCache.get(cacheKey);
+
+            // BrightScript AST uses 0-based lines; breakpoint line numbers are 1-based
+            const targetLine = lineNumber - 1;
+
+            // Walk depth-first (parent before children).
+            // - Track the innermost statement whose start line equals targetLine.
+            // - Cancel as soon as a node starts past targetLine.
+            const handle = new CancellationTokenSource();
+            let deepestStatement: AstNode | undefined;
+
+            parsed.ast.walk((node) => {
+                if (!node.range) {
+                    return;
+                }
+                if (node.range.start.line > targetLine) {
+                    handle.cancel();
+                    return;
+                }
+                if (isStatement(node) && node.range.start.line === targetLine) {
+                    deepestStatement = node;
+                }
+            }, {
+                walkMode: WalkMode.visitAllRecursive,
+                cancel: handle.token
+            });
+
+            if (!deepestStatement) {
+                // No statement starts here: blank line, `else`, `end if/for/while/sub/function`, etc.
+                return { isValid: false };
+            }
+
+            if (isInvalidBreakpointLine(deepestStatement)) {
+                return { isValid: false };
+            }
+
+            return { isValid: true };
+        } catch (e) {
+            // never block a breakpoint due to a parse error — fail open
+            this.logger.debug('Error checking if staging line is executable, allowing through', { stagingFilePath, lineNumber, error: e });
+            return { isValid: true };
+        }
+    }
 
     /**
      * Write breakpoints to the specified file, and update the sourcemaps to match
@@ -969,3 +1184,50 @@ export type Breakpoint = DebugProtocol.SourceBreakpoint | AugmentedSourceBreakpo
  * - `Breakpoint & {srcPath: string}` - an object with all the properties of a breakpoint _and_ an explicitly defined `srcPath`
  */
 export type BreakpointRef = string | AugmentedSourceBreakpoint | { srcHash: string } | (Breakpoint & { srcPath: string });
+
+/**
+ * Result of validating whether a staging-file line is executable.
+ * `correctedLine` is reserved for future breakpoint-correction support: when a
+ * breakpoint is placed on a non-executable line the debugger can suggest a nearby
+ * executable line (like VS Code does for other languages) rather than silently
+ * dropping the breakpoint.
+ */
+export interface LineValidationResult {
+    isValid: boolean;
+    /** Future: 1-based line to move the breakpoint to, if different from the requested line. */
+    correctedLine?: number;
+}
+
+/**
+ * Returns true when `node` is known to be an invalid breakpoint location.
+ *
+ * Blacklisted categories:
+ * - Pure-declaration or structural statements: comments, imports, namespace/class/
+ *   enum/interface/type declarations, constants, class fields.
+ *
+ * Notably NOT blacklisted (all are valid breakpoint locations):
+ * - Function/method headers (`sub`/`function` line)
+ * - `dim` statements
+ * - Label statements
+ * - The standalone `end` program-terminator
+ *
+ * Lines where no statement starts (blank lines, `else`, `end if/for/while/sub/function`)
+ * are handled before this function is called and always return invalid.
+ */
+function isInvalidBreakpointLine(node: AstNode): boolean {
+    return (
+        isCommentStatement(node) ||
+        isImportStatement(node) ||
+        isLibraryStatement(node) ||
+        isNamespaceStatement(node) ||
+        isClassStatement(node) ||
+        isEnumStatement(node) ||
+        isEnumMemberStatement(node) ||
+        isInterfaceStatement(node) ||
+        isInterfaceFieldStatement(node) ||
+        isInterfaceMethodStatement(node) ||
+        isConstStatement(node) ||
+        isFieldStatement(node) ||
+        isTypeStatement(node)
+    );
+}
