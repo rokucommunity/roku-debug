@@ -292,7 +292,7 @@ export class SceneGraphDebugCommandController {
                 this.removeConnection();
             } catch (error) {
                 this.removeConnection();
-                console.log(error, this.connection);
+                this.logger.error(error, this.connection);
             }
         }
     }

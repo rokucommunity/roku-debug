@@ -583,10 +583,10 @@ export class Project {
                 .map(result => result.file);
 
             if (injectedFiles.length === 0) {
-                console.error(`WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RALE_TRACKER_ENTRY}"`);
+                this.logger.error(`WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RALE_TRACKER_ENTRY}"`);
             }
         } catch (err) {
-            console.error(err);
+            this.logger.error(err);
         }
     }
 
@@ -638,10 +638,10 @@ export class Project {
                 .map(result => result.file);
 
             if (injectedFiles.length === 0) {
-                console.error(`WARNING: Unable to find an entry point for RDB.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RDB_ODC_ENTRY}"`);
+                this.logger.error(`WARNING: Unable to find an entry point for RDB.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RDB_ODC_ENTRY}"`);
             }
         } catch (err) {
-            console.error(err);
+            this.logger.error(err);
         }
     }
 
