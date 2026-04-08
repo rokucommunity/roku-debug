@@ -29,6 +29,7 @@ export class ThreadsResponse {
                 const thread = {} as ThreadInfo;
                 const flags = smartBuffer.readUInt8();
                 thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
+                thread.isDetached = (flags & ThreadInfoFlags.isDetached) > 0;
                 thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
                 thread.stopReasonDetail = protocolUtil.readStringNT(smartBuffer); // stop_reason_detail
                 thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
@@ -56,6 +57,7 @@ export class ThreadsResponse {
         for (const thread of this.data.threads ?? []) {
             let flags = 0;
             flags |= thread.isPrimary ? ThreadInfoFlags.isPrimary : 0;
+            flags |= thread.isDetached ? ThreadInfoFlags.isDetached : 0;
             flags |= hasOptionalFields ? ThreadInfoFlags.isIdentityInfo : 0;
             smartBuffer.writeUInt8(flags); //flags
             //stop_reason is an 8-bit value (same as the other locations in this protocol); however, it is sent in this response as a 32bit value for historical purposes

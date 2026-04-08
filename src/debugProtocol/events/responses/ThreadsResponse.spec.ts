@@ -246,6 +246,7 @@ describe('ThreadsResponse', () => {
             requestId: 3,
             threads: [{
                 isPrimary: true,
+                isDetached: false,
                 stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,
@@ -268,12 +269,13 @@ describe('ThreadsResponse', () => {
             errorCode: ErrorCode.OK,
             threads: [{
                 isPrimary: true,
+                isDetached: false,
                 stopReason: 'Break',
                 stopReasonDetail: 'because',
                 lineNumber: 2,
                 functionName: 'main',
                 filePath: 'pkg:/source/main.brs',
-                codeSnippet: 'sub main()', 
+                codeSnippet: 'sub main()',
                 osThreadId: '0D111',
                 name: 'myMain',
                 type: 'main'
