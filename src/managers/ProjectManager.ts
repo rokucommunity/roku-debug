@@ -829,4 +829,29 @@ export class ComponentLibraryProject extends Project {
             }
         });
     }
+
+    public async fixMainProjectLibraryDependency(mainProjectStagingDir: string) {
+        await replaceInFile({
+            files: [
+                path.join(mainProjectStagingDir, '**/*.brs')
+            ],
+            from: /Library\s+"(.+)\.brs"/gi,
+            to: (match: string) => {
+                const pathMatch = /"([^"]+)"/.exec(match);
+                if (!pathMatch) {
+                    return match;
+                }
+
+                const internalPath = pathMatch[1];
+                const fileNameWithoutExtension = internalPath.replace(/\.brs$/i, '');
+                for (let fileMapping of this.fileMappings) {
+                    if (fileMapping.dest.includes(fileNameWithoutExtension)) {
+                        const fileWithPostfix = `${fileNameWithoutExtension}${this.postfix}`;
+                        return match.replace(fileNameWithoutExtension, fileWithPostfix);
+                    }
+                }
+                return match;
+            }
+        });
+    }
 }
