@@ -703,411 +703,167 @@ describe('Project', () => {
 
         describe('fixSourceMapComment', () => {
             /**
-             * Primary scenario: .map is OUTSIDE rootDir so it was never staged.
+             * Stage a source file (with a sourceMappingURL comment) and its map, run
+             * preprocessStagingFiles, and return the updated staged file contents.
              *
-             * /alpha/beta/charlie/rootDir/source/main.brs  → comment: '../../../../../maps/main.brs.map'
-             * /alpha/maps/main.brs.map                     (not copied — outside rootDir)
-             *
-             * After staging:
-             * staging/source/main.brs  → comment must be rewritten to an absolute-equivalent
-             *                            relative path from the new staging location back to
-             *                            the original (unstaged) map file.
+             * originalDir/main<ext>  has the comment pointing at originalMapDir/main<ext>.map
+             * Both are staged to stagingDir/source/
              */
-            it('rewrites the comment to point at the original map when the map was not staged', async () => {
-                const rootDirSource = s`${tempPath}/alpha/beta/charlie/rootDir/source`;
-                const mapsDir = s`${tempPath}/alpha/maps`;
-                const stagingSourceDir = s`${stagingDir}/source`;
+            async function stageFileWithComment(ext: string, commentLine: string, opts: {
+                originalDir?: string;
+                originalMapDir?: string;
+                stageMap?: boolean;
+            } = {}) {
+                const {
+                    originalDir = s`${tempPath}/src/components/views`,
+                    originalMapDir = s`${tempPath}/src/components/maps`,
+                    stageMap = true
+                } = opts;
+                const originalPath = s`${originalDir}/main${ext}`;
+                const originalMapPath = s`${originalMapDir}/main${ext}.map`;
+                const stagingPath = s`${stagingDir}/source/main${ext}`;
+                const stagingMapPath = s`${stagingDir}/source/main${ext}.map`;
 
-                fsExtra.ensureDirSync(rootDirSource);
-                fsExtra.ensureDirSync(mapsDir);
-                fsExtra.ensureDirSync(stagingSourceDir);
-
-                const originalBrsPath = s`${rootDirSource}/main.brs`;
-                const originalMapPath = s`${mapsDir}/main.brs.map`;
-                const stagingBrsPath = s`${stagingSourceDir}/main.brs`;
-
-                // The comment in the original file points relatively from rootDirSource → mapsDir
-                const originalRelative = s`${path.relative(rootDirSource, originalMapPath)}`;
-                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=${originalRelative}`);
-
-                // Only the .brs is staged — the .map is outside rootDir and never copied
-                fsExtra.copySync(originalBrsPath, stagingBrsPath);
-
-                project.fileMappings = [
-                    { src: originalBrsPath, dest: stagingBrsPath }
-                    // map intentionally absent
-                ];
-
-                await project['preprocessStagingFiles']();
-
-                const updatedContents = fsExtra.readFileSync(stagingBrsPath, 'utf8');
-                // The new comment must resolve back to the same absolute map path
-                const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(updatedContents);
-                expect(commentMatch, 'sourceMappingURL comment should still be present').to.exist;
-                const resolvedMapPath = fileUtils.standardizePath(
-                    path.resolve(path.dirname(stagingBrsPath), commentMatch[1])
-                );
-                expect(resolvedMapPath).to.equal(originalMapPath);
-            });
-
-            /**
-             * When the map WAS staged (at a different relative location), the comment
-             * should point at the staged copy, not the original.
-             */
-            it('rewrites the comment to point at the staged map when the map was also staged (.brs)', async () => {
-                // Source layout:
-                //   src/components/views/main.brs  → comment: '../maps/main.brs.map'
-                //   src/components/maps/main.brs.map
-                // Staging layout (both siblings in source/):
-                //   staging/source/main.brs        → comment should become: 'main.brs.map'
-                //   staging/source/main.brs.map
-                const originalBrsPath = s`${tempPath}/src/components/views/main.brs`;
-                const originalMapPath = s`${tempPath}/src/components/maps/main.brs.map`;
-                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
-                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
-
-                fsExtra.ensureDirSync(path.dirname(originalBrsPath));
+                fsExtra.ensureDirSync(path.dirname(originalPath));
                 fsExtra.ensureDirSync(path.dirname(originalMapPath));
-                fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
 
-                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=../maps/main.brs.map`);
+                fsExtra.writeFileSync(originalPath, `content\n${commentLine}`);
                 fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
 
-                fsExtra.copySync(originalBrsPath, stagingBrsPath);
-                fsExtra.copySync(originalMapPath, stagingMapPath);
-
-                project.fileMappings = [
-                    { src: originalBrsPath, dest: stagingBrsPath },
-                    { src: originalMapPath, dest: stagingMapPath }
-                ];
-
-                await project['preprocessStagingFiles']();
-
-                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(`sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`);
-            });
-
-            it('does not rewrite the comment when the relative path is already correct after staging', async () => {
-                // .brs and .map are siblings in both source and staging — no change needed
-                const srcDir = s`${tempPath}/src/source`;
-                const stagingSourceDir = s`${stagingDir}/source`;
-
-                fsExtra.ensureDirSync(srcDir);
-                fsExtra.ensureDirSync(stagingSourceDir);
-
-                const originalBrsPath = s`${srcDir}/main.brs`;
-                const originalMapPath = s`${srcDir}/main.brs.map`;
-                const stagingBrsPath = s`${stagingSourceDir}/main.brs`;
-                const stagingMapPath = s`${stagingSourceDir}/main.brs.map`;
-
-                const originalContents = `sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`;
-                fsExtra.writeFileSync(originalBrsPath, originalContents);
-                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
-
-                fsExtra.copySync(originalBrsPath, stagingBrsPath);
-                fsExtra.copySync(originalMapPath, stagingMapPath);
-
-                project.fileMappings = [
-                    { src: originalBrsPath, dest: stagingBrsPath },
-                    { src: originalMapPath, dest: stagingMapPath }
-                ];
-
-                await project['preprocessStagingFiles']();
-
-                // File should be unchanged (no write needed)
-                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
-            });
-
-            it('rewrites the XML format comment (<!--//# sourceMappingURL=... -->)', async () => {
-                // Source layout:
-                //   src/components/views/MainScene.xml  → comment: '../maps/MainScene.xml.map'
-                //   src/components/maps/MainScene.xml.map
-                // Staging layout (both siblings in source/):
-                //   staging/source/MainScene.xml        → comment should become: 'MainScene.xml.map'
-                //   staging/source/MainScene.xml.map
-                const originalXmlPath = s`${tempPath}/src/components/views/MainScene.xml`;
-                const originalMapPath = s`${tempPath}/src/components/maps/MainScene.xml.map`;
-                const stagingXmlPath = s`${stagingDir}/source/MainScene.xml`;
-                const stagingMapPath = s`${stagingDir}/source/MainScene.xml.map`;
-
-                fsExtra.ensureDirSync(path.dirname(originalXmlPath));
-                fsExtra.ensureDirSync(path.dirname(originalMapPath));
-                fsExtra.ensureDirSync(path.dirname(stagingXmlPath));
-
-                fsExtra.writeFileSync(originalXmlPath, `<component name="MainScene">\n</component>\n<!--//# sourceMappingURL=../maps/MainScene.xml.map -->`);
-                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
-
-                fsExtra.copySync(originalXmlPath, stagingXmlPath);
-                fsExtra.copySync(originalMapPath, stagingMapPath);
-
-                project.fileMappings = [
-                    { src: originalXmlPath, dest: stagingXmlPath },
-                    { src: originalMapPath, dest: stagingMapPath }
-                ];
-
-                await project['preprocessStagingFiles']();
-
-                expect(fsExtra.readFileSync(stagingXmlPath, 'utf8')).to.equal(`<component name="MainScene">\n</component>\n<!--//# sourceMappingURL=MainScene.xml.map -->`);
-            });
-
-            describe('legacy and variant comment forms', () => {
-                // Helper: set up a brs/xml/md file with a given comment, stage it, run preprocessStagingFiles,
-                // and return the updated staged file contents.
-                async function runWithComment(ext: string, commentLine: string) {
-                    const originalPath = s`${tempPath}/src/source/main${ext}`;
-                    const stagingPath = s`${stagingDir}/source/main${ext}`;
-                    const originalMapPath = s`${tempPath}/src/maps/main${ext}.map`;
-                    const stagingMapPath = s`${stagingDir}/source/main${ext}.map`;
-
-                    fsExtra.ensureDirSync(path.dirname(originalPath));
-                    fsExtra.ensureDirSync(path.dirname(originalMapPath));
-                    fsExtra.ensureDirSync(path.dirname(stagingPath));
-
-                    fsExtra.writeFileSync(originalPath, `content\n${commentLine}`);
-                    fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
-                    fsExtra.copySync(originalPath, stagingPath);
+                if (stageMap) {
                     fsExtra.copySync(originalMapPath, stagingMapPath);
-
                     project.fileMappings = [
                         { src: originalPath, dest: stagingPath },
                         { src: originalMapPath, dest: stagingMapPath }
                     ];
-
-                    await project['preprocessStagingFiles']();
-                    return fsExtra.readFileSync(stagingPath, 'utf8');
+                } else {
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
                 }
 
-                // ── brs variants ──────────────────────────────────────────────────────────
-                it('brs: rewrites legacy @ form', async () => {
-                    const result = await runWithComment('.brs', `'//@ sourceMappingURL=../maps/main.brs.map`);
-                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
-                });
+                await project['preprocessStagingFiles']();
+                return fsExtra.readFileSync(stagingPath, 'utf8');
+            }
 
-                it('brs: rewrites when // is omitted  (\'# sourceMappingURL=...)', async () => {
-                    const result = await runWithComment('.brs', `'# sourceMappingURL=../maps/main.brs.map`);
-                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
-                });
-
-                it('brs: rewrites when // is omitted with legacy @  (\'@ sourceMappingURL=...)', async () => {
-                    const result = await runWithComment('.brs', `'@ sourceMappingURL=../maps/main.brs.map`);
-                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
-                });
-
-                it('brs: rewrites with whitespace between \' and //# (\'  //# sourceMappingURL=...)', async () => {
-                    const result = await runWithComment('.brs', `'  //# sourceMappingURL=../maps/main.brs.map`);
-                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
-                });
-
-                it('brs: rewrites with whitespace and no // (\'  # sourceMappingURL=...)', async () => {
-                    const result = await runWithComment('.brs', `'  # sourceMappingURL=../maps/main.brs.map`);
-                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
-                });
-
-                // ── xml variants ──────────────────────────────────────────────────────────
-                it('xml: rewrites legacy @ form  (<!--//@ sourceMappingURL=... -->)', async () => {
-                    const result = await runWithComment('.xml', `<!--//@ sourceMappingURL=../maps/main.xml.map -->`);
-                    expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
-                });
-
-                it('xml: rewrites when // is omitted  (<!--# sourceMappingURL=... -->)', async () => {
-                    const result = await runWithComment('.xml', `<!--# sourceMappingURL=../maps/main.xml.map -->`);
-                    expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
-                });
-
-                it('xml: rewrites with whitespace between <!-- and //# (<!--  //# sourceMappingURL=... -->)', async () => {
-                    const result = await runWithComment('.xml', `<!--  //# sourceMappingURL=../maps/main.xml.map -->`);
-                    expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
-                });
-
-                it('xml: rewrites with whitespace and no // (<!--  # sourceMappingURL=... -->)', async () => {
-                    const result = await runWithComment('.xml', `<!--  # sourceMappingURL=../maps/main.xml.map -->`);
-                    expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
-                });
-
-                // ── other text-based file variants ─────────────────────────────────────────────
-                it('other: rewrites legacy @ form  (//@ sourceMappingURL=...)', async () => {
-                    const result = await runWithComment('.md', `//@ sourceMappingURL=../maps/main.md.map`);
-                    expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
-                });
-
-                it('other: rewrites with whitespace between // and # (//  # sourceMappingURL=...)', async () => {
-                    const result = await runWithComment('.md', `//  # sourceMappingURL=../maps/main.md.map`);
-                    expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
-                });
-
-                it('other: rewrites with whitespace between // and @ (//  @ sourceMappingURL=...)', async () => {
-                    const result = await runWithComment('.md', `//  @ sourceMappingURL=../maps/main.md.map`);
-                    expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
-                });
-
-                // ── no space between #/@ and sourceMappingURL ─────────────────────────
-                it('brs: matches when there is no space between # and sourceMappingURL', async () => {
-                    const result = await runWithComment('.brs', `'//# sourceMappingURL=../maps/main.brs.map`);
-                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
-                });
-
-                it('brs: matches when there is no space between @ and sourceMappingURL (legacy)', async () => {
-                    const result = await runWithComment('.brs', `'//@ sourceMappingURL=../maps/main.brs.map`);
-                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
-                });
-
-                it('xml: matches when there is no space between # and sourceMappingURL', async () => {
-                    const result = await runWithComment('.xml', `<!--//#sourceMappingURL=../maps/main.xml.map -->`);
-                    expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
-                });
-
-                it('other: matches when there is no space between # and sourceMappingURL', async () => {
-                    const result = await runWithComment('.md', `//#sourceMappingURL=../maps/main.md.map`);
-                    expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
-                });
-            });
-
-            it('injects a comment when there is none but a sidecar .map exists next to the original source', async () => {
-                // Scenario: user's files array omits map files, so only the .brs is staged.
-                // The .map exists next to the original .brs in rootDir but was never copied.
-                // We should inject a comment in the staged .brs pointing back at the original map.
+            /**
+             * Stage a source file with NO sourceMappingURL comment but with a sidecar .map
+             * next to the original, then run preprocessStagingFiles and return the staged
+             * file contents.
+             */
+            async function stageFileWithSidecar(ext: string, opts: { stageMap?: boolean; crlf?: boolean } = {}) {
+                const { stageMap = false, crlf = false } = opts;
                 const srcDir = s`${tempPath}/rootDir/source`;
-                const stagingSourceDir = s`${stagingDir}/source`;
+                const originalPath = s`${srcDir}/main${ext}`;
+                const originalMapPath = s`${srcDir}/main${ext}.map`;
+                const stagingPath = s`${stagingDir}/source/main${ext}`;
+                const stagingMapPath = s`${stagingDir}/source/main${ext}.map`;
 
                 fsExtra.ensureDirSync(srcDir);
-                fsExtra.ensureDirSync(stagingSourceDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
 
-                const originalBrsPath = s`${srcDir}/main.brs`;
-                const originalMapPath = s`${srcDir}/main.brs.map`;  // sidecar, never staged
-                const stagingBrsPath = s`${stagingSourceDir}/main.brs`;
-
-                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub`);
+                fsExtra.writeFileSync(originalPath, crlf ? `sub main()\r\nend sub` : `sub main()\nend sub`);
                 fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
 
-                // Only the .brs is staged — map was excluded from files array
-                fsExtra.copySync(originalBrsPath, stagingBrsPath);
-
-                project.fileMappings = [
-                    { src: originalBrsPath, dest: stagingBrsPath }
-                ];
+                if (stageMap) {
+                    fsExtra.copySync(originalMapPath, stagingMapPath);
+                    project.fileMappings = [
+                        { src: originalPath, dest: stagingPath },
+                        { src: originalMapPath, dest: stagingMapPath }
+                    ];
+                } else {
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+                }
 
                 await project['preprocessStagingFiles']();
+                return fsExtra.readFileSync(stagingPath, 'utf8');
+            }
 
-                const updatedContents = fsExtra.readFileSync(stagingBrsPath, 'utf8');
-                const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(updatedContents);
-                expect(commentMatch, 'sourceMappingURL comment should have been injected').to.exist;
-                // The injected path must resolve back to the original (unstaged) map file
-                const resolvedMapPath = fileUtils.standardizePath(
-                    path.resolve(path.dirname(stagingBrsPath), commentMatch[1])
-                );
-                expect(resolvedMapPath).to.equal(originalMapPath);
-            });
-
-            it('uses CRLF when injecting a comment into a CRLF file', async () => {
-                const originalBrsPath = s`${tempPath}/src/source/main.brs`;
-                const originalMapPath = s`${tempPath}/src/source/main.brs.map`;
+            // ── map not staged (outside rootDir) ──────────────────────────────────────
+            // The comment must be rewritten so it still resolves to the original map.
+            it('rewrites the comment to point at the original map when the map was not staged', async () => {
+                const rootDirSource = s`${tempPath}/alpha/beta/charlie/rootDir/source`;
+                const originalMapPath = s`${tempPath}/alpha/maps/main.brs.map`;
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
 
-                fsExtra.ensureDirSync(path.dirname(originalBrsPath));
-                fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+                const originalRelative = s`${path.relative(rootDirSource, originalMapPath)}`;
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${originalRelative}`, {
+                    originalDir: rootDirSource,
+                    originalMapDir: s`${tempPath}/alpha/maps`,
+                    stageMap: false
+                });
 
-                fsExtra.writeFileSync(originalBrsPath, `sub main()\r\nend sub`);
-                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
-                fsExtra.copySync(originalBrsPath, stagingBrsPath);
-
-                project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
-
-                await project['preprocessStagingFiles']();
-
-                const updatedContents = fsExtra.readFileSync(stagingBrsPath, 'utf8');
-                expect(updatedContents).to.match(/\r\n'\/\/# sourceMappingURL=/);
+                const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(result);
+                expect(commentMatch, 'sourceMappingURL comment should still be present').to.exist;
+                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(originalMapPath);
             });
 
-            it('does not inject a comment when there is none but the sidecar .map was staged alongside the .brs', async () => {
-                const srcDir = s`${tempPath}/rootDir/source`;
-                const stagingSourceDir = s`${stagingDir}/source`;
+            // ── map staged at a different relative location ───────────────────────────
+            it('rewrites the comment to point at the staged map when the map was also staged (.brs)', async () => {
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=../maps/main.brs.map`);
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+            });
 
-                fsExtra.ensureDirSync(srcDir);
-                fsExtra.ensureDirSync(stagingSourceDir);
-
-                const originalBrsPath = s`${srcDir}/main.brs`;
-                const originalMapPath = s`${srcDir}/main.brs.map`;
-                const stagingBrsPath = s`${stagingSourceDir}/main.brs`;
-                const stagingMapPath = s`${stagingSourceDir}/main.brs.map`;
-
-                const originalContents = `sub main()\nend sub`;
-                fsExtra.writeFileSync(originalBrsPath, originalContents);
-                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
-
-                fsExtra.copySync(originalBrsPath, stagingBrsPath);
-                fsExtra.copySync(originalMapPath, stagingMapPath);
-
-                project.fileMappings = [
-                    { src: originalBrsPath, dest: stagingBrsPath },
-                    { src: originalMapPath, dest: stagingMapPath }
-                ];
-
-                await project['preprocessStagingFiles']();
-
-                // No comment should have been injected — the map is already a sibling in staging
-                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
+            it('rewrites the XML format comment (<!--//# sourceMappingURL=... -->)', async () => {
+                const result = await stageFileWithComment('.xml', `<!--//# sourceMappingURL=../maps/main.xml.map -->`);
+                expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
             });
 
             it('rewrites the comment in an arbitrary text-based file format', async () => {
-                // Source layout:
-                //   src/components/views/main.md  → comment: '../maps/main.md.map'
-                //   src/components/maps/main.md.map
-                // Staging layout (both siblings in source/):
-                //   staging/source/main.md        → comment should become: 'main.md.map'
-                //   staging/source/main.md.map
-                const originalFilePath = s`${tempPath}/src/components/views/main.md`;
-                const originalMapPath = s`${tempPath}/src/components/maps/main.md.map`;
-                const stagingFilePath = s`${stagingDir}/source/main.md`;
-                const stagingMapPath = s`${stagingDir}/source/main.md.map`;
+                const result = await stageFileWithComment('.md', `//# sourceMappingURL=../maps/main.md.map`);
+                expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+            });
 
-                fsExtra.outputFileSync(originalFilePath, `# hello\n//# sourceMappingURL=../maps/main.md.map`);
-                fsExtra.outputJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
-
-                fsExtra.copySync(originalFilePath, stagingFilePath);
-                fsExtra.copySync(originalMapPath, stagingMapPath);
-
-                project.fileMappings = [
-                    { src: originalFilePath, dest: stagingFilePath },
-                    { src: originalMapPath, dest: stagingMapPath }
-                ];
-
-                await project['preprocessStagingFiles']();
-
-                expect(fsExtra.readFileSync(stagingFilePath, 'utf8')).to.equal(`# hello\n//# sourceMappingURL=main.md.map`);
+            it('does not rewrite the comment when the relative path is already correct after staging', async () => {
+                // brs and map are siblings in both source and staging — same relative path, no change needed
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=main.brs.map`, {
+                    originalDir: s`${tempPath}/src/source`,
+                    originalMapDir: s`${tempPath}/src/source`
+                });
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
             });
 
             it('does not rewrite the comment when the path is absolute', async () => {
+                const absoluteMapPath = s`${tempPath}/src/source/main.brs.map`;
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${absoluteMapPath}`, { stageMap: false });
+                expect(result).to.equal(`content\n'//# sourceMappingURL=${absoluteMapPath}`);
+            });
+
+            // ── sidecar injection ─────────────────────────────────────────────────────
+            it('injects a comment when there is none but a sidecar .map exists next to the original source', async () => {
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const originalMapPath = s`${tempPath}/rootDir/source/main.brs.map`;
+
+                const result = await stageFileWithSidecar('.brs');
+
+                const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(result);
+                expect(commentMatch, 'sourceMappingURL comment should have been injected').to.exist;
+                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(originalMapPath);
+            });
+
+            it('does not inject a comment when there is none but the sidecar .map was staged alongside the .brs', async () => {
+                const original = `sub main()\nend sub`;
+                const result = await stageFileWithSidecar('.brs', { stageMap: true });
+                expect(result).to.equal(original);
+            });
+
+            it('uses CRLF when injecting a comment into a CRLF file', async () => {
+                const result = await stageFileWithSidecar('.brs', { crlf: true });
+                expect(result).to.match(/\r\n'\/\/# sourceMappingURL=/);
+            });
+
+            // ── no comment, no sidecar ────────────────────────────────────────────────
+            it('does not crash when .brs has no sourceMappingURL comment', async () => {
                 const originalBrsPath = s`${tempPath}/src/source/main.brs`;
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
 
                 fsExtra.ensureDirSync(path.dirname(originalBrsPath));
                 fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
-
-                const absoluteMapPath = s`${tempPath}/src/source/main.brs.map`;
-                const originalContents = `sub main()\nend sub\n'//# sourceMappingURL=${absoluteMapPath}`;
-                fsExtra.writeFileSync(originalBrsPath, originalContents);
-                fsExtra.copySync(originalBrsPath, stagingBrsPath);
-
-                project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
-
-                await project['preprocessStagingFiles']();
-
-                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
-            });
-
-            it('does not crash when .brs has no sourceMappingURL comment', async () => {
-                const srcDir = s`${tempPath}/src/source`;
-                const stagingSourceDir = s`${stagingDir}/source`;
-
-                fsExtra.ensureDirSync(srcDir);
-                fsExtra.ensureDirSync(stagingSourceDir);
-
-                const originalBrsPath = s`${srcDir}/main.brs`;
-                const stagingBrsPath = s`${stagingSourceDir}/main.brs`;
 
                 const originalContents = `sub main()\nend sub\n`;
                 fsExtra.writeFileSync(originalBrsPath, originalContents);
                 fsExtra.copySync(originalBrsPath, stagingBrsPath);
-
                 project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
 
                 await project['preprocessStagingFiles']();
@@ -1132,6 +888,63 @@ describe('Project', () => {
                 await project['preprocessStagingFiles']();
 
                 expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
+            });
+
+            // ── legacy and variant comment forms ──────────────────────────────────────
+            describe('legacy and variant comment forms', () => {
+                // brs variants
+                it('brs: rewrites legacy @ form', async () => {
+                    expect(await stageFileWithComment('.brs', `'//@ sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: rewrites when // is omitted  (\'# sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.brs', `'# sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: rewrites when // is omitted with legacy @  (\'@ sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.brs', `'@ sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: rewrites with whitespace between \' and //# (\'  //# sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.brs', `'  //# sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: rewrites with whitespace and no // (\'  # sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.brs', `'  # sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.brs', `'//#sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: no space between @ and sourceMappingURL (legacy)', async () => {
+                    expect(await stageFileWithComment('.brs', `'//@sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+
+                // xml variants
+                it('xml: rewrites legacy @ form  (<!--//@ sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--//@ sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites when // is omitted  (<!--# sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--# sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites with whitespace between <!-- and //# (<!--  //# sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--  //# sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites with whitespace and no // (<!--  # sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--  # sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--//#sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+
+                // other (markdown) variants
+                it('other: rewrites legacy @ form  (//@ sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//@ sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: rewrites with whitespace between // and # (//  # sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//  # sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: rewrites with whitespace between // and @ (//  @ sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//  @ sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.md', `//#sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
             });
         });
     });
