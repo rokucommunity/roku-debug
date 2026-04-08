@@ -30,6 +30,7 @@ export class ThreadsResponse {
                 const flags = smartBuffer.readUInt8();
                 thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
                 thread.isDetached = (flags & ThreadInfoFlags.isDetached) > 0;
+                const hasIdentityInfo = (flags & ThreadInfoFlags.isIdentityInfo) > 0;
                 thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
                 thread.stopReasonDetail = protocolUtil.readStringNT(smartBuffer); // stop_reason_detail
                 thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
@@ -37,7 +38,7 @@ export class ThreadsResponse {
                 thread.filePath = protocolUtil.readStringNT(smartBuffer); // file_path
                 thread.codeSnippet = protocolUtil.readStringNT(smartBuffer); // code_snippet
 
-                if ((flags & ThreadInfoFlags.isIdentityInfo) > 0) {
+                if (hasIdentityInfo) {
                     thread.osThreadId = protocolUtil.readStringNT(smartBuffer); // id
                     thread.name = protocolUtil.readStringNT(smartBuffer); // name
                     thread.type = protocolUtil.readStringNT(smartBuffer); // type
