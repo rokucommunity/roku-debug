@@ -514,13 +514,25 @@ export class Project {
      * Rewrite the sourceMappingURL comment in a staged .brs or .xml file so the path points
      * to the map file's new staging location.
      *
-     * BRS format:  '//# sourceMappingURL=<path>
-     * XML format:  <!--//# sourceMappingURL=<path> -->
+     * Recognised comment forms (# and legacy @ are both accepted; // is optional for brs/xml):
+     *   BRS:   ' [//] [#|@] sourceMappingURL=<path>
+     *   XML:   <!-- [//] [#|@] sourceMappingURL=<path> -->
+     *   other: // \s* [#|@] sourceMappingURL=<path>
+     *
+     * When rewriting, the canonical modern form is always written:
+     *   BRS:   '//# sourceMappingURL=<path>
+     *   XML:   <!--//# sourceMappingURL=<path> -->
+     *   other: //# sourceMappingURL=<path>
      */
     private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
         try {
             let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
-            const commentMatch = /('|<!--)?\/\/# sourceMappingURL=([^\s]+?)(\s*-->)?$/m.exec(contents);
+
+            // Match brs:   '  optionally followed by //  then [#|@] sourceMappingURL=<path>
+            // Match xml:   <!-- optionally followed by // then [#|@] sourceMappingURL=<path>  -->
+            // Match other: // optionally followed by whitespace then [#|@] sourceMappingURL=<path>
+            //https://regex101.com/r/5Wvsvt/1
+            const commentMatch = /('[ \t]*(?:\/\/)?[ \t]*|<!--[ \t]*(?:\/\/)?[ \t]*|\/\/[ \t]*)[#@][ \t]*sourceMappingURL=([^\s]+?)([ \t]*-->)?$/m.exec(contents);
 
             let absoluteMapPath: string;
             let originalCommentPath: string | undefined;
@@ -559,9 +571,19 @@ export class Project {
             }
 
             if (commentMatch) {
+                // Always rewrite to canonical modern form
+                const ext = path.extname(stagingFilePath).toLowerCase();
+                let canonical: string;
+                if (ext === '.xml') {
+                    canonical = `<!--//# sourceMappingURL=${newRelativePath} -->`;
+                } else if (ext === '.brs') {
+                    canonical = `'//# sourceMappingURL=${newRelativePath}`;
+                } else {
+                    canonical = `//# sourceMappingURL=${newRelativePath}`;
+                }
                 contents = contents.replace(
-                    /('|<!--)?\/\/# sourceMappingURL=[^\s]+?(\s*-->)?$/m,
-                    (_, open, close) => `${open ?? ''}//# sourceMappingURL=${newRelativePath}${close ?? ''}`
+                    /('[ \t]*(?:\/\/)?[ \t]*|<!--[ \t]*(?:\/\/)?[ \t]*|\/\/[ \t]*)[#@][ \t]*sourceMappingURL=[^\s]+?([ \t]*-->)?$/m,
+                    canonical
                 );
             } else {
                 // Inject the comment at the end of the file
