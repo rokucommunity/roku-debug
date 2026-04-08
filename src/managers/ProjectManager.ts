@@ -527,6 +527,7 @@ export class Project {
     private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
         try {
             let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
+            const newline = /\r?\n/.exec(contents)?.[0] ?? '\n';
 
             // Match brs:   '  optionally followed by //  then [#|@] sourceMappingURL=<path>
             // Match xml:   <!-- optionally followed by // then [#|@] sourceMappingURL=<path>  -->
@@ -590,11 +591,11 @@ export class Project {
                 const ext = path.extname(stagingFilePath).toLowerCase();
                 let comment: string;
                 if (ext === '.xml') {
-                    comment = `\n<!--//# sourceMappingURL=${newRelativePath} -->`;
+                    comment = `${newline}<!--//# sourceMappingURL=${newRelativePath} -->`;
                 } else if (ext === '.brs') {
-                    comment = `\n'//# sourceMappingURL=${newRelativePath}`;
+                    comment = `${newline}'//# sourceMappingURL=${newRelativePath}`;
                 } else {
-                    comment = `\n//# sourceMappingURL=${newRelativePath}`;
+                    comment = `${newline}//# sourceMappingURL=${newRelativePath}`;
                 }
                 contents += comment;
             }

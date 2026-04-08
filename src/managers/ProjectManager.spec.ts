@@ -938,6 +938,27 @@ describe('Project', () => {
                     const result = await runWithComment('.md', `//  @ sourceMappingURL=../maps/main.md.map`);
                     expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
                 });
+
+                // ── no space between #/@ and sourceMappingURL ─────────────────────────
+                it('brs: matches when there is no space between # and sourceMappingURL', async () => {
+                    const result = await runWithComment('.brs', `'//# sourceMappingURL=../maps/main.brs.map`);
+                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+
+                it('brs: matches when there is no space between @ and sourceMappingURL (legacy)', async () => {
+                    const result = await runWithComment('.brs', `'//@ sourceMappingURL=../maps/main.brs.map`);
+                    expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+
+                it('xml: matches when there is no space between # and sourceMappingURL', async () => {
+                    const result = await runWithComment('.xml', `<!--//#sourceMappingURL=../maps/main.xml.map -->`);
+                    expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+
+                it('other: matches when there is no space between # and sourceMappingURL', async () => {
+                    const result = await runWithComment('.md', `//#sourceMappingURL=../maps/main.md.map`);
+                    expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
             });
 
             it('injects a comment when there is none but a sidecar .map exists next to the original source', async () => {
@@ -974,6 +995,26 @@ describe('Project', () => {
                     path.resolve(path.dirname(stagingBrsPath), commentMatch[1])
                 );
                 expect(resolvedMapPath).to.equal(originalMapPath);
+            });
+
+            it('uses CRLF when injecting a comment into a CRLF file', async () => {
+                const originalBrsPath = s`${tempPath}/src/source/main.brs`;
+                const originalMapPath = s`${tempPath}/src/source/main.brs.map`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+
+                fsExtra.ensureDirSync(path.dirname(originalBrsPath));
+                fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+
+                fsExtra.writeFileSync(originalBrsPath, `sub main()\r\nend sub`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+
+                project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
+
+                await project['preprocessStagingFiles']();
+
+                const updatedContents = fsExtra.readFileSync(stagingBrsPath, 'utf8');
+                expect(updatedContents).to.match(/\r\n'\/\/# sourceMappingURL=/);
             });
 
             it('does not inject a comment when there is none but the sidecar .map was staged alongside the .brs', async () => {
