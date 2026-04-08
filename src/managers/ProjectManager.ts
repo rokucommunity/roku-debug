@@ -559,13 +559,15 @@ export class Project {
             //https://regex101.com/r/5Wvsvt/1
             const commentMatch = /('[ \t]*(?:\/\/)?[ \t]*|<!--[ \t]*(?:\/\/)?[ \t]*|\/\/[ \t]*)[#@][ \t]*sourceMappingURL=([^\s]+?)([ \t]*-->)?$/m.exec(contents);
 
-            let absoluteMapPath: string;
-            let originalCommentPath: string | undefined;
+            const ext = path.extname(stagingFilePath).toLowerCase();
 
+            let absoluteMapPath: string;
             if (commentMatch) {
-                originalCommentPath = commentMatch[2];
+                const commentPath = commentMatch[2];
                 absoluteMapPath = fileUtils.standardizePath(
-                    path.resolve(path.dirname(originalSrcPath), originalCommentPath)
+                    path.isAbsolute(commentPath)
+                        ? commentPath
+                        : path.resolve(path.dirname(originalSrcPath), commentPath)
                 );
             } else {
                 // No comment — check if a colocated map exists next to the original source file
@@ -573,55 +575,36 @@ export class Project {
                 if (!await fsExtra.pathExists(colocatedMapPath)) {
                     return;
                 }
-                // If the colocated was also staged, the debugger will find it automatically — no comment needed
+                // If the colocated map was also staged, the debugger will find it automatically — no comment needed
                 if (srcToDestMap.has(colocatedMapPath)) {
                     return;
                 }
                 absoluteMapPath = colocatedMapPath;
             }
 
-            // If the original comment path was absolute, leave it as-is
-            if (originalCommentPath && path.isAbsolute(originalCommentPath)) {
-                return;
-            }
-
-            // If the map was also staged, point at its new location; otherwise point directly
-            // at the absolute map path from the original source tree (e.g. map outside rootDir)
+            // If the map was also staged, point at its new location; otherwise point back at the original
             const mapTarget = srcToDestMap.get(absoluteMapPath) ?? absoluteMapPath;
             const newRelativePath = fileUtils.standardizePath(
                 path.relative(path.dirname(stagingFilePath), mapTarget)
             );
-            if (newRelativePath === originalCommentPath) {
-                return;
+
+            // Build the canonical comment for this file type
+            let canonical: string;
+            if (ext === '.xml') {
+                canonical = `<!--//# sourceMappingURL=${newRelativePath} -->`;
+            } else if (ext === '.brs') {
+                canonical = `'//# sourceMappingURL=${newRelativePath}`;
+            } else {
+                canonical = `//# sourceMappingURL=${newRelativePath}`;
             }
 
             if (commentMatch) {
-                // Always rewrite to canonical modern form
-                const ext = path.extname(stagingFilePath).toLowerCase();
-                let canonical: string;
-                if (ext === '.xml') {
-                    canonical = `<!--//# sourceMappingURL=${newRelativePath} -->`;
-                } else if (ext === '.brs') {
-                    canonical = `'//# sourceMappingURL=${newRelativePath}`;
-                } else {
-                    canonical = `//# sourceMappingURL=${newRelativePath}`;
-                }
                 contents = contents.replace(
                     /('[ \t]*(?:\/\/)?[ \t]*|<!--[ \t]*(?:\/\/)?[ \t]*|\/\/[ \t]*)[#@][ \t]*sourceMappingURL=[^\s]+?([ \t]*-->)?$/m,
                     canonical
                 );
             } else {
-                // Inject the comment at the end of the file
-                const ext = path.extname(stagingFilePath).toLowerCase();
-                let comment: string;
-                if (ext === '.xml') {
-                    comment = `${newline}<!--//# sourceMappingURL=${newRelativePath} -->`;
-                } else if (ext === '.brs') {
-                    comment = `${newline}'//# sourceMappingURL=${newRelativePath}`;
-                } else {
-                    comment = `${newline}//# sourceMappingURL=${newRelativePath}`;
-                }
-                contents += comment;
+                contents += `${newline}${canonical}`;
             }
             await fsExtra.writeFile(stagingFilePath, contents, 'utf8');
         } catch (e) {

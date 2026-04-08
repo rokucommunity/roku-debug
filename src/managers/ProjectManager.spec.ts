@@ -815,8 +815,7 @@ describe('Project', () => {
                 expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
             });
 
-            it('does not rewrite the comment when the relative path is already correct after staging', async () => {
-                // brs and map are siblings in both source and staging — same relative path, no change needed
+            it('keeps the correct path when brs and map are siblings in both source and staging', async () => {
                 const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=main.brs.map`, {
                     originalDir: s`${tempPath}/src/source`,
                     originalMapDir: s`${tempPath}/src/source`
@@ -824,10 +823,14 @@ describe('Project', () => {
                 expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
             });
 
-            it('does not rewrite the comment when the path is absolute', async () => {
+            it('rewrites an absolute comment path to a relative path', async () => {
+                // The map is at tempPath/src/source/main.brs.map — not staged, so the comment
+                // should point back at it relatively from the staging location.
                 const absoluteMapPath = s`${tempPath}/src/source/main.brs.map`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
                 const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${absoluteMapPath}`, { stageMap: false });
-                expect(result).to.equal(`content\n'//# sourceMappingURL=${absoluteMapPath}`);
+                const expectedRelative = fileUtils.standardizePath(path.relative(path.dirname(stagingBrsPath), absoluteMapPath));
+                expect(result).to.equal(`content\n'//# sourceMappingURL=${expectedRelative}`);
             });
 
             // ── colocated injection ─────────────────────────────────────────────────────
