@@ -1447,8 +1447,21 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 let rokuThreads = await this.rokuAdapter.getThreads();
 
                 for (let thread of rokuThreads) {
-                    const threadName = thread.isDetached
-                        ? `Thread ${thread.threadId} [detached]`
+                    const threadDetails: string[] = [];
+                    if (thread.osThreadId !== undefined) {
+                        threadDetails.push(`|${thread.osThreadId}`);
+                    }
+                    if (thread.type !== undefined) {
+                        threadDetails.push(`type: ${thread.type}`);
+                    }
+                    if (thread.name !== undefined) {
+                        threadDetails.push(`name: ${thread.name}`);
+                    }
+                    if (thread.isDetached) {
+                        threadDetails.push('[detached]');
+                    }
+                    const threadName = threadDetails.length > 0
+                        ? `Thread ${thread.threadId} ${threadDetails.join(', ')}`
                         : `Thread ${thread.threadId}`;
                     threads.push(
                         new Thread(thread.threadId, threadName)

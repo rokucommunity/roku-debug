@@ -871,7 +871,10 @@ export class DebugProtocolAdapter {
                     functionName: threadInfo.functionName,
                     lineNumber: threadInfo.lineNumber, //threadInfo.lineNumber is 1-based. Thread requires 1-based line numbers
                     lineContents: threadInfo.codeSnippet,
-                    threadId: i
+                    threadId: i,
+                    osThreadId: threadInfo.osThreadId,
+                    name: threadInfo.name,
+                    type: threadInfo.type
                 };
                 threads.push(thread);
             }
@@ -1144,6 +1147,9 @@ export interface Thread {
     functionName: string;
     lineContents: string;
     threadId: number;
+    osThreadId?: string;
+    name?: string;
+    type?: string;
 }
 
 interface BrightScriptRuntimeError {
