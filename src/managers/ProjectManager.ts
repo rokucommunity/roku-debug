@@ -356,7 +356,7 @@ export class Project {
             for (let fileMapping of this.fileMappings) {
                 relativeFileMappings.push({
                     src: fileMapping.src,
-                    dest: fileUtils.replaceCaseInsensitive(fileMapping.dest, this.stagingDir, '')
+                    dest: fileUtils.replaceCaseInsensitive(fileMapping.dest, this.stagingDir, '').replace(/^[/\\]+/, '')
                 });
             }
             return Promise.resolve(relativeFileMappings);
@@ -467,6 +467,11 @@ export class Project {
                 return;
             }
 
+            // Skip files that were not moved (src === dest) — no paths need rewriting
+            if (originalSrcPath === stagingFilePath) {
+                return;
+            }
+
             const ext = path.extname(stagingFilePath).toLowerCase();
 
             if (ext === '.map') {
@@ -541,6 +546,11 @@ export class Project {
                     return;
                 }
                 absoluteMapPath = sidecarMapPath;
+            }
+
+            // If the original comment path was absolute, leave it as-is
+            if (originalCommentPath && path.isAbsolute(originalCommentPath)) {
+                return;
             }
 
             // If the map was also staged, point at its new location; otherwise point directly
