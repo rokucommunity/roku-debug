@@ -519,59 +519,57 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
-        this.resetSessionState();
-
-        //send the response right away so the UI immediately shows the debugger toolbar
-        this.sendResponse(response);
-
-        this.launchConfiguration = this.normalizeLaunchConfig(config);
-        this.setupProcessErrorHandlers();
-
-        //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
-        bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
-
-        //set the logLevel provided by the launch config
-        if (this.launchConfiguration.logLevel) {
-            logger.logLevel = this.launchConfiguration.logLevel;
-        }
-
-        //do a DNS lookup for the host to fix issues with roku rejecting ECP
         try {
-            this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
-        } catch (e) {
-            return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
-        }
+            this.resetSessionState();
+            this.launchConfiguration = this.normalizeLaunchConfig(config);
+            this.setupProcessErrorHandlers();
 
-        // fetches the device info and parses the xml data to JSON object
-        try {
-            this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
-            if (this.deviceInfo.ecpSettingMode === 'limited') {
-                return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+            //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
+            bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
+
+            //set the logLevel provided by the launch config
+            if (this.launchConfiguration.logLevel) {
+                logger.logLevel = this.launchConfiguration.logLevel;
             }
-        } catch (e) {
-            if (e instanceof EcpNetworkAccessModeDisabledError) {
-                return this.shutdown(`ECP access is disabled on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+
+            this.sendLaunchProgress('start', 'Finding device on network');
+
+            //do a DNS lookup for the host to fix issues with roku rejecting ECP
+            try {
+                this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
+            } catch (e) {
+                return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
             }
-            return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
-        }
 
-        if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
-            return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
-        }
+            // fetches the device info and parses the xml data to JSON object
+            try {
+                this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                if (this.deviceInfo.ecpSettingMode === 'limited') {
+                    return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+                }
+            } catch (e) {
+                if (e instanceof EcpNetworkAccessModeDisabledError) {
+                    return this.shutdown(`ECP access is disabled on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+                }
+                return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
+            }
 
-        await this.initializeProfiling();
-        //initialize all file logging (rokuDevice, debugger, etc)
-        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
+            if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
+                return await this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
+            }
 
-        this.projectManager.launchConfiguration = this.launchConfiguration;
-        this.breakpointManager.launchConfiguration = this.launchConfiguration;
+            await this.initializeProfiling();
+            //initialize all file logging (rokuDevice, debugger, etc)
+            this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
 
-        this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
+            this.projectManager.launchConfiguration = this.launchConfiguration;
+            this.breakpointManager.launchConfiguration = this.launchConfiguration;
 
-        this.logger.log('[launchRequest] Packaging and deploying to roku');
-        try {
+            this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
+
+            this.logger.log('[launchRequest] Packaging and deploying to roku');
             const packageEnd = this.logger.timeStart('log', 'Packaging');
-            this.sendLaunchProgress('start', 'Packaging');
+            this.sendLaunchProgress('update', `Packaging Project${(this.launchConfiguration?.componentLibraries?.length ?? 0) > 0 ? 's' : ''}`);
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
@@ -594,6 +592,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 this.logger.error('Failed to initialize rendezvous tracking', e);
             }
 
+            this.sendLaunchProgress('update', 'Connecting to debug server');
             const connectAdapterEnd = this.logger.timeStart('log', 'Connect adapter');
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();
@@ -622,6 +621,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     default: true
                 }] : []
             }));
+
+            this.sendLaunchProgress('update', 'Configuring breakpoints');
+            // everything is ready, send the response to the launch request so the UI can update and configuration can begin
+            this.sendResponse(response);
 
             // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
             // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
