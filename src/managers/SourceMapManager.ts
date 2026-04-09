@@ -6,6 +6,7 @@ import * as path from 'path';
 import type { SourceLocation } from './LocationManager';
 import { logger } from '../logging';
 import type { MaybePromise } from '../interfaces';
+import { Project } from './ProjectManager';
 
 /**
  * Unifies access to source files across the whole project
@@ -83,6 +84,37 @@ export class SourceMapManager {
         }
     }
 
+
+    /**
+     * Get the path to the sourcemap for a given file, either from a sourceMappingURL comment or by assuming a co-located .map file.
+     *
+     * Returns undefined if no source map is found.
+     * @param filePath
+     * @returns
+     */
+    private async getSourceMapPath(filePath: string) {
+        filePath = s`${filePath}`;
+        let sourceMapPath = this.sourceMapPathCache.get(filePath);
+        if (!sourceMapPath) {
+            //read the file on disk and find the sourceMapURL comment (if available)
+            let contents = await fsExtra.readFile(filePath, 'utf8');
+            const match = Project.getSourceMapComment(contents);
+            //if we have a comment, use it
+            if (match) {
+                sourceMapPath = path.resolve(path.dirname(filePath), match[3] ?? '');
+
+                //we don't have a comment. Assume a co-located source map with the same name as the file + .map
+            } else {
+                sourceMapPath = `${filePath}.map`;
+            }
+
+            this.sourceMapPathCache.set(filePath, sourceMapPath);
+        }
+        return sourceMapPath;
+    }
+    private sourceMapPathCache = new Map<string, string>();
+
+
     /**
      * Get the source location of a position using a source map. If no source map is found, undefined is returned
      * @param filePath - the absolute path to the file
@@ -90,8 +122,7 @@ export class SourceMapManager {
      * @param currentColumnIndex - the 0-based column number of the current location.
      */
     public async getOriginalLocation(filePath: string, currentLineNumber: number, currentColumnIndex = 0): Promise<SourceLocation> {
-        //look for a source map for this file
-        let sourceMapPath = `${filePath}.map`;
+        const sourceMapPath = await this.getSourceMapPath(filePath);
 
         //if we have a source map, use it
         let parsedSourceMap = await this.getSourceMap(sourceMapPath);

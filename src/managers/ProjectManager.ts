@@ -1,4 +1,3 @@
-import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import { rokuDeploy, RokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
@@ -14,7 +13,6 @@ import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
 import type { ScopeFunction } from '../bsc/BscProject';
 import type { Position } from 'brighterscript';
 import type { SourceMapPayload } from 'module';
-import { SourceMap } from 'module';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
@@ -471,7 +469,10 @@ export class Project {
             const ext = path.extname(stagingFilePath).toLowerCase();
 
             if (ext === '.map') {
-                await this.fixSourceMapSources(stagingFilePath, originalSrcPath);
+                await this.fixSourceMapSources({
+                    stagingMapPath: stagingFilePath,
+                    originalMapPath: originalSrcPath
+                });
             } else {
                 await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap);
             }
@@ -482,7 +483,9 @@ export class Project {
      * Rewrite the `sources` paths in a staged .map file so they are relative to the map's
      * new staging location rather than the original source directory.
      */
-    private async fixSourceMapSources(stagingMapPath: string, originalMapPath: string) {
+    private async fixSourceMapSources(params: { stagingMapPath: string; originalMapPath: string }) {
+        const { stagingMapPath, originalMapPath } = params;
+
         try {
             const sourceMap = await fsExtra.readJsonSync(stagingMapPath) as SourceMapPayload;
             if (!Array.isArray(sourceMap.sources) || sourceMap.sources.length === 0) {
@@ -532,6 +535,24 @@ export class Project {
     ]);
 
     /**
+     * Extracts the sourceMappingURL comment from the given file contents.
+     *
+     * `match[3]` is the path (which may be relative or absolute)
+     * @param contents
+     * @returns
+     */
+    public static getSourceMapComment(contents: string): RegExpMatchArray | undefined {
+
+        //https://regex101.com/r/FMRJNy/1
+        const matches = [
+            ...contents.matchAll(/^([ \t]*(?:'|<!--)?[ \t]*)((?:\/\/)?[ \t]*[#@][ \t]*sourceMappingURL=(.+\b))(?:|-->)?/gm)
+        ];
+        // in case there are multiple comments, use the last one since that's what tools typically do
+        const commentMatch = matches?.[matches?.length - 1];
+        return commentMatch;
+    }
+
+    /**
      * Rewrite the sourceMappingURL comment in a staged .brs or .xml file so the path points
      * to the map file's new staging location.
      *
@@ -553,12 +574,8 @@ export class Project {
             let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
             const newline = /\r?\n/.exec(contents)?.[0] ?? '\n';
 
-            //https://regex101.com/r/FMRJNy/1
-            const matches = [
-                ...contents.matchAll(/^([ \t]*(?:'|<!--)?[ \t]*)((?:\/\/)?[ \t]*[#@][ \t]*sourceMappingURL=(.+\b))(?:|-->)?/gm)
-            ];
-            // in case there are multiple comments, use the last one since that's what tools typically do
-            const commentMatch = matches?.[matches?.length - 1];
+            const commentMatch = Project.getSourceMapComment(contents);
+
             const ext = path.extname(stagingFilePath).toLowerCase();
 
             let absoluteMapPath: string;
@@ -569,17 +586,32 @@ export class Project {
                         ? commentPath
                         : path.resolve(path.dirname(originalSrcPath), commentPath)
                 );
+
+                //copy the sourcemap right next to our file in staging
+                absoluteMapPath = await this.colocateSourceMap({
+                    absoluteMapPath: absoluteMapPath,
+                    stagingFilePath: stagingFilePath
+                });
+
             } else {
                 // No comment — check if a colocated map exists next to the original source file
-                const colocatedMapPath = fileUtils.standardizePath(originalSrcPath + '.map');
-                if (!await fsExtra.pathExists(colocatedMapPath)) {
+                absoluteMapPath = fileUtils.standardizePath(originalSrcPath + '.map');
+
+                //there is no colocated map next to the original source file
+                if (!await fsExtra.pathExists(absoluteMapPath)) {
                     return;
                 }
+
+                //copy the sourcemap right next to our file in staging
+                absoluteMapPath = await this.colocateSourceMap({
+                    absoluteMapPath: absoluteMapPath,
+                    stagingFilePath: stagingFilePath
+                });
+
                 // If the colocated map was staged right next to this file, the debugger will find it automatically — no comment needed
-                if (srcToDestMap.get(colocatedMapPath) === stagingFilePath + '.map') {
+                if (srcToDestMap.get(absoluteMapPath) === stagingFilePath + '.map') {
                     return;
                 }
-                absoluteMapPath = colocatedMapPath;
             }
 
             // If the map was also staged, point at its new location; otherwise point back at the original
@@ -609,6 +641,20 @@ export class Project {
             this.logger.error(`Error updating sourceMappingURL comment in '${stagingFilePath}'`, e);
         }
     }
+
+    private async colocateSourceMap(options: { stagingFilePath: string; absoluteMapPath: string }) {
+        //copy the sourcemap right next to our file
+        const stagingMapPath = `${options.stagingFilePath}.map`;
+        await fsExtra.copyFile(options.absoluteMapPath, stagingMapPath);
+        //delete the original sourcemap so node-debug doesn't use it
+        await fsExtra.unlink(options.absoluteMapPath);
+        await this.fixSourceMapSources({
+            stagingMapPath: stagingMapPath,
+            originalMapPath: options.absoluteMapPath
+        });
+        return stagingMapPath;
+    }
+
 
     /**
      * Apply the bsConst transformations to the manifest file for this project

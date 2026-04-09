@@ -291,6 +291,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      */
     private firstRunDeferred = defer<void>();
 
+    /**
+     * Resolved whenever we're finished copying all the files to staging for all projects
+     */
+    private stagingDefered = defer<void>();
+
     private evaluateRefIdLookup: Record<string, number> = {};
     private evaluateRefIdCounter = 1;
 
@@ -608,6 +613,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 this.prepareMainProject(),
                 this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
+
+            //all of the projects have been successfully staged.
+            this.stagingDefered.resolve();
+
             packageEnd();
 
             if (this.enableDebugProtocol) {
@@ -1422,6 +1431,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             breakpoints: sortedAndFilteredBreakpoints
         };
         this.sendResponse(response);
+
+        //ensure we've staged all the files
+        await this.stagingDefered.promise;
 
         await this.rokuAdapter?.syncBreakpoints();
     }
@@ -2483,6 +2495,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.rokuAdapter.destroy();
             await this.ensureAppIsInactive();
             this.rokuAdapterDeferred = defer();
+            this.stagingDefered = defer();
         }
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }
