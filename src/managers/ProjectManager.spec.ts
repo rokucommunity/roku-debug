@@ -403,6 +403,92 @@ describe('Project', () => {
         });
     });
 
+    describe('getSourceMapComment', () => {
+        const call = (contents: string) => Project.getSourceMapComment(contents);
+
+        it('returns undefined when no sourceMappingURL comment is present', () => {
+            expect(call(`sub main()\nend sub`)).to.be.undefined;
+            expect(call(``)).to.be.undefined;
+        });
+
+        it('returns the correct named fields for a standard brs comment', () => {
+            const result = call(`sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`);
+            expect(result).to.exist;
+            expect(result.fullMatch).to.equal(`'//# sourceMappingURL=main.brs.map`);
+            expect(result.leadingInfo).to.equal(`'`);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.brs.map`);
+            expect(result.mapPath).to.equal(`main.brs.map`);
+        });
+
+        it('returns the correct named fields for a standard xml comment', () => {
+            const result = call(`<component>\n</component>\n<!--//# sourceMappingURL=main.xml.map -->`);
+            expect(result).to.exist;
+            // fullMatch does not include the trailing ' -->' (it's consumed by the non-capturing (?:|-->) group)
+            expect(result.fullMatch).to.equal(`<!--//# sourceMappingURL=main.xml.map`);
+            expect(result.leadingInfo).to.equal(`<!--`);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.xml.map`);
+            expect(result.mapPath).to.equal(`main.xml.map`);
+        });
+
+        it('returns the correct named fields for a standard js-style comment', () => {
+            const result = call(`//# sourceMappingURL=main.js.map`);
+            expect(result).to.exist;
+            expect(result.fullMatch).to.equal(`//# sourceMappingURL=main.js.map`);
+            expect(result.leadingInfo).to.equal(``);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.js.map`);
+            expect(result.mapPath).to.equal(`main.js.map`);
+        });
+
+        it('returns the last comment when multiple are present', () => {
+            const result = call(`'//# sourceMappingURL=first.brs.map\ncode\n'//# sourceMappingURL=last.brs.map`);
+            expect(result?.mapPath).to.equal(`last.brs.map`);
+        });
+
+        it('captures an absolute path in mapPath', () => {
+            const result = call(`'//# sourceMappingURL=/absolute/path/to/main.brs.map`);
+            expect(result?.mapPath).to.equal(`/absolute/path/to/main.brs.map`);
+        });
+
+        it('captures a relative path with directory traversal in mapPath', () => {
+            const result = call(`'//# sourceMappingURL=../../maps/main.brs.map`);
+            expect(result?.mapPath).to.equal(`../../maps/main.brs.map`);
+        });
+
+        it('leadingInfo preserves whitespace before the comment character', () => {
+            const result = call(`  '//# sourceMappingURL=main.brs.map`);
+            expect(result?.leadingInfo).to.equal(`  '`);
+        });
+
+        describe('legacy and variant forms', () => {
+            it('brs: legacy @ form', () => {
+                const result = call(`'//@ sourceMappingURL=main.brs.map`);
+                expect(result?.fullMatch).to.equal(`'//@ sourceMappingURL=main.brs.map`);
+                expect(result?.leadingInfo).to.equal(`'`);
+                expect(result?.mapPath).to.equal(`main.brs.map`);
+            });
+
+            it('brs: // omitted', () => {
+                expect(call(`'# sourceMappingURL=main.brs.map`)?.mapPath).to.equal(`main.brs.map`);
+            });
+
+            it('xml: // omitted', () => {
+                const result = call(`<!--# sourceMappingURL=main.xml.map -->`);
+                expect(result?.leadingInfo).to.equal(`<!--`);
+                expect(result?.mapPath).to.equal(`main.xml.map`);
+            });
+
+            it('xml: whitespace between <!-- and //#', () => {
+                const result = call(`<!--  //# sourceMappingURL=main.xml.map -->`);
+                expect(result?.leadingInfo).to.equal(`<!--  `);
+                expect(result?.mapPath).to.equal(`main.xml.map`);
+            });
+
+            it('no space between # and sourceMappingURL', () => {
+                expect(call(`'//# sourceMappingURL=main.brs.map`)?.mapPath).to.equal(`main.brs.map`);
+            });
+        });
+    });
+
     describe('preprocessStagingFiles', () => {
         afterEach(() => {
             try {
@@ -793,22 +879,25 @@ describe('Project', () => {
                 return fsExtra.readFileSync(stagingPath, 'utf8');
             }
 
-            // ── comment rewrite: map not staged ──────────────────────────────────────
-            it('rewrites the comment to point at the original map when the map was not staged', async () => {
+            // ── comment rewrite: map not in fileMappings ─────────────────────────────
+            it('rewrites the comment to point at the colocated map even when the map was not in fileMappings', async () => {
                 const rootDirSource = s`${tempPath}/alpha/beta/charlie/rootDir/source`;
-                const originalMapPath = s`${tempPath}/alpha/maps/main.brs.map`;
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
 
-                const originalRelative = s`${path.relative(rootDirSource, originalMapPath)}`;
+                const originalRelative = s`${path.relative(rootDirSource, s`${tempPath}/alpha/maps/main.brs.map`)}`;
                 const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${originalRelative}`, {
                     originalDir: rootDirSource,
                     originalMapDir: s`${tempPath}/alpha/maps`,
                     stageMap: false
                 });
 
+                // The map should have been copied right next to the staging file
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been colocated next to the staging file').to.be.true;
+                // The comment should now point at the colocated copy
                 const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(result);
                 expect(commentMatch, 'sourceMappingURL comment should still be present').to.exist;
-                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(originalMapPath);
+                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(stagingMapPath);
             });
 
             // ── comment rewrite: map staged ───────────────────────────────────────────
@@ -835,12 +924,19 @@ describe('Project', () => {
                 expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
             });
 
-            it('rewrites an absolute comment path to a relative path', async () => {
+            it('rewrites an absolute comment path to point at the colocated map in staging', async () => {
                 const absoluteMapPath = s`${tempPath}/src/source/main.brs.map`;
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
-                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${absoluteMapPath}`, { stageMap: false });
-                const expectedRelative = fileUtils.standardizePath(path.relative(path.dirname(stagingBrsPath), absoluteMapPath));
-                expect(result).to.equal(`content\n'//# sourceMappingURL=${expectedRelative}`);
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${absoluteMapPath}`, {
+                    originalDir: s`${tempPath}/src/source`,
+                    originalMapDir: s`${tempPath}/src/source`,
+                    stageMap: false
+                });
+                // Map should be colocated next to the staging file
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been colocated').to.be.true;
+                // Comment should point at the colocated copy (relative path = 'main.brs.map')
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
             });
 
             it('uses the last comment when multiple sourceMappingURL comments exist in one file', async () => {
@@ -868,63 +964,55 @@ describe('Project', () => {
                 expect(result).to.equal(`line1\n'//# sourceMappingURL=first.brs.map\nline2\n'//# sourceMappingURL=main.brs.map`);
             });
 
-            // ── colocated injection ───────────────────────────────────────────────────
-            it('injects a brs comment when there is none but a colocated .map exists next to the original source', async () => {
+            // ── colocated map (no comment) ────────────────────────────────────────────
+            it('does not modify the file when there is no comment but a colocated .map exists — copies the map next to the staging file instead', async () => {
+                const originalContent = `sub main()\nend sub`;
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
-                const originalMapPath = s`${tempPath}/rootDir/source/main.brs.map`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
 
                 const result = await stageFileWithColocatedMap('.brs');
 
-                const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(result);
-                expect(commentMatch, 'sourceMappingURL comment should have been injected').to.exist;
-                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(originalMapPath);
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
             });
 
-            it('injects an xml comment when there is none but a colocated .map exists next to the original source', async () => {
+            it('copies the colocated map next to the staging file for xml files', async () => {
+                const originalContent = `sub main()\nend sub`;
                 const stagingXmlPath = s`${stagingDir}/source/main.xml`;
-                const originalMapPath = s`${tempPath}/rootDir/source/main.xml.map`;
+                const stagingMapPath = s`${stagingDir}/source/main.xml.map`;
 
                 const result = await stageFileWithColocatedMap('.xml');
 
-                const commentMatch = /<!--\/\/# sourceMappingURL=(.+?) -->$/.exec(result);
-                expect(commentMatch, 'sourceMappingURL comment should have been injected').to.exist;
-                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingXmlPath), commentMatch[1]))).to.equal(originalMapPath);
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
             });
 
-            it('injects a //# comment for other file types when there is none but a colocated .map exists', async () => {
-                const stagingPath = s`${stagingDir}/source/main.md`;
-                const originalMapPath = s`${tempPath}/rootDir/source/main.md.map`;
+            it('copies the colocated map next to the staging file for other file types', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingMapPath = s`${stagingDir}/source/main.md.map`;
 
                 const result = await stageFileWithColocatedMap('.md');
 
-                const commentMatch = /\/\/# sourceMappingURL=(.+)$/.exec(result);
-                expect(commentMatch, 'sourceMappingURL comment should have been injected').to.exist;
-                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingPath), commentMatch[1]))).to.equal(originalMapPath);
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
             });
 
-            it('does not inject a comment when the colocated .map was staged right next to the source file', async () => {
+            it('does not modify the file when the colocated .map was already staged right next to the source file', async () => {
                 const original = `sub main()\nend sub`;
                 const result = await stageFileWithColocatedMap('.brs', { stageMap: true });
                 expect(result).to.equal(original);
             });
 
-            it('injects a comment when the colocated .map was staged but at a different relative location', async () => {
-                // Map is staged to a different subdirectory, not right next to the source — so the
-                // debugger cannot find it automatically and we must inject a comment.
+            it('does not modify the file when the colocated .map was staged at a different location — colocates the map next to the staging file', async () => {
+                const originalContent = `sub main()\nend sub`;
                 const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
                 const mapStagedElsewhere = s`${stagingDir}/maps/main.brs.map`;
 
                 const result = await stageFileWithColocatedMap('.brs', { stageMap: true, stagingMapDest: mapStagedElsewhere });
 
-                const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(result);
-                expect(commentMatch, 'sourceMappingURL comment should have been injected').to.exist;
-                // The injected path should resolve to the map's staged location
-                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(mapStagedElsewhere);
-            });
-
-            it('uses CRLF when injecting a comment into a CRLF file', async () => {
-                const result = await stageFileWithColocatedMap('.brs', { crlf: true });
-                expect(result).to.match(/\r\n'\/\/# sourceMappingURL=/);
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
             });
 
             // ── no comment, no colocated map ──────────────────────────────────────────
@@ -1020,6 +1108,76 @@ describe('Project', () => {
                 it('other: no space between # and sourceMappingURL', async () => {
                     expect(await stageFileWithComment('.md', `//#sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
                 });
+            });
+
+            // ── map file lifecycle ────────────────────────────────────────────────────
+            it('deletes the original map from its source location when a comment references it', async () => {
+                const originalMapDir = s`${tempPath}/src/components/maps`;
+                const originalMapPath = s`${originalMapDir}/main.brs.map`;
+
+                await stageFileWithComment('.brs', `'//# sourceMappingURL=../maps/main.brs.map`, {
+                    originalMapDir: originalMapDir
+                });
+
+                expect(fsExtra.pathExistsSync(originalMapPath), 'original map should have been deleted by colocateSourceMap').to.be.false;
+            });
+
+            it('deletes the original map from its source location when the map is colocated next to the original source', async () => {
+                const srcDir = s`${tempPath}/rootDir/source`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+
+                await stageFileWithColocatedMap('.brs');
+
+                expect(fsExtra.pathExistsSync(originalMapPath), 'original colocated map should have been deleted by colocateSourceMap').to.be.false;
+            });
+
+            it('copies the map file to staging and it is valid JSON', async () => {
+                const mapContent = { version: 3, sources: ['main.brs'], mappings: 'AAAA' };
+                const srcDir = s`${tempPath}/rootDir/source`;
+                const originalPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+                const stagingPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                fsExtra.ensureDirSync(srcDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+                fsExtra.writeFileSync(originalPath, `sub main()\nend sub`);
+                fsExtra.writeJsonSync(originalMapPath, mapContent);
+                fsExtra.copySync(originalPath, stagingPath);
+                project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+
+                await project['preprocessStagingFiles']();
+
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied to staging').to.be.true;
+                const copiedMap = fsExtra.readJsonSync(stagingMapPath);
+                // version is preserved; sources are rewritten by fixSourceMapSources (which is expected)
+                expect(copiedMap.version).to.equal(mapContent.version);
+                expect(copiedMap.mappings).to.equal(mapContent.mappings);
+            });
+
+            it('rewrites the comment and copies the map even when the map was not listed in fileMappings', async () => {
+                // The map exists on disk but was not staged through fileMappings — colocateSourceMap
+                // should still copy it next to the staging file and the comment should point at it.
+                const originalDir = s`${tempPath}/src/source`;
+                const originalMapDir = s`${tempPath}/src/source`;
+                const originalPath = s`${originalDir}/main.brs`;
+                const originalMapPath = s`${originalMapDir}/main.brs.map`;
+                const stagingPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                fsExtra.ensureDirSync(originalDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+                fsExtra.writeFileSync(originalPath, `content\n'//# sourceMappingURL=main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+                // Only stage the source file, not the map
+                project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+
+                await project['preprocessStagingFiles']();
+
+                const result = fsExtra.readFileSync(stagingPath, 'utf8');
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
             });
         });
     });

@@ -541,15 +541,34 @@ export class Project {
      * @param contents
      * @returns
      */
-    public static getSourceMapComment(contents: string): RegExpMatchArray | undefined {
+    public static getSourceMapComment(contents: string) {
 
-        //https://regex101.com/r/FMRJNy/1
-        const matches = [
+        //https://regex101.com/r/FMRJNy/2
+        const commentMatch = [
             ...contents.matchAll(/^([ \t]*(?:'|<!--)?[ \t]*)((?:\/\/)?[ \t]*[#@][ \t]*sourceMappingURL=(.+\b))(?:|-->)?/gm)
-        ];
-        // in case there are multiple comments, use the last one since that's what tools typically do
-        const commentMatch = matches?.[matches?.length - 1];
-        return commentMatch;
+        ].pop();
+        if (commentMatch) {
+            return {
+                /**
+                 * The entire matched comment, including any leading whitespace and comment characters (e.g. `'` or `<!--`), which should be preserved when rewriting the comment
+                 */
+                fullMatch: commentMatch?.[0],
+                /**
+                 * The leading whitespace and comment characters (e.g. `'` or `<!--`) before the actual `sourceMappingURL` text, which should be preserved when rewriting the comment
+                 */
+                leadingInfo: commentMatch?.[1],
+                /**
+                 * The entire comment text without the leadingInfo (e.g. `//# sourceMappingURL=someFile.map`)
+                 */
+                wholeComment: commentMatch?.[2],
+                /**
+                 * The path to the source map file (e.g. `someFile.map`)
+                 */
+                mapPath: commentMatch?.[3]
+            };
+        } else {
+            return undefined;
+        }
     }
 
     /**
@@ -568,23 +587,21 @@ export class Project {
      */
     private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
         try {
+            //if this is a media file, skip it because it won't have a source map
             if (Project.binaryExtensions.has(path.extname(stagingFilePath).toLowerCase())) {
                 return;
             }
             let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
-            const newline = /\r?\n/.exec(contents)?.[0] ?? '\n';
 
             const commentMatch = Project.getSourceMapComment(contents);
 
-            const ext = path.extname(stagingFilePath).toLowerCase();
-
             let absoluteMapPath: string;
+
             if (commentMatch) {
-                const commentPath = commentMatch[3];
                 absoluteMapPath = fileUtils.standardizePath(
-                    path.isAbsolute(commentPath)
-                        ? commentPath
-                        : path.resolve(path.dirname(originalSrcPath), commentPath)
+                    path.isAbsolute(commentMatch.mapPath)
+                        ? commentMatch.mapPath
+                        : path.resolve(path.dirname(originalSrcPath), commentMatch.mapPath)
                 );
 
                 //copy the sourcemap right next to our file in staging
@@ -602,16 +619,12 @@ export class Project {
                     return;
                 }
 
-                //copy the sourcemap right next to our file in staging
-                absoluteMapPath = await this.colocateSourceMap({
+                //copy the sourcemap right next to our file in staging — the debugger will find it automatically
+                await this.colocateSourceMap({
                     absoluteMapPath: absoluteMapPath,
                     stagingFilePath: stagingFilePath
                 });
-
-                // If the colocated map was staged right next to this file, the debugger will find it automatically — no comment needed
-                if (srcToDestMap.get(absoluteMapPath) === stagingFilePath + '.map') {
-                    return;
-                }
+                return;
             }
 
             // If the map was also staged, point at its new location; otherwise point back at the original
@@ -620,22 +633,8 @@ export class Project {
                 path.relative(path.dirname(stagingFilePath), mapTarget)
             );
 
-            //if we found a comment matching our exact pattern, do a replacement
-            if (commentMatch) {
-                const leadingWhitespaceAndCommentChars = commentMatch[1];
-                const newComment = `${leadingWhitespaceAndCommentChars.trimEnd()}//# sourceMappingURL=${newRelativePath}`;
-                contents = contents.replace(commentMatch[0], newComment);
-            } else {
-                //At this point we HAVE a sourcemap and no comment. The sourcemap is NOT located in staging,
-                //so we need to write a sourcemap comment into the source file to reference the original map location
-                if (ext === '.brs') {
-                    contents += `${newline}'//# sourceMappingURL=${newRelativePath}`;
-                } else if (ext === '.xml') {
-                    contents += `${newline}<!--//# sourceMappingURL=${newRelativePath} -->`;
-                } else {
-                    contents += `${newline}//# sourceMappingURL=${newRelativePath}`;
-                }
-            }
+            const newComment = `${commentMatch.leadingInfo.trimEnd()}//# sourceMappingURL=${newRelativePath}`;
+            contents = contents.replace(commentMatch.fullMatch, newComment);
             await fsExtra.writeFile(stagingFilePath, contents, 'utf8');
         } catch (e) {
             this.logger.error(`Error updating sourceMappingURL comment in '${stagingFilePath}'`, e);

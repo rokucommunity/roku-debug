@@ -84,36 +84,39 @@ export class SourceMapManager {
         }
     }
 
-
     /**
      * Get the path to the sourcemap for a given file, either from a sourceMappingURL comment or by assuming a co-located .map file.
      *
      * Returns undefined if no source map is found.
-     * @param filePath
+     * @param stagingFilePath
      * @returns
      */
-    private async getSourceMapPath(filePath: string) {
-        filePath = s`${filePath}`;
-        let sourceMapPath = this.sourceMapPathCache.get(filePath);
+    private async getSourceMapPath(stagingFilePath: string) {
+        stagingFilePath = s`${stagingFilePath}`;
+        let sourceMapPath = this.sourceMapPathCache.get(stagingFilePath);
         if (!sourceMapPath) {
             //read the file on disk and find the sourceMapURL comment (if available)
-            let contents = await fsExtra.readFile(filePath, 'utf8');
-            const match = Project.getSourceMapComment(contents);
+            let contents: string | undefined;
+            try {
+                contents = await fsExtra.readFile(stagingFilePath, 'utf8');
+            } catch {
+                // file doesn't exist — fall through to the colocated map assumption
+            }
+            const match = contents ? Project.getSourceMapComment(contents) : undefined;
             //if we have a comment, use it
             if (match) {
-                sourceMapPath = path.resolve(path.dirname(filePath), match[3] ?? '');
+                sourceMapPath = path.resolve(path.dirname(stagingFilePath), match.mapPath ?? '');
 
                 //we don't have a comment. Assume a co-located source map with the same name as the file + .map
             } else {
-                sourceMapPath = `${filePath}.map`;
+                sourceMapPath = `${stagingFilePath}.map`;
             }
 
-            this.sourceMapPathCache.set(filePath, sourceMapPath);
+            this.sourceMapPathCache.set(stagingFilePath, sourceMapPath);
         }
         return sourceMapPath;
     }
     private sourceMapPathCache = new Map<string, string>();
-
 
     /**
      * Get the source location of a position using a source map. If no source map is found, undefined is returned
@@ -200,6 +203,7 @@ export class SourceMapManager {
                         locations.push({
                             lineNumber: position.line,
                             columnIndex: position.column,
+                            //TODO this may be wrong if the sourcemap is not colocated with the generated file
                             filePath: sourceMapPath.replace(/\.map$/g, '')
                         });
                     }
