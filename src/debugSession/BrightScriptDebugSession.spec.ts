@@ -25,6 +25,9 @@ import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { PerfettoManager } from '../PerfettoManager';
 
+//DebugSession.shutdown() calls process.exit() after a sleep, so we need to prevent that during tests. This should not be a mock, it needs to be permanent for this flow
+DebugSession.prototype.shutdown = () => { };
+
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
 const rootDir = s`${tempDir}/rootDir`;

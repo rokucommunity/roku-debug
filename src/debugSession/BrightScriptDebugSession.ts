@@ -132,7 +132,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             let debuggerVersion: string;
             let additionalInfo: ProcessCrashEventData['additionalInfo'];
             try {
-                debuggerVersion = (fsExtra.readJsonSync( path.resolve(__dirname, '../../package.json')) as { version: string }).version;
+                debuggerVersion = (fsExtra.readJsonSync(path.resolve(__dirname, '../../package.json')) as { version: string }).version;
 
                 const clientName = this.initRequestArgs?.clientName ?? 'unknown';
 

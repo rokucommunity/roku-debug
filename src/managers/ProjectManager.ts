@@ -343,30 +343,18 @@ export class Project {
     private logger = logger.createLogger(`[${ProjectManager.name}]`);
 
     public async stage() {
-        let rd = new RokuDeploy();
         if (!this.fileMappings) {
             this.fileMappings = await this.getFileMappings();
         }
 
-        //override the getFilePaths function so rokuDeploy doesn't run it again during prepublishToStaging
-        (rd as any).getFilePaths = () => {
-            let relativeFileMappings = [];
-            for (let fileMapping of this.fileMappings) {
-                relativeFileMappings.push({
-                    src: fileMapping.src,
-                    //build a relative path to the dest, and remove any leading slashes
-                    dest: fileUtils.replaceCaseInsensitive(fileMapping.dest, this.stagingDir, '').replace(/^[/\\]+/, '')
-                });
-            }
-            return Promise.resolve(relativeFileMappings);
-        };
-
         //copy all project files to the staging folder
-        await rd.prepublishToStaging({
+        await rokuDeploy.prepublishToStaging({
             rootDir: this.rootDir,
             stagingDir: this.stagingDir,
-            files: this.files,
-            outDir: this.outDir
+            files: this.fileMappings,
+            outDir: this.outDir,
+            //we already fetched the file mappings ourselves, so roku-deploy doesn't need to glob the files again
+            resolveFilesArray: false
         });
 
         await this.preprocessStagingFiles();
@@ -846,14 +834,7 @@ export class Project {
      * (`dest` paths are relative in later versions of roku-deploy)
      */
     protected async getFileMappings() {
-        let fileMappings = await rokuDeploy.getFilePaths(this.files, this.rootDir);
-        for (let mapping of fileMappings) {
-            //if the dest path is relative, make it absolute (relative to the staging dir)
-            mapping.dest = path.resolve(this.stagingDir, mapping.dest);
-            //standardize the paths once here, and don't need to do it again anywhere else in this project
-            mapping.src = fileUtils.standardizePath(mapping.src);
-            mapping.dest = fileUtils.standardizePath(mapping.dest);
-        }
+        let fileMappings = await rokuDeploy.getFilePaths(this.files, this.rootDir, true, this.stagingDir);
         return fileMappings;
     }
 
