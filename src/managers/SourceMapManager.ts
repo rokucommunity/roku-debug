@@ -6,6 +6,7 @@ import * as path from 'path';
 import type { SourceLocation } from './LocationManager';
 import { logger } from '../logging';
 import type { MaybePromise } from '../interfaces';
+import { Project } from './ProjectManager';
 
 /**
  * Unifies access to source files across the whole project
@@ -84,14 +85,47 @@ export class SourceMapManager {
     }
 
     /**
+     * Get the path to the sourcemap for a given file, either from a sourceMappingURL comment or by assuming a co-located .map file.
+     *
+     * Returns undefined if no source map is found.
+     * @param stagingFilePath
+     * @returns
+     */
+    private async getSourceMapPath(stagingFilePath: string) {
+        stagingFilePath = s`${stagingFilePath}`;
+        let sourceMapPath = this.sourceMapPathCache.get(stagingFilePath);
+        if (!sourceMapPath) {
+            //read the file on disk and find the sourceMapURL comment (if available)
+            let contents: string | undefined;
+            try {
+                contents = await fsExtra.readFile(stagingFilePath, 'utf8');
+            } catch {
+                // file doesn't exist — fall through to the colocated map assumption
+            }
+            const match = contents ? Project.getSourceMapComment(contents) : undefined;
+            //if we have a comment, use it
+            if (match) {
+                sourceMapPath = path.resolve(path.dirname(stagingFilePath), match.mapPath ?? '');
+
+                //we don't have a comment. Assume a co-located source map with the same name as the file + .map
+            } else {
+                sourceMapPath = `${stagingFilePath}.map`;
+            }
+
+            this.sourceMapPathCache.set(stagingFilePath, sourceMapPath);
+        }
+        return sourceMapPath;
+    }
+    private sourceMapPathCache = new Map<string, string>();
+
+    /**
      * Get the source location of a position using a source map. If no source map is found, undefined is returned
      * @param filePath - the absolute path to the file
      * @param currentLineNumber - the 1-based line number of the current location.
      * @param currentColumnIndex - the 0-based column number of the current location.
      */
     public async getOriginalLocation(filePath: string, currentLineNumber: number, currentColumnIndex = 0): Promise<SourceLocation> {
-        //look for a source map for this file
-        let sourceMapPath = `${filePath}.map`;
+        const sourceMapPath = await this.getSourceMapPath(filePath);
 
         //if we have a source map, use it
         let parsedSourceMap = await this.getSourceMap(sourceMapPath);
@@ -169,6 +203,7 @@ export class SourceMapManager {
                         locations.push({
                             lineNumber: position.line,
                             columnIndex: position.column,
+                            //TODO this may be wrong if the sourcemap is not colocated with the generated file
                             filePath: sourceMapPath.replace(/\.map$/g, '')
                         });
                     }
