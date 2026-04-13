@@ -1133,10 +1133,12 @@ describe('ComponentLibraryProject', () => {
         it('computes stagingDir before calling getFileMappings', async () => {
             delete params.stagingDir;
             let project = new ComponentLibraryProject(params);
+            // The default stagingDir is resolved at construction time by roku-deploy
+            let defaultStagingDir = project.stagingDir;
 
             sinon.stub(rokuDeploy, 'getFilePaths').returns(Promise.resolve([
-                { src: s`${rootDir}/manifest`, dest: s`manifest` },
-                { src: s`${rootDir}/source/main.brs`, dest: s`source/main.brs` }
+                { src: s`${rootDir}/manifest`, dest: s`${defaultStagingDir}/manifest` },
+                { src: s`${rootDir}/source/main.brs`, dest: s`${defaultStagingDir}/source/main.brs` }
             ]));
             sinon.stub(Project.prototype, 'stage').returns(Promise.resolve());
             sinon.stub(util, 'convertManifestToObject').returns(Promise.resolve({}));
