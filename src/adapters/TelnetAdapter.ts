@@ -366,7 +366,9 @@ export class TelnetAdapter {
                     if (/\[scrpt.ctx.run.enter\]/i.exec(responseText.trim())) {
                         this.isAppRunning = true;
                         this.logger.log('Running beacon detected', { responseText });
-                        void this.handleStartupIfReady();
+                        if (!this.options.deepLinkUrl) {
+                            void this.handleStartupIfReady();
+                        }
                     }
 
                     //watch for the end of the program
