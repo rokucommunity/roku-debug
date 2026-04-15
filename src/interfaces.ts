@@ -24,6 +24,11 @@ export interface AdapterOptions {
      */
     stopOnEntry?: boolean;
     autoResolveVirtualVariables?: boolean;
+    /**
+     * When set, the adapter skips the [scrpt.ctx.run.enter] beacon; foreground detection
+     * and the deep link POST are handled via query/app-state polling instead.
+     */
+    deepLinkUrl?: string;
 }
 
 export interface Disposable {

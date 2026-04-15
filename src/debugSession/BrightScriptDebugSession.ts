@@ -736,17 +736,41 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             }
 
             //at this point, the project has been deployed. If we need to use a deep link, launch it now.
-            if (this.launchConfiguration.deepLinkUrl && !this.enableDebugProtocol) {
-                //wait until the first entry breakpoint has been hit
-                await this.firstRunDeferred.promise;
-                //if we are at a breakpoint, continue
-                await this.rokuAdapter.continue();
-                //kill the app on the roku
-                // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-                //convert a hostname to an ip address
-                const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
-                //send the deep link http request
-                await util.httpPost(deepLinkUrl);
+            if (this.launchConfiguration.deepLinkUrl) {
+                const deepLinkTimeout = 30_000;
+                const deepLinkStart = Date.now();
+                while (true) {
+                    if (Date.now() - deepLinkStart > deepLinkTimeout) {
+                        this.logger.warn('Timed out waiting for app to reach background before sending deep link');
+                        this.sendLaunchProgress('end', 'Complete');
+                        if (!this.firstRunDeferred.isCompleted) {
+                            this.firstRunDeferred.resolve();
+                        }
+                        break;
+                    }
+                    try {
+                        const appStateResult = await rokuECP.getAppState({
+                            host: this.launchConfiguration.host,
+                            remotePort: this.launchConfiguration.remotePort,
+                            appId: 'dev',
+                            requestOptions: { timeout: 300 }
+                        });
+
+                        if (appStateResult.state === AppState.background || appStateResult.state === AppState.inactive) {
+                            const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
+                            await util.httpPost(deepLinkUrl);
+                            //app is in foreground and deep link sent; complete the launch flow
+                            this.sendLaunchProgress('end', 'Complete');
+                            if (!this.firstRunDeferred.isCompleted) {
+                                this.firstRunDeferred.resolve();
+                            }
+                            break;
+                        }
+                    } catch (e) {
+                        this.logger.error('Error checking app state for deep link', e);
+                    }
+                    await util.sleep(200);
+                }
             }
 
         } catch (e) {
@@ -943,6 +967,18 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         }
 
         const isConnected = this.rokuAdapter.once('app-ready');
+
+        //when deepLinkUrl is set, suppress auto-launch during install so the debugger can attach
+        const packageUploadOverrides = this.launchConfiguration.deepLinkUrl
+            ? {
+                route: this.launchConfiguration.packageUploadOverrides?.route ?? 'plugin_install',
+                formData: {
+                    dev_autolaunch: 0,
+                    ...this.launchConfiguration.packageUploadOverrides?.formData
+                }
+            }
+            : this.launchConfiguration.packageUploadOverrides;
+
         const options: RokuDeployOptions = {
             ...this.launchConfiguration,
             //typing fix
@@ -954,7 +990,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             //we don't want to fail if there were compile errors...we'll let our compile error processor handle that
             failOnCompileError: true,
             //pass any upload form overrides the client may have configured
-            packageUploadOverrides: this.launchConfiguration.packageUploadOverrides
+            packageUploadOverrides: packageUploadOverrides
         };
         //if packagePath is specified, use that info instead of outDir and outFile
         if (this.launchConfiguration.packagePath) {
@@ -979,22 +1015,24 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         uploadingEnd();
 
-        //the channel has been deployed. Wait for the adapter to finish connecting.
-        //if it hasn't connected after 5 seconds, it probably will never connect.
-        let didTimeOut = false;
-        await Promise.race([
-            isConnected,
-            util.sleep(10_000).then(() => {
-                didTimeOut = true;
-            })
-        ]);
-        this.logger.log('Finished racing promises');
-        if (didTimeOut) {
-            this.logger.warn('Timed out waiting for roku to connect');
-        }
-        //if the adapter is still not connected, then it will probably never connect. Abort.
-        if (packageIsPublished && !this.rokuAdapter.connected) {
-            return this.shutdown('Debug session cancelled: failed to connect to debug protocol control port.');
+        if (!this.launchConfiguration.deepLinkUrl) {
+            //the channel has been deployed. Wait for the adapter to finish connecting.
+            //if it hasn't connected after 5 seconds, it probably will never connect.
+            let didTimeOut = false;
+            await Promise.race([
+                isConnected,
+                util.sleep(10_000).then(() => {
+                    didTimeOut = true;
+                })
+            ]);
+            this.logger.log('Finished racing promises');
+            if (didTimeOut) {
+                this.logger.warn('Timed out waiting for roku to connect');
+            }
+            //if the adapter is still not connected, then it will probably never connect. Abort.
+            if (packageIsPublished && !this.rokuAdapter.connected) {
+                return this.shutdown('Debug session cancelled: failed to connect to debug protocol control port.');
+            }
         }
     }
 
