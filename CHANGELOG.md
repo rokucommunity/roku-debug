@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.5](https://github.com/rokucommunity/roku-debug/compare/0.23.4...v0.23.5) - 2026-04-14
+### Changed
+ - Avoid monkey-patching roku-deploy's getFiles function ([#329](https://github.com/rokucommunity/roku-debug/pull/329))
+ - upgrade to [brighterscript@0.71.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0711---2026-04-14). Notable changes since 0.71.0:
+ - upgrade to [roku-deploy@3.16.5](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3165---2026-04-13). Notable changes since 3.16.4:
+     - Resolve files array staging option ([#249](https://github.com/rokucommunity/roku-deploy/pull/249))
+### Fixed
+ - Fix sourcemap comments ([#327](https://github.com/rokucommunity/roku-debug/pull/327))
+
+
+
 ## [0.23.4](https://github.com/rokucommunity/roku-debug/compare/0.23.3...v0.23.4) - 2026-04-07
 ### Added
  - Resolve relative source maps and honor sourceRoot ([#307](https://github.com/rokucommunity/roku-debug/pull/307))

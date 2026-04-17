@@ -205,7 +205,7 @@ export class FileUtils {
      * force all drive letters to lower case (because that's what VSCode does sometimes so this makes it consistent)
      * @param thePath
      */
-    public standardizePath(thePath: string) {
+    public standardizePath(thePath: string): string {
         if (!thePath) {
             return thePath;
         }
@@ -330,7 +330,7 @@ export let fileUtils = new FileUtils();
 /**
  * A tagged template literal function for standardizing the path.
  */
-export function standardizePath(stringParts, ...expressions: any[]) {
+export function standardizePath(stringParts, ...expressions: any[]): string {
     let result = [];
     for (let i = 0; i < stringParts.length; i++) {
         result.push(stringParts[i], expressions[i]);

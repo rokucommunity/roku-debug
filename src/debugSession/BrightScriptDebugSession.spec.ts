@@ -25,6 +25,9 @@ import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { PerfettoManager } from '../PerfettoManager';
 
+//DebugSession.shutdown() calls process.exit() after a sleep, so we need to prevent that during tests. This should not be a mock, it needs to be permanent for this flow
+DebugSession.prototype.shutdown = () => { };
+
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
 const rootDir = s`${tempDir}/rootDir`;
@@ -62,6 +65,9 @@ describe('BrightScriptDebugSession', () => {
         } catch (e) {
             console.log(e);
         }
+        //always resolve the stagingDefered promise right away since most tests don't care about staging and this prevents a lot of unnecessary waiting
+        session['stagingDefered'].resolve();
+
         errorSpy = sinon.spy(session.logger, 'error');
         //override the error response function and throw an exception so we can fail any tests
         (session as any).sendErrorResponse = (...args: string[]) => {
