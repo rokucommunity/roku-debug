@@ -1703,4 +1703,39 @@ describe('ComponentLibraryProject', () => {
             expect(project.name).to.equal('SGLibrary');
         });
     });
+
+    describe('fixMainProjectLibraryDependency', () => {
+        const mainStagingDir = s`${tempPath}/mainStagingDir`;
+
+        it('replaces Library statement with postfixed filename when file is in fileMappings', async () => {
+            const project = new ComponentLibraryProject(params);
+            project.fileMappings = [{
+                src: s`${rootDir}/source/mylib.brs`,
+                dest: s`${params.stagingDir}/source/mylib__lib0.brs`
+            }];
+            fsExtra.outputFileSync(s`${mainStagingDir}/source/main.brs`, `Library "mylib.brs"`);
+
+            await project.fixMainProjectLibraryDependency(mainStagingDir);
+
+            expect(
+                fsExtra.readFileSync(s`${mainStagingDir}/source/main.brs`).toString()
+            ).to.equal(`Library "mylib__lib0.brs"`);
+        });
+
+        it('leaves Library statement unchanged when file is not in fileMappings', async () => {
+            const project = new ComponentLibraryProject(params);
+            project.fileMappings = [{
+                src: s`${rootDir}/source/otherlib.brs`,
+                dest: s`${params.stagingDir}/source/otherlib__lib0.brs`
+            }];
+            const original = `Library "mylib.brs"`;
+            fsExtra.outputFileSync(s`${mainStagingDir}/source/main.brs`, original);
+
+            await project.fixMainProjectLibraryDependency(mainStagingDir);
+
+            expect(
+                fsExtra.readFileSync(s`${mainStagingDir}/source/main.brs`).toString()
+            ).to.equal(original);
+        });
+    });
 });
