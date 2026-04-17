@@ -1199,6 +1199,9 @@ export interface Thread {
      * The id of this thread
      */
     threadId: number;
+    osThreadId?: string;
+    name?: string;
+    type?: string;
 }
 
 export enum PrimativeType {
