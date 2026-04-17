@@ -51,6 +51,7 @@ import {
     ProfilingEnabledEvent as ProfilingEnableEvent,
     ProcessCrashEvent
 } from './Events';
+import type { ProcessCrashEventData } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
@@ -83,6 +84,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         //give util a reference to this session to assist in logging across the entire module
         util._debugSession = this;
+
         this.fileManager = new FileManager();
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
@@ -127,17 +129,34 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             logger.error(message, stack);
 
             let output: string;
+            let debuggerVersion: string;
+            let additionalInfo: ProcessCrashEventData['additionalInfo'];
             try {
-                const debuggerVersion = (fsExtra.readJsonSync( path.resolve(__dirname, '../../package.json')) as { version: string }).version;
+                debuggerVersion = (fsExtra.readJsonSync(path.resolve(__dirname, '../../package.json')) as { version: string }).version;
 
                 const clientName = this.initRequestArgs?.clientName ?? 'unknown';
-                const clientId = this.initRequestArgs?.clientID ?? 'unknown';
+
+                additionalInfo = {
+                    clientName: clientName,
+                    rokuDebugVersion: debuggerVersion,
+                    ecpMode: this.deviceInfo?.ecpSettingMode,
+                    developerMode: this.deviceInfo?.developerEnabled,
+                    firmware: this.deviceInfo ? `${this.deviceInfo?.softwareVersion}.${this.deviceInfo?.softwareBuild}` : undefined,
+                    protocolVersion: this.deviceInfo?.brightscriptDebuggerVersion,
+                    protocolEnabled: this.enableDebugProtocol
+                };
+
+                const lines = Object.entries(additionalInfo as Record<string, unknown>).map(([key, value]) => {
+                    // Insert a space before all uppercase letters preceded by a lowercase letter, then uppercase the first char
+                    const spacedString = key.replace(/([a-z])([A-Z])/g, '$1 $2');
+                    const formattedKey = spacedString.charAt(0).toUpperCase() + spacedString.slice(1);
+                    return `**${formattedKey}:** ${JSON.stringify(value)}`;
+                });
 
                 const issueBodyPrefix = [
-                    `**Debugger version:** ${debuggerVersion}`,
-                    `**Client:** ${clientName} (${clientId})`,
                     `**Error type:** ${type}`,
                     `**Message:** ${message}`,
+                    ...lines,
                     '',
                     `**Steps to reproduce:**`,
                     `<!-- Please describe what you were doing when this crash occurred -->`,
@@ -169,19 +188,18 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 output = [
                     '',
                     '================================================================',
-                    '  BRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
-                    '  This is a crash in the debug adapter, not in your application.',
+                    '\tBRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
+                    '\tThis is a crash in the debug adapter, not in your application.',
                     '================================================================',
-                    `  Error type:        ${type}`,
-                    `  Message:           ${message}`,
-                    `  Debugger version:  ${debuggerVersion}`,
-                    `  Client:            ${clientName} (${clientId})`,
+                    `\tError type: ${type}`,
+                    `\tMessage: ${message}`,
+                    ...lines.map(l => `\t${l}`),
                     '',
-                    '  Stack trace:',
-                    ...(stack ?? '(no stack trace)').split('\n').map(l => `  ${l}`),
+                    '\tStack trace:',
+                    ...(stack ?? '(no stack trace)').split('\n').map(l => `\t${l}`),
                     '',
-                    '  Please report this at:',
-                    `  ${issueUrl}`,
+                    '\tPlease report this at:',
+                    `\t${issueUrl}`,
                     '================================================================',
                     ''
                 ].join('\n');
@@ -195,7 +213,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             void this.sendLogOutput(output).catch(() => { /** best-effort */ });
             this.isCrashed = true;
-            this.sendEvent(new ProcessCrashEvent({ type, message, stack }));
+            this.sendEvent(new ProcessCrashEvent({ type, message, stack, additionalInfo: additionalInfo ?? {} }));
             setTimeout(() => void this.shutdown(), 5000);
         };
 
@@ -274,6 +292,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      */
     private firstRunDeferred = defer<void>();
 
+    /**
+     * Resolved whenever we're finished copying all the files to staging for all projects
+     */
+    private stagingDefered = defer<void>();
+
     private evaluateRefIdLookup: Record<string, number> = {};
     private evaluateRefIdCounter = 1;
 
@@ -304,7 +327,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private COMPILE_ERROR_THREAD_ID = 7_777;
 
     private get enableDebugProtocol() {
-        return this.launchConfiguration.enableDebugProtocol;
+        return this.launchConfiguration?.enableDebugProtocol;
     }
 
     /**
@@ -591,6 +614,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 this.prepareMainProject(),
                 this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
+
+            //all of the projects have been successfully staged.
+            this.stagingDefered.tryResolve();
+
             packageEnd();
 
             if (this.enableDebugProtocol) {
@@ -1407,6 +1434,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         };
         this.sendResponse(response);
 
+        //ensure we've staged all the files
+        await this.stagingDefered.promise;
+
         await this.rokuAdapter?.syncBreakpoints();
     }
 
@@ -1471,17 +1501,17 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     0,
                     'Compile Error',
                     new Source(path.basename(this.compileError.path), this.compileError.path),
-                    //diagnostics are 0 based, vscode expects 1 based
-                    this.compileError.range.start.line + 1,
-                    this.compileError.range.start.character + 1
+                    // range is 0-based; toClientLine/toClientColumn handle client coordinate conversion
+                    this.toClientLine(this.compileError.range.start.line),
+                    this.toClientColumn(this.compileError.range.start.character)
                 ));
             } else if (args.threadId === 1001) {
                 frames.push(new StackFrame(
                     0,
                     'ERROR: threads would not stop',
                     new Source('main.brs', s`${this.launchConfiguration.stagingDir}/manifest`),
-                    1,
-                    1
+                    this.toClientLine(0),
+                    this.toClientColumn(0)
                 ));
                 this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn').catch((error) => {
                     this.logger.error('Error showing popup message', { error });
@@ -1492,43 +1522,51 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
                 if (this.rokuAdapter.isAtDebuggerPrompt) {
                     let stackTrace = await this.rokuAdapter.getStackTrace(args.threadId);
-
-                    for (let debugFrame of stackTrace) {
-                        let sourceLocation = await this.projectManager.getSourceLocation(debugFrame.filePath, debugFrame.lineNumber);
-
-                        //the stacktrace returns function identifiers in all lower case. Try to get the actual case
-                        //load the contents of the file and get the correct casing for the function identifier
-                        try {
-                            let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation?.filePath, debugFrame.functionIdentifier);
-                            if (functionName) {
-
-                                //search for original function name if this is an anonymous function.
-                                //anonymous function names are prefixed with $ in the stack trace (i.e. $anon_1 or $functionname_40002)
-                                if (functionName.startsWith('$')) {
-                                    functionName = this.fileManager.getFunctionNameAtPosition(
-                                        sourceLocation.filePath,
-                                        sourceLocation.lineNumber - 1,
-                                        functionName
-                                    );
-                                }
-                                debugFrame.functionIdentifier = functionName;
-                            }
-                        } catch (error) {
-                            this.logger.error('Error correcting function identifier case', { error, sourceLocation, debugFrame });
-                        }
-                        const filePath = sourceLocation?.filePath ?? debugFrame.filePath;
-
-                        const frame: DebugProtocol.StackFrame = new StackFrame(
-                            debugFrame.frameId,
-                            `${debugFrame.functionIdentifier}`,
-                            new Source(path.basename(filePath), filePath),
-                            sourceLocation?.lineNumber ?? debugFrame.lineNumber,
-                            1
-                        );
-                        if (!sourceLocation) {
-                            frame.presentationHint = 'subtle';
-                        }
+                    if (stackTrace.length === 0) {
+                        // Thread is detached or encountered an error requesting Stack Trace — show a non-interactive label so VS Code can display
+                        // the thread without letting the user navigate to a source location
+                        const frame = new StackFrame(0, '[unavailable]');
+                        frame.presentationHint = 'label';
                         frames.push(frame);
+                    } else {
+                        for (let debugFrame of stackTrace) {
+                            let sourceLocation = await this.projectManager.getSourceLocation(debugFrame.filePath, debugFrame.lineNumber);
+
+                            //the stacktrace returns function identifiers in all lower case. Try to get the actual case
+                            //load the contents of the file and get the correct casing for the function identifier
+                            try {
+                                let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation?.filePath, debugFrame.functionIdentifier);
+                                if (functionName) {
+
+                                    //search for original function name if this is an anonymous function.
+                                    //anonymous function names are prefixed with $ in the stack trace (i.e. $anon_1 or $functionname_40002)
+                                    if (functionName.startsWith('$')) {
+                                        functionName = this.fileManager.getFunctionNameAtPosition(
+                                            sourceLocation.filePath,
+                                            sourceLocation.lineNumber - 1,
+                                            functionName
+                                        );
+                                    }
+                                    debugFrame.functionIdentifier = functionName;
+                                }
+                            } catch (error) {
+                                this.logger.error('Error correcting function identifier case', { error, sourceLocation, debugFrame });
+                            }
+                            const filePath = sourceLocation?.filePath ?? debugFrame.filePath;
+
+                            const frame: DebugProtocol.StackFrame = new StackFrame(
+                                debugFrame.frameId,
+                                `${debugFrame.functionIdentifier}`,
+                                new Source(path.basename(filePath), filePath),
+                                // lineNumber is 1-based from Roku; toClientLine expects 0-based
+                                this.toClientLine((sourceLocation?.lineNumber ?? debugFrame.lineNumber) - 1),
+                                this.toClientColumn(0)
+                            );
+                            if (!sourceLocation) {
+                                frame.presentationHint = 'subtle';
+                            }
+                            frames.push(frame);
+                        }
                     }
                 } else {
                     this.logger.log('Skipped calculating stacktrace because the RokuAdapter is not accepting input at this time');
@@ -2459,6 +2497,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.rokuAdapter.destroy();
             await this.ensureAppIsInactive();
             this.rokuAdapterDeferred = defer();
+            this.stagingDefered.tryResolve();
+            this.stagingDefered = defer();
         }
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }
@@ -2588,10 +2628,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
                 const stackTraceLineNumber = stackTrace[0]?.lineNumber;
                 const stackTraceFilePath = stackTrace[0]?.filePath;
-                if (stackTraceLineNumber !== thread.lineNumber) {
+                // Only apply the line correction when we actually have valid data — never clobber
+                // thread.filePath with undefined, which would crash getSourceLocation downstream.
+                if (stackTraceLineNumber !== undefined && stackTraceLineNumber !== thread.lineNumber) {
                     this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
                     thread.lineNumber = stackTraceLineNumber;
-                    thread.filePath = stackTraceFilePath;
+                    thread.filePath = stackTraceFilePath ?? thread.filePath;
                 }
             })
         );
