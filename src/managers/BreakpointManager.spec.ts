@@ -1052,17 +1052,6 @@ describe('BreakpointManager', () => {
                 });
                 await project.stage();
 
-                //DEBUG: dump state to understand Linux CI failure
-                const stagingMapRaw = fsExtra.readFileSync(s`${stagingDir}/source/main.brs.map`, 'utf8');
-                const rootMapExists = fsExtra.pathExistsSync(s`${rootDir}/source/main.brs.map`);
-                const parsedStaging = await sourceMapManager.getSourceMap(s`${stagingDir}/source/main.brs.map`);
-                console.log('>>> [reverse mapping DEBUG] process.cwd:', process.cwd());
-                console.log('>>> [reverse mapping DEBUG] bsPath:', bsPath);
-                console.log('>>> [reverse mapping DEBUG] stagingMap on disk:', stagingMapRaw);
-                console.log('>>> [reverse mapping DEBUG] rootDir map exists:', rootMapExists);
-                console.log('>>> [reverse mapping DEBUG] parsed staging sources:', parsedStaging?.sources);
-                console.log('>>> [reverse mapping DEBUG] fileMappings:', project.fileMappings);
-
                 //map .bs line 3 (print firstName) forward to the staging file
                 const stagingResult = await locationManager.getStagingLocations(
                     bsPath,
@@ -1072,7 +1061,6 @@ describe('BreakpointManager', () => {
                     project.stagingDir,
                     project.fileMappings
                 );
-                console.log('>>> [reverse mapping DEBUG] stagingResult:', JSON.stringify(stagingResult));
                 expect(stagingResult.locations.length, 'should find at least one staging location for .bs line 3').to.be.greaterThan(0);
                 const stagingLoc = stagingResult.locations[0];
                 expect(fileUtils.standardizePath(stagingLoc.filePath).toLowerCase(), 'staging location should be in the staging main.brs').to.equal(
