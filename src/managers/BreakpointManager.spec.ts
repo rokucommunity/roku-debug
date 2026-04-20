@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
+import * as path from 'path';
 import { SourceMapConsumer, SourceNode } from 'source-map';
 import type { BreakpointWorkItem } from './BreakpointManager';
 import { BreakpointManager } from './BreakpointManager';
@@ -793,11 +794,13 @@ describe('BreakpointManager', () => {
                 enhanceREPLCompletions: false
             }));
 
-            //the in-memory cached source map should have been updated to point to rootDir
+            //the in-memory cached source map should still point back to the original src file
+            //(not rootDir) — the fix ensures we follow the existing map one hop further so the chain
+            //isn't broken at rootDir
             expect(
                 (await sourceMapManager.getSourceMap(`${stagingDir}/source/main.brs.map`)).sources
             ).to.eql([
-                s`${rootDir}/source/main.brs`
+                sourceFilePath
             ]);
         });
 
@@ -1108,6 +1111,708 @@ describe('BreakpointManager', () => {
 
                 return { bsDir, bsPath, libBsPath };
             }
+
+            it('staging sourcemap points back to src/ (not rootDir/) after breakpoint injection through a 2-hop chain', async () => {
+                // Scenario: src/source/main.brs -> (compiled) -> rootDir/source/main.brs+.map -> (staged) -> stagingDir/source/main.brs+.map
+                // The map in rootDir points back to src/source/main.brs.
+                // After writeBreakpointsToFile injects a STOP, the NEW staging map should still point
+                // back to src/source/main.brs — NOT to rootDir/source/main.brs.
+                // This reproduces the bug where writeBreakpointsToFile used rootDirFilePath as
+                // originalFilePath, cutting the chain short at rootDir instead of following the
+                // existing map one more hop back to the true src/ origin.
+
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+
+                const srcFileContents =
+                    'function main()\n' +
+                    '    print "hello"\n' +
+                    '    print "world"\n' +
+                    'end function';
+
+                // Write the "source" file (src/source/main.brs)
+                fsExtra.outputFileSync(srcFilePath, srcFileContents);
+
+                // Simulate compilation: rootDir/source/main.brs is a 1-1 copy of src,
+                // but its sourcemap references the *src* path as the original.
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(2, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(3, 0, srcFilePath, '    print "world"\n'),
+                    new SourceNode(4, 0, srcFilePath, 'end function')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+
+                // rootDir gets the compiled .brs and its .map (which references srcFilePath)
+                const rootDirBrs = s`${rootDir}/source/main.brs`;
+                fsExtra.outputFileSync(rootDirBrs, compiled.code);
+                fsExtra.outputFileSync(`${rootDirBrs}.map`, compiled.map.toString());
+
+                // staging gets the same files (normal copy-to-staging flow)
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                fsExtra.outputFileSync(stagingBrs, compiled.code);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+
+                // Sanity check: before injection the staging map sources point to src
+                const preMap = await sourceMapManager.getSourceMap(`${stagingBrs}.map`);
+                expect(preMap?.sources, 'pre-injection staging map should reference src/').to.include(srcFilePath);
+
+                // Set a breakpoint on src/source/main.brs line 2
+                bpManager.setBreakpoint(srcFilePath, { line: 2, column: 0 });
+
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                // After injection, the staging map must still chain back to srcFilePath — not rootDirBrs.
+                // If it points at rootDirBrs the chain is broken: the debugger shows rootDir, not src.
+                const postMap = await sourceMapManager.getSourceMap(`${stagingBrs}.map`);
+                expect(
+                    postMap?.sources,
+                    `post-injection staging map sources should still reference src/ (${srcFilePath}), ` +
+                    `not rootDir/ (${rootDirBrs}). Actual sources: ${JSON.stringify(postMap?.sources)}`
+                ).to.include(srcFilePath);
+
+                // Also verify the full chain resolves correctly via locationManager
+                let foundLocation: SourceLocation | undefined;
+                for (let stagingLine = 1; stagingLine <= 10; stagingLine++) {
+                    const loc = await locationManager.getSourceLocation({
+                        stagingFilePath: stagingBrs,
+                        lineNumber: stagingLine,
+                        columnIndex: 0,
+                        rootDir: rootDir,
+                        stagingDir: stagingDir,
+                        fileMappings: [],
+                        enableSourceMaps: true
+                    });
+                    if (loc?.filePath?.toLowerCase() === srcFilePath.toLowerCase() && loc.lineNumber === 2) {
+                        foundLocation = loc;
+                        break;
+                    }
+                }
+                expect(
+                    foundLocation,
+                    `locationManager should be able to trace from staging back to ${srcFilePath} line 2 ` +
+                    `after breakpoint injection. Post-injection map sources: ${JSON.stringify(postMap?.sources)}`
+                ).to.exist;
+            });
+
+            it('reads the existing map via sourceMappingURL comment (not just .map suffix) to find true originalFilePath', async () => {
+                // Scenario: the staging .brs file has a `//# sourceMappingURL=main.brs.map` comment
+                // pointing to a map that itself references srcDir/source/main.brs.
+                // writeBreakpointsToFile must follow the comment to discover the real origin,
+                // not assume a co-located .map suffix separately.
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                const srcFileContents =
+                    'function main()\n' +
+                    '    print "hello"\n' +
+                    'end function';
+                fsExtra.outputFileSync(srcFilePath, srcFileContents);
+
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(2, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(3, 0, srcFilePath, 'end function')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+
+                const rootDirBrs = s`${rootDir}/source/main.brs`;
+                fsExtra.outputFileSync(rootDirBrs, compiled.code);
+                fsExtra.outputFileSync(`${rootDirBrs}.map`, compiled.map.toString());
+
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                //embed the sourceMappingURL comment so getSourceMapPath uses it
+                const stagingCode = compiled.code + '\n//# sourceMappingURL=main.brs.map';
+                fsExtra.outputFileSync(stagingBrs, stagingCode);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+
+                bpManager.setBreakpoint(srcFilePath, { line: 2, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                //the new staging map must still reference the true src/ origin
+                const postMap = await sourceMapManager.getSourceMap(`${stagingBrs}.map`);
+                expect(
+                    postMap?.sources,
+                    `post-injection staging map should reference src/ (${srcFilePath}), ` +
+                    `not rootDir/ (${rootDirBrs}). Actual: ${JSON.stringify(postMap?.sources)}`
+                ).to.include(srcFilePath);
+            });
+
+            it('always writes the new map to the co-located .map path, never to a path outside staging', async () => {
+                // Even if sourceMappingURL points to a file outside staging, we must ONLY write
+                // the newly generated map to ${stagingFilePath}.map (inside staging).
+                // Writing outside staging could corrupt source files.
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                const srcFileContents =
+                    'function main()\n' +
+                    '    print "hello"\n' +
+                    'end function';
+                fsExtra.outputFileSync(srcFilePath, srcFileContents);
+
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(2, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(3, 0, srcFilePath, 'end function')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+
+                const rootDirBrs = s`${rootDir}/source/main.brs`;
+                fsExtra.outputFileSync(rootDirBrs, compiled.code);
+                fsExtra.outputFileSync(`${rootDirBrs}.map`, compiled.map.toString());
+
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                //point sourceMappingURL at the rootDir map (outside staging) to simulate a worst-case comment
+                const relativePathToRootDirMap = path.relative(
+                    path.dirname(stagingBrs),
+                    `${rootDirBrs}.map`
+                );
+                const stagingCode = compiled.code + `\n//# sourceMappingURL=${relativePathToRootDirMap}`;
+                fsExtra.outputFileSync(stagingBrs, stagingCode);
+                //staging also has a co-located .map so getStagingLocations can resolve the breakpoint,
+                //but the sourceMappingURL comment in the .brs points outside staging — the write must
+                //still only ever go to the co-located path, never follow the comment for writing.
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+                //keep track of the rootDir map content so we can verify it was not overwritten
+                const rootDirMapBefore = compiled.map.toString();
+
+                bpManager.setBreakpoint(srcFilePath, { line: 2, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                //the map at rootDir must NOT have been overwritten by our process
+                expect(
+                    fsExtra.readFileSync(`${rootDirBrs}.map`).toString(),
+                    'rootDir map should be untouched — we must never write outside staging'
+                ).to.equal(rootDirMapBefore);
+
+                //the new map must have been written to the co-located staging path
+                expect(
+                    fsExtra.pathExistsSync(`${stagingBrs}.map`),
+                    'co-located staging .map should have been created by breakpoint injection'
+                ).to.be.true;
+            });
+
+            it('composes an external map (sourceMappingURL points outside staging) into the new staging map', async () => {
+                // Scenario: the staging .brs has a sourceMappingURL comment pointing at a map
+                // OUTSIDE staging (e.g. rootDir). The existing map is NOT 1:1 — it strips blank
+                // lines like a BrightScript transpile would.
+                //
+                // After STOP injection writeBreakpointsToFile must:
+                //  1. write the new map co-located IN staging
+                //  2. compose (applySourceMap) the external map so a single staging map traces all
+                //     the way back to the true src file without relying on a runtime chain through rootDir
+
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+
+                // Source file has blank lines interspersed (like a .bs file would after transpile)
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +    // line 1
+                    '\n' +                    // line 2 (blank, stripped in compiled)
+                    '    print "hello"\n' +  // line 3
+                    '\n' +                    // line 4 (blank, stripped)
+                    '    print "world"\n' +  // line 5
+                    '\n' +                    // line 6 (blank, stripped)
+                    'end function\n'          // line 7
+                );
+
+                // Compiled output strips the blank lines — non-trivial, non-1:1 mapping
+                const compiledChunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(3, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(5, 0, srcFilePath, '    print "world"\n'),
+                    new SourceNode(7, 0, srcFilePath, 'end function\n')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, compiledChunks).toStringWithSourceMap();
+
+                // rootDir has the compiled output + its map (outside staging)
+                const rootDirBrs = s`${rootDir}/source/main.brs`;
+                fsExtra.outputFileSync(rootDirBrs, compiled.code);
+                fsExtra.outputFileSync(`${rootDirBrs}.map`, compiled.map.toString());
+
+                // Staging has the compiled .brs with a comment pointing at the rootDir map
+                // and a co-located .map copy (for getStagingLocations to discover breakpoints),
+                // but the comment path is what writeBreakpointsToFile should follow for composition
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                const relativePathToRootDirMap = path.relative(
+                    path.dirname(stagingBrs),
+                    `${rootDirBrs}.map`
+                );
+                fsExtra.outputFileSync(stagingBrs,
+                    compiled.code + `\n//# sourceMappingURL=${relativePathToRootDirMap}`
+                );
+                // Co-located .map needed so getStagingLocations can discover the breakpoint location
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+
+                // Set a breakpoint on src line 3 (print "hello") — compiles to staging line 2
+                bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                // The new staging map must directly reference srcFilePath (composed, not chained)
+                const newMap = await sourceMapManager.getSourceMap(`${stagingBrs}.map`);
+                expect(newMap?.sources,
+                    `staging map sources should reference src/ (${srcFilePath}), got: ${JSON.stringify(newMap?.sources)}`
+                ).to.include(srcFilePath);
+
+                // The full chain must resolve: some staging line -> srcFilePath line 3
+                let foundLocation: SourceLocation | undefined;
+                for (let stagingLine = 1; stagingLine <= 10; stagingLine++) {
+                    const loc = await locationManager.getSourceLocation({
+                        stagingFilePath: stagingBrs,
+                        lineNumber: stagingLine,
+                        columnIndex: 0,
+                        rootDir: rootDir,
+                        stagingDir: stagingDir,
+                        fileMappings: [],
+                        enableSourceMaps: true
+                    });
+                    if (loc?.filePath?.toLowerCase() === srcFilePath.toLowerCase() && loc.lineNumber === 3) {
+                        foundLocation = loc;
+                        break;
+                    }
+                }
+                expect(foundLocation,
+                    `should trace from staging back to ${srcFilePath} line 3 via the composed map. ` +
+                    `Map sources: ${JSON.stringify(newMap?.sources)}`
+                ).to.exist;
+            });
+        });
+
+        describe('STOP source coordinate precision', () => {
+            /**
+             * Directly query the newly written .map file with SourceMapConsumer to assert the
+             * exact source file + line that the injected STOP statement maps to.
+             * These tests bypass locationManager so there is no fallback masking a bad coordinate.
+             */
+            async function getStopSourcePosition(stagingBrs: string, stopStagingLine: number) {
+                const mapJson = JSON.parse(fsExtra.readFileSync(`${stagingBrs}.map`).toString());
+                return SourceMapConsumer.with(mapJson, null, (consumer) => {
+                    return consumer.originalPositionFor({
+                        line: stopStagingLine,
+                        column: 0,
+                        bias: SourceMapConsumer.LEAST_UPPER_BOUND
+                    });
+                });
+            }
+
+            it('STOP line maps to correct source line via co-located map (non-1:1, type=sourceMap)', async () => {
+                // Source has blank lines stripped in compiled output (non-1:1 mapping).
+                // BP on source line 3 -> staging line 2. After injection STOP is at staging line 2.
+                // The new staging map must record STOP -> srcFilePath:3, not srcFilePath:2.
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +   // line 1
+                    '\n' +                   // line 2 (blank, stripped)
+                    '    print "hello"\n' + // line 3
+                    '\n' +                   // line 4 (blank, stripped)
+                    'end function\n'         // line 5
+                );
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(3, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(5, 0, srcFilePath, 'end function\n')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                fsExtra.outputFileSync(stagingBrs, compiled.code);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, compiled.code);
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
+
+                bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                // Staging line 2 is now the injected STOP (BP was on src line 3 -> compiled line 2)
+                const pos = await getStopSourcePosition(stagingBrs, 2);
+                expect(pos.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                expect(pos.line, `STOP at staging line 2 should map to source line 3, not ${pos.line}`).to.equal(3);
+            });
+
+            it('STOP line maps to correct source line via external map (non-1:1, type=sourceMap, applySourceMap path)', async () => {
+                // Same non-1:1 scenario but the .brs has a sourceMappingURL pointing outside staging,
+                // so writeBreakpointsToFile must use applySourceMap to compose the maps.
+                // The STOP at staging line 2 must still map to srcFilePath:3 in the composed output.
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +   // line 1
+                    '\n' +                   // line 2 (blank, stripped)
+                    '    print "hello"\n' + // line 3
+                    '\n' +                   // line 4 (blank, stripped)
+                    'end function\n'         // line 5
+                );
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(3, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(5, 0, srcFilePath, 'end function\n')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+                const rootDirBrs = s`${rootDir}/source/main.brs`;
+                fsExtra.outputFileSync(rootDirBrs, compiled.code);
+                fsExtra.outputFileSync(`${rootDirBrs}.map`, compiled.map.toString());
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                const relativeToRootDirMap = path.relative(path.dirname(stagingBrs), `${rootDirBrs}.map`);
+                fsExtra.outputFileSync(stagingBrs, compiled.code + `\n//# sourceMappingURL=${relativeToRootDirMap}`);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+
+                bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                const pos = await getStopSourcePosition(stagingBrs, 2);
+                expect(pos.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                expect(pos.line, `STOP at staging line 2 should map to source line 3, not ${pos.line}`).to.equal(3);
+            });
+
+            it('multiple STOPs each map to their own correct source lines (non-1:1)', async () => {
+                // Two BPs on source lines 3 and 5 — both stripped-blank-line non-1:1 positions.
+                // Each injected STOP must map to its own source line, not each other's.
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +    // line 1
+                    '\n' +                    // line 2 (blank, stripped)
+                    '    print "hello"\n' +  // line 3
+                    '\n' +                    // line 4 (blank, stripped)
+                    '    print "world"\n' +  // line 5
+                    '\n' +                    // line 6 (blank, stripped)
+                    'end function\n'          // line 7
+                );
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(3, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(5, 0, srcFilePath, '    print "world"\n'),
+                    new SourceNode(7, 0, srcFilePath, 'end function\n')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                fsExtra.outputFileSync(stagingBrs, compiled.code);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, compiled.code);
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
+
+                bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
+                bpManager.setBreakpoint(srcFilePath, { line: 5, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                // After two STOPs injected: staging line 2=STOP(src3), line 3=print"hello",
+                // line 4=STOP(src5), line 5=print"world"
+                const pos3 = await getStopSourcePosition(stagingBrs, 2);
+                expect(pos3.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                expect(pos3.line, `first STOP should map to source line 3, got ${pos3.line}`).to.equal(3);
+
+                const pos5 = await getStopSourcePosition(stagingBrs, 4);
+                expect(pos5.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                expect(pos5.line, `second STOP should map to source line 5, got ${pos5.line}`).to.equal(5);
+            });
+
+            it('STOP line maps to correct source line for conditional breakpoint (non-1:1)', async () => {
+                // Conditional BPs inject "if condition then : STOP : end if" — same source line
+                // translation must apply as for plain STOP.
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +   // line 1
+                    '\n' +                   // line 2 (blank, stripped)
+                    '    print "hello"\n' + // line 3
+                    '\n' +                   // line 4 (blank, stripped)
+                    'end function\n'         // line 5
+                );
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(3, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(5, 0, srcFilePath, 'end function\n')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                fsExtra.outputFileSync(stagingBrs, compiled.code);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, compiled.code);
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
+
+                bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0, condition: 'x = 1' });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                const pos = await getStopSourcePosition(stagingBrs, 2);
+                expect(pos.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                expect(pos.line, `conditional STOP at staging line 2 should map to source line 3, got ${pos.line}`).to.equal(3);
+            });
+
+            it('STOP line maps to correct source line for logMessage breakpoint (non-1:1)', async () => {
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +   // line 1
+                    '\n' +                   // line 2 (blank, stripped)
+                    '    print "hello"\n' + // line 3
+                    '\n' +                   // line 4 (blank, stripped)
+                    'end function\n'         // line 5
+                );
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),
+                    new SourceNode(3, 0, srcFilePath, '    print "hello"\n'),
+                    new SourceNode(5, 0, srcFilePath, 'end function\n')
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                fsExtra.outputFileSync(stagingBrs, compiled.code);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, compiled.code);
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
+
+                bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0, logMessage: 'hello {name}' });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                const pos = await getStopSourcePosition(stagingBrs, 2);
+                expect(pos.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                expect(pos.line, `PRINT at staging line 2 should map to source line 3, got ${pos.line}`).to.equal(3);
+            });
+
+            it('non-injected lines still map to their correct source lines after STOP insertion', async () => {
+                // After a STOP is injected at staging line 2, staging lines 3+ are shifted.
+                // The existing lines (not the STOP itself) must still map to their correct source lines.
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +    // line 1
+                    '\n' +                    // line 2 (blank, stripped)
+                    '    print "hello"\n' +  // line 3
+                    '\n' +                    // line 4 (blank, stripped)
+                    '    print "world"\n' +  // line 5
+                    '\n' +                    // line 6 (blank, stripped)
+                    'end function\n'          // line 7
+                );
+                const chunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),  // staging line 1
+                    new SourceNode(3, 0, srcFilePath, '    print "hello"\n'), // staging line 2
+                    new SourceNode(5, 0, srcFilePath, '    print "world"\n'), // staging line 3
+                    new SourceNode(7, 0, srcFilePath, 'end function\n')       // staging line 4
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, chunks).toStringWithSourceMap();
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                fsExtra.outputFileSync(stagingBrs, compiled.code);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, compiled.code);
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
+
+                // BP on src line 3 -> staging line 2. After injection:
+                // staging 1=function main(), 2=STOP, 3=print"hello", 4=print"world", 5=end function
+                bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                const mapJson = JSON.parse(fsExtra.readFileSync(`${stagingBrs}.map`).toString());
+                await SourceMapConsumer.with(mapJson, null, (consumer) => {
+                    const check = (stagingLine: number, expectedSrcLine: number, label: string) => {
+                        const pos = consumer.originalPositionFor({ line: stagingLine, column: 0, bias: SourceMapConsumer.LEAST_UPPER_BOUND });
+                        expect(pos.source?.toLowerCase(), `${label}: source file`).to.equal(srcFilePath.toLowerCase());
+                        expect(pos.line, `${label}: source line`).to.equal(expectedSrcLine);
+                    };
+                    check(1, 1, 'function main()');
+                    check(2, 3, 'STOP (maps to bp source line)');
+                    check(3, 3, 'print "hello" (shifted by STOP)');
+                    check(4, 5, 'print "world"');
+                    check(5, 7, 'end function');
+                });
+            });
+
+            it('STOP maps to correct src line when transpiler EXPANDS lines (src:3 -> staging:8)', async () => {
+                // Simulates a transpiler that expands source lines into many generated lines —
+                // e.g. a macro or inline function expansion. src line 3 ends up at staging line 8.
+                // This is the critical non-1:1 case where src line != staging line in both directions.
+                //
+                // src file:
+                //   line 1: function main()
+                //   line 2:     ' comment
+                //   line 3:     print "hello"   <-- BP here
+                //   line 4: end function
+                //
+                // compiled/staging (expansion adds 5 lines before print "hello"):
+                //   line 1: function main()
+                //   line 2:     dim a
+                //   line 3:     dim b
+                //   line 4:     dim c
+                //   line 5:     dim d
+                //   line 6:     dim e
+                //   line 7:     ' comment
+                //   line 8:     print "hello"   <-- src:3 maps here
+                //   line 9: end function
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +    // line 1
+                    '    \' comment\n' +      // line 2
+                    '    print "hello"\n' +  // line 3  <-- BP
+                    'end function\n'          // line 4
+                );
+
+                // Transpiler expands: src line 3 -> compiled line 8
+                const compiledChunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),  // compiled 1
+                    new SourceNode(2, 0, srcFilePath, '    dim a\n'),         // compiled 2 (expanded from src 2)
+                    new SourceNode(2, 0, srcFilePath, '    dim b\n'),         // compiled 3
+                    new SourceNode(2, 0, srcFilePath, '    dim c\n'),         // compiled 4
+                    new SourceNode(2, 0, srcFilePath, '    dim d\n'),         // compiled 5
+                    new SourceNode(2, 0, srcFilePath, '    dim e\n'),         // compiled 6
+                    new SourceNode(2, 0, srcFilePath, '    \' comment\n'),     // compiled 7
+                    new SourceNode(3, 0, srcFilePath, '    print "hello"\n'), // compiled 8  <-- src:3
+                    new SourceNode(4, 0, srcFilePath, 'end function\n')       // compiled 9
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, compiledChunks).toStringWithSourceMap();
+
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                fsExtra.outputFileSync(stagingBrs, compiled.code);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, compiled.code);
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
+
+                // BP on src line 3 — getStagingLocations will resolve this to staging line 8
+                bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                // STOP is injected at staging line 8 (before print "hello").
+                // The written .map must record that staging line 8 -> srcFilePath:3.
+                const pos = await getStopSourcePosition(stagingBrs, 8);
+                expect(pos.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                expect(pos.line, `STOP at staging line 8 should map to src line 3, got ${pos.line}`).to.equal(3);
+
+                // Also verify the non-injected line that was at staging 8 is now at staging 9
+                // and still maps back to src line 3
+                const mapJson = JSON.parse(fsExtra.readFileSync(`${stagingBrs}.map`).toString());
+                await SourceMapConsumer.with(mapJson, null, (consumer) => {
+                    const printPos = consumer.originalPositionFor({ line: 9, column: 0, bias: SourceMapConsumer.LEAST_UPPER_BOUND });
+                    expect(printPos.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                    expect(printPos.line, `print "hello" shifted to staging line 9 should still map to src line 3, got ${printPos.line}`).to.equal(3);
+                });
+            });
+
+            it('STOP maps to correct src line when transpiler COLLAPSES lines (src:8 -> staging:3)', async () => {
+                // Simulates a transpiler that collapses many source lines into fewer generated lines —
+                // e.g. blank lines, comments, and decorators stripped. src line 8 ends up at staging line 3.
+                //
+                // src file (10 lines):
+                //   line 1:  function main()
+                //   line 2:      ' license header
+                //   line 3:      ' more comments
+                //   line 4:      ' even more
+                //   line 5:      ' and more
+                //   line 6:      (blank)
+                //   line 7:      (blank)
+                //   line 8:      print "hello"   <-- BP here
+                //   line 9:      (blank)
+                //   line 10: end function
+                //
+                // compiled/staging (all blank/comment lines stripped):
+                //   line 1: function main()
+                //   line 2: (blank — preserved by compiler)
+                //   line 3:     print "hello"   <-- src:8 maps here
+                //   line 4: end function
+                const srcFilePath = s`${srcDir}/source/main.brs`;
+                fsExtra.outputFileSync(srcFilePath,
+                    'function main()\n' +   // line 1
+                    '    \' license\n' +    // line 2
+                    '    \' comments\n' +   // line 3
+                    '    \' more\n' +       // line 4
+                    '    \' and more\n' +   // line 5
+                    '\n' +                   // line 6
+                    '\n' +                   // line 7
+                    '    print "hello"\n' + // line 8  <-- BP
+                    '\n' +                   // line 9
+                    'end function\n'         // line 10
+                );
+
+                // Transpiler strips comments and blanks: src:8 -> compiled:3
+                const compiledChunks = [
+                    new SourceNode(1, 0, srcFilePath, 'function main()\n'),  // compiled 1
+                    new SourceNode(6, 0, srcFilePath, '\n'),                  // compiled 2 (one blank preserved)
+                    new SourceNode(8, 0, srcFilePath, '    print "hello"\n'), // compiled 3  <-- src:8
+                    new SourceNode(10, 0, srcFilePath, 'end function\n')      // compiled 4
+                ];
+                const compiled = new SourceNode(null, null, srcFilePath, compiledChunks).toStringWithSourceMap();
+
+                const stagingBrs = s`${stagingDir}/source/main.brs`;
+                fsExtra.outputFileSync(stagingBrs, compiled.code);
+                fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, compiled.code);
+                fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
+
+                // BP on src line 8 — getStagingLocations resolves this to staging line 3
+                bpManager.setBreakpoint(srcFilePath, { line: 8, column: 0 });
+                await bpManager.writeBreakpointsForProject(new Project({
+                    files: ['source/main.brs'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                }));
+
+                // STOP injected at staging line 3 (before print "hello").
+                // The written .map must record staging:3 -> srcFilePath:8.
+                const pos = await getStopSourcePosition(stagingBrs, 3);
+                expect(pos.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                expect(pos.line, `STOP at staging line 3 should map to src line 8, got ${pos.line}`).to.equal(8);
+
+                // The shifted print "hello" is now at staging line 4 and must still map to src:8
+                const mapJson = JSON.parse(fsExtra.readFileSync(`${stagingBrs}.map`).toString());
+                await SourceMapConsumer.with(mapJson, null, (consumer) => {
+                    const printPos = consumer.originalPositionFor({ line: 4, column: 0, bias: SourceMapConsumer.LEAST_UPPER_BOUND });
+                    expect(printPos.source?.toLowerCase()).to.equal(srcFilePath.toLowerCase());
+                    expect(printPos.line, `print "hello" shifted to staging line 4 should map to src line 8, got ${printPos.line}`).to.equal(8);
+                });
+            });
         });
     });
 
