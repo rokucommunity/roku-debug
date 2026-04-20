@@ -800,6 +800,315 @@ describe('BreakpointManager', () => {
                 s`${rootDir}/source/main.brs`
             ]);
         });
+
+        describe('BrighterScript-style sourcemap chain (2.63.7 regression)', () => {
+            /**
+             * Lay out an actual BrighterScript source tree, run `ProgramBuilder.run()` to produce a
+             * real transpiled .brs + .brs.map, and use that output as the debugger's rootDir. This
+             * exercises the true user flow (bsc-transpile → debug) rather than hand-crafting maps.
+             *
+             * On return:
+             *   bsDir:           where the original .bs source lives (outside rootDir)
+             *   bsPath:          absolute path to the original .bs file
+             *   rootDir (global) now holds the bsc-transpiled output (.brs, .brs.map, manifest, ...)
+             */
+            async function setupBrighterScriptLayout() {
+                //BrighterScript source tree — separate from rootDir (rootDir is bsc's output)
+                const bsDir = s`${tmpDir}/bsSrc`;
+                fsExtra.ensureDirSync(s`${bsDir}/source`);
+                const bsPath = s`${bsDir}/source/main.bs`;
+                fsExtra.outputFileSync(bsPath, [
+                    `sub main()`,
+                    `    firstName = "John"`,
+                    `    print firstName`,
+                    `end sub`
+                ].join('\n') + '\n');
+                fsExtra.outputFileSync(s`${bsDir}/manifest`, 'title=test\nmajor_version=1\nminor_version=0\nbuild_version=0\n');
+
+                //empty rootDir so bsc writes into it
+                fsExtra.emptyDirSync(rootDir);
+
+                //real brighterscript transpile — rootDir (bsDir) is the bs source tree, stagingDir is our rootDir
+                // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+                const { ProgramBuilder } = require('brighterscript');
+                const builder = new ProgramBuilder();
+                await builder.run({
+                    rootDir: bsDir,
+                    stagingDir: rootDir,
+                    files: ['manifest', 'source/**/*'],
+                    createPackage: false,
+                    copyToStaging: true,
+                    sourceMap: true,
+                    deploy: false,
+                    watch: false,
+                    showDiagnosticsInConsole: false,
+                    validate: false,
+                    logLevel: 'error' as any
+                });
+
+                return { bsDir, bsPath };
+            }
+
+            it('stages a real bsc build and retains the chain back to .bs', async () => {
+                const { bsPath } = await setupBrighterScriptLayout();
+
+                //sanity check that bsc produced the expected files in rootDir
+                expect(fsExtra.pathExistsSync(s`${rootDir}/source/main.brs`), 'bsc should emit main.brs').to.be.true;
+                expect(fsExtra.pathExistsSync(s`${rootDir}/source/main.brs.map`), 'bsc should emit main.brs.map').to.be.true;
+
+                const project = new Project({
+                    files: ['source/**/*', 'manifest'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                });
+
+                //run the full stage (copies files + preprocessStagingFiles)
+                await project.stage();
+
+                //now set a breakpoint in the .bs file (mimicking VS Code setting a bp on the source)
+                bpManager.setBreakpoint(bsPath, { line: 2, column: 0 });
+                await bpManager.writeBreakpointsForProject(project);
+
+                //figure out where on device/staging the injected STOP pushed line 2 to
+                const postStopMap = await sourceMapManager.getSourceMap(s`${stagingDir}/source/main.brs.map`);
+                //walk the chain: staging/main.brs -> (via chained maps) -> original .bs
+                //try each line 1..10 until we find one that originally maps to .bs line 2
+                let foundLocation: SourceLocation | undefined;
+                for (let stagingLine = 1; stagingLine <= 10; stagingLine++) {
+                    const loc = await locationManager.getSourceLocation({
+                        stagingFilePath: s`${stagingDir}/source/main.brs`,
+                        lineNumber: stagingLine,
+                        columnIndex: 0,
+                        rootDir: rootDir,
+                        stagingDir: stagingDir,
+                        fileMappings: project.fileMappings,
+                        enableSourceMaps: true
+                    });
+                    if (loc?.filePath?.toLowerCase() === bsPath.toLowerCase() && loc.lineNumber === 2) {
+                        foundLocation = loc;
+                        break;
+                    }
+                }
+                expect(
+                    foundLocation,
+                    `after setting a bp on .bs line 2, the chain should resolve back to ${bsPath} line 2. ` +
+                    `Staging map sources: ${JSON.stringify(postStopMap?.sources)}`
+                ).to.exist;
+            });
+
+            it('staging map still resolves back to .bs for a "manual STOP" scenario (no breakpoint injection)', async () => {
+                //this is the control: the user said a manually placed STOP still goes back to .bs.
+                //this test confirms that path works, isolating the regression to the breakpoint-injection path.
+                const { bsPath } = await setupBrighterScriptLayout();
+
+                const project = new Project({
+                    files: ['source/**/*', 'manifest'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                });
+                await project.stage();
+
+                //no writeBreakpointsForProject here — we are simulating a user-placed STOP
+                let found = false;
+                for (let stagingLine = 1; stagingLine <= 10; stagingLine++) {
+                    const loc = await locationManager.getSourceLocation({
+                        stagingFilePath: s`${stagingDir}/source/main.brs`,
+                        lineNumber: stagingLine,
+                        columnIndex: 0,
+                        rootDir: rootDir,
+                        stagingDir: stagingDir,
+                        fileMappings: project.fileMappings,
+                        enableSourceMaps: true
+                    });
+                    if (loc?.filePath?.toLowerCase() === bsPath.toLowerCase()) {
+                        found = true;
+                        break;
+                    }
+                }
+                expect(found, 'manual STOP path should reach the .bs file through the map chain').to.be.true;
+            });
+
+            /**
+             * Walk every staging line 1..maxLine and collect which .bs line (if any) it resolves to.
+             * Returns a map of { [stagingLine]: bsLine | null }.
+             */
+            async function buildStagingToBsMap(stagingFilePath: string, bsFilePath: string, project: Project, maxLine = 20) {
+                const result: Record<number, number | null> = {};
+                for (let stagingLine = 1; stagingLine <= maxLine; stagingLine++) {
+                    const loc = await locationManager.getSourceLocation({
+                        stagingFilePath: stagingFilePath,
+                        lineNumber: stagingLine,
+                        columnIndex: 0,
+                        rootDir: rootDir,
+                        stagingDir: stagingDir,
+                        fileMappings: project.fileMappings,
+                        enableSourceMaps: true
+                    });
+                    if (loc?.filePath?.toLowerCase() === bsFilePath.toLowerCase()) {
+                        result[stagingLine] = loc.lineNumber;
+                    } else {
+                        result[stagingLine] = null;
+                    }
+                }
+                return result;
+            }
+
+            it('post-BP: staging lines past the injected STOP resolve back to the correct .bs lines (simulates crash/step)', async () => {
+                //real-world scenario: a BP is injected, then the user steps or the app crashes at a later line.
+                //the debugger reports a staging line that is SHIFTED down by the injected STOP — the chain walk
+                //must still find the correct .bs line.
+                const { bsPath } = await setupBrighterScriptLayout();
+
+                const project = new Project({
+                    files: ['source/**/*', 'manifest'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                });
+                await project.stage();
+
+                //inject a BP on .bs line 2 (firstName = "John") — shifts line 3 and below
+                bpManager.setBreakpoint(bsPath, { line: 2, column: 0 });
+                await bpManager.writeBreakpointsForProject(project);
+
+                const stagingToBs = await buildStagingToBsMap(s`${stagingDir}/source/main.brs`, bsPath, project);
+
+                //every .bs line in the source (1..4) must be reachable from SOME staging line post-injection.
+                const reachableBsLines = new Set(Object.values(stagingToBs).filter((n): n is number => n !== null));
+                expect(reachableBsLines.has(1), `sub main() should resolve; mapping=${JSON.stringify(stagingToBs)}`).to.be.true;
+                expect(reachableBsLines.has(2), `firstName = "John" (bp line) should resolve; mapping=${JSON.stringify(stagingToBs)}`).to.be.true;
+                expect(reachableBsLines.has(3), `print firstName (post-bp line) should resolve; mapping=${JSON.stringify(stagingToBs)}`).to.be.true;
+                expect(reachableBsLines.has(4), `end sub should resolve; mapping=${JSON.stringify(stagingToBs)}`).to.be.true;
+            });
+
+            it('a second file with no BP injection still resolves back to its .bs source', async () => {
+                //simulates a crash in a file that didn't have any breakpoints set.
+                //BP injection only touches files with BPs; all other files still need to resolve
+                //correctly through preprocessStagingFiles / colocateSourceMap.
+                const { bsPath, libBsPath } = await setupBrighterScriptLayoutMultiFile();
+
+                const project = new Project({
+                    files: ['source/**/*', 'manifest'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                });
+                await project.stage();
+
+                //BP only on main.bs — lib.bs is untouched by BreakpointManager
+                bpManager.setBreakpoint(bsPath, { line: 2, column: 0 });
+                await bpManager.writeBreakpointsForProject(project);
+
+                //lib.brs staging lines should still resolve back to lib.bs
+                const libMapping = await buildStagingToBsMap(s`${stagingDir}/source/lib.brs`, libBsPath, project);
+                const libReachable = new Set(Object.values(libMapping).filter((n): n is number => n !== null));
+                expect(libReachable.size, `lib.brs staging lines should resolve to lib.bs; mapping=${JSON.stringify(libMapping)}`).to.be.greaterThan(0);
+            });
+
+            it('multiple BPs in the same file — lines before/between/after all resolve correctly', async () => {
+                //each injected STOP shifts subsequent lines. with BPs on .bs 2 AND 3, every .bs line
+                //(including the final line) must still be reachable.
+                const { bsPath } = await setupBrighterScriptLayout();
+
+                const project = new Project({
+                    files: ['source/**/*', 'manifest'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                });
+                await project.stage();
+
+                bpManager.setBreakpoint(bsPath, { line: 2, column: 0 });
+                bpManager.setBreakpoint(bsPath, { line: 3, column: 0 });
+                await bpManager.writeBreakpointsForProject(project);
+
+                const mapping = await buildStagingToBsMap(s`${stagingDir}/source/main.brs`, bsPath, project);
+                const reachable = new Set(Object.values(mapping).filter((n): n is number => n !== null));
+                for (const expectedBsLine of [1, 2, 3, 4]) {
+                    expect(reachable.has(expectedBsLine), `.bs line ${expectedBsLine} must resolve from some staging line after 2 injected BPs; mapping=${JSON.stringify(mapping)}`).to.be.true;
+                }
+            });
+
+            it('reverse mapping: .bs line -> staging location works after stage (before BP injection)', async () => {
+                //this drives BreakpointManager.getBreakpointWork path: when the user adds a breakpoint
+                //on the .bs, the extension must find the staging location via getStagingLocations.
+                //if preprocessStagingFiles / fixSourceMapSources produces a map that doesn't reference
+                //the .bs, breakpoints can't be placed.
+                const { bsPath } = await setupBrighterScriptLayout();
+
+                const project = new Project({
+                    files: ['source/**/*', 'manifest'],
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir,
+                    enhanceREPLCompletions: false
+                });
+                await project.stage();
+
+                //map .bs line 3 (print firstName) forward to the staging file
+                const stagingResult = await locationManager.getStagingLocations(
+                    bsPath,
+                    3,
+                    0,
+                    [project.rootDir],
+                    project.stagingDir,
+                    project.fileMappings
+                );
+                expect(stagingResult.locations.length, 'should find at least one staging location for .bs line 3').to.be.greaterThan(0);
+                const stagingLoc = stagingResult.locations[0];
+                expect(fileUtils.standardizePath(stagingLoc.filePath).toLowerCase(), 'staging location should be in the staging main.brs').to.equal(
+                    s`${stagingDir}/source/main.brs`.toLowerCase()
+                );
+            });
+
+            async function setupBrighterScriptLayoutMultiFile() {
+                //same as setupBrighterScriptLayout but with an additional lib.bs file
+                const bsDir = s`${tmpDir}/bsSrc`;
+                fsExtra.ensureDirSync(s`${bsDir}/source`);
+                const bsPath = s`${bsDir}/source/main.bs`;
+                fsExtra.outputFileSync(bsPath, [
+                    `sub main()`,
+                    `    firstName = "John"`,
+                    `    print firstName`,
+                    `end sub`
+                ].join('\n') + '\n');
+                const libBsPath = s`${bsDir}/source/lib.bs`;
+                fsExtra.outputFileSync(libBsPath, [
+                    `function greet(name as string) as string`,
+                    `    return "Hello, " + name`,
+                    `end function`
+                ].join('\n') + '\n');
+                fsExtra.outputFileSync(s`${bsDir}/manifest`, 'title=test\nmajor_version=1\nminor_version=0\nbuild_version=0\n');
+
+                fsExtra.emptyDirSync(rootDir);
+
+                // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+                const { ProgramBuilder } = require('brighterscript');
+                const builder = new ProgramBuilder();
+                await builder.run({
+                    rootDir: bsDir,
+                    stagingDir: rootDir,
+                    files: ['manifest', 'source/**/*'],
+                    createPackage: false,
+                    copyToStaging: true,
+                    sourceMap: true,
+                    deploy: false,
+                    watch: false,
+                    showDiagnosticsInConsole: false,
+                    validate: false,
+                    logLevel: 'error' as any
+                });
+
+                return { bsDir, bsPath, libBsPath };
+            }
+        });
     });
 
     it('properly handles roku-deploy file overriding', async () => {
