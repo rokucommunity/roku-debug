@@ -2610,6 +2610,40 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('normalizeLaunchConfig', () => {
+        it('defaults appReadyTimeout to 60000', () => {
+            const config = (session as any).normalizeLaunchConfig({
+                rootDir,
+                outDir,
+                stagingDir,
+                files: DefaultFiles
+            } as LaunchConfiguration);
+
+            expect(config.appReadyTimeout).to.equal(60_000);
+        });
+    });
+
+    describe('publish', () => {
+        it('uses appReadyTimeout from the launch configuration', async () => {
+            const clock = sinon.useFakeTimers();
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
+            launchConfiguration.appReadyTimeout = 50;
+            rokuAdapter.connected = false;
+            sinon.stub(session.rokuDeploy, 'publish').resolves();
+
+            const publishPromise = (session as any).publish();
+
+            await clock.tickAsync(49);
+            expect(shutdownStub.called).to.be.false;
+
+            await clock.tickAsync(1);
+            await publishPromise;
+
+            expect(shutdownStub.calledOnceWithExactly('Debug session cancelled: failed to connect to debug protocol control port.')).to.be.true;
+            clock.restore();
+        });
+    });
+
     describe('threadsRequest', () => {
         beforeEach(() => {
             session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);

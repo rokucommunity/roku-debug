@@ -532,6 +532,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         config.sceneGraphDebugCommandsPort ??= 8080;
         config.controlPort ??= 8081;
         config.brightScriptConsolePort ??= 8085;
+        config.appReadyTimeout ??= 60_000;
         config.stagingDir ??= config.stagingFolderPath;
         config.emitChannelPublishedEvent ??= true;
         config.rewriteDevicePathsInLogs ??= true;
@@ -990,11 +991,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         uploadingEnd();
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
-        //if it hasn't connected after 5 seconds, it probably will never connect.
+        //if it hasn't connected after appReadyTimeout, abort the launch.
         let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(10_000).then(() => {
+            util.sleep(this.launchConfiguration.appReadyTimeout).then(() => {
                 didTimeOut = true;
             })
         ]);
