@@ -329,13 +329,6 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     brightScriptConsolePort?: number;
 
     /**
-     * The number of milliseconds to wait after publishing for the app to become ready.
-     * This is mainly useful for slower devices or apps with longer compile/startup times.
-     * @default 60000
-     */
-    appReadyTimeout?: number;
-
-    /**
      * The path used for the staging folder of roku-deploy
      * This should generally be set to "${cwd}/.roku-deploy-staging", but that's ultimately up to the debug client.
      * @deprecated use `stagingDir` instead
