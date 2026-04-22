@@ -2610,6 +2610,26 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('publish', () => {
+        it('waits 60 seconds before aborting when the app never becomes ready', async () => {
+            const clock = sinon.useFakeTimers();
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
+            rokuAdapter.connected = false;
+            sinon.stub(session.rokuDeploy, 'publish').resolves();
+
+            const publishPromise = (session as any).publish();
+
+            await clock.tickAsync(59_999);
+            expect(shutdownStub.called).to.be.false;
+
+            await clock.tickAsync(1);
+            await publishPromise;
+
+            expect(shutdownStub.calledOnceWithExactly('Debug session cancelled: failed to connect to debug protocol control port.')).to.be.true;
+            clock.restore();
+        });
+    });
+
     describe('threadsRequest', () => {
         beforeEach(() => {
             session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
