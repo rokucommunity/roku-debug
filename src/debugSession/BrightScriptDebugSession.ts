@@ -565,6 +565,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             }
 
             await this.initializeProfiling();
+
+            // everything is ready, send the response to the launch request so the UI can update and configuration can begin
+            this.sendResponse(response);
+
             //initialize all file logging (rokuDevice, debugger, etc)
             this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
 
@@ -633,8 +637,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             }));
 
             this.sendLaunchProgress('update', 'Configuring breakpoints');
-            // everything is ready, send the response to the launch request so the UI can update and configuration can begin
-            this.sendResponse(response);
+
+            util.log('Done initializing');
 
             // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
             // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
