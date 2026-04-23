@@ -301,6 +301,10 @@ describe('BreakpointManager', () => {
         });
 
         it('re-verifies breakpoint after launch toggle', async () => {
+            //put a valid brs file in the project's staging dir so the breakpoint can be mapped
+            const mainProjectStagingDir = projectManager.mainProject.stagingDir;
+            fsExtra.outputFileSync(s`${mainProjectStagingDir}/file.brs`, 'sub foo()\n    x = 1\nend sub');
+
             //set the breakpoint before launch
             let breakpoints = bpManager.replaceBreakpoints(s`${rootDir}/file.brs`, [{
                 line: 2
@@ -312,8 +316,8 @@ describe('BreakpointManager', () => {
                 verified: false
             });
 
-            //write the breakpoints to the files
-            await projectManager['breakpointManager'].writeBreakpointsForProject(projectManager.mainProject);
+            //write the breakpoints to the files (telnet mode, which verifies breakpoints)
+            await projectManager['breakpointManager'].injectBreakpointsForProject(projectManager.mainProject);
 
             expect(breakpoints[0]).to.deep.include({
                 line: 2,
@@ -359,7 +363,7 @@ describe('BreakpointManager', () => {
         });
     });
 
-    describe('writeBreakpointsForProject', () => {
+    describe('resolveBreakpointsForProject / injectBreakpointsForProject', () => {
         let tmpDir = s`${cwd}/.tmp`;
         let rootDir = s`${tmpDir}/rokuProject`;
         let outDir = s`${tmpDir}/out`;
@@ -396,7 +400,7 @@ describe('BreakpointManager', () => {
             //sourcemap was not yet created
             expect(fsExtra.pathExistsSync(`${stagingDir}/source/main.brs.map`)).to.be.false;
 
-            await bpManager.writeBreakpointsForProject(new Project(<any>{
+            await bpManager.injectBreakpointsForProject(new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
@@ -435,7 +439,7 @@ describe('BreakpointManager', () => {
             //sourcemap was not yet created
             expect(fsExtra.pathExistsSync(`${stagingDir}/source/main.brs.map`)).to.be.false;
 
-            await bpManager.writeBreakpointsForProject(
+            await bpManager.injectBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
@@ -473,7 +477,7 @@ describe('BreakpointManager', () => {
                 column: 0
             }]);
 
-            await bpManager.writeBreakpointsForProject(
+            await bpManager.injectBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
@@ -516,7 +520,7 @@ describe('BreakpointManager', () => {
                 hitCondition: '3'
             }]);
 
-            await bpManager.writeBreakpointsForProject(
+            await bpManager.injectBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
@@ -558,7 +562,7 @@ describe('BreakpointManager', () => {
                 column: 0
             }]);
 
-            await bpManager.writeBreakpointsForProject(
+            await bpManager.injectBreakpointsForProject(
                 new Project(<any>{
                     rootDir: rootDir,
                     outDir: s`${cwd}/out`,
@@ -568,6 +572,149 @@ describe('BreakpointManager', () => {
             );
 
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
+        });
+
+        it('does not inject STOPs when using resolveBreakpointsForProject', async () => {
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\n    print 2\nend sub`);
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            //no STOP should be injected
+            expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\n    print 2\nend sub`);
+        });
+
+        it('marks breakpoints on invalid breakpoint locations as failed and emits a message', async () => {
+            //the file exists in staging; line 3 is `end sub` — not a valid breakpoint location
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+            expect(bp.reason).to.be.undefined;
+
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.verified).to.be.false;
+            expect(bp.reason).to.equal('failed');
+            expect(bp.message).to.equal('No executable code at this line');
+        });
+
+        it('sets message to undefined when failing breakpoints in unknown file types', async () => {
+            //a .json file outside the project tree — no staging mapping exists for it
+            const outsidePath = s`${tmpDir}/other/data.json`;
+            const [bp] = bpManager.replaceBreakpoints(outsidePath, [{ line: 1 }]);
+
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.reason).to.equal('failed');
+            //unknown file types get no message so other debuggers can claim the breakpoint
+            expect(bp.message).to.be.undefined;
+        });
+
+        it('does not fail a breakpoint that is already in failed state', async () => {
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+
+            //manually pre-fail the breakpoint
+            bp.reason = 'failed';
+            bp.message = 'custom failure';
+
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            //message should be unchanged
+            expect(bp.message).to.equal('custom failure');
+        });
+
+        it('skips non-.brs/.xml files that are not script-referenced', async () => {
+            fsExtra.writeFileSync(`${rootDir}/source/data.json`, '{"key":"value"}');
+            fsExtra.copyFileSync(`${rootDir}/source/data.json`, `${stagingDir}/source/data.json`);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/data.json`, [{ line: 1 }]);
+
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.reason).to.equal('failed');
+        });
+
+        it('allows breakpoints in files referenced by an XML script tag', async () => {
+            const code = `sub main()\n    print 1\nend sub`;
+            fsExtra.writeFileSync(`${rootDir}/source/helper.brs`, code);
+            fsExtra.copyFileSync(`${rootDir}/source/helper.brs`, `${stagingDir}/source/helper.brs`);
+
+            //XML component that references helper.brs via a pkg:/ uri
+            fsExtra.outputFileSync(`${stagingDir}/components/MyComp.xml`, `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="pkg:/source/helper.brs"/>
+                </component>
+            `);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/helper.brs`, [{ line: 2 }]);
+
+            await bpManager.injectBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.verified).to.be.true;
+            expect(bp.reason).to.be.undefined;
+        });
+    });
+
+    describe('inline breakpoints', () => {
+        it('marks inline breakpoints as failed immediately', () => {
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                column: 4
+            }]);
+
+            expect(bp.reason).to.equal('failed');
+            expect(bp.message).to.equal('Error: inline break points are not supported');
+        });
+
+        it('does not clear the failed reason when the breakpoint hash changes', () => {
+            //first set a standard breakpoint to create a hash
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+
+            //now replace with an inline breakpoint — hash changes but reason must stay 'failed'
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{
+                line: 2,
+                column: 4
+            }]);
+
+            expect(bp.reason).to.equal('failed');
+        });
+
+        it('clears a stale failed reason when a breakpoint moves to a new location', () => {
+            //set a breakpoint and manually fail it
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
+            bp.reason = 'failed';
+
+            //move the breakpoint to a different line — hash changes, reason should be cleared
+            const [moved] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+
+            expect(moved.reason).to.be.undefined;
         });
     });
 
@@ -614,7 +761,7 @@ describe('BreakpointManager', () => {
                 line: 7
             });
 
-            await bpManager.writeBreakpointsForProject(new Project({
+            await bpManager.injectBreakpointsForProject(new Project({
                 files: [
                     'main.brs'
                 ],
@@ -722,7 +869,7 @@ describe('BreakpointManager', () => {
                 column: 0
             });
 
-            await bpManager.writeBreakpointsForProject(new Project({
+            await bpManager.injectBreakpointsForProject(new Project({
                 files: [
                     'source/main.brs'
                 ],
@@ -784,7 +931,7 @@ describe('BreakpointManager', () => {
                 column: 0
             });
 
-            await bpManager.writeBreakpointsForProject(new Project({
+            await bpManager.injectBreakpointsForProject(new Project({
                 files: [
                     'source/main.brs'
                 ],
@@ -1826,9 +1973,9 @@ describe('BreakpointManager', () => {
             end sub
         `);
 
-        //write breakpoints
+        //write breakpoints — line 2 is the sub header (not executable), line 3 is `return "base"`
         bpManager.setBreakpoint(baseFilePath, {
-            line: 2,
+            line: 3,
             column: 0
         });
         let project = new Project({
@@ -1846,7 +1993,7 @@ describe('BreakpointManager', () => {
             enhanceREPLCompletions: false
         });
         await project.stage();
-        await bpManager.writeBreakpointsForProject(project);
+        await bpManager.injectBreakpointsForProject(project);
 
         //the source map for version.brs should point to base, not main
         let source = await sourceMapManager.getSourceMap(s`${stagingDir}/source/environment.brs.map`);
@@ -2180,6 +2327,261 @@ describe('BreakpointManager', () => {
             diff = await bpManager.getDiff(projectManager.getAllProjects());
 
             expect(diff.removed[0].deviceId).to.eql(3);
+        });
+    });
+
+    describe('isValidBreakpointLine', () => {
+        let stagingFile: string;
+
+        beforeEach(() => {
+            stagingFile = s`${stagingDir}/source/test.brs`;
+            fsExtra.ensureDirSync(s`${stagingDir}/source`);
+        });
+
+        /**
+         * Write the given lines to the staging file and assert the breakpoint validity
+         * for each one. Each entry is a [sourceText, expectedValid] tuple so the
+         * expected value sits right next to the line it describes.
+         *
+         * @example
+         * checkLines(
+         *     ['sub foo()',  true],   // function header — valid breakpoint location
+         *     ['    x = 1', true],
+         *     ['end sub',   false],  // end sub is NOT a valid breakpoint location
+         * );
+         */
+        function checkLines(...lines: [string, boolean][]) {
+            const code = lines.map(([line]) => line).join('\n');
+            fsExtra.outputFileSync(stagingFile, code);
+            (bpManager as any).stagingFileAstCache.clear();
+            for (let i = 0; i < lines.length; i++) {
+                const [lineText, expected] = lines[i];
+                const actual = (bpManager as any).isValidBreakpointLine(stagingFile, i + 1).isValid;
+                expect(actual, `line ${i + 1}: \`${lineText.trim()}\``).to.equal(expected);
+            }
+        }
+
+        // ─── valid breakpoint locations ──────────────────────────────────────────
+
+        it('marks regular assignment and print statements as valid breakpoint locations', () => {
+            checkLines(
+                ['sub foo()', true],   // function header IS a valid breakpoint
+                ['    x = 1', true],
+                ['    print x', true],
+                ['end sub', false]   // end sub is NOT a valid breakpoint location
+            );
+        });
+
+        it('marks sub/function header as valid and end as invalid breakpoint location', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    x = 1', true],
+                ['end sub', false]
+            );
+            checkLines(
+                ['function getValue()', true],
+                ['    return 42', true],
+                ['end function', false]
+            );
+        });
+
+        it('marks `if` as a valid breakpoint location, `end if` as invalid', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    if true then', true],
+                ['        x = 1', true],
+                ['    end if', false],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `else` and `end if` as invalid breakpoint locations', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    if true then', true],
+                ['        x = 1', true],
+                ['    else', false],
+                ['        x = 2', true],
+                ['    end if', false],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `else if` as a valid breakpoint location', () => {
+            // BSC models `else if` as a nested IfStatement starting on that line
+            checkLines(
+                ['sub foo()', true],
+                ['    if true then', true],
+                ['        x = 1', true],
+                ['    else if false then', true],
+                ['        x = 2', true],
+                ['    end if', false],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `for` as a valid breakpoint location, `end for` as invalid', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    for i = 0 to 10', true],
+                ['        x = i', true],
+                ['    end for', false],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `for each` as a valid breakpoint location, `end for` as invalid', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    for each item in arr', true],
+                ['        x = item', true],
+                ['    end for', false],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `while` as a valid breakpoint location, `end while` as invalid', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    while true', true],
+                ['        x = 1', true],
+                ['    end while', false],
+                ['end sub', false]
+            );
+        });
+
+        it('marks function call and return as valid breakpoint locations', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    bar()', true],
+                ['end sub', false]
+            );
+            checkLines(
+                ['function foo()', true],
+                ['    return 42', true],
+                ['end function', false]
+            );
+        });
+
+        // ─── invalid breakpoint locations ────────────────────────────────────────
+
+        it('marks blank lines as invalid breakpoint locations', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['', false],  // blank line
+                ['    x = 1', true],
+                ['', false],  // blank line
+                ['end sub', false]
+            );
+        });
+
+        it('marks comment lines as invalid breakpoint locations', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    \' this is a comment', false],
+                ['    x = 1', true],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `import` statement as an invalid breakpoint location', () => {
+            checkLines(
+                ['import "pkg:/source/utils.brs"', false]
+            );
+        });
+
+        it('marks `library` statement as an invalid breakpoint location', () => {
+            checkLines(
+                ['library "v30/bslCore.brs"', false]
+            );
+        });
+
+        it('marks namespace header and `end namespace` as invalid breakpoint locations', () => {
+            checkLines(
+                ['namespace MyNS', false],
+                ['    function helper()', true],   // method header IS a valid breakpoint location
+                ['        return 1', true],
+                ['    end function', false],
+                ['end namespace', false]
+            );
+        });
+
+        it('marks class header, fields, and `end class` as invalid; method header as valid breakpoint location', () => {
+            checkLines(
+                ['class MyClass', false],
+                ['    public name as string', false],  // field declaration
+                ['    function greet()', true],   // method header IS a valid breakpoint location
+                ['        print m.name', true],
+                ['    end function', false],
+                ['end class', false]
+            );
+        });
+
+        it('marks enum block (header, members, end) as invalid breakpoint locations', () => {
+            checkLines(
+                ['enum Color', false],
+                ['    red = "red"', false],  // enum member
+                ['    blue = "blue"', false],  // enum member
+                ['end enum', false]
+            );
+        });
+
+        it('marks interface block (header, fields, methods, end) as invalid breakpoint locations', () => {
+            checkLines(
+                ['interface IFoo', false],
+                ['    name as string', false],  // interface field
+                ['    function doThing() as void', false],  // interface method
+                ['end interface', false]
+            );
+        });
+
+        it('marks label statement as a valid breakpoint location', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    myLabel:', true],
+                ['    x = 1', true],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `dim` statement as a valid breakpoint location', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    dim arr[10]', true],
+                ['    arr[0] = 1', true],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `const` statement as an invalid breakpoint location', () => {
+            checkLines(
+                ['const MAX = 100', false],
+                ['sub foo()', true],
+                ['    x = MAX', true],
+                ['end sub', false]
+            );
+        });
+
+        it('marks `type` alias statement as an invalid breakpoint location', () => {
+            checkLines(
+                ['type MyType = string', false],
+                ['sub foo()', true],
+                ['    x = "hello"', true],
+                ['end sub', false]
+            );
+        });
+
+        it('marks standalone `end` program terminator as a valid breakpoint location', () => {
+            checkLines(
+                ['sub foo()', true],
+                ['    end', true],   // program terminator — valid breakpoint location
+                ['end sub', false]
+            );
+        });
+
+        it('fails open when the file cannot be read', () => {
+            const result = (bpManager as any).isValidBreakpointLine(s`${stagingDir}/nonexistent.brs`, 1);
+            expect(result.isValid).to.be.true;
         });
     });
 });

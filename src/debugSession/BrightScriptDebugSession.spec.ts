@@ -1129,7 +1129,8 @@ describe('BrightScriptDebugSession', () => {
             await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //add breakpoint during live debug session. one was there before, the other is new. Neither will be verified right now
+            //add breakpoint during live debug session. one was there before, the other is new.
+            //line 1 was already staged so it comes back verified; line 2 is new so it is not.
             args.breakpoints = [{ line: 1 }, { line: 2 }];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(
