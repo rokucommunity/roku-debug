@@ -1807,8 +1807,13 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'fixMainProjectLibraryDependency').resolves();
             session['launchConfiguration'].host = '192.168.1.100';
             session['launchConfiguration'].password = 'test123';
+            session.projectManager.mainProject = <any>{
+                stagingDir: s`${tempDir}/main-staging`,
+                zipPackage: sinon.stub().resolves()
+            };
         }
 
         it('installs libraries sequentially when marked install=true', async () => {
@@ -1882,8 +1887,13 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
+            sinon.stub(ComponentLibraryProject.prototype, 'fixMainProjectLibraryDependency').resolves();
             session['launchConfiguration'].host = '192.168.1.100';
             session['launchConfiguration'].password = 'test123';
+            session.projectManager.mainProject = <any>{
+                stagingDir: s`${tempDir}/main-staging`,
+                zipPackage: sinon.stub().resolves()
+            };
 
             const events = [];
             sinon.stub(ComponentLibraryProject.prototype, 'stage').callsFake(async function(this: ComponentLibraryProject) {
