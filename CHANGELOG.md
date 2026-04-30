@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.6](https://github.com/rokucommunity/roku-debug/compare/0.23.5...v0.23.6) - 2026-04-30
+### Changed
+ - Increase app-ready timeout to 60 seconds for slow Roku launches ([#334](https://github.com/rokucommunity/roku-debug/pull/334))
+ - upgrade to [brighterscript@0.72.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0720---2026-04-30). Notable changes since 0.71.1:
+     - Bump diff from 4.0.2 to 4.0.4 in /benchmarks ([#1610](https://github.com/rokucommunity/brighterscript/pull/1610))
+     - Add `relativeSourceMaps` option for portable sourcemaps ([#1624](https://github.com/rokucommunity/brighterscript/pull/1624))
+     - Auto-update imports when files are renamed ([#1688](https://github.com/rokucommunity/brighterscript/pull/1688))
+     - Support minFirmwareVersion in bsconfig.json ([#1678](https://github.com/rokucommunity/brighterscript/pull/1678))
+     - added source fix all code action support ([#1659](https://github.com/rokucommunity/brighterscript/pull/1659))
+     - Limit project activation concurrency ([#1627](https://github.com/rokucommunity/brighterscript/pull/1627))
+     - Share per-file namespace data via lazy ScopeNamespaceLookup view ([#1684](https://github.com/rokucommunity/brighterscript/pull/1684))
+     - Lazy-allocate NamespaceContainer's optional fields ([#1683](https://github.com/rokucommunity/brighterscript/pull/1683))
+     - Share BscSymbol references in SymbolTable.mergeSymbolTable ([#1682](https://github.com/rokucommunity/brighterscript/pull/1682))
+     - Chain prebuild sourcemaps through BrighterScript transpile ([#1676](https://github.com/rokucommunity/brighterscript/pull/1676))
+     - added selection range provider support to lsp capabilities ([#1657](https://github.com/rokucommunity/brighterscript/pull/1657))
+     - Report const cycle diagnostic per node to match class convention ([#1681](https://github.com/rokucommunity/brighterscript/pull/1681))
+     - Support line continuation ([#1667](https://github.com/rokucommunity/brighterscript/pull/1667))
+     - Fix cross-file const inlining and flag const cycles ([#1680](https://github.com/rokucommunity/brighterscript/pull/1680))
+     - Bump postcss from 8.4.31 to 8.5.10 ([#1679](https://github.com/rokucommunity/brighterscript/pull/1679))
+ - upgrade to [roku-deploy@3.17.1](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3171---2026-04-27). Notable changes since 3.16.5:
+     - Fix crash when loading roku-deploy on node < 18 ([#256](https://github.com/rokucommunity/roku-deploy/pull/256))
+     - chore: drop undici, use native fetch ([#254](https://github.com/rokucommunity/roku-deploy/pull/254))
+     - feat: add RokuDeploy.validateDeveloperPassword ([#252](https://github.com/rokucommunity/roku-deploy/pull/252))
+     - fix: correct DeviceInfoRaw serial-number property name ([#251](https://github.com/rokucommunity/roku-deploy/pull/251))
+### Fixed
+ - Fix breakpoint injection breaking sourcemap chain for .bs files ([#333](https://github.com/rokucommunity/roku-debug/pull/333))
+
+
+
 ## [0.23.5](https://github.com/rokucommunity/roku-debug/compare/0.23.4...v0.23.5) - 2026-04-14
 ### Changed
  - Avoid monkey-patching roku-deploy's getFiles function ([#329](https://github.com/rokucommunity/roku-debug/pull/329))
