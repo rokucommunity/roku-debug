@@ -9,6 +9,7 @@ import {
     LoggingDebugSession,
     Logger as DapLogger,
     logger as dapLogger,
+    CapabilitiesEvent,
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
@@ -371,37 +372,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // make VS Code to use 'evaluate' when hovering over source
         response.body.supportsEvaluateForHovers = true;
 
-        // make VS Code to show a 'step back' button
-        response.body.supportsStepBack = false;
-
         // This debug adapter supports conditional breakpoints
         response.body.supportsConditionalBreakpoints = true;
 
-        response.body.supportsExceptionFilterOptions = true;
-        response.body.supportsExceptionOptions = true;
-
-        //the list of exception breakpoints (we have to send them all the time, even if the device doesn't support them)
-        response.body.exceptionBreakpointFilters = [{
-            filter: 'caught',
-            supportsCondition: true,
-            conditionDescription: '__brs_err__.rethrown = true',
-            label: 'Caught Exceptions',
-            description: `Breaks on all errors, even if they're caught later.`,
-            default: false
-        }, {
-            filter: 'uncaught',
-            supportsCondition: true,
-            conditionDescription: '__brs_err__.rethrown = true',
-            label: 'Uncaught Exceptions',
-            description: 'Breaks only on errors that are not handled.',
-            default: true
-        }];
-
         // This debug adapter supports breakpoints that break execution after a specified number of hits
         response.body.supportsHitConditionalBreakpoints = true;
-
-        // This debug adapter supports log points by interpreting the 'logMessage' attribute of the SourceBreakpoint
-        response.body.supportsLogPoints = true;
 
         response.body.supportsCompletionsRequest = true;
         response.body.completionTriggerCharacters = ['.', '(', '{', ',', ' '];
@@ -416,11 +391,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 )
             );
         });
-
-        // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
-        // we request them early by sending an 'initializeRequest' to the frontend.
-        // The frontend will end the configuration sequence by calling 'configurationDone' request.
-        this.sendEvent(new InitializedEvent());
 
         this.logger.log('initializeRequest finished');
     }
@@ -555,60 +525,61 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
-        this.resetSessionState();
-
-        //send the response right away so the UI immediately shows the debugger toolbar
-        this.sendResponse(response);
-
-        this.launchConfiguration = this.normalizeLaunchConfig(config);
-        this.setupProcessErrorHandlers();
-
-        //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
-        bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
-
-        //set the logLevel provided by the launch config
-        if (this.launchConfiguration.logLevel) {
-            logger.logLevel = this.launchConfiguration.logLevel;
-        }
-
-        //do a DNS lookup for the host to fix issues with roku rejecting ECP
         try {
-            this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
-        } catch (e) {
-            return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
-        }
+            this.resetSessionState();
+            this.launchConfiguration = this.normalizeLaunchConfig(config);
+            this.setupProcessErrorHandlers();
 
-        // fetches the device info and parses the xml data to JSON object
-        try {
-            this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
-            if (this.deviceInfo.ecpSettingMode === 'limited') {
-                return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+            //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
+            bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
+
+            //set the logLevel provided by the launch config
+            if (this.launchConfiguration.logLevel) {
+                logger.logLevel = this.launchConfiguration.logLevel;
             }
-        } catch (e) {
-            if (e instanceof EcpNetworkAccessModeDisabledError) {
-                return this.shutdown(`ECP access is disabled on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+
+            this.sendLaunchProgress('start', 'Finding device on network');
+
+            //do a DNS lookup for the host to fix issues with roku rejecting ECP
+            try {
+                this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
+            } catch (e) {
+                return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
             }
-            return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
-        }
 
-        if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
-            return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
-        }
+            // fetches the device info and parses the xml data to JSON object
+            try {
+                this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                if (this.deviceInfo.ecpSettingMode === 'limited') {
+                    return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+                }
+            } catch (e) {
+                if (e instanceof EcpNetworkAccessModeDisabledError) {
+                    return this.shutdown(`ECP access is disabled on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+                }
+                return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
+            }
 
-        await this.initializeProfiling();
-        //initialize all file logging (rokuDevice, debugger, etc)
-        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
+            if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
+                return await this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
+            }
 
-        this.projectManager.launchConfiguration = this.launchConfiguration;
-        this.breakpointManager.launchConfiguration = this.launchConfiguration;
+            await this.initializeProfiling();
 
-        this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
+            // everything is ready, send the response to the launch request so the UI can update and configuration can begin
+            this.sendResponse(response);
 
-        let error: Error;
-        this.logger.log('[launchRequest] Packaging and deploying to roku');
-        try {
+            //initialize all file logging (rokuDevice, debugger, etc)
+            this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
+
+            this.projectManager.launchConfiguration = this.launchConfiguration;
+            this.breakpointManager.launchConfiguration = this.launchConfiguration;
+
+            this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
+
+            this.logger.log('[launchRequest] Packaging and deploying to roku');
             const packageEnd = this.logger.timeStart('log', 'Packaging');
-            this.sendLaunchProgress('start', 'Packaging');
+            this.sendLaunchProgress('update', `Packaging Project${(this.launchConfiguration?.componentLibraries?.length ?? 0) > 0 ? 's' : ''}`);
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
@@ -635,11 +606,68 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 this.logger.error('Failed to initialize rendezvous tracking', e);
             }
 
+            this.sendLaunchProgress('update', 'Connecting to debug server');
             const connectAdapterEnd = this.logger.timeStart('log', 'Connect adapter');
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();
             connectAdapterEnd();
 
+            // some capabilities depend on adapter type and are sent now that we know which adapter is in use
+            const supportsExceptionBreakpoints = this.rokuAdapter.supportsExceptionBreakpoints;
+            this.sendEvent(new CapabilitiesEvent({
+                // log points are only supported by the telnet adapter
+                supportsLogPoints: !this.enableDebugProtocol,
+                supportsExceptionFilterOptions: supportsExceptionBreakpoints,
+                supportsExceptionOptions: supportsExceptionBreakpoints,
+                exceptionBreakpointFilters: supportsExceptionBreakpoints ? [{
+                    filter: 'caught',
+                    supportsCondition: true,
+                    conditionDescription: '__brs_err__.rethrown = true',
+                    label: 'Caught Exceptions',
+                    description: `Breaks on all errors, even if they're caught later.`,
+                    default: false
+                }, {
+                    filter: 'uncaught',
+                    supportsCondition: true,
+                    conditionDescription: '__brs_err__.rethrown = true',
+                    label: 'Uncaught Exceptions',
+                    description: 'Breaks only on errors that are not handled.',
+                    default: true
+                }] : []
+            }));
+
+            this.sendLaunchProgress('update', 'Configuring breakpoints');
+
+            util.log('Done initializing');
+
+            // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
+            // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
+            this.sendEvent(new InitializedEvent());
+
+        } catch (e) {
+            //if the message is anything other than compile errors, we want to display the error
+            if (!(e instanceof CompileError)) {
+                util.log('Encountered an issue during the launch process');
+                util.log((e as Error)?.stack);
+
+                //send any compile errors to the client
+                await this.rokuAdapter?.sendErrors();
+
+                const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
+                await this.shutdown(message as string, true);
+            } else {
+                this.sendLaunchProgress('end', 'Aborted (compile error)');
+            }
+        }
+        logEnd();
+    }
+
+    protected async configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
+        this.logger.log('configurationDoneRequest');
+        super.configurationDoneRequest(response, args);
+
+        let error: Error;
+        try {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
@@ -703,7 +731,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     await this.shutdown();
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
-                    this.logger.log('[launchRequest]', message);
+                    this.logger.log('[configurationDoneRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
                     this.rokuAdapter.once('connected').then(async () => {
                         await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpoints);
@@ -774,7 +802,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 this.sendLaunchProgress('end', 'Aborted (compile error)');
             }
         }
-        logEnd();
     }
 
     /**
@@ -1413,10 +1440,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             this.sendResponse = old;
         };
         super.sourceRequest(response, args);
-    }
-
-    protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
-        this.logger.log('configurationDoneRequest');
     }
 
     /**
