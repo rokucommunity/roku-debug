@@ -630,11 +630,11 @@ export class Project {
     }
 
     private async colocateSourceMap(options: { stagingFilePath: string; absoluteMapPath: string }) {
-        //copy the sourcemap right next to our file
+        //copy the sourcemap right next to our file (skip if it's already there)
         const stagingMapPath = `${options.stagingFilePath}.map`;
-        await fsExtra.copyFile(options.absoluteMapPath, stagingMapPath);
-        //delete the original sourcemap so node-debug doesn't use it
-        await fsExtra.unlink(options.absoluteMapPath);
+        if (fileUtils.standardizePath(options.absoluteMapPath) !== fileUtils.standardizePath(stagingMapPath)) {
+            await fsExtra.copyFile(options.absoluteMapPath, stagingMapPath);
+        }
         await this.fixSourceMapSources({
             stagingMapPath: stagingMapPath,
             originalMapPath: options.absoluteMapPath

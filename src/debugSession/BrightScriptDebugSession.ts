@@ -990,11 +990,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         uploadingEnd();
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
-        //if it hasn't connected after 5 seconds, it probably will never connect.
+        //if it hasn't connected after 60 seconds, abort the launch.
         let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(10_000).then(() => {
+            util.sleep(60_000).then(() => {
                 didTimeOut = true;
             })
         ]);

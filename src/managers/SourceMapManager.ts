@@ -66,6 +66,11 @@ export class SourceMapManager {
             let parsedSourceMap = JSON.parse(sourceMap) as RawSourceMap;
             //remove the file from cache
             delete this.cache[key];
+            //also evict any stale SourceMapConsumer built from the old map.
+            //the consumer cache is keyed by the raw path (not lowercased), so clear both
+            //casings to be safe across platforms.
+            delete this.sourceMapConsumerCache[sourceMapPath];
+            delete this.sourceMapConsumerCache[key];
             //standardize the source map paths
             const mapDir = path.dirname(sourceMapPath);
             // Resolve sourceRoot relative to the map file's directory (handles relative sourceRoot correctly)
@@ -91,7 +96,7 @@ export class SourceMapManager {
      * @param stagingFilePath
      * @returns
      */
-    private async getSourceMapPath(stagingFilePath: string) {
+    public async getSourceMapPath(stagingFilePath: string) {
         stagingFilePath = s`${stagingFilePath}`;
         let sourceMapPath = this.sourceMapPathCache.get(stagingFilePath);
         if (!sourceMapPath) {

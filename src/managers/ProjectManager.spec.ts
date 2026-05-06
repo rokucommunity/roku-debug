@@ -1111,7 +1111,7 @@ describe('Project', () => {
             });
 
             // ── map file lifecycle ────────────────────────────────────────────────────
-            it('deletes the original map from its source location when a comment references it', async () => {
+            it('leaves the original map in place when a comment references it', async () => {
                 const originalMapDir = s`${tempPath}/src/components/maps`;
                 const originalMapPath = s`${originalMapDir}/main.brs.map`;
 
@@ -1119,16 +1119,18 @@ describe('Project', () => {
                     originalMapDir: originalMapDir
                 });
 
-                expect(fsExtra.pathExistsSync(originalMapPath), 'original map should have been deleted by colocateSourceMap').to.be.false;
+                //BreakpointManager.writeBreakpointsToFile relies on the original map still existing
+                //so the sourcemap chain walk can resolve back to the .bs source.
+                expect(fsExtra.pathExistsSync(originalMapPath), 'original map must be left in place so the chain walk in LocationManager can still resolve through it').to.be.true;
             });
 
-            it('deletes the original map from its source location when the map is colocated next to the original source', async () => {
+            it('leaves the original colocated map in place', async () => {
                 const srcDir = s`${tempPath}/rootDir/source`;
                 const originalMapPath = s`${srcDir}/main.brs.map`;
 
                 await stageFileWithColocatedMap('.brs');
 
-                expect(fsExtra.pathExistsSync(originalMapPath), 'original colocated map should have been deleted by colocateSourceMap').to.be.false;
+                expect(fsExtra.pathExistsSync(originalMapPath), 'original colocated map must be left in place so the chain walk in LocationManager can still resolve through it').to.be.true;
             });
 
             it('copies the map file to staging and it is valid JSON', async () => {
