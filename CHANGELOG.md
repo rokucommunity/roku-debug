@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.7](https://github.com/rokucommunity/roku-debug/compare/0.23.6...v0.23.7) - 2026-05-11
+### Changed
+ - upgrade to [brighterscript@0.72.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0721---2026-05-11). Notable changes since 0.72.0:
+     - feat: allow line continuation in .brs files when minFirmwareVersion >= 15.3 ([#1693](https://github.com/rokucommunity/brighterscript/pull/1693))
+ - upgrade to [roku-deploy@3.17.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3172---2026-05-05). Notable changes since 3.17.1:
+     - Expanded the default files array to include the locale folder ([#237](https://github.com/rokucommunity/roku-deploy/pull/237))
+
+
+
 ## [0.23.6](https://github.com/rokucommunity/roku-debug/compare/0.23.5...v0.23.6) - 2026-04-30
 ### Changed
  - Increase `app-ready` timeout to 60 seconds for slow Roku launches ([#334](https://github.com/rokucommunity/roku-debug/pull/334))
