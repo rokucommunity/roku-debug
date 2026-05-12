@@ -245,6 +245,9 @@ describe('BrightScriptDebugSession', () => {
             }
         } as Partial<LaunchConfiguration> as LaunchConfiguration);
 
+        //publish now runs inside configurationDoneRequest, so invoke it to complete the launch flow
+        await (session as any).configurationDoneRequest({} as any, {} as any);
+
         expect(publishStub.getCall(0).args[0].packageUploadOverrides).to.eql({
             route: '1234',
             formData: {
@@ -2555,15 +2558,22 @@ describe('BrightScriptDebugSession', () => {
                 session['initRequestArgs'].supportsProgressReporting = true;
 
                 await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
 
                 const progressEvents = getProgressEvents();
-                expect(progressEvents).to.have.lengthOf(3);
+                expect(progressEvents).to.have.lengthOf(6);
                 expect(progressEvents[0]).to.be.instanceOf(ProgressStartEvent);
-                expect((progressEvents[0].body as any).message).to.equal('Packaging...');
+                expect((progressEvents[0].body as any).message).to.equal('Finding device on network...');
                 expect(progressEvents[1]).to.be.instanceOf(ProgressUpdateEvent);
-                expect((progressEvents[1].body as any).message).to.equal('Uploading to Roku...');
+                expect((progressEvents[1].body as any).message).to.equal('Packaging Project...');
                 expect(progressEvents[2]).to.be.instanceOf(ProgressUpdateEvent);
-                expect((progressEvents[2].body as any).message).to.equal('Waiting on application...');
+                expect((progressEvents[2].body as any).message).to.equal('Connecting to debug server...');
+                expect(progressEvents[3]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[3].body as any).message).to.equal('Configuring breakpoints...');
+                expect(progressEvents[4]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[4].body as any).message).to.equal('Uploading to Roku...');
+                expect(progressEvents[5]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[5].body as any).message).to.equal('Waiting on application...');
             });
 
             it('all progress events share the same progressId', async function() {
@@ -2591,6 +2601,7 @@ describe('BrightScriptDebugSession', () => {
                 session['initRequestArgs'].supportsProgressReporting = true;
 
                 await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
 
                 const progressUpdateEvents = events.filter(e => e instanceof ProgressUpdateEvent);
                 const abortEvent = progressUpdateEvents.find(e => (e.body as any).message === 'Aborted (compile error)');
