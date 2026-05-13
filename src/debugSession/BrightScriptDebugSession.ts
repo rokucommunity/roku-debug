@@ -743,8 +743,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             //all setBreakpoints requests have arrived by this point (configurationDone is the DAP signal
             //that the client has finished sending configuration). Inject the STOPs and seal zips now.
-            await this.packageMainProject();
-            await this.packageAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort);
+            await Promise.all([
+                this.packageMainProject(),
+                this.packageAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+            ]);
 
             this.sendLaunchProgress('update', 'Uploading to Roku');
             await this.publish();
@@ -963,6 +965,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         this.sendEvent(new DiagnosticsEvent(diagnostics));
     }
 
+    private publishTimeout = 60_000;
+
     private async publish() {
         const uploadingEnd = this.logger.timeStart('log', 'Uploading zip');
         let packageIsPublished = false;
@@ -1026,7 +1030,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(60_000).then(() => {
+            util.sleep(this.publishTimeout).then(() => {
                 didTimeOut = true;
             })
         ]);

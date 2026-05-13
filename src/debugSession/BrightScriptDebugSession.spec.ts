@@ -62,6 +62,7 @@ describe('BrightScriptDebugSession', () => {
 
         try {
             session = new BrightScriptDebugSession();
+            session['publishTimeout'] = 1_000;
         } catch (e) {
             console.log(e);
         }
@@ -2633,6 +2634,8 @@ describe('BrightScriptDebugSession', () => {
 
     describe('publish', () => {
         it('waits 60 seconds before aborting when the app never becomes ready', async () => {
+            session['publishTimeout'] = 60_000;
+
             const clock = sinon.useFakeTimers();
             const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
             rokuAdapter.connected = false;
