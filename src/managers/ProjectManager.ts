@@ -446,40 +446,63 @@ export class Project {
         const stagedFiles: string[] = (await fastGlob('**/*', { cwd: this.stagingDir, absolute: true, onlyFiles: true }))
             .map((f: string) => fileUtils.standardizePath(f));
 
-        //bucket staged files into maps vs non-maps so we can process them in two ordered phases.
-        //this avoids racing the .map branch against the colocateSourceMap step of the .brs branch,
-        //both of which can otherwise read/write the same staging .map concurrently.
-        const stagedMapPaths: string[] = [];
-        const stagedNonMapPaths: string[] = [];
-        for (const stagingFilePath of stagedFiles) {
-            if (!destToSrcMap.has(stagingFilePath)) {
-                continue;
+        await Promise.all(stagedFiles.map(async (stagingFilePath: string) => {
+            const originalSrcPath = destToSrcMap.get(stagingFilePath);
+
+            // Skip files not in fileMappings (e.g. generated after staging)
+            if (!originalSrcPath) {
+                return;
             }
-            if (path.extname(stagingFilePath).toLowerCase() === '.map') {
-                stagedMapPaths.push(stagingFilePath);
+
+            const ext = path.extname(stagingFilePath).toLowerCase();
+
+            if (ext === '.map') {
+                await this.fixSourceMapSources({
+                    stagingMapPath: stagingFilePath,
+                    originalMapPath: originalSrcPath
+                });
             } else {
-                stagedNonMapPaths.push(stagingFilePath);
+                await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap);
             }
-        }
+        }));
+    }
 
-        //track which staging map paths phase 1 owns, so phase 2's colocate step can leave them alone
-        const phase1Maps = new Set(
-            stagedMapPaths.map(stagingFilePath => fileUtils.standardizePath(stagingFilePath).toLowerCase())
-        );
+    /**
+     * Per-path write locks. Async file ops interleave (e.g. `preprocessStagingFiles` fans out
+     * tasks that can target the same staging `.map`), so we queue all writes to a given path
+     * through a single promise chain. Entries clean themselves up once their chain is idle.
+     */
+    private writeLocks = new Map<string, Promise<unknown>>();
 
-        //phase 1: fix sources for every staged .map. each target a distinct path so parallel is safe.
-        await Promise.all(stagedMapPaths.map(stagingFilePath =>
-            this.fixSourceMapSources({
-                stagingMapPath: stagingFilePath,
-                originalMapPath: destToSrcMap.get(stagingFilePath)
-            })
-        ));
+    private serializeWrite<T>(filePath: string, work: () => Promise<T>): Promise<T> {
+        const key = fileUtils.standardizePath(filePath).toLowerCase();
+        const prev = this.writeLocks.get(key) ?? Promise.resolve();
+        //run work whether the prior op resolved or rejected — failures upstream shouldn't poison the chain
+        const next = prev.then(work, work);
+        this.writeLocks.set(key, next);
+        //drop the entry once nothing else has chained onto it
+        void next.catch(() => { /* swallow — caller's await sees the real error */ }).then(() => {
+            if (this.writeLocks.get(key) === next) {
+                this.writeLocks.delete(key);
+            }
+        });
+        return next;
+    }
 
-        //phase 2: rewrite sourceMappingURL comments and colocate maps that weren't staged.
-        //pass phase1Maps so colocate can skip touching anything phase 1 already produced.
-        await Promise.all(stagedNonMapPaths.map(stagingFilePath =>
-            this.fixSourceMapComment(stagingFilePath, destToSrcMap.get(stagingFilePath), srcToDestMap, phase1Maps)
-        ));
+    /**
+     * Serialized wrapper around `fsExtra.writeFile`. Use in place of `fsExtra.writeFile` anywhere
+     * a path might also be written by another concurrent task in this Project.
+     */
+    private writeFile(filePath: string, data: Parameters<typeof fsExtra.writeFile>[1], options?: Parameters<typeof fsExtra.writeFile>[2]) {
+        return this.serializeWrite(filePath, () => fsExtra.writeFile(filePath, data, options));
+    }
+
+    /**
+     * Serialized wrapper around `fsExtra.copyFile`. The dest path is the one we serialize on,
+     * since that's what gets written.
+     */
+    private copyFile(srcPath: string, destPath: string) {
+        return this.serializeWrite(destPath, () => fsExtra.copyFile(srcPath, destPath));
     }
 
     /**
@@ -511,7 +534,7 @@ export class Project {
             // Clear sourceRoot since sources are now relative to the map file's new location
             delete sourceMap.sourceRoot;
 
-            await fsExtra.writeFile(stagingMapPath, JSON.stringify(sourceMap));
+            await this.writeFile(stagingMapPath, JSON.stringify(sourceMap));
         } catch (e) {
             this.logger.error(`Error updating source map sources for '${stagingMapPath}'`, e);
         }
@@ -588,7 +611,7 @@ export class Project {
      *   XML:   <!--//# sourceMappingURL=<path> -->
      *   other: //# sourceMappingURL=<path>
      */
-    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>, phase1Maps: Set<string>) {
+    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
         try {
             //if this is a media file, skip it because it won't have a source map
             if (Project.binaryExtensions.has(path.extname(stagingFilePath).toLowerCase())) {
@@ -611,7 +634,7 @@ export class Project {
                 absoluteMapPath = await this.colocateSourceMap({
                     absoluteMapPath: absoluteMapPath,
                     stagingFilePath: stagingFilePath
-                }, phase1Maps);
+                });
 
             } else {
                 // No comment — check if a colocated map exists next to the original source file
@@ -626,7 +649,7 @@ export class Project {
                 await this.colocateSourceMap({
                     absoluteMapPath: absoluteMapPath,
                     stagingFilePath: stagingFilePath
-                }, phase1Maps);
+                });
                 return;
             }
 
@@ -638,21 +661,17 @@ export class Project {
 
             const newComment = `${commentMatch.leadingInfo.trimEnd()}//# sourceMappingURL=${newRelativePath}`;
             contents = contents.replace(commentMatch.fullMatch, newComment);
-            await fsExtra.writeFile(stagingFilePath, contents, 'utf8');
+            await this.writeFile(stagingFilePath, contents, 'utf8');
         } catch (e) {
             this.logger.error(`Error updating sourceMappingURL comment in '${stagingFilePath}'`, e);
         }
     }
 
-    private async colocateSourceMap(options: { stagingFilePath: string; absoluteMapPath: string }, phase1Maps: Set<string>) {
-        const stagingMapPath = `${options.stagingFilePath}.map`;
-        //if phase 1 already produced this staging map, leave it alone — don't overwrite the fixed contents
-        if (phase1Maps.has(fileUtils.standardizePath(stagingMapPath).toLowerCase())) {
-            return stagingMapPath;
-        }
+    private async colocateSourceMap(options: { stagingFilePath: string; absoluteMapPath: string }) {
         //copy the sourcemap right next to our file (skip if it's already there)
+        const stagingMapPath = `${options.stagingFilePath}.map`;
         if (fileUtils.standardizePath(options.absoluteMapPath) !== fileUtils.standardizePath(stagingMapPath)) {
-            await fsExtra.copyFile(options.absoluteMapPath, stagingMapPath);
+            await this.copyFile(options.absoluteMapPath, stagingMapPath);
         }
         await this.fixSourceMapSources({
             stagingMapPath: stagingMapPath,
@@ -672,7 +691,7 @@ export class Project {
                 // Update the bs_const values in the manifest in the staging folder before side loading the channel
                 let fileContents = (await fsExtra.readFile(manifestPath)).toString();
                 fileContents = this.updateManifestBsConsts(this.bsConst, fileContents);
-                await fsExtra.writeFile(manifestPath, fileContents);
+                await this.writeFile(manifestPath, fileContents);
             }
         }
     }

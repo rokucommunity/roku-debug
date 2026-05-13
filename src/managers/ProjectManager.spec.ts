@@ -787,13 +787,15 @@ describe('Project', () => {
             await project['preprocessStagingFiles']();
         });
 
-        describe('two-phase race regression', () => {
+        describe('concurrent staging-map write race regression', () => {
             /**
-             * Phase 1 fixes the .map file. Phase 2 sees that the colocate target is the same staging
-             * map path Phase 1 already owns, and skips its copy/fix. The typical bsc transpile case:
-             * main.brs and main.brs.map land in the same staging folder.
+             * The .map branch and the colocateSourceMap step of the .brs branch can both target the
+             * same staging map path (the typical bsc transpile case: main.brs and main.brs.map land
+             * in the same staging folder). Writes to that path must be serialized so the resulting
+             * file is valid JSON. We don't care whether the work runs once or twice — only that the
+             * end state is uncorrupted.
              */
-            it('runs fixSourceMapSources exactly once when .brs comment and staged .map target the same staging map path', async () => {
+            it('produces a valid staging .map when .brs comment and staged .map target the same staging map path', async () => {
                 const srcDir = s`${tempPath}/srcDir/source`;
                 fsExtra.ensureDirSync(srcDir);
                 const stagingBrsDir = s`${stagingDir}/source`;
@@ -815,18 +817,10 @@ describe('Project', () => {
                     { src: originalMapPath, dest: stagingMapPath }
                 ];
 
-                const spy = sinon.spy(project as any, 'fixSourceMapSources');
-
                 await project['preprocessStagingFiles']();
 
-                const callsForStagingMap = spy.getCalls().filter(call => {
-                    const arg = call.args[0] as { stagingMapPath: string };
-                    return fileUtils.standardizePath(arg.stagingMapPath).toLowerCase() ===
-                        fileUtils.standardizePath(stagingMapPath).toLowerCase();
-                });
-                expect(callsForStagingMap.length, 'doFixSourceMapSources should run exactly once for the shared staging map').to.equal(1);
-
-                //and the resulting .map must still parse as valid JSON
+                //the resulting .map must still parse as valid JSON — concurrent writes
+                //serialized by the lock should not have torn the file
                 expect(() => fsExtra.readJsonSync(stagingMapPath)).to.not.throw();
             });
 
