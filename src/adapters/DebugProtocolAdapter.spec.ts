@@ -2,6 +2,7 @@
 
 import { expect } from 'chai';
 import type { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
+import { ProtocolCapabilities } from '../debugProtocol/client/ProtocolCapabilities';
 import { DebugProtocolAdapter, KeyType } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import { VariableType, VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
@@ -194,7 +195,7 @@ describe('DebugProtocolAdapter', function() {
         it('retries at next sync() to delete breakpoints if first request failed', async () => {
             await initialize();
             //disable auto breakpoint verification
-            client.protocolVersion = '3.2.0';
+            client.capabilities = new ProtocolCapabilities('3.2.0');
 
             //add a single breakpoint first and do a diff to lock in the diff
             const bp2 = breakpointManager.setBreakpoint(srcPath, { line: 2 });
@@ -327,7 +328,7 @@ describe('DebugProtocolAdapter', function() {
             await initialize();
 
             //force the client to expect the device to verify breakpoints (instead of auto-verifying them as soon as seen)
-            client.protocolVersion = '3.2.0';
+            client.capabilities = new ProtocolCapabilities('3.2.0');
 
             breakpointManager.setBreakpoint(srcPath, {
                 line: bpLine

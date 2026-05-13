@@ -687,6 +687,9 @@ describe('BrightScriptDebugSession', () => {
                 filters: undefined,
                 filterOptions: undefined
             };
+            //the request now waits on `rokuAdapterDeferred` directly (instead of `getRokuAdapter`),
+            //so resolve it up front for these tests
+            session['rokuAdapterDeferred'].resolve(rokuAdapter as any);
         });
 
         it('both caught and uncaught filters', async () => {
