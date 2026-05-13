@@ -446,25 +446,40 @@ export class Project {
         const stagedFiles: string[] = (await fastGlob('**/*', { cwd: this.stagingDir, absolute: true, onlyFiles: true }))
             .map((f: string) => fileUtils.standardizePath(f));
 
-        await Promise.all(stagedFiles.map(async (stagingFilePath: string) => {
-            const originalSrcPath = destToSrcMap.get(stagingFilePath);
-
-            // Skip files not in fileMappings (e.g. generated after staging)
-            if (!originalSrcPath) {
-                return;
+        //bucket staged files into maps vs non-maps so we can process them in two ordered phases.
+        //this avoids racing the .map branch against the colocateSourceMap step of the .brs branch,
+        //both of which can otherwise read/write the same staging .map concurrently.
+        const stagedMapPaths: string[] = [];
+        const stagedNonMapPaths: string[] = [];
+        for (const stagingFilePath of stagedFiles) {
+            if (!destToSrcMap.has(stagingFilePath)) {
+                continue;
             }
-
-            const ext = path.extname(stagingFilePath).toLowerCase();
-
-            if (ext === '.map') {
-                await this.fixSourceMapSources({
-                    stagingMapPath: stagingFilePath,
-                    originalMapPath: originalSrcPath
-                });
+            if (path.extname(stagingFilePath).toLowerCase() === '.map') {
+                stagedMapPaths.push(stagingFilePath);
             } else {
-                await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap);
+                stagedNonMapPaths.push(stagingFilePath);
             }
-        }));
+        }
+
+        //track which staging map paths phase 1 owns, so phase 2's colocate step can leave them alone
+        const phase1Maps = new Set(
+            stagedMapPaths.map(stagingFilePath => fileUtils.standardizePath(stagingFilePath).toLowerCase())
+        );
+
+        //phase 1: fix sources for every staged .map. each target a distinct path so parallel is safe.
+        await Promise.all(stagedMapPaths.map(stagingFilePath =>
+            this.fixSourceMapSources({
+                stagingMapPath: stagingFilePath,
+                originalMapPath: destToSrcMap.get(stagingFilePath)
+            })
+        ));
+
+        //phase 2: rewrite sourceMappingURL comments and colocate maps that weren't staged.
+        //pass phase1Maps so colocate can skip touching anything phase 1 already produced.
+        await Promise.all(stagedNonMapPaths.map(stagingFilePath =>
+            this.fixSourceMapComment(stagingFilePath, destToSrcMap.get(stagingFilePath), srcToDestMap, phase1Maps)
+        ));
     }
 
     /**
@@ -573,7 +588,7 @@ export class Project {
      *   XML:   <!--//# sourceMappingURL=<path> -->
      *   other: //# sourceMappingURL=<path>
      */
-    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
+    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>, phase1Maps: Set<string>) {
         try {
             //if this is a media file, skip it because it won't have a source map
             if (Project.binaryExtensions.has(path.extname(stagingFilePath).toLowerCase())) {
@@ -596,7 +611,7 @@ export class Project {
                 absoluteMapPath = await this.colocateSourceMap({
                     absoluteMapPath: absoluteMapPath,
                     stagingFilePath: stagingFilePath
-                });
+                }, phase1Maps);
 
             } else {
                 // No comment — check if a colocated map exists next to the original source file
@@ -611,7 +626,7 @@ export class Project {
                 await this.colocateSourceMap({
                     absoluteMapPath: absoluteMapPath,
                     stagingFilePath: stagingFilePath
-                });
+                }, phase1Maps);
                 return;
             }
 
@@ -629,9 +644,13 @@ export class Project {
         }
     }
 
-    private async colocateSourceMap(options: { stagingFilePath: string; absoluteMapPath: string }) {
-        //copy the sourcemap right next to our file (skip if it's already there)
+    private async colocateSourceMap(options: { stagingFilePath: string; absoluteMapPath: string }, phase1Maps: Set<string>) {
         const stagingMapPath = `${options.stagingFilePath}.map`;
+        //if phase 1 already produced this staging map, leave it alone — don't overwrite the fixed contents
+        if (phase1Maps.has(fileUtils.standardizePath(stagingMapPath).toLowerCase())) {
+            return stagingMapPath;
+        }
+        //copy the sourcemap right next to our file (skip if it's already there)
         if (fileUtils.standardizePath(options.absoluteMapPath) !== fileUtils.standardizePath(stagingMapPath)) {
             await fsExtra.copyFile(options.absoluteMapPath, stagingMapPath);
         }
