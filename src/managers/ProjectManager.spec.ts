@@ -787,6 +787,93 @@ describe('Project', () => {
             await project['preprocessStagingFiles']();
         });
 
+        describe('concurrent staging-map write race regression', () => {
+            /**
+             * The .map branch and the colocateSourceMap step of the .brs branch can both target the
+             * same staging map path (the typical bsc transpile case: main.brs and main.brs.map land
+             * in the same staging folder). Writes to that path must be serialized so the resulting
+             * file is valid JSON. We don't care whether the work runs once or twice — only that the
+             * end state is uncorrupted.
+             */
+            it('produces a valid staging .map when .brs comment and staged .map target the same staging map path', async () => {
+                const srcDir = s`${tempPath}/srcDir/source`;
+                fsExtra.ensureDirSync(srcDir);
+                const stagingBrsDir = s`${stagingDir}/source`;
+                fsExtra.ensureDirSync(stagingBrsDir);
+
+                const originalBrsPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+                const stagingBrsPath = s`${stagingBrsDir}/main.brs`;
+                const stagingMapPath = s`${stagingBrsDir}/main.brs.map`;
+
+                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: ['main.bs'], mappings: '' });
+
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+                fsExtra.copySync(originalMapPath, stagingMapPath);
+
+                project.fileMappings = [
+                    { src: originalBrsPath, dest: stagingBrsPath },
+                    { src: originalMapPath, dest: stagingMapPath }
+                ];
+
+                await project['preprocessStagingFiles']();
+
+                //the resulting .map must still parse as valid JSON — concurrent writes
+                //serialized by the lock should not have torn the file
+                expect(() => fsExtra.readJsonSync(stagingMapPath)).to.not.throw();
+            });
+
+            /**
+             * When the .map is staged to a different folder than the .brs, the colocate path writes
+             * to a separate file. Both writes happen, but they target different paths, so there is
+             * no conflict and dedup correctly does NOT merge them.
+             */
+            it('runs fixSourceMapSources for each unique staging map path when .map and colocate target different folders', async () => {
+                const srcDir = s`${tempPath}/srcDir/source`;
+                const srcMapDir = s`${tempPath}/srcDir/maps`;
+                fsExtra.ensureDirSync(srcDir);
+                fsExtra.ensureDirSync(srcMapDir);
+                const stagingBrsDir = s`${stagingDir}/source`;
+                const stagingMapsDir = s`${stagingDir}/maps`;
+                fsExtra.ensureDirSync(stagingBrsDir);
+                fsExtra.ensureDirSync(stagingMapsDir);
+
+                const originalBrsPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcMapDir}/main.brs.map`;
+                const stagingBrsPath = s`${stagingBrsDir}/main.brs`;
+                //map gets staged to a separate folder
+                const stagedMapAtMapsDir = s`${stagingMapsDir}/main.brs.map`;
+                //colocate will write here (next to the .brs)
+                const colocatedMapPath = s`${stagingBrsDir}/main.brs.map`;
+
+                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=../maps/main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: ['main.bs'], mappings: '' });
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+                fsExtra.copySync(originalMapPath, stagedMapAtMapsDir);
+
+                project.fileMappings = [
+                    { src: originalBrsPath, dest: stagingBrsPath },
+                    { src: originalMapPath, dest: stagedMapAtMapsDir }
+                ];
+
+                const spy = sinon.spy(project as any, 'fixSourceMapSources');
+
+                await project['preprocessStagingFiles']();
+
+                const paths = spy.getCalls().map(call => {
+                    const arg = call.args[0] as { stagingMapPath: string };
+                    return fileUtils.standardizePath(arg.stagingMapPath).toLowerCase();
+                });
+                expect(paths).to.include(fileUtils.standardizePath(stagedMapAtMapsDir).toLowerCase());
+                expect(paths).to.include(fileUtils.standardizePath(colocatedMapPath).toLowerCase());
+
+                //both .map files exist on disk and are valid JSON
+                expect(() => fsExtra.readJsonSync(stagedMapAtMapsDir)).to.not.throw();
+                expect(() => fsExtra.readJsonSync(colocatedMapPath)).to.not.throw();
+            });
+        });
+
         describe('fixSourceMapComment', () => {
             /**
              * Stage a source file (with a sourceMappingURL comment) and its map, run
