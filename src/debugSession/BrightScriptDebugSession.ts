@@ -1006,6 +1006,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         //the channel was sideloaded with autoLaunch disabled — start it now via ECP, folding in deep link params when provided
         if (packageIsPublished) {
+            //wait until the device reports the installed-but-not-running state before firing the launch.
+            //firing immediately after publish can race the device's install-settle step, which can drop
+            //the remotedebug=1 flag on the floor and break the debug protocol attach.
+            await this.waitForDevAppInstalled();
             try {
                 await rokuECP.launchApp({
                     host: this.launchConfiguration.host,
@@ -1035,6 +1039,33 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         if (packageIsPublished && !this.rokuAdapter.connected) {
             return this.shutdown('Debug session cancelled: failed to connect to debug protocol control port.');
         }
+    }
+
+    /**
+     * After a `dev_autolaunch=0` sideload, poll `query/app-state` until the device reports the
+     * channel as `inactive` or `background` (installed but not running). This makes sure the device
+     * has finished settling the install before we fire the ECP launch.
+     */
+    private async waitForDevAppInstalled(timeoutMs = 10_000, pollIntervalMs = 200) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            try {
+                const result = await rokuECP.getAppState({
+                    host: this.launchConfiguration.host,
+                    remotePort: this.launchConfiguration.remotePort,
+                    appId: 'dev',
+                    requestOptions: { timeout: 500 }
+                });
+                if (result.state === AppState.inactive || result.state === AppState.background) {
+                    return;
+                }
+            } catch (e) {
+                //the device may briefly refuse the query mid-install — keep polling
+                this.logger.warn('app-state poll failed; retrying', e);
+            }
+            await util.sleep(pollIntervalMs);
+        }
+        this.logger.warn(`waitForDevAppInstalled: timed out after ${timeoutMs}ms; firing launch anyway`);
     }
 
     private pendingSendLogPromise = Promise.resolve();
