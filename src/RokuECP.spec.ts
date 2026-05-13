@@ -437,6 +437,65 @@ describe('RokuECP', () => {
         });
     });
 
+    describe('launchApp', () => {
+        function stubDoRequest() {
+            return sinon.stub(rokuECP as any, 'doRequest').resolves({ body: '', statusCode: 200 });
+        }
+
+        it('posts to /launch/<channelId> with no query string when no params are supplied', async () => {
+            const stub = stubDoRequest();
+            await rokuECP.launchApp({ host: '1.1.1.1', remotePort: 8080, channelId: 'dev' });
+            expect(stub.getCall(0).args[0]).to.equal('launch/dev');
+            expect(stub.getCall(0).args[2]).to.equal('post');
+        });
+
+        it('honors a non-dev channelId', async () => {
+            const stub = stubDoRequest();
+            await rokuECP.launchApp({ host: '1.1.1.1', remotePort: 8080, channelId: '12345' });
+            expect(stub.getCall(0).args[0]).to.equal('launch/12345');
+        });
+
+        it('treats a raw key=value string as the query string', async () => {
+            const stub = stubDoRequest();
+            await rokuECP.launchApp({ host: '1.1.1.1', remotePort: 8080, channelId: 'dev', params: 'contentId=abc&mediaType=movie' });
+            expect(stub.getCall(0).args[0]).to.equal('launch/dev?contentId=abc&mediaType=movie');
+        });
+
+        it('passes a leading-? query string through unchanged', async () => {
+            const stub = stubDoRequest();
+            await rokuECP.launchApp({ host: '1.1.1.1', remotePort: 8080, channelId: 'dev', params: '?contentId=abc' });
+            expect(stub.getCall(0).args[0]).to.equal('launch/dev?contentId=abc');
+        });
+
+        it('extracts the query string from a full URL', async () => {
+            const stub = stubDoRequest();
+            await rokuECP.launchApp({
+                host: '1.1.1.1',
+                remotePort: 8080,
+                channelId: 'dev',
+                params: 'http://9.9.9.9:8060/launch/dev?contentId=abc&mediaType=movie'
+            });
+            expect(stub.getCall(0).args[0]).to.equal('launch/dev?contentId=abc&mediaType=movie');
+        });
+
+        it('returns no query string when a full URL has no query', async () => {
+            const stub = stubDoRequest();
+            await rokuECP.launchApp({
+                host: '1.1.1.1',
+                remotePort: 8080,
+                channelId: 'dev',
+                params: 'http://9.9.9.9:8060/launch/dev'
+            });
+            expect(stub.getCall(0).args[0]).to.equal('launch/dev');
+        });
+
+        it('treats empty params the same as omitted', async () => {
+            const stub = stubDoRequest();
+            await rokuECP.launchApp({ host: '1.1.1.1', remotePort: 8080, channelId: 'dev', params: '' });
+            expect(stub.getCall(0).args[0]).to.equal('launch/dev');
+        });
+    });
+
     describe('captureHeapSnapshot', () => {
         it('calls doRequest with correct route and options', async () => {
             let options = {

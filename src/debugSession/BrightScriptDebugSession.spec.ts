@@ -24,6 +24,7 @@ import { EventEmitter } from 'eventemitter3';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { PerfettoManager } from '../PerfettoManager';
+import { rokuECP } from '../RokuECP';
 
 //DebugSession.shutdown() calls process.exit() after a sleep, so we need to prevent that during tests. This should not be a mock, it needs to be permanent for this flow
 DebugSession.prototype.shutdown = () => { };
@@ -2627,6 +2628,7 @@ describe('BrightScriptDebugSession', () => {
             const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
             rokuAdapter.connected = false;
             sinon.stub(session.rokuDeploy, 'publish').resolves();
+            sinon.stub(rokuECP, 'launchApp').resolves({} as any);
 
             const publishPromise = (session as any).publish();
 
@@ -2638,6 +2640,44 @@ describe('BrightScriptDebugSession', () => {
 
             expect(shutdownStub.calledOnceWithExactly('Debug session cancelled: failed to connect to debug protocol control port.')).to.be.true;
             clock.restore();
+        });
+
+        it('sideloads with autoLaunch disabled and starts the channel via ECP launch after publish', async () => {
+            rokuAdapter.connected = true;
+            const publishStub = sinon.stub(session.rokuDeploy, 'publish').resolves();
+            const launchAppStub = sinon.stub(rokuECP, 'launchApp').resolves({} as any);
+            sinon.stub(rokuAdapter as any, 'once').resolves();
+
+            await (session as any).publish();
+
+            expect(publishStub.calledOnce).to.be.true;
+            expect(publishStub.firstCall.args[0]).to.include({ autoLaunch: false });
+            expect(launchAppStub.calledOnce).to.be.true;
+            expect(launchAppStub.firstCall.args[0]).to.include({ channelId: 'dev' });
+        });
+
+        it('forwards deepLinkUrl as the params for the ECP launch', async () => {
+            rokuAdapter.connected = true;
+            launchConfiguration.deepLinkUrl = 'http://1.2.3.4:8060/launch/dev?contentId=movie-42&mediaType=movie';
+            sinon.stub(session.rokuDeploy, 'publish').resolves();
+            const launchAppStub = sinon.stub(rokuECP, 'launchApp').resolves({} as any);
+            sinon.stub(rokuAdapter as any, 'once').resolves();
+
+            await (session as any).publish();
+
+            expect(launchAppStub.calledOnce).to.be.true;
+            expect(launchAppStub.firstCall.args[0].params).to.equal(launchConfiguration.deepLinkUrl);
+        });
+
+        it('skips the ECP launch when publish soft-fails', async () => {
+            rokuAdapter.connected = true;
+            sinon.stub(session.rokuDeploy, 'publish').rejects(new Error('non-fatal publish error'));
+            const launchAppStub = sinon.stub(rokuECP, 'launchApp').resolves({} as any);
+            sinon.stub(rokuAdapter as any, 'once').resolves();
+
+            await (session as any).publish();
+
+            expect(launchAppStub.called).to.be.false;
         });
     });
 
