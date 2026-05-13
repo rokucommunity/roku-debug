@@ -773,20 +773,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 throw error;
             }
 
-            //at this point, the project has been deployed. If we need to use a deep link, launch it now.
-            if (this.launchConfiguration.deepLinkUrl && !this.enableDebugProtocol) {
-                //wait until the first entry breakpoint has been hit
-                await this.firstRunDeferred.promise;
-                //if we are at a breakpoint, continue
-                await this.rokuAdapter.continue();
-                //kill the app on the roku
-                // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
-                //convert a hostname to an ip address
-                const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
-                //send the deep link http request
-                await util.httpPost(deepLinkUrl);
-            }
-
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
             if (!(e instanceof CompileError)) {
@@ -990,6 +976,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             remoteDebugConnectEarly: false,
             //we don't want to fail if there were compile errors...we'll let our compile error processor handle that
             failOnCompileError: true,
+            //prevent the device from auto-launching the channel — we'll start it ourselves via ECP below
+            autoLaunch: false,
             //pass any upload form overrides the client may have configured
             packageUploadOverrides: this.launchConfiguration.packageUploadOverrides
         };
@@ -1016,6 +1004,24 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         uploadingEnd();
 
+        //the channel was sideloaded with autoLaunch disabled — start it now via ECP, folding in deep link params when provided
+        if (packageIsPublished) {
+            //wait until the device reports the installed-but-not-running state before firing the launch.
+            //firing immediately after publish can race the device's install-settle step, which can drop
+            //the remotedebug=1 flag on the floor and break the debug protocol attach.
+            await this.waitForDevAppInstalled();
+            try {
+                await rokuECP.launchApp({
+                    host: this.launchConfiguration.host,
+                    remotePort: this.launchConfiguration.remotePort,
+                    channelId: 'dev',
+                    params: this.launchConfiguration.deepLinkUrl
+                });
+            } catch (e) {
+                this.logger.error('Failed to launch sideloaded channel via ECP', e);
+            }
+        }
+
         //the channel has been deployed. Wait for the adapter to finish connecting.
         //if it hasn't connected after 60 seconds, abort the launch.
         let didTimeOut = false;
@@ -1033,6 +1039,33 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         if (packageIsPublished && !this.rokuAdapter.connected) {
             return this.shutdown('Debug session cancelled: failed to connect to debug protocol control port.');
         }
+    }
+
+    /**
+     * After a `dev_autolaunch=0` sideload, poll `query/app-state` until the device reports the
+     * channel as `inactive` or `background` (installed but not running). This makes sure the device
+     * has finished settling the install before we fire the ECP launch.
+     */
+    private async waitForDevAppInstalled(timeoutMs = 10_000, pollIntervalMs = 200) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            try {
+                const result = await rokuECP.getAppState({
+                    host: this.launchConfiguration.host,
+                    remotePort: this.launchConfiguration.remotePort,
+                    appId: 'dev',
+                    requestOptions: { timeout: 500 }
+                });
+                if (result.state === AppState.inactive || result.state === AppState.background) {
+                    return;
+                }
+            } catch (e) {
+                //the device may briefly refuse the query mid-install — keep polling
+                this.logger.warn('app-state poll failed; retrying', e);
+            }
+            await util.sleep(pollIntervalMs);
+        }
+        this.logger.warn(`waitForDevAppInstalled: timed out after ${timeoutMs}ms; firing launch anyway`);
     }
 
     private pendingSendLogPromise = Promise.resolve();
@@ -2905,7 +2938,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public async handleEntryBreakpoint() {
         if (!this.enableDebugProtocol) {
             this.entryBreakpointWasHandled = true;
-            if (this.launchConfiguration.stopOnEntry || this.launchConfiguration.deepLinkUrl) {
+            if (this.launchConfiguration.stopOnEntry) {
                 await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingDir);
             }
         }

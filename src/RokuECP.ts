@@ -124,6 +124,33 @@ export class RokuECP {
         return this.processExitApp(result);
     }
 
+    /**
+     * Launches a channel via ECP. Pass `dev` to launch the currently sideloaded developer channel.
+     * Any `params` are appended as a query string, which Roku will surface to the channel as launch arguments (deep link).
+     * Accepts a full URL, a leading-`?` query string, or a raw `key=value&...` query string.
+     */
+    public async launchApp(options: BaseOptions & { channelId: string; params?: string }): Promise<Response> {
+        const suffix = this.buildLaunchQueryString(options.params);
+        return this.doRequest(`launch/${options.channelId}${suffix}`, options, 'post');
+    }
+
+    private buildLaunchQueryString(params: string | undefined): string {
+        if (!params) {
+            return '';
+        }
+        if (params.startsWith('?')) {
+            return params;
+        }
+        if (/^https?:\/\//i.test(params)) {
+            try {
+                return new URL(params).search;
+            } catch {
+                //fall through to raw handling
+            }
+        }
+        return `?${params}`;
+    }
+
     private async processExitApp(response: Response): Promise<EcpExitAppData> {
         return this.parseResponse(response, 'exit-app', (parsed: ExitAppAsJson, status): EcpExitAppData => {
             return { status: status };
