@@ -583,7 +583,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
-                this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+                this.prepareComponentLibraries(this.launchConfiguration.componentLibraries)
             ]);
 
             //all of the projects have been successfully staged.
@@ -740,6 +740,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             });
             //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
             await this.tryProfilingConnectOnStart();
+
+            //all setBreakpoints requests have arrived by this point (configurationDone is the DAP signal
+            //that the client has finished sending configuration). Inject the STOPs and seal zips now.
+            await Promise.all([
+                this.packageMainProject(),
+                this.packageAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+            ]);
 
             this.sendLaunchProgress('update', 'Uploading to Roku');
             await this.publish();
@@ -958,6 +965,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         this.sendEvent(new DiagnosticsEvent(diagnostics));
     }
 
+    private publishTimeout = 60_000;
+
     private async publish() {
         const uploadingEnd = this.logger.timeStart('log', 'Uploading zip');
         let packageIsPublished = false;
@@ -1021,7 +1030,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(60_000).then(() => {
+            util.sleep(this.publishTimeout).then(() => {
                 didTimeOut = true;
             })
         ]);
@@ -1250,13 +1259,19 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         //add the entry breakpoint if stopOnEntry is true
         await this.handleEntryBreakpoint();
+    }
 
+    /**
+     * Inject breakpoint STOP statements into the staged main project and create the zip package.
+     * Runs after the DAP `InitializedEvent` so client-side `setBreakpoints` requests have landed
+     * before any STOPs are written to the staged .brs files (telnet path) and before the zip is sealed.
+     */
+    private async packageMainProject() {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
         //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
         if (!this.enableDebugProtocol) {
-
             await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
         }
 
@@ -1326,110 +1341,120 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     /**
      * Stores the path to the staging folder for each component library
      */
-    protected async prepareAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
-        if (componentLibraries && componentLibraries.length > 0) {
-            let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
-            //make sure this folder exists (and is empty)
-            await fsExtra.ensureDir(componentLibrariesOutDir);
-            await fsExtra.emptyDir(componentLibrariesOutDir);
+    protected async prepareComponentLibraries(componentLibraries: ComponentLibraryConfiguration[]) {
+        if (!componentLibraries || componentLibraries.length === 0) {
+            return;
+        }
+        let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
+        //make sure this folder exists (and is empty)
+        await fsExtra.ensureDir(componentLibrariesOutDir);
+        await fsExtra.emptyDir(componentLibrariesOutDir);
 
-            //create a ComponentLibraryProject for each component library
-            for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
-                let componentLibrary = componentLibraries[libraryIndex];
+        //create a ComponentLibraryProject for each component library
+        for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
+            let componentLibrary = componentLibraries[libraryIndex];
 
-                this.projectManager.componentLibraryProjects.push(
-                    new ComponentLibraryProject({
-                        rootDir: componentLibrary.rootDir,
-                        files: componentLibrary.files,
-                        outDir: componentLibrariesOutDir,
-                        outFile: componentLibrary.outFile,
-                        sourceDirs: componentLibrary.sourceDirs,
-                        bsConst: componentLibrary.bsConst,
-                        install: componentLibrary.install,
-                        injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
-                        raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
-                        libraryIndex: libraryIndex,
-                        enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
-                    })
-                );
+            this.projectManager.componentLibraryProjects.push(
+                new ComponentLibraryProject({
+                    rootDir: componentLibrary.rootDir,
+                    files: componentLibrary.files,
+                    outDir: componentLibrariesOutDir,
+                    outFile: componentLibrary.outFile,
+                    sourceDirs: componentLibrary.sourceDirs,
+                    bsConst: componentLibrary.bsConst,
+                    install: componentLibrary.install,
+                    injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
+                    raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
+                    libraryIndex: libraryIndex,
+                    enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
+                })
+            );
+        }
+
+        //stage all of the libraries in parallel
+        await Promise.all(
+            this.projectManager.componentLibraryProjects.map(compLibProject => compLibProject.stage())
+        );
+    }
+
+    /**
+     * Inject breakpoint STOPs into the staged complibs, seal their zips, install installable ones,
+     * and start static file hosting. Runs in `configurationDoneRequest` (after `InitializedEvent`)
+     * so client-side `setBreakpoints` requests have landed before the staged .brs files are written
+     * and the zips are sealed.
+     */
+    protected async packageAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
+        if (!componentLibraries || componentLibraries.length === 0) {
+            return;
+        }
+        const componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
+
+        // Add breakpoint lines to the staging files and before publishing
+        util.log('Adding stop statements for active breakpoints in Component Libraries');
+
+        //write STOPs (telnet only), postfix, and zip each complib in parallel — each targets distinct files
+        const packagePromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+            if (!this.enableDebugProtocol) {
+                await this.breakpointManager.writeBreakpointsForProject(compLibProject);
             }
+            await compLibProject.postfixFiles();
+            await compLibProject.zipPackage({ retainStagingFolder: true });
+        });
 
-            //prepare all of the libraries in parallel
-            let compLibPromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+        const needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
+        if (needToDeleteComplibs) {
+            await rokuDeploy.deleteAllComponentLibraries({
+                host: this.launchConfiguration.host,
+                password: this.launchConfiguration.password,
+                username: this.launchConfiguration.username || 'rokudev'
+            });
+        }
 
-                await compLibProject.stage();
+        for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
+            const compLibProject = this.projectManager.componentLibraryProjects[i];
 
-                // Add breakpoint lines to the staging files and before publishing
-                util.log('Adding stop statements for active breakpoints in Component Libraries');
+            if (compLibProject.install === true) {
+                //wait for this complib to finish being packaged
+                await packagePromises[i];
 
-                //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-                if (!this.enableDebugProtocol) {
-                    await this.breakpointManager.writeBreakpointsForProject(compLibProject);
+                if (componentLibraries[i].packageTask) {
+                    await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
                 }
 
-                await compLibProject.postfixFiles();
-
-                await compLibProject.zipPackage({ retainStagingFolder: true });
-            });
-
-            let needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
-
-            if (needToDeleteComplibs) {
-                await rokuDeploy.deleteAllComponentLibraries({
+                const options: RokuDeployOptions = {
                     host: this.launchConfiguration.host,
                     password: this.launchConfiguration.password,
-                    username: this.launchConfiguration.username || 'rokudev'
-                });
-            }
+                    username: this.launchConfiguration.username || 'rokudev',
+                    logLevel: LogLevelPriority[this.logger.logLevel],
+                    failOnCompileError: true,
+                    outDir: compLibProject.outDir,
+                    outFile: compLibProject.outFile,
+                    appType: 'dcl',
+                    packageUploadOverrides: componentLibraries[i].packageUploadOverrides || {}
+                };
 
-            for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
-                const compLibProject = this.projectManager.componentLibraryProjects[i];
+                if (componentLibraries[i].packagePath) {
+                    options.outDir = path.dirname(componentLibraries[i].packagePath);
+                    options.outFile = path.basename(componentLibraries[i].packagePath);
+                }
 
-                if (compLibProject.install === true) {
-                    //wait for this complib to finish being staged and zipped
-                    await compLibPromises[i];
-
-                    if (componentLibraries[i].packageTask) {
-                        await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
-                    }
-
-                    const options: RokuDeployOptions = {
-                        host: this.launchConfiguration.host,
-                        password: this.launchConfiguration.password,
-                        username: this.launchConfiguration.username || 'rokudev',
-                        logLevel: LogLevelPriority[this.logger.logLevel],
-                        failOnCompileError: true,
-                        outDir: compLibProject.outDir,
-                        outFile: compLibProject.outFile,
-                        appType: 'dcl',
-                        packageUploadOverrides: componentLibraries[i].packageUploadOverrides || {}
-                    };
-
-                    if (componentLibraries[i].packagePath) {
-                        options.outDir = path.dirname(componentLibraries[i].packagePath);
-                        options.outFile = path.basename(componentLibraries[i].packagePath);
-                    }
-
-                    try {
-                        await rokuDeploy.publish(options);
-                    } catch (error) {
-                        this.logger.error(`Error installing component library ${i}`, error);
-                    }
+                try {
+                    await rokuDeploy.publish(options);
+                } catch (error) {
+                    this.logger.error(`Error installing component library ${i}`, error);
                 }
             }
-
-            let hostingPromise: Promise<any>;
-            // prepare static file hosting
-            hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
-                util.log(message);
-            });
-
-            //wait for all component libaries to finish building, and the file hosting to start up (if enabled)
-            await Promise.all([
-                ...compLibPromises,
-                hostingPromise
-            ]);
         }
+
+        const hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
+            util.log(message);
+        });
+
+        //wait for all complib packaging to finish and the file hosting to start
+        await Promise.all([
+            ...packagePromises,
+            hostingPromise
+        ]);
     }
 
     protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments) {

@@ -62,6 +62,7 @@ describe('BrightScriptDebugSession', () => {
 
         try {
             session = new BrightScriptDebugSession();
+            session['publishTimeout'] = 1_000;
         } catch (e) {
             console.log(e);
         }
@@ -1124,8 +1125,9 @@ describe('BrightScriptDebugSession', () => {
                 verified: false
             });
 
-            //simulate "launch"
+            //simulate "launch" — stage in launchRequest, then write breakpoints + zip in configurationDoneRequest
             await session.prepareMainProject();
+            await session['packageMainProject']();
 
             //remove the breakpoint
             args.breakpoints = [];
@@ -1804,6 +1806,13 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('prepareAndHostComponentLibraries', () => {
+        //runs the two-phase complib flow that used to live in a single method, mirroring how the
+        //real launch flow now splits prepare (stage) from package-and-host (write+zip+install+host).
+        async function runPrepareAndHost(componentLibraries: any[], port: number) {
+            await session['prepareComponentLibraries'](componentLibraries);
+            await session['packageAndHostComponentLibraries'](componentLibraries, port);
+        }
+
         function stubDefaults() {
             sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
@@ -1823,7 +1832,7 @@ describe('BrightScriptDebugSession', () => {
                 return { message: 'success', results: [] };
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1841,7 +1850,7 @@ describe('BrightScriptDebugSession', () => {
                 return { message: 'success', results: [] };
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: undefined },
@@ -1857,7 +1866,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             const publishStub = sinon.stub(rokuDeploy, 'publish').resolves({ message: 'success', results: [] });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'testLib.zip', install: true }
             ] as any, 8080);
 
@@ -1874,7 +1883,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             sinon.stub(rokuDeploy, 'publish').rejects(new Error('Network error'));
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
             ] as any, 8080);
 
@@ -1904,7 +1913,7 @@ describe('BrightScriptDebugSession', () => {
                 return Promise.resolve({ message: 'success', results: [] });
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1926,7 +1935,7 @@ describe('BrightScriptDebugSession', () => {
 
             let errorThrown = false;
             try {
-                await session['prepareAndHostComponentLibraries']([
+                await runPrepareAndHost([
                     { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
                 ] as any, 8080);
             } catch (e) {
@@ -1943,7 +1952,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: undefined }
             ] as any, 8080);
@@ -1954,7 +1963,7 @@ describe('BrightScriptDebugSession', () => {
         it('does not start server when no component libraries present', async () => {
             const serverStub = sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
 
-            await session['prepareAndHostComponentLibraries']([], 8080);
+            await runPrepareAndHost([], 8080);
 
             expect(serverStub.called).to.be.false;
         });
@@ -1963,7 +1972,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true, packageTask: 'build:lib1' },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true, packageTask: 'build:lib2' },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: true }
@@ -1995,7 +2004,7 @@ describe('BrightScriptDebugSession', () => {
                 }
             };
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 {
                     rootDir: complib1Dir,
                     outFile: 'lib1.zip',
@@ -2526,7 +2535,9 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
             sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
             sinon.stub(session, 'prepareMainProject').resolves();
-            sinon.stub(session as any, 'prepareAndHostComponentLibraries').resolves();
+            sinon.stub(session as any, 'prepareComponentLibraries').resolves();
+            sinon.stub(session as any, 'packageMainProject').resolves();
+            sinon.stub(session as any, 'packageAndHostComponentLibraries').resolves();
             sinon.stub(session, 'initRendezvousTracking').resolves();
             // Prevent createRokuAdapter from replacing the mock rokuAdapter with a real adapter
             sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
@@ -2623,6 +2634,8 @@ describe('BrightScriptDebugSession', () => {
 
     describe('publish', () => {
         it('waits 60 seconds before aborting when the app never becomes ready', async () => {
+            session['publishTimeout'] = 60_000;
+
             const clock = sinon.useFakeTimers();
             const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
             rokuAdapter.connected = false;

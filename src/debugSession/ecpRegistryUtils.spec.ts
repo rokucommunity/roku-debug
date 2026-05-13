@@ -14,6 +14,7 @@ describe('ecpRegistryUtils', () => {
 
     beforeEach(() => {
         session = new BrightScriptDebugSession();
+        session['publishTimeout'] = 1_000;
     });
 
     afterEach(() => {
@@ -70,21 +71,23 @@ describe('ecpRegistryUtils', () => {
                         childVariables: []
                     }]
                 });
-                expect(session['variables']).to.eql({ 1: {
-                    name: 'sections',
-                    namedVariables: 1,
-                    type: VariableType.AssociativeArray,
-                    value: VariableType.AssociativeArray,
-                    variablesReference: 1,
-                    childVariables: [{
-                        name: '$count',
-                        presentationHint: { kind: 'virtual' },
-                        type: VariableType.Integer,
-                        value: '0',
-                        variablesReference: 0,
-                        childVariables: []
-                    }]
-                } });
+                expect(session['variables']).to.eql({
+                    1: {
+                        name: 'sections',
+                        namedVariables: 1,
+                        type: VariableType.AssociativeArray,
+                        value: VariableType.AssociativeArray,
+                        variablesReference: 1,
+                        childVariables: [{
+                            name: '$count',
+                            presentationHint: { kind: 'virtual' },
+                            type: VariableType.Integer,
+                            value: '0',
+                            variablesReference: 0,
+                            childVariables: []
+                        }]
+                    }
+                });
             });
 
             it('handles ok response with empty sections', async () => {
