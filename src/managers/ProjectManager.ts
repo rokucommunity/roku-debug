@@ -468,6 +468,44 @@ export class Project {
     }
 
     /**
+     * Per-path write locks. Async file ops interleave (e.g. `preprocessStagingFiles` fans out
+     * tasks that can target the same staging `.map`), so we queue all writes to a given path
+     * through a single promise chain. Entries clean themselves up once their chain is idle.
+     */
+    private writeLocks = new Map<string, Promise<unknown>>();
+
+    private serializeWrite<T>(filePath: string, work: () => Promise<T>): Promise<T> {
+        const key = fileUtils.standardizePath(filePath).toLowerCase();
+        const prev = this.writeLocks.get(key) ?? Promise.resolve();
+        //run work whether the prior op resolved or rejected — failures upstream shouldn't poison the chain
+        const next = prev.then(work, work);
+        this.writeLocks.set(key, next);
+        //drop the entry once nothing else has chained onto it
+        void next.catch(() => { /* swallow — caller's await sees the real error */ }).then(() => {
+            if (this.writeLocks.get(key) === next) {
+                this.writeLocks.delete(key);
+            }
+        });
+        return next;
+    }
+
+    /**
+     * Serialized wrapper around `fsExtra.writeFile`. Use in place of `fsExtra.writeFile` anywhere
+     * a path might also be written by another concurrent task in this Project.
+     */
+    private writeFile(filePath: string, data: Parameters<typeof fsExtra.writeFile>[1], options?: Parameters<typeof fsExtra.writeFile>[2]) {
+        return this.serializeWrite(filePath, () => fsExtra.writeFile(filePath, data, options));
+    }
+
+    /**
+     * Serialized wrapper around `fsExtra.copyFile`. The dest path is the one we serialize on,
+     * since that's what gets written.
+     */
+    private copyFile(srcPath: string, destPath: string) {
+        return this.serializeWrite(destPath, () => fsExtra.copyFile(srcPath, destPath));
+    }
+
+    /**
      * Rewrite the `sources` paths in a staged .map file so they are relative to the map's
      * new staging location rather than the original source directory.
      */
@@ -496,7 +534,7 @@ export class Project {
             // Clear sourceRoot since sources are now relative to the map file's new location
             delete sourceMap.sourceRoot;
 
-            await fsExtra.writeFile(stagingMapPath, JSON.stringify(sourceMap));
+            await this.writeFile(stagingMapPath, JSON.stringify(sourceMap));
         } catch (e) {
             this.logger.error(`Error updating source map sources for '${stagingMapPath}'`, e);
         }
@@ -623,7 +661,7 @@ export class Project {
 
             const newComment = `${commentMatch.leadingInfo.trimEnd()}//# sourceMappingURL=${newRelativePath}`;
             contents = contents.replace(commentMatch.fullMatch, newComment);
-            await fsExtra.writeFile(stagingFilePath, contents, 'utf8');
+            await this.writeFile(stagingFilePath, contents, 'utf8');
         } catch (e) {
             this.logger.error(`Error updating sourceMappingURL comment in '${stagingFilePath}'`, e);
         }
@@ -633,7 +671,7 @@ export class Project {
         //copy the sourcemap right next to our file (skip if it's already there)
         const stagingMapPath = `${options.stagingFilePath}.map`;
         if (fileUtils.standardizePath(options.absoluteMapPath) !== fileUtils.standardizePath(stagingMapPath)) {
-            await fsExtra.copyFile(options.absoluteMapPath, stagingMapPath);
+            await this.copyFile(options.absoluteMapPath, stagingMapPath);
         }
         await this.fixSourceMapSources({
             stagingMapPath: stagingMapPath,
@@ -653,7 +691,7 @@ export class Project {
                 // Update the bs_const values in the manifest in the staging folder before side loading the channel
                 let fileContents = (await fsExtra.readFile(manifestPath)).toString();
                 fileContents = this.updateManifestBsConsts(this.bsConst, fileContents);
-                await fsExtra.writeFile(manifestPath, fileContents);
+                await this.writeFile(manifestPath, fileContents);
             }
         }
     }
