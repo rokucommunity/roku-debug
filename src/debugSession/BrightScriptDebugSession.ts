@@ -741,6 +741,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
             await this.tryProfilingConnectOnStart();
 
+            //all setBreakpoints requests have arrived by this point (configurationDone is the DAP signal
+            //that the client has finished sending configuration). Inject the STOPs and seal the zip now.
+            await this.packageMainProject();
+
             this.sendLaunchProgress('update', 'Uploading to Roku');
             await this.publish();
 
@@ -1250,13 +1254,19 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         //add the entry breakpoint if stopOnEntry is true
         await this.handleEntryBreakpoint();
+    }
 
+    /**
+     * Inject breakpoint STOP statements into the staged main project and create the zip package.
+     * Runs after the DAP `InitializedEvent` so client-side `setBreakpoints` requests have landed
+     * before any STOPs are written to the staged .brs files (telnet path) and before the zip is sealed.
+     */
+    private async packageMainProject() {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
         //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
         if (!this.enableDebugProtocol) {
-
             await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
         }
 
