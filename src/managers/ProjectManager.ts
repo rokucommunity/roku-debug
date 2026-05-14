@@ -787,11 +787,16 @@ export class Project {
             return;
         }
         try {
-            let files: string[] = await fastGlob(`${this.rdbFilesBasePath}/**/*`, {
-                cwd: './',
-                absolute: false,
-                followSymbolicLinks: true
-            });
+
+            let files: string[] = await fastGlob(
+                //fast-glob requires forward slashes, so convert any backslashes in the provided path to forward slashes before globbing
+                `${this.rdbFilesBasePath}/**/*`.replace(/[\\/]+/g, '/'),
+                {
+                    cwd: './',
+                    absolute: false,
+                    followSymbolicLinks: true
+                }
+            );
             for (let filePathAbsolute of files) {
                 const promises = [];
                 //only include files (i.e. skip directories)

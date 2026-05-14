@@ -1492,6 +1492,71 @@ describe('Project', () => {
             expect(fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`), `${componentsFileRelativePath} was not copied to staging`).to.be.true;
         });
 
+        //regression: on Windows, an absolute rdbFilesBasePath contains backslashes,
+        //which fast-glob treats as escape characters. Without normalization, the glob
+        //matches nothing and no files get copied.
+        it('copies the RDB files when rdbFilesBasePath is an absolute path with native separators', async () => {
+            fsExtra.emptyDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = true;
+            project.rdbFilesBasePath = path.resolve(rdbFilesBasePath);
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} was not copied to staging from absolute path ${project.rdbFilesBasePath}`
+            ).to.be.true;
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`),
+                `${componentsFileRelativePath} was not copied to staging from absolute path ${project.rdbFilesBasePath}`
+            ).to.be.true;
+        });
+
+        it('does not copy files when injectRdbOnDeviceComponent is false', async () => {
+            fsExtra.emptyDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = false;
+            project.rdbFilesBasePath = rdbFilesBasePath;
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`),
+                `${componentsFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
+        });
+
+        it('does not copy files when rdbFilesBasePath is not set', async () => {
+            fsExtra.emptyDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = true;
+            project.rdbFilesBasePath = undefined;
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
+        });
+
         it('works for inline comments brs files', async () => {
             let brsSample = `\nsub main()\n  screen.show  <ENTRY>\nend sub`;
             let expectedBrs = brsSample.replace('<ENTRY>', `: ${Project.RDB_ODC_NODE_CODE}`);
