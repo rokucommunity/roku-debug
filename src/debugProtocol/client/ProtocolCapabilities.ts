@@ -7,7 +7,45 @@ import * as semver from 'semver';
  * `brightscript-debugger-version` when no client has connected yet.
  */
 export class ProtocolCapabilities {
-    constructor(public readonly protocolVersion: string) { }
+    constructor(protocolVersion: string | undefined, osVersion?: string) {
+        this.protocolVersion = ProtocolCapabilities.resolveProtocolVersion(protocolVersion, osVersion);
+    }
+
+    public readonly protocolVersion: string;
+
+    /**
+     * Roku OS versions that introduced each debug protocol version, ordered newest-first so
+     * we can pick the highest protocol whose OS floor the device meets.
+     */
+    private static readonly osToProtocolVersions: ReadonlyArray<{ os: string; protocol: string }> = [
+        { os: '14.1.0', protocol: '3.3.0' },
+        { os: '12.0.0', protocol: '3.2.0' },
+        { os: '11.5.0', protocol: '3.1.0' },
+        { os: '11.0.0', protocol: '3.0.0' },
+        { os: '9.3.0', protocol: '2.0.0' },
+        { os: '9.2.0', protocol: '1.0.1' }
+    ];
+
+    /**
+     * Some Roku firmware versions support the debug protocol but omit `brightscript-debugger-version`
+     * from device-info, so fall back to deriving the protocol version from the OS version when the
+     * caller didn't get one from the device.
+     */
+    private static resolveProtocolVersion(protocolVersion: string | undefined, osVersion: string | undefined): string {
+        if (semver.valid(protocolVersion)) {
+            return protocolVersion;
+        }
+        const coercedOs = osVersion ? semver.coerce(osVersion) : null;
+        if (!coercedOs) {
+            return protocolVersion;
+        }
+        for (const entry of ProtocolCapabilities.osToProtocolVersions) {
+            if (semver.gte(coercedOs, entry.os)) {
+                return entry.protocol;
+            }
+        }
+        return protocolVersion;
+    }
 
     /**
      * Prior to protocol v3.1.0, the Roku device would regularly set the wrong thread as "active",

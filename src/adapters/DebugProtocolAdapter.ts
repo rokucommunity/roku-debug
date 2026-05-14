@@ -43,7 +43,7 @@ export class DebugProtocolAdapter {
         this.connected = false;
         //capabilities derived from device-info; used to answer questions before the debug
         //protocol client has connected and completed its handshake
-        this.fallbackCapabilities = new ProtocolCapabilities(this.deviceInfo?.brightscriptDebuggerVersion);
+        this.fallbackCapabilities = new ProtocolCapabilities(this.deviceInfo?.brightscriptDebuggerVersion, this.deviceInfo?.softwareVersion);
 
         // watch for chanperf events
         this.chanperfTracker.on('chanperf', (output) => {
