@@ -1,5 +1,6 @@
 /* eslint-disable no-bitwise */
 import { DebugProtocolClient } from './DebugProtocolClient';
+import { ProtocolCapabilities } from './ProtocolCapabilities';
 import { expect } from 'chai';
 import { createSandbox } from 'sinon';
 import { Command, ErrorCode, StepType, StopReason } from '../Constants';
@@ -96,24 +97,24 @@ describe('DebugProtocolClient', () => {
 
     it('knows when to enable the thread hopping workaround', () => {
         //only supported below version 3.1.0
-        client.protocolVersion = '1.0.0';
+        client.capabilities = new ProtocolCapabilities('1.0.0');
         expect(
-            client['enableThreadHoppingWorkaround']
+            client.capabilities.enableThreadHoppingWorkaround
         ).to.be.true;
 
-        client.protocolVersion = '3.0.0';
+        client.capabilities = new ProtocolCapabilities('3.0.0');
         expect(
-            client['enableThreadHoppingWorkaround']
+            client.capabilities.enableThreadHoppingWorkaround
         ).to.be.true;
 
-        client.protocolVersion = '3.1.0';
+        client.capabilities = new ProtocolCapabilities('3.1.0');
         expect(
-            client['enableThreadHoppingWorkaround']
+            client.capabilities.enableThreadHoppingWorkaround
         ).to.be.false;
 
-        client.protocolVersion = '4.0.0';
+        client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
-            client['enableThreadHoppingWorkaround']
+            client.capabilities.enableThreadHoppingWorkaround
         ).to.be.false;
     });
 
@@ -272,7 +273,7 @@ describe('DebugProtocolClient', () => {
 
         it('ignores the `isPrimary` flag when threadHoppingWorkaround is enabled', async () => {
             await connect();
-            client.protocolVersion = '2.0.0';
+            client.capabilities = new ProtocolCapabilities('2.0.0');
             client.primaryThread = 0;
             plugin.pushResponse(ThreadsResponse.fromJson({
                 requestId: 1,
@@ -292,7 +293,7 @@ describe('DebugProtocolClient', () => {
 
         it('honors the `isPrimary` flag when threadHoppingWorkaround is disabled', async () => {
             await connect();
-            client.protocolVersion = '3.1.0';
+            client.capabilities = new ProtocolCapabilities('3.1.0');
             client.primaryThread = 0;
             plugin.pushResponse(ThreadsResponse.fromJson({
                 requestId: 1,
@@ -378,7 +379,7 @@ describe('DebugProtocolClient', () => {
 
         it('sends AddBreakpointsRequest when conditional breakpoints are NOT supported', async () => {
             await connect();
-            client.protocolVersion = '2.0.0';
+            client.capabilities = new ProtocolCapabilities('2.0.0');
 
             //response structure doesn't matter, we're verifying that the request was properly built
             plugin.pushResponse(AddBreakpointsResponse.fromJson({} as any));
@@ -394,7 +395,7 @@ describe('DebugProtocolClient', () => {
 
         it('sends AddConditionalBreakpointsRequest when conditional breakpoints ARE supported', async () => {
             await connect();
-            client.protocolVersion = '3.1.0';
+            client.capabilities = new ProtocolCapabilities('3.1.0');
 
             //response structure doesn't matter, we're verifying that the request was properly built
             plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
@@ -410,7 +411,7 @@ describe('DebugProtocolClient', () => {
 
         it('includes complib prefix when supported', async () => {
             await connect();
-            client.protocolVersion = '3.1.0';
+            client.capabilities = new ProtocolCapabilities('3.1.0');
 
             //response structure doesn't matter, we're verifying that the request was properly built
             plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
@@ -425,7 +426,7 @@ describe('DebugProtocolClient', () => {
 
         it('excludes complib prefix when not supported', async () => {
             await connect();
-            client.protocolVersion = '2.0.0';
+            client.capabilities = new ProtocolCapabilities('2.0.0');
 
             //response structure doesn't matter, we're verifying that the request was properly built
             plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
@@ -480,70 +481,70 @@ describe('DebugProtocolClient', () => {
 
     it('knows when to enable complib specific breakpoints', () => {
         //only supported on version 3.1.0 and above
-        client.protocolVersion = '1.0.0';
+        client.capabilities = new ProtocolCapabilities('1.0.0');
         expect(
-            client['enableComponentLibrarySpecificBreakpoints']
+            client.capabilities.enableComponentLibrarySpecificBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.0.0';
+        client.capabilities = new ProtocolCapabilities('3.0.0');
         expect(
-            client['enableComponentLibrarySpecificBreakpoints']
+            client.capabilities.enableComponentLibrarySpecificBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.1.0';
+        client.capabilities = new ProtocolCapabilities('3.1.0');
         expect(
-            client['enableComponentLibrarySpecificBreakpoints']
+            client.capabilities.enableComponentLibrarySpecificBreakpoints
         ).to.be.true;
 
-        client.protocolVersion = '4.0.0';
+        client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
-            client['enableComponentLibrarySpecificBreakpoints']
+            client.capabilities.enableComponentLibrarySpecificBreakpoints
         ).to.be.true;
     });
 
     it('knows when to enable conditional breakpoints', () => {
         //only supported on version 3.1.0 and above
-        client.protocolVersion = '1.0.0';
+        client.capabilities = new ProtocolCapabilities('1.0.0');
         expect(
-            client['supportsConditionalBreakpoints']
+            client.capabilities.supportsConditionalBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.0.0';
+        client.capabilities = new ProtocolCapabilities('3.0.0');
         expect(
-            client['supportsConditionalBreakpoints']
+            client.capabilities.supportsConditionalBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.1.0';
+        client.capabilities = new ProtocolCapabilities('3.1.0');
         expect(
-            client['supportsConditionalBreakpoints']
+            client.capabilities.supportsConditionalBreakpoints
         ).to.be.true;
 
-        client.protocolVersion = '4.0.0';
+        client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
-            client['supportsConditionalBreakpoints']
+            client.capabilities.supportsConditionalBreakpoints
         ).to.be.true;
     });
 
     it('knows when to enable exception breakpoint filters', () => {
         //only supported on version 3.3.0 and above
-        client.protocolVersion = '1.0.0';
+        client.capabilities = new ProtocolCapabilities('1.0.0');
         expect(
-            client['supportsExceptionBreakpoints']
+            client.capabilities.supportsExceptionBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.0.0';
+        client.capabilities = new ProtocolCapabilities('3.0.0');
         expect(
-            client['supportsExceptionBreakpoints']
+            client.capabilities.supportsExceptionBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.3.0';
+        client.capabilities = new ProtocolCapabilities('3.3.0');
         expect(
-            client['supportsExceptionBreakpoints']
+            client.capabilities.supportsExceptionBreakpoints
         ).to.be.true;
 
-        client.protocolVersion = '4.0.0';
+        client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
-            client['supportsExceptionBreakpoints']
+            client.capabilities.supportsExceptionBreakpoints
         ).to.be.true;
     });
 
@@ -1019,7 +1020,7 @@ describe('DebugProtocolClient', () => {
             ]);
 
             // force the protocolVersion to 2.0.0 for this test
-            client.protocolVersion = '2.0.0';
+            client.capabilities = new ProtocolCapabilities('2.0.0');
 
             plugin.pushResponse(VariablesResponse.fromJson({
                 requestId: -1, // overridden in the plugin
@@ -1051,7 +1052,7 @@ describe('DebugProtocolClient', () => {
             } as VariablesRequest['data']);
 
             // force the protocolVersion to 3.1.0 for this test
-            client.protocolVersion = '3.1.0';
+            client.capabilities = new ProtocolCapabilities('3.1.0');
 
             plugin.pushResponse(VariablesResponse.fromJson({
                 requestId: -1, // overridden in the plugin

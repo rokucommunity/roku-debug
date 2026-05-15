@@ -9,6 +9,7 @@ import {
     LoggingDebugSession,
     Logger as DapLogger,
     logger as dapLogger,
+    CapabilitiesEvent,
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
@@ -84,6 +85,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         //give util a reference to this session to assist in logging across the entire module
         util._debugSession = this;
+
         this.fileManager = new FileManager();
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
@@ -131,7 +133,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             let debuggerVersion: string;
             let additionalInfo: ProcessCrashEventData['additionalInfo'];
             try {
-                debuggerVersion = (fsExtra.readJsonSync( path.resolve(__dirname, '../../package.json')) as { version: string }).version;
+                debuggerVersion = (fsExtra.readJsonSync(path.resolve(__dirname, '../../package.json')) as { version: string }).version;
 
                 const clientName = this.initRequestArgs?.clientName ?? 'unknown';
 
@@ -291,6 +293,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      */
     private firstRunDeferred = defer<void>();
 
+    /**
+     * Resolved whenever we're finished copying all the files to staging for all projects
+     */
+    private stagingDefered = defer<void>();
+
     private evaluateRefIdLookup: Record<string, number> = {};
     private evaluateRefIdCounter = 1;
 
@@ -365,16 +372,17 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // make VS Code to use 'evaluate' when hovering over source
         response.body.supportsEvaluateForHovers = true;
 
-        // make VS Code to show a 'step back' button
-        response.body.supportsStepBack = false;
+        //NOTE: `supportsConditionalBreakpoints` and `supportsHitConditionalBreakpoints` are
+        //sent later in the post-connect CapabilitiesEvent once we know which adapter is in use
+        //(telnet always supports them via stop-statement rewrites; debug protocol requires v3.1.0+).
+        //VS Code reads these caps per-render in the BREAKPOINTS view, so CapabilitiesEvent updates
+        //take effect immediately - unlike `exceptionBreakpointFilters` / `breakpointModes` which
+        //must be in the initialize response.
 
-        // This debug adapter supports conditional breakpoints
-        response.body.supportsConditionalBreakpoints = true;
-
-        response.body.supportsExceptionFilterOptions = true;
-        response.body.supportsExceptionOptions = true;
-
-        //the list of exception breakpoints (we have to send them all the time, even if the device doesn't support them)
+        //surface the filter list here so VS Code's BREAKPOINTS panel renders the checkboxes - the
+        //panel only reads this list from the initialize response, not from later CapabilitiesEvents.
+        //The `supportsExceptionFilterOptions` / `supportsExceptionOptions` booleans are deferred and
+        //sent via CapabilitiesEvent once we know the connected device's protocol version.
         response.body.exceptionBreakpointFilters = [{
             filter: 'caught',
             supportsCondition: true,
@@ -391,12 +399,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             default: true
         }];
 
-        // This debug adapter supports breakpoints that break execution after a specified number of hits
-        response.body.supportsHitConditionalBreakpoints = true;
-
-        // This debug adapter supports log points by interpreting the 'logMessage' attribute of the SourceBreakpoint
-        response.body.supportsLogPoints = true;
-
         response.body.supportsCompletionsRequest = true;
         response.body.completionTriggerCharacters = ['.', '(', '{', ',', ' '];
 
@@ -410,11 +412,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 )
             );
         });
-
-        // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
-        // we request them early by sending an 'initializeRequest' to the frontend.
-        // The frontend will end the configuration sequence by calling 'configurationDone' request.
-        this.sendEvent(new InitializedEvent());
 
         this.logger.log('initializeRequest finished');
     }
@@ -436,12 +433,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             }
             this.exceptionBreakpoints = filterOptions;
 
-            //ensure the rokuAdapter is loaded
-            await this.getRokuAdapter();
+            //wait until the adapter object exists, but don't wait for the device to come online —
+            //VS Code will not send configurationDone (and we cannot launch the channel) until we
+            //respond to this request.
+            await this.rokuAdapterDeferred.promise;
 
             if (this.rokuAdapter.supportsExceptionBreakpoints) {
+                //the adapter queues these filters internally if the debug protocol client hasn't
+                //connected yet, and replays them once it does
                 await this.rokuAdapter.setExceptionBreakpoints(filterOptions);
-                //if success
                 response.body.breakpoints = [
                     { verified: true },
                     { verified: true }
@@ -549,65 +549,70 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
-        this.resetSessionState();
-
-        //send the response right away so the UI immediately shows the debugger toolbar
-        this.sendResponse(response);
-
-        this.launchConfiguration = this.normalizeLaunchConfig(config);
-        this.setupProcessErrorHandlers();
-
-        //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
-        bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
-
-        //set the logLevel provided by the launch config
-        if (this.launchConfiguration.logLevel) {
-            logger.logLevel = this.launchConfiguration.logLevel;
-        }
-
-        //do a DNS lookup for the host to fix issues with roku rejecting ECP
         try {
-            this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
-        } catch (e) {
-            return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
-        }
+            this.resetSessionState();
+            this.launchConfiguration = this.normalizeLaunchConfig(config);
+            this.setupProcessErrorHandlers();
 
-        // fetches the device info and parses the xml data to JSON object
-        try {
-            this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
-            if (this.deviceInfo.ecpSettingMode === 'limited') {
-                return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+            //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
+            bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
+
+            //set the logLevel provided by the launch config
+            if (this.launchConfiguration.logLevel) {
+                logger.logLevel = this.launchConfiguration.logLevel;
             }
-        } catch (e) {
-            if (e instanceof EcpNetworkAccessModeDisabledError) {
-                return this.shutdown(`ECP access is disabled on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+
+            this.sendLaunchProgress('start', 'Finding device on network');
+
+            //do a DNS lookup for the host to fix issues with roku rejecting ECP
+            try {
+                this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
+            } catch (e) {
+                return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
             }
-            return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
-        }
 
-        if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
-            return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
-        }
+            // fetches the device info and parses the xml data to JSON object
+            try {
+                this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                if (this.deviceInfo.ecpSettingMode === 'limited') {
+                    return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+                }
+            } catch (e) {
+                if (e instanceof EcpNetworkAccessModeDisabledError) {
+                    return this.shutdown(`ECP access is disabled on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+                }
+                return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
+            }
 
-        await this.initializeProfiling();
-        //initialize all file logging (rokuDevice, debugger, etc)
-        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
+            if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
+                return await this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
+            }
 
-        this.projectManager.launchConfiguration = this.launchConfiguration;
-        this.breakpointManager.launchConfiguration = this.launchConfiguration;
+            await this.initializeProfiling();
 
-        this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
+            // everything is ready, send the response to the launch request so the UI can update and configuration can begin
+            this.sendResponse(response);
 
-        let error: Error;
-        this.logger.log('[launchRequest] Packaging and deploying to roku');
-        try {
+            //initialize all file logging (rokuDevice, debugger, etc)
+            this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
+
+            this.projectManager.launchConfiguration = this.launchConfiguration;
+            this.breakpointManager.launchConfiguration = this.launchConfiguration;
+
+            this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
+
+            this.logger.log('[launchRequest] Packaging and deploying to roku');
             const packageEnd = this.logger.timeStart('log', 'Packaging');
-            this.sendLaunchProgress('start', 'Packaging');
+            this.sendLaunchProgress('update', `Packaging Project${(this.launchConfiguration?.componentLibraries?.length ?? 0) > 0 ? 's' : ''}`);
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
-                this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+                this.prepareComponentLibraries(this.launchConfiguration.componentLibraries)
             ]);
+
+            //all of the projects have been successfully staged.
+            this.stagingDefered.tryResolve();
+
             packageEnd();
 
             if (this.enableDebugProtocol) {
@@ -625,11 +630,57 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 this.logger.error('Failed to initialize rendezvous tracking', e);
             }
 
+            this.sendLaunchProgress('update', 'Connecting to debug server');
             const connectAdapterEnd = this.logger.timeStart('log', 'Connect adapter');
             this.createRokuAdapter(this.rendezvousTracker);
             await this.connectRokuAdapter();
             connectAdapterEnd();
 
+            // Capabilities that depend on the adapter or device version. The exception-breakpoint
+            // FILTER LIST was surfaced in initializeRequest (VS Code only reads it from there).
+            // Everything below is read per-action in VS Code, so a CapabilitiesEvent update takes
+            // effect dynamically.
+            const supportsExceptionBreakpoints = this.rokuAdapter.supportsExceptionBreakpoints;
+            this.sendEvent(new CapabilitiesEvent({
+                supportsLogPoints: !this.enableDebugProtocol,
+                supportsExceptionFilterOptions: supportsExceptionBreakpoints,
+                supportsExceptionOptions: supportsExceptionBreakpoints,
+                supportsConditionalBreakpoints: this.rokuAdapter.supportsConditionalBreakpoints,
+                supportsHitConditionalBreakpoints: this.rokuAdapter.supportsHitConditionalBreakpoints
+            }));
+
+            this.sendLaunchProgress('update', 'Configuring breakpoints');
+
+            util.log('Done initializing');
+
+            // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
+            // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
+            this.sendEvent(new InitializedEvent());
+
+        } catch (e) {
+            //if the message is anything other than compile errors, we want to display the error
+            if (!(e instanceof CompileError)) {
+                util.log('Encountered an issue during the launch process');
+                util.log((e as Error)?.stack);
+
+                //send any compile errors to the client
+                await this.rokuAdapter?.sendErrors();
+
+                const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
+                await this.shutdown(message as string, true);
+            } else {
+                this.sendLaunchProgress('end', 'Aborted (compile error)');
+            }
+        }
+        logEnd();
+    }
+
+    protected async configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
+        this.logger.log('configurationDoneRequest');
+        super.configurationDoneRequest(response, args);
+
+        let error: Error;
+        try {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
@@ -693,7 +744,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     await this.shutdown();
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
-                    this.logger.log('[launchRequest]', message);
+                    this.logger.log('[configurationDoneRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
                     this.rokuAdapter.once('connected').then(async () => {
                         await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpoints);
@@ -702,6 +753,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             });
             //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
             await this.tryProfilingConnectOnStart();
+
+            //all setBreakpoints requests have arrived by this point (configurationDone is the DAP signal
+            //that the client has finished sending configuration). Inject the STOPs and seal zips now.
+            await Promise.all([
+                this.packageMainProject(),
+                this.packageAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+            ]);
 
             this.sendLaunchProgress('update', 'Uploading to Roku');
             await this.publish();
@@ -764,7 +822,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 this.sendLaunchProgress('end', 'Aborted (compile error)');
             }
         }
-        logEnd();
     }
 
     /**
@@ -921,6 +978,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         this.sendEvent(new DiagnosticsEvent(diagnostics));
     }
 
+    private publishTimeout = 60_000;
+
     private async publish() {
         const uploadingEnd = this.logger.timeStart('log', 'Uploading zip');
         let packageIsPublished = false;
@@ -980,11 +1039,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         uploadingEnd();
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
-        //if it hasn't connected after 5 seconds, it probably will never connect.
+        //if it hasn't connected after 60 seconds, abort the launch.
         let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(10_000).then(() => {
+            util.sleep(this.publishTimeout).then(() => {
                 didTimeOut = true;
             })
         ]);
@@ -1213,13 +1272,19 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         //add the entry breakpoint if stopOnEntry is true
         await this.handleEntryBreakpoint();
+    }
 
+    /**
+     * Inject breakpoint STOP statements into the staged main project and create the zip package.
+     * Runs after the DAP `InitializedEvent` so client-side `setBreakpoints` requests have landed
+     * before any STOPs are written to the staged .brs files (telnet path) and before the zip is sealed.
+     */
+    private async packageMainProject() {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
         //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
         if (!this.enableDebugProtocol) {
-
             await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
         }
 
@@ -1289,110 +1354,120 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     /**
      * Stores the path to the staging folder for each component library
      */
-    protected async prepareAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
-        if (componentLibraries && componentLibraries.length > 0) {
-            let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
-            //make sure this folder exists (and is empty)
-            await fsExtra.ensureDir(componentLibrariesOutDir);
-            await fsExtra.emptyDir(componentLibrariesOutDir);
+    protected async prepareComponentLibraries(componentLibraries: ComponentLibraryConfiguration[]) {
+        if (!componentLibraries || componentLibraries.length === 0) {
+            return;
+        }
+        let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
+        //make sure this folder exists (and is empty)
+        await fsExtra.ensureDir(componentLibrariesOutDir);
+        await fsExtra.emptyDir(componentLibrariesOutDir);
 
-            //create a ComponentLibraryProject for each component library
-            for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
-                let componentLibrary = componentLibraries[libraryIndex];
+        //create a ComponentLibraryProject for each component library
+        for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
+            let componentLibrary = componentLibraries[libraryIndex];
 
-                this.projectManager.componentLibraryProjects.push(
-                    new ComponentLibraryProject({
-                        rootDir: componentLibrary.rootDir,
-                        files: componentLibrary.files,
-                        outDir: componentLibrariesOutDir,
-                        outFile: componentLibrary.outFile,
-                        sourceDirs: componentLibrary.sourceDirs,
-                        bsConst: componentLibrary.bsConst,
-                        install: componentLibrary.install,
-                        injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
-                        raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
-                        libraryIndex: libraryIndex,
-                        enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
-                    })
-                );
+            this.projectManager.componentLibraryProjects.push(
+                new ComponentLibraryProject({
+                    rootDir: componentLibrary.rootDir,
+                    files: componentLibrary.files,
+                    outDir: componentLibrariesOutDir,
+                    outFile: componentLibrary.outFile,
+                    sourceDirs: componentLibrary.sourceDirs,
+                    bsConst: componentLibrary.bsConst,
+                    install: componentLibrary.install,
+                    injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
+                    raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
+                    libraryIndex: libraryIndex,
+                    enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
+                })
+            );
+        }
+
+        //stage all of the libraries in parallel
+        await Promise.all(
+            this.projectManager.componentLibraryProjects.map(compLibProject => compLibProject.stage())
+        );
+    }
+
+    /**
+     * Inject breakpoint STOPs into the staged complibs, seal their zips, install installable ones,
+     * and start static file hosting. Runs in `configurationDoneRequest` (after `InitializedEvent`)
+     * so client-side `setBreakpoints` requests have landed before the staged .brs files are written
+     * and the zips are sealed.
+     */
+    protected async packageAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
+        if (!componentLibraries || componentLibraries.length === 0) {
+            return;
+        }
+        const componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
+
+        // Add breakpoint lines to the staging files and before publishing
+        util.log('Adding stop statements for active breakpoints in Component Libraries');
+
+        //write STOPs (telnet only), postfix, and zip each complib in parallel — each targets distinct files
+        const packagePromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+            if (!this.enableDebugProtocol) {
+                await this.breakpointManager.writeBreakpointsForProject(compLibProject);
             }
+            await compLibProject.postfixFiles();
+            await compLibProject.zipPackage({ retainStagingFolder: true });
+        });
 
-            //prepare all of the libraries in parallel
-            let compLibPromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+        const needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
+        if (needToDeleteComplibs) {
+            await rokuDeploy.deleteAllComponentLibraries({
+                host: this.launchConfiguration.host,
+                password: this.launchConfiguration.password,
+                username: this.launchConfiguration.username || 'rokudev'
+            });
+        }
 
-                await compLibProject.stage();
+        for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
+            const compLibProject = this.projectManager.componentLibraryProjects[i];
 
-                // Add breakpoint lines to the staging files and before publishing
-                util.log('Adding stop statements for active breakpoints in Component Libraries');
+            if (compLibProject.install === true) {
+                //wait for this complib to finish being packaged
+                await packagePromises[i];
 
-                //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-                if (!this.enableDebugProtocol) {
-                    await this.breakpointManager.writeBreakpointsForProject(compLibProject);
+                if (componentLibraries[i].packageTask) {
+                    await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
                 }
 
-                await compLibProject.postfixFiles();
-
-                await compLibProject.zipPackage({ retainStagingFolder: true });
-            });
-
-            let needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
-
-            if (needToDeleteComplibs) {
-                await rokuDeploy.deleteAllComponentLibraries({
+                const options: RokuDeployOptions = {
                     host: this.launchConfiguration.host,
                     password: this.launchConfiguration.password,
-                    username: this.launchConfiguration.username || 'rokudev'
-                });
-            }
+                    username: this.launchConfiguration.username || 'rokudev',
+                    logLevel: LogLevelPriority[this.logger.logLevel],
+                    failOnCompileError: true,
+                    outDir: compLibProject.outDir,
+                    outFile: compLibProject.outFile,
+                    appType: 'dcl',
+                    packageUploadOverrides: componentLibraries[i].packageUploadOverrides || {}
+                };
 
-            for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
-                const compLibProject = this.projectManager.componentLibraryProjects[i];
+                if (componentLibraries[i].packagePath) {
+                    options.outDir = path.dirname(componentLibraries[i].packagePath);
+                    options.outFile = path.basename(componentLibraries[i].packagePath);
+                }
 
-                if (compLibProject.install === true) {
-                    //wait for this complib to finish being staged and zipped
-                    await compLibPromises[i];
-
-                    if (componentLibraries[i].packageTask) {
-                        await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
-                    }
-
-                    const options: RokuDeployOptions = {
-                        host: this.launchConfiguration.host,
-                        password: this.launchConfiguration.password,
-                        username: this.launchConfiguration.username || 'rokudev',
-                        logLevel: LogLevelPriority[this.logger.logLevel],
-                        failOnCompileError: true,
-                        outDir: compLibProject.outDir,
-                        outFile: compLibProject.outFile,
-                        appType: 'dcl',
-                        packageUploadOverrides: componentLibraries[i].packageUploadOverrides || {}
-                    };
-
-                    if (componentLibraries[i].packagePath) {
-                        options.outDir = path.dirname(componentLibraries[i].packagePath);
-                        options.outFile = path.basename(componentLibraries[i].packagePath);
-                    }
-
-                    try {
-                        await rokuDeploy.publish(options);
-                    } catch (error) {
-                        this.logger.error(`Error installing component library ${i}`, error);
-                    }
+                try {
+                    await rokuDeploy.publish(options);
+                } catch (error) {
+                    this.logger.error(`Error installing component library ${i}`, error);
                 }
             }
-
-            let hostingPromise: Promise<any>;
-            // prepare static file hosting
-            hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
-                util.log(message);
-            });
-
-            //wait for all component libaries to finish building, and the file hosting to start up (if enabled)
-            await Promise.all([
-                ...compLibPromises,
-                hostingPromise
-            ]);
         }
+
+        const hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
+            util.log(message);
+        });
+
+        //wait for all complib packaging to finish and the file hosting to start
+        await Promise.all([
+            ...packagePromises,
+            hostingPromise
+        ]);
     }
 
     protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments) {
@@ -1403,10 +1478,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             this.sendResponse = old;
         };
         super.sourceRequest(response, args);
-    }
-
-    protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
-        this.logger.log('configurationDoneRequest');
     }
 
     /**
@@ -1422,6 +1493,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             breakpoints: sortedAndFilteredBreakpoints
         };
         this.sendResponse(response);
+
+        //ensure we've staged all the files
+        await this.stagingDefered.promise;
 
         await this.rokuAdapter?.syncBreakpoints();
     }
@@ -2496,6 +2570,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.rokuAdapter.destroy();
             await this.ensureAppIsInactive();
             this.rokuAdapterDeferred = defer();
+            this.stagingDefered.tryResolve();
+            this.stagingDefered = defer();
         }
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }

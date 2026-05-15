@@ -9,6 +9,7 @@ import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResp
 import { AddBreakpointsResponse } from '../events/responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from '../events/responses/RemoveBreakpointsResponse';
 import { defer, util } from '../../util';
+import { ProtocolCapabilities } from './ProtocolCapabilities';
 import { BreakpointErrorUpdate } from '../events/updates/BreakpointErrorUpdate';
 import { ContinueRequest } from '../events/requests/ContinueRequest';
 import { StopRequest } from '../events/requests/StopRequest';
@@ -53,7 +54,7 @@ export class DebugProtocolClient {
     public logger = logger.createLogger(`[dpclient]`);
 
     // The highest tested version of the protocol we support.
-    public supportedVersionRange = '<=3.2.0';
+    public supportedVersionRange = '<=3.5.0';
 
     constructor(
         options?: ConstructorOptions
@@ -87,7 +88,19 @@ export class DebugProtocolClient {
      * This field indicates whether we should be looking for packet_length or not in the responses we get from the device
      */
     public watchPacketLength = false;
-    public protocolVersion: string;
+    /**
+     * Capability flags derived from the negotiated protocol version. Undefined until the
+     * handshake completes, then assigned a fresh `ProtocolCapabilities` keyed off the version
+     * the device reported.
+     */
+    public capabilities: ProtocolCapabilities | undefined;
+    /**
+     * The protocol version negotiated with the device during the handshake. Undefined until
+     * the handshake has completed.
+     */
+    public get protocolVersion(): string | undefined {
+        return this.capabilities?.protocolVersion;
+    }
     public primaryThread: number;
     public stackFrameIndex: number;
 
@@ -124,45 +137,6 @@ export class DebugProtocolClient {
     private requestIdSequence = 1;
     private activeRequests = new Map<number, ProtocolRequest>();
     private options: ConstructorOptions;
-
-    /**
-     * Prior to protocol v3.1.0, the Roku device would regularly set the wrong thread as "active",
-     * so this flag lets us know if we should use our better-than-nothing workaround
-     */
-    private get enableThreadHoppingWorkaround() {
-        return semver.satisfies(this.protocolVersion, '<3.1.0');
-    }
-
-    /**
-     * Starting in protocol v3.1.0, component libary breakpoints must be added in the format `lib:/<library_name>/<filepath>`, but prior they didn't require this.
-     * So this flag tells us which format to support
-     */
-    private get enableComponentLibrarySpecificBreakpoints() {
-        return semver.satisfies(this.protocolVersion, '>=3.1.0');
-    }
-
-    /**
-     * Starting in protocol v3.1.0, breakpoints can support conditional expressions. This flag indicates whether the current sessuion supports that functionality.
-     */
-    private get supportsConditionalBreakpoints() {
-        return semver.satisfies(this.protocolVersion, '>=3.1.0');
-    }
-
-    public get supportsBreakpointRegistrationWhileRunning() {
-        return semver.satisfies(this.protocolVersion, '>=3.2.0');
-    }
-
-    public get supportsBreakpointVerification() {
-        return semver.satisfies(this.protocolVersion, '>=3.2.0');
-    }
-
-    public get supportsVirtualVariables() {
-        return semver.satisfies(this.protocolVersion, '>=3.3.0');
-    }
-
-    public get supportsExceptionBreakpoints() {
-        return semver.satisfies(this.protocolVersion, '>=3.3.0');
-    }
 
     /**
      * Get a promise that resolves after an event occurs exactly once
@@ -426,7 +400,7 @@ export class DebugProtocolClient {
 
             if (result.data.errorCode === ErrorCode.OK) {
                 //older versions of the debug protocol had issues with maintaining the active thread, so our workaround is to keep track of it elsewhere
-                if (this.enableThreadHoppingWorkaround) {
+                if (this.capabilities?.enableThreadHoppingWorkaround) {
                     //ignore the `isPrimary` flag on threads
                     this.logger.debug(`Ignoring the 'isPrimary' flag from threads because protocol version 3.0.0 and lower has a bug`);
                 } else {
@@ -495,7 +469,7 @@ export class DebugProtocolClient {
                 threadIndex: threadIndex,
                 stackFrameIndex: stackFrameIndex,
                 getChildKeys: true,
-                getVirtualKeys: this.supportsVirtualVariables,
+                getVirtualKeys: this.capabilities?.supportsVirtualVariables,
                 variablePathEntries: variablePathEntries.map(x => ({
                     //remove leading and trailing quotes
                     name: x.replace(/^"/, '').replace(/"$/, ''),
@@ -644,7 +618,7 @@ export class DebugProtocolClient {
     }
 
     public async addBreakpoints(breakpoints: Array<BreakpointSpec & { componentLibraryName?: string }>): Promise<AddBreakpointsResponse> {
-        const { enableComponentLibrarySpecificBreakpoints } = this;
+        const enableComponentLibrarySpecificBreakpoints = this.capabilities?.enableComponentLibrarySpecificBreakpoints;
         if (breakpoints?.length > 0) {
             const json = {
                 requestId: this.requestIdSequence++,
@@ -662,7 +636,7 @@ export class DebugProtocolClient {
 
             const useConditionalBreakpoints = (
                 //does this protocol version support conditional breakpoints?
-                this.supportsConditionalBreakpoints &&
+                this.capabilities?.supportsConditionalBreakpoints &&
                 //is there at least one conditional breakpoint present?
                 !!breakpoints.find(x => !!x?.conditionalExpression?.trim())
             );
@@ -679,7 +653,7 @@ export class DebugProtocolClient {
             }
 
             //if the device does not support breakpoint verification, then auto-mark all of these as verified
-            if (!this.supportsBreakpointVerification) {
+            if (!this.capabilities?.supportsBreakpointVerification) {
                 this.emit('breakpoints-verified', {
                     breakpoints: response.data.breakpoints
                 });
@@ -1055,7 +1029,7 @@ export class DebugProtocolClient {
         if (DebugProtocolClient.DEBUGGER_MAGIC === response.data.magic) {
             this.logger.log('Magic is valid.');
 
-            this.protocolVersion = response.data.protocolVersion;
+            this.capabilities = new ProtocolCapabilities(response.data.protocolVersion);
             this.logger.log('Protocol Version:', this.protocolVersion);
 
             this.watchPacketLength = semver.satisfies(this.protocolVersion, '>=3.0.0');

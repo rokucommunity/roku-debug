@@ -25,6 +25,9 @@ import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { PerfettoManager } from '../PerfettoManager';
 
+//DebugSession.shutdown() calls process.exit() after a sleep, so we need to prevent that during tests. This should not be a mock, it needs to be permanent for this flow
+DebugSession.prototype.shutdown = () => { };
+
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
 const rootDir = s`${tempDir}/rootDir`;
@@ -59,9 +62,13 @@ describe('BrightScriptDebugSession', () => {
 
         try {
             session = new BrightScriptDebugSession();
+            session['publishTimeout'] = 1_000;
         } catch (e) {
             console.log(e);
         }
+        //always resolve the stagingDefered promise right away since most tests don't care about staging and this prevents a lot of unnecessary waiting
+        session['stagingDefered'].resolve();
+
         errorSpy = sinon.spy(session.logger, 'error');
         //override the error response function and throw an exception so we can fail any tests
         (session as any).sendErrorResponse = (...args: string[]) => {
@@ -238,6 +245,9 @@ describe('BrightScriptDebugSession', () => {
                 }
             }
         } as Partial<LaunchConfiguration> as LaunchConfiguration);
+
+        //publish now runs inside configurationDoneRequest, so invoke it to complete the launch flow
+        await (session as any).configurationDoneRequest({} as any, {} as any);
 
         expect(publishStub.getCall(0).args[0].packageUploadOverrides).to.eql({
             route: '1234',
@@ -678,6 +688,9 @@ describe('BrightScriptDebugSession', () => {
                 filters: undefined,
                 filterOptions: undefined
             };
+            //the request now waits on `rokuAdapterDeferred` directly (instead of `getRokuAdapter`),
+            //so resolve it up front for these tests
+            session['rokuAdapterDeferred'].resolve(rokuAdapter as any);
         });
 
         it('both caught and uncaught filters', async () => {
@@ -1115,8 +1128,9 @@ describe('BrightScriptDebugSession', () => {
                 verified: false
             });
 
-            //simulate "launch"
+            //simulate "launch" — stage in launchRequest, then write breakpoints + zip in configurationDoneRequest
             await session.prepareMainProject();
+            await session['packageMainProject']();
 
             //remove the breakpoint
             args.breakpoints = [];
@@ -1795,6 +1809,13 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('prepareAndHostComponentLibraries', () => {
+        //runs the two-phase complib flow that used to live in a single method, mirroring how the
+        //real launch flow now splits prepare (stage) from package-and-host (write+zip+install+host).
+        async function runPrepareAndHost(componentLibraries: any[], port: number) {
+            await session['prepareComponentLibraries'](componentLibraries);
+            await session['packageAndHostComponentLibraries'](componentLibraries, port);
+        }
+
         function stubDefaults() {
             sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
@@ -1814,7 +1835,7 @@ describe('BrightScriptDebugSession', () => {
                 return { message: 'success', results: [] };
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1832,7 +1853,7 @@ describe('BrightScriptDebugSession', () => {
                 return { message: 'success', results: [] };
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: undefined },
@@ -1848,7 +1869,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             const publishStub = sinon.stub(rokuDeploy, 'publish').resolves({ message: 'success', results: [] });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'testLib.zip', install: true }
             ] as any, 8080);
 
@@ -1865,7 +1886,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             sinon.stub(rokuDeploy, 'publish').rejects(new Error('Network error'));
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
             ] as any, 8080);
 
@@ -1895,7 +1916,7 @@ describe('BrightScriptDebugSession', () => {
                 return Promise.resolve({ message: 'success', results: [] });
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1917,7 +1938,7 @@ describe('BrightScriptDebugSession', () => {
 
             let errorThrown = false;
             try {
-                await session['prepareAndHostComponentLibraries']([
+                await runPrepareAndHost([
                     { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
                 ] as any, 8080);
             } catch (e) {
@@ -1934,7 +1955,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: undefined }
             ] as any, 8080);
@@ -1945,7 +1966,7 @@ describe('BrightScriptDebugSession', () => {
         it('does not start server when no component libraries present', async () => {
             const serverStub = sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
 
-            await session['prepareAndHostComponentLibraries']([], 8080);
+            await runPrepareAndHost([], 8080);
 
             expect(serverStub.called).to.be.false;
         });
@@ -1954,7 +1975,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true, packageTask: 'build:lib1' },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true, packageTask: 'build:lib2' },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: true }
@@ -1986,7 +2007,7 @@ describe('BrightScriptDebugSession', () => {
                 }
             };
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 {
                     rootDir: complib1Dir,
                     outFile: 'lib1.zip',
@@ -2517,7 +2538,9 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
             sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
             sinon.stub(session, 'prepareMainProject').resolves();
-            sinon.stub(session as any, 'prepareAndHostComponentLibraries').resolves();
+            sinon.stub(session as any, 'prepareComponentLibraries').resolves();
+            sinon.stub(session as any, 'packageMainProject').resolves();
+            sinon.stub(session as any, 'packageAndHostComponentLibraries').resolves();
             sinon.stub(session, 'initRendezvousTracking').resolves();
             // Prevent createRokuAdapter from replacing the mock rokuAdapter with a real adapter
             sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
@@ -2549,15 +2572,22 @@ describe('BrightScriptDebugSession', () => {
                 session['initRequestArgs'].supportsProgressReporting = true;
 
                 await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
 
                 const progressEvents = getProgressEvents();
-                expect(progressEvents).to.have.lengthOf(3);
+                expect(progressEvents).to.have.lengthOf(6);
                 expect(progressEvents[0]).to.be.instanceOf(ProgressStartEvent);
-                expect((progressEvents[0].body as any).message).to.equal('Packaging...');
+                expect((progressEvents[0].body as any).message).to.equal('Finding device on network...');
                 expect(progressEvents[1]).to.be.instanceOf(ProgressUpdateEvent);
-                expect((progressEvents[1].body as any).message).to.equal('Uploading to Roku...');
+                expect((progressEvents[1].body as any).message).to.equal('Packaging Project...');
                 expect(progressEvents[2]).to.be.instanceOf(ProgressUpdateEvent);
-                expect((progressEvents[2].body as any).message).to.equal('Waiting on application...');
+                expect((progressEvents[2].body as any).message).to.equal('Connecting to debug server...');
+                expect(progressEvents[3]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[3].body as any).message).to.equal('Configuring breakpoints...');
+                expect(progressEvents[4]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[4].body as any).message).to.equal('Uploading to Roku...');
+                expect(progressEvents[5]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[5].body as any).message).to.equal('Waiting on application...');
             });
 
             it('all progress events share the same progressId', async function() {
@@ -2585,6 +2615,7 @@ describe('BrightScriptDebugSession', () => {
                 session['initRequestArgs'].supportsProgressReporting = true;
 
                 await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
 
                 const progressUpdateEvents = events.filter(e => e instanceof ProgressUpdateEvent);
                 const abortEvent = progressUpdateEvents.find(e => (e.body as any).message === 'Aborted (compile error)');
@@ -2601,6 +2632,28 @@ describe('BrightScriptDebugSession', () => {
 
                 expect(getProgressEvents()).to.be.empty;
             });
+        });
+    });
+
+    describe('publish', () => {
+        it('waits 60 seconds before aborting when the app never becomes ready', async () => {
+            session['publishTimeout'] = 60_000;
+
+            const clock = sinon.useFakeTimers();
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
+            rokuAdapter.connected = false;
+            sinon.stub(session.rokuDeploy, 'publish').resolves();
+
+            const publishPromise = (session as any).publish();
+
+            await clock.tickAsync(59_999);
+            expect(shutdownStub.called).to.be.false;
+
+            await clock.tickAsync(1);
+            await publishPromise;
+
+            expect(shutdownStub.calledOnceWithExactly('Debug session cancelled: failed to connect to debug protocol control port.')).to.be.true;
+            clock.restore();
         });
     });
 

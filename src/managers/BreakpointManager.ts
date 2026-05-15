@@ -1,7 +1,7 @@
 import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import type { CodeWithSourceMap } from 'source-map';
-import { SourceNode } from 'source-map';
+import { SourceMapConsumer, SourceNode } from 'source-map';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { fileUtils, standardizePath } from '../FileUtils';
 import type { ComponentLibraryProject, Project } from './ProjectManager';
@@ -524,23 +524,43 @@ export class BreakpointManager {
         //load the file as a string
         let fileContents = (await fsExtra.readFile(stagingFilePath)).toString();
 
-        let originalFilePath = breakpoints[0].type === 'sourceMap'
-            //the calling function will merge this sourcemap into the other existing sourcemap, so just use the same name because it doesn't matter
-            ? breakpoints[0].rootDirFilePath
-            //the calling function doesn't have a sourcemap for this file, so we need to point it to the sourceDirs found location (probably rootDir...)
-            : breakpoints[0].srcPath;
+        //always write the new map to the safe co-located path so we never accidentally overwrite
+        //a file outside the staging folder, even if sourceMappingURL points elsewhere.
+        const stagingMapPath = `${stagingFilePath}.map`;
+
+        //use rootDirFilePath as the intermediate origin for SourceNode construction.
+        //staging is a copy of rootDir so staging line indices equal rootDir line indices — the
+        //SourceNodes will be correct for the staging→rootDir leg. applySourceMap then composes
+        //the rootDir→src leg on top to produce a single staging→src map.
+        let originalFilePath: string;
+        if (breakpoints[0].type === 'sourceMap') {
+            originalFilePath = breakpoints[0].rootDirFilePath;
+        } else {
+            //no pre-existing sourcemap — point directly to the srcPath
+            originalFilePath = breakpoints[0].srcPath;
+        }
 
         let sourceAndMap = this.getSourceAndMapWithBreakpoints(fileContents, originalFilePath, breakpoints);
 
         //if we got a map file back, write it to the filesystem
         if (sourceAndMap.map) {
+            //when a pre-existing sourcemap exists, compose it into the newly generated staging→rootDir
+            //map via applySourceMap. This collapses staging→rootDir→src into a single staging→src map,
+            //so the debugger can always trace breakpoints back to the true source file in one hop.
+            if (breakpoints[0].type === 'sourceMap') {
+                //follow any sourceMappingURL comment to find the existing map (read-only)
+                const existingMapPath = await this.sourceMapManager.getSourceMapPath(stagingFilePath);
+                const existingMap = await this.sourceMapManager.getSourceMap(existingMapPath);
+                if (existingMap) {
+                    await SourceMapConsumer.with(existingMap, null, (consumer) => {
+                        sourceAndMap.map.applySourceMap(consumer, originalFilePath);
+                    });
+                }
+            }
             let sourceMap = JSON.stringify(sourceAndMap.map);
-            //It's ok to overwrite the file in staging because if the original code provided a source map,
-            //then our LocationManager class will walk the sourcemap chain from staging, to rootDir, and then
-            //on to the original location
-            await fsExtra.writeFile(`${stagingFilePath}.map`, sourceMap);
+            await fsExtra.writeFile(stagingMapPath, sourceMap);
             //update the in-memory version of this source map
-            this.sourceMapManager.set(`${stagingFilePath}.map`, sourceMap);
+            this.sourceMapManager.set(stagingMapPath, sourceMap);
         }
 
         //overwrite the file that now has breakpoints injected
@@ -564,6 +584,9 @@ export class BreakpointManager {
             let lineBreakpoints = breakpoints.filter(bp => bp.line - 1 === originalLineIndex);
             //if we have a breakpoint, insert that before the line
             for (let bp of lineBreakpoints) {
+                //use the staging line index as the source line for SourceNode construction.
+                //applySourceMap will later compose the existing map on top to translate these
+                //staging indices to their correct positions in the true source file.
                 let linesForBreakpoint = this.getBreakpointLines(bp, originalFilePath);
 
                 //separate each line for this breakpoint with a newline

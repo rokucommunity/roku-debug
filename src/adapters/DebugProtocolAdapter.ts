@@ -9,12 +9,12 @@ import { ChanperfTracker } from '../ChanperfTracker';
 import { ErrorCode, PROTOCOL_ERROR_CODES, UpdateType } from '../debugProtocol/Constants';
 import { defer, util } from '../util';
 import { logger } from '../logging';
-import * as semver from 'semver';
 import type { AdapterOptions, HighLevelType, RokuAdapterEvaluateResponse } from '../interfaces';
 import type { BreakpointManager } from '../managers/BreakpointManager';
 import type { ProjectManager } from '../managers/ProjectManager';
 import type { BreakpointsVerifiedEvent, ConstructorOptions, ProtocolVersionDetails } from '../debugProtocol/client/DebugProtocolClient';
 import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
+import { ProtocolCapabilities } from '../debugProtocol/client/ProtocolCapabilities';
 import type { Variable } from '../debugProtocol/events/responses/VariablesResponse';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { TelnetAdapter } from './TelnetAdapter';
@@ -41,6 +41,9 @@ export class DebugProtocolAdapter {
         this.chanperfTracker = new ChanperfTracker();
         this.compileErrorProcessor = new CompileErrorProcessor();
         this.connected = false;
+        //capabilities derived from device-info; used to answer questions before the debug
+        //protocol client has connected and completed its handshake
+        this.fallbackCapabilities = new ProtocolCapabilities(this.deviceInfo?.brightscriptDebuggerVersion, this.deviceInfo?.softwareVersion);
 
         // watch for chanperf events
         this.chanperfTracker.on('chanperf', (output) => {
@@ -51,16 +54,25 @@ export class DebugProtocolAdapter {
     private logger = logger.createLogger(`[padapter]`);
 
     /**
+     * Capabilities seeded from the device-info `brightscript-debugger-version`. Used as the
+     * source of truth for protocol capability questions before the debug protocol client has
+     * connected and completed its handshake.
+     */
+    private fallbackCapabilities: ProtocolCapabilities;
+
+    /**
+     * The current authoritative capabilities for protocol-version-driven questions: the live
+     * client's capabilities once it exists, otherwise the device-info-seeded fallback.
+     */
+    private get capabilities(): ProtocolCapabilities {
+        return this.client?.capabilities ?? this.fallbackCapabilities;
+    }
+
+    /**
      * Indicates whether the adapter has successfully established a connection with the device
      */
     public connected: boolean;
 
-    /**
-     *  Due to casing issues with the variables request on some versions of the debug protocol, we first need to try the request in the supplied case.
-     * If that fails we retry in lower case. This flag is used to drive that logic switching
-     */
-    private enableVariablesLowerCaseRetry = true;
-    private supportsExecuteCommand: boolean;
     private compileClient: Socket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
@@ -150,10 +162,26 @@ export class DebugProtocolAdapter {
     }
 
     /**
-     * Does the current client support exception breakpoints? This value will be undefined if the client has not yet connected
+     * Does the current client support exception breakpoints? Resolved via the live client's
+     * capabilities when connected, otherwise the device-info-seeded fallback.
      */
-    public get supportsExceptionBreakpoints(): boolean | undefined {
-        return this.client?.supportsExceptionBreakpoints;
+    public get supportsExceptionBreakpoints(): boolean {
+        return this.capabilities.supportsExceptionBreakpoints;
+    }
+
+    /**
+     * Does the current client support conditional breakpoints? Same fallback semantics as
+     * `supportsExceptionBreakpoints`.
+     */
+    public get supportsConditionalBreakpoints(): boolean {
+        return this.capabilities.supportsConditionalBreakpoints;
+    }
+
+    /**
+     * Does the current client support hit-count breakpoints?
+     */
+    public get supportsHitConditionalBreakpoints(): boolean {
+        return this.capabilities.supportsHitConditionalBreakpoints;
     }
 
     /**
@@ -295,13 +323,6 @@ export class DebugProtocolAdapter {
                     this.emit('console-output', data.message);
                 }
 
-                // TODO: Update once we know the exact version of the debug protocol this issue was fixed in.
-                // Due to casing issues with variables on protocol version <FUTURE_VERSION> and under we first need to try the request in the supplied case.
-                // If that fails we retry in lower case.
-                this.enableVariablesLowerCaseRetry = semver.satisfies(this.activeProtocolVersion, '<3.1.0');
-                // While execute was added as a command in 2.1.0. It has shortcoming that prevented us for leveraging the command.
-                // This was mostly addressed in the 3.0.0 release to the point where we were comfortable adding support for the command.
-                this.supportsExecuteCommand = semver.satisfies(this.activeProtocolVersion, '>=3.0.0');
             });
 
             // Listen for the close event
@@ -375,6 +396,16 @@ export class DebugProtocolAdapter {
             this.handleStartupIfReady();
             this.emit('connected', this.connected);
             this.emit('app-ready');
+            //flush any breakpoints that were queued while we were waiting for the client to connect.
+            //setBreakpointsRequest is called by VS Code before the channel is uploaded, so the initial
+            //sync bails out (no client yet); this re-sync pushes those queued breakpoints to the device.
+            void this.syncBreakpoints();
+            //also replay any queued exception breakpoint filters
+            if (this.pendingExceptionBreakpointFilters) {
+                const queuedFilters = this.pendingExceptionBreakpointFilters;
+                this.pendingExceptionBreakpointFilters = undefined;
+                void this.client.setExceptionBreakpoints(queuedFilters);
+            }
 
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();
@@ -395,7 +426,7 @@ export class DebugProtocolAdapter {
      * Determines if the current version of the debug protocol supports emitting compile error updates.
      */
     public get supportsCompileErrorReporting() {
-        return semver.satisfies(this.deviceInfo.brightscriptDebuggerVersion, '>=3.1.0');
+        return this.capabilities.supportsCompileErrorReporting;
     }
 
     /**
@@ -541,7 +572,7 @@ export class DebugProtocolAdapter {
      * @returns the output of the command (if possible)
      */
     public async evaluate(command: string, frameId: number = this.client.primaryThread): Promise<RokuAdapterEvaluateResponse> {
-        if (this.supportsExecuteCommand) {
+        if (this.capabilities.supportsExecuteCommand) {
             if (!this.isAtDebuggerPrompt) {
                 throw new Error('Cannot run evaluate: debugger is not paused');
             }
@@ -645,13 +676,13 @@ export class DebugProtocolAdapter {
         let variablePath = expression === '' ? [] : util.getVariablePath(expression);
 
         // Temporary workaround related to casing issues over the protocol
-        if (this.enableVariablesLowerCaseRetry && variablePath?.length > 0) {
+        if (this.capabilities.enableVariablesLowerCaseRetry && variablePath?.length > 0) {
             variablePath[0] = variablePath[0].toLowerCase();
         }
 
         let response = await this.client.getVariables(variablePath, frame.frameIndex, frame.threadIndex);
 
-        if (this.enableVariablesLowerCaseRetry && response.data.errorCode !== ErrorCode.OK) {
+        if (this.capabilities.enableVariablesLowerCaseRetry && response.data.errorCode !== ErrorCode.OK) {
             // Temporary workaround related to casing issues over the protocol
             logger.log(`Retrying expression as lower case:`, expression);
             variablePath = expression === '' ? [] : util.getVariablePath(expression?.toLowerCase());
@@ -984,13 +1015,23 @@ export class DebugProtocolAdapter {
         this.chanperfTracker.clearHistory();
     }
 
+    /**
+     * The most recently requested exception breakpoint filters. Stored so we can replay them
+     * to the debug protocol client once it connects (the session can send these before the
+     * device has launched and the client has finished its handshake).
+     */
+    private pendingExceptionBreakpointFilters: ExceptionBreakpoint[] | undefined;
+
     public async setExceptionBreakpoints(filters: ExceptionBreakpoint[]) {
-        if (this.client?.supportsExceptionBreakpoints) {
-            //tell the client to set the exception breakpoints
-            const response = await this.client?.setExceptionBreakpoints(filters);
-            return response;
+        if (!this.capabilities.supportsExceptionBreakpoints) {
+            return undefined;
         }
-        return undefined;
+        //if the client isn't connected yet, queue the filters for replay on connect
+        if (!this.connected) {
+            this.pendingExceptionBreakpointFilters = filters;
+            return undefined;
+        }
+        return this.client.setExceptionBreakpoints(filters);
     }
 
     private syncBreakpointsPromise = Promise.resolve();
@@ -1008,10 +1049,16 @@ export class DebugProtocolAdapter {
     }
 
     public async _syncBreakpoints() {
+        //we need to actually be connected to the device before we can push breakpoints. We'll get
+        //called again once the debug protocol client has connected.
+        if (!this.connected) {
+            this.logger.info('Cannot sync breakpoints because the debug protocol client has not connected yet');
+            return;
+        }
         //we can't send breakpoints unless we're stopped (or in a protocol version that supports sending them while running).
         //So...if we're not stopped, quit now. (we'll get called again when the stop event happens)
-        if (!this.client?.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
-            this.logger.info('Cannot sync breakpoints because the debugger', this.client?.supportsBreakpointRegistrationWhileRunning ? 'does not support sending breakpoints while running' : 'is not paused');
+        if (!this.capabilities.supportsBreakpointRegistrationWhileRunning && !this.isAtDebuggerPrompt) {
+            this.logger.info('Cannot sync breakpoints because the debugger', this.capabilities.supportsBreakpointRegistrationWhileRunning ? 'does not support sending breakpoints while running' : 'is not paused');
             return;
         }
 
