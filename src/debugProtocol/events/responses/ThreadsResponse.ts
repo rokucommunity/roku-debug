@@ -30,12 +30,19 @@ export class ThreadsResponse {
                 const flags = smartBuffer.readUInt8();
                 thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
                 thread.isDetached = (flags & ThreadInfoFlags.isDetached) > 0;
+                const hasIdentityInfo = (flags & ThreadInfoFlags.isIdentityInfo) > 0;
                 thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
                 thread.stopReasonDetail = protocolUtil.readStringNT(smartBuffer); // stop_reason_detail
                 thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
                 thread.functionName = protocolUtil.readStringNT(smartBuffer); // function_name
                 thread.filePath = protocolUtil.readStringNT(smartBuffer); // file_path
                 thread.codeSnippet = protocolUtil.readStringNT(smartBuffer); // code_snippet
+
+                if (hasIdentityInfo) {
+                    thread.osThreadId = protocolUtil.readStringNT(smartBuffer); // id
+                    thread.name = protocolUtil.readStringNT(smartBuffer); // name
+                    thread.type = protocolUtil.readStringNT(smartBuffer); // type
+                }
 
                 response.data.threads.push(thread);
             }
@@ -46,10 +53,13 @@ export class ThreadsResponse {
     public toBuffer() {
         const smartBuffer = new SmartBuffer();
         smartBuffer.writeUInt32LE(this.data.threads?.length ?? 0); // threads_count
+
+        const hasOptionalFields = this.data.threads?.some(t => t.osThreadId || t.name || t.type) ?? false;
         for (const thread of this.data.threads ?? []) {
             let flags = 0;
-            flags |= thread.isPrimary ? 1 : 0;
-            flags |= thread.isDetached ? 2 : 0;
+            flags |= thread.isPrimary ? ThreadInfoFlags.isPrimary : 0;
+            flags |= thread.isDetached ? ThreadInfoFlags.isDetached : 0;
+            flags |= hasOptionalFields ? ThreadInfoFlags.isIdentityInfo : 0;
             smartBuffer.writeUInt8(flags); //flags
             //stop_reason is an 8-bit value (same as the other locations in this protocol); however, it is sent in this response as a 32bit value for historical purposes
             smartBuffer.writeUInt32LE(StopReasonCode[thread.stopReason]); // stop_reason
@@ -58,6 +68,12 @@ export class ThreadsResponse {
             smartBuffer.writeStringNT(thread.functionName); // function_name
             smartBuffer.writeStringNT(thread.filePath); // file_path
             smartBuffer.writeStringNT(thread.codeSnippet); // code_snippet
+
+            if (hasOptionalFields) {
+                smartBuffer.writeStringNT(thread.osThreadId ?? '');
+                smartBuffer.writeStringNT(thread.name ?? '');
+                smartBuffer.writeStringNT(thread.type ?? '');
+            }
         }
         protocolUtil.insertCommonResponseFields(this, smartBuffer);
         return smartBuffer.toBuffer();
@@ -115,9 +131,22 @@ export interface ThreadInfo {
      * The code causing the stop or failure.
      */
     codeSnippet: string;
+    /**
+     * The ID of the thread (optional for debug protocol version ).
+     */
+    osThreadId?: string;
+    /**
+     * The name of the thread (optional).
+     */
+    name?: string;
+    /**
+     * The type of the thread (optional).
+     */
+    type?: string;
 }
 
 enum ThreadInfoFlags {
     isPrimary = 0x01,
-    isDetached = 0x02
+    isDetached = 0x02,
+    isIdentityInfo = 0x04
 }
