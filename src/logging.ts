@@ -1,4 +1,4 @@
-import { default as defaultLogger } from '@rokucommunity/logger';
+import { ConsoleTransport, default as defaultLogger } from '@rokucommunity/logger';
 import type { Logger } from '@rokucommunity/logger';
 import { QueuedTransport } from '@rokucommunity/logger/dist/transports/QueuedTransport';
 import { FileTransport } from '@rokucommunity/logger/dist/transports/FileTransport';
@@ -26,6 +26,11 @@ logger.addTransport(debugServerLogOutputEventTransport);
 logger.addTransport(fileTransport);
 
 logger.logLevel = 'log';
+
+//disconnect the ConsoleLogger transport when requested (used primarily when in --dap mode in the CLI)
+export function removeConsoleLogger() {
+    logger.transports = logger.transports.filter(transport => !(transport?.constructor?.name === ConsoleTransport.name));
+}
 const createLogger = logger.createLogger.bind(logger) as typeof Logger.prototype.createLogger;
 
 export { logger, createLogger };

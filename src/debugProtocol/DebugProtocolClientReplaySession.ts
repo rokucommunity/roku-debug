@@ -5,6 +5,7 @@ import { DebugProtocolServer } from './server/DebugProtocolServer';
 import * as Net from 'net';
 import { ActionQueue } from '../managers/ActionQueue';
 import { IOPortOpenedUpdate, isIOPortOpenedUpdate } from './events/updates/IOPortOpenedUpdate';
+import { logger } from '../logging';
 
 export class DebugProtocolClientReplaySession {
     constructor(options: {
@@ -98,7 +99,7 @@ export class DebugProtocolClientReplaySession {
         });
 
         this.client.on('io-output', (data) => {
-            console.log(data);
+            logger.log(data);
             void this.clientProcess();
         });
 
@@ -129,7 +130,7 @@ export class DebugProtocolClientReplaySession {
     }
 
     private openIOPort() {
-        console.log(`Spinning up mock IO socket on port ${this.ioPort}`);
+        logger.log(`Spinning up mock IO socket on port ${this.ioPort}`);
         return new Promise<void>((resolve) => {
             const server = new Net.Server({});
 
@@ -206,7 +207,7 @@ export class DebugProtocolClientReplaySession {
                 this.server = client;
                 //anytime we receive incoming data from the client
                 client.on('data', (data) => {
-                    console.log('server got:', JSON.stringify(data.toJSON().data));
+                    logger.log('server got:', JSON.stringify(data.toJSON().data));
                     void this.serverProcess(data);
                 });
             });
@@ -235,7 +236,7 @@ export class DebugProtocolClientReplaySession {
         let serverProcesIdx = this.serverProcessIdx++;
         await this.serverActionQueue.run(async () => {
             try {
-                console.log(serverProcesIdx);
+                logger.log(serverProcesIdx);
                 this.serverSync.pushActual(data);
                 if (this.serverSync.areInSync) {
                     this.serverSync.clear();
@@ -250,7 +251,7 @@ export class DebugProtocolClientReplaySession {
                 }
                 this.finalizeIfDone();
             } catch (e) {
-                console.error('serverProcess failed to handle buffer', e);
+                logger.error('serverProcess failed to handle buffer', e);
             }
             return true;
         });

@@ -16,6 +16,7 @@ import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
+import { logger } from './logging';
 const request = r as typeof requestType;
 
 class Util {
@@ -519,7 +520,7 @@ class Util {
             //if this value is a promise, add a .catch to it so we don't bring down the app
             if (isPromise(value)) {
                 value.catch(e => {
-                    console.error('Unhandled promise during dispose', e);
+                    logger.error('Unhandled promise during dispose', e);
                 });
             }
         }

@@ -302,9 +302,6 @@ export class TelnetCommand {
 
 
     public handleData(pipeline: TelnetRequestPipeline) {
-        if (this.deferred.isCompleted) {
-            console.log('stop here');
-        }
         //get the first response
         const match = /Brightscript Debugger>\s*/is.exec(pipeline.unhandledText);
         if (match) {
