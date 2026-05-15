@@ -74,6 +74,11 @@ export class TelnetAdapter {
 
     public supportsExceptionBreakpoints = false;
 
+    //BreakpointManager rewrites `stop` statements as `if <cond> then : STOP : end if` and
+    //`if hits >= N then STOP`, so both forms work in telnet mode regardless of firmware.
+    public supportsConditionalBreakpoints = true;
+    public supportsHitConditionalBreakpoints = true;
+
     public once(eventName: 'app-ready'): Promise<void>;
     public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: string) {

@@ -372,11 +372,32 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // make VS Code to use 'evaluate' when hovering over source
         response.body.supportsEvaluateForHovers = true;
 
-        // This debug adapter supports conditional breakpoints
-        response.body.supportsConditionalBreakpoints = true;
+        //NOTE: `supportsConditionalBreakpoints` and `supportsHitConditionalBreakpoints` are
+        //sent later in the post-connect CapabilitiesEvent once we know which adapter is in use
+        //(telnet always supports them via stop-statement rewrites; debug protocol requires v3.1.0+).
+        //VS Code reads these caps per-render in the BREAKPOINTS view, so CapabilitiesEvent updates
+        //take effect immediately - unlike `exceptionBreakpointFilters` / `breakpointModes` which
+        //must be in the initialize response.
 
-        // This debug adapter supports breakpoints that break execution after a specified number of hits
-        response.body.supportsHitConditionalBreakpoints = true;
+        //surface the filter list here so VS Code's BREAKPOINTS panel renders the checkboxes - the
+        //panel only reads this list from the initialize response, not from later CapabilitiesEvents.
+        //The `supportsExceptionFilterOptions` / `supportsExceptionOptions` booleans are deferred and
+        //sent via CapabilitiesEvent once we know the connected device's protocol version.
+        response.body.exceptionBreakpointFilters = [{
+            filter: 'caught',
+            supportsCondition: true,
+            conditionDescription: '__brs_err__.rethrown = true',
+            label: 'Caught Exceptions',
+            description: `Breaks on all errors, even if they're caught later.`,
+            default: false
+        }, {
+            filter: 'uncaught',
+            supportsCondition: true,
+            conditionDescription: '__brs_err__.rethrown = true',
+            label: 'Uncaught Exceptions',
+            description: 'Breaks only on errors that are not handled.',
+            default: true
+        }];
 
         response.body.supportsCompletionsRequest = true;
         response.body.completionTriggerCharacters = ['.', '(', '{', ',', ' '];
@@ -412,12 +433,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             }
             this.exceptionBreakpoints = filterOptions;
 
-            //ensure the rokuAdapter is loaded
-            await this.getRokuAdapter();
+            //wait until the adapter object exists, but don't wait for the device to come online —
+            //VS Code will not send configurationDone (and we cannot launch the channel) until we
+            //respond to this request.
+            await this.rokuAdapterDeferred.promise;
 
             if (this.rokuAdapter.supportsExceptionBreakpoints) {
+                //the adapter queues these filters internally if the debug protocol client hasn't
+                //connected yet, and replays them once it does
                 await this.rokuAdapter.setExceptionBreakpoints(filterOptions);
-                //if success
                 response.body.breakpoints = [
                     { verified: true },
                     { verified: true }
@@ -612,28 +636,17 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.connectRokuAdapter();
             connectAdapterEnd();
 
-            // some capabilities depend on adapter type and are sent now that we know which adapter is in use
+            // Capabilities that depend on the adapter or device version. The exception-breakpoint
+            // FILTER LIST was surfaced in initializeRequest (VS Code only reads it from there).
+            // Everything below is read per-action in VS Code, so a CapabilitiesEvent update takes
+            // effect dynamically.
             const supportsExceptionBreakpoints = this.rokuAdapter.supportsExceptionBreakpoints;
             this.sendEvent(new CapabilitiesEvent({
-                // log points are only supported by the telnet adapter
                 supportsLogPoints: !this.enableDebugProtocol,
                 supportsExceptionFilterOptions: supportsExceptionBreakpoints,
                 supportsExceptionOptions: supportsExceptionBreakpoints,
-                exceptionBreakpointFilters: supportsExceptionBreakpoints ? [{
-                    filter: 'caught',
-                    supportsCondition: true,
-                    conditionDescription: '__brs_err__.rethrown = true',
-                    label: 'Caught Exceptions',
-                    description: `Breaks on all errors, even if they're caught later.`,
-                    default: false
-                }, {
-                    filter: 'uncaught',
-                    supportsCondition: true,
-                    conditionDescription: '__brs_err__.rethrown = true',
-                    label: 'Uncaught Exceptions',
-                    description: 'Breaks only on errors that are not handled.',
-                    default: true
-                }] : []
+                supportsConditionalBreakpoints: this.rokuAdapter.supportsConditionalBreakpoints,
+                supportsHitConditionalBreakpoints: this.rokuAdapter.supportsHitConditionalBreakpoints
             }));
 
             this.sendLaunchProgress('update', 'Configuring breakpoints');
