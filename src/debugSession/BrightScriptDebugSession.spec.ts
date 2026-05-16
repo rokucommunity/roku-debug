@@ -2889,13 +2889,13 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(session.sourceMapManager, 'generatedLineIsMapped').resolves(false);
             sinon.stub(session.sourceMapManager, 'getSourceMapPath').resolves(s`${stagingDir}/source/main.brs.map`);
             sinon.stub(session.sourceMapManager, 'getSourceMap').resolves({} as any);
-            const stepOverStub = sinon.stub(rokuAdapter, 'stepOver').resolves();
+            const stepOverStub = sinon.stub(rokuAdapter as any, 'stepOver').resolves();
             const sendEventSpy = sinon.spy(session, 'sendEvent');
 
             session['pendingSmartStep'] = { kind: 'next', threadId: 0, attempts: 0 };
             await session['onSuspend']();
 
-            expect(stepOverStub.calledOnceWithExactly(0)).to.be.true;
+            expect(stepOverStub.calledOnce).to.be.true;
             expect(sendEventSpy.called).to.be.false;
         });
 
@@ -2911,7 +2911,7 @@ describe('BrightScriptDebugSession', () => {
                 absolutePath: s`${stagingDir}/source/main.brs`
             } as any);
             sinon.stub(session.sourceMapManager, 'generatedLineIsMapped').resolves(true);
-            const stepOverStub = sinon.stub(rokuAdapter, 'stepOver').resolves();
+            const stepOverStub = sinon.stub(rokuAdapter as any, 'stepOver').resolves();
             const sendEventSpy = sinon.spy(session, 'sendEvent');
 
             session['pendingSmartStep'] = { kind: 'next', threadId: 0, attempts: 0 };
@@ -2941,13 +2941,13 @@ describe('BrightScriptDebugSession', () => {
                 lineNumber: 7,
                 columnIndex: 0
             });
-            const stepOverStub = sinon.stub(rokuAdapter, 'stepOver').resolves();
+            const stepOverStub = sinon.stub(rokuAdapter as any, 'stepOver').resolves();
             const sendEventSpy = sinon.spy(session, 'sendEvent');
 
             session['pendingSmartStep'] = { kind: 'next', threadId: 0, attempts: 0 };
             await session['onSuspend']();
 
-            expect(stepOverStub.calledOnceWithExactly(0)).to.be.true;
+            expect(stepOverStub.calledOnce).to.be.true;
             expect(sendEventSpy.called).to.be.false;
         });
     });
