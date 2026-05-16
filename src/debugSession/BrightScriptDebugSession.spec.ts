@@ -19,7 +19,7 @@ import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
+import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent, StoppedEventReason } from './Events';
 import { EventEmitter } from 'eventemitter3';
 import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
@@ -121,6 +121,9 @@ describe('BrightScriptDebugSession', () => {
             registerSourceLocator: (a, b) => { },
             setConsoleOutput: (a) => { },
             evaluate: () => { },
+            stepOver: () => { },
+            stepInto: () => { },
+            stepOut: () => { },
             syncBreakpoints: () => { },
             getVariable: () => { },
             getScopeVariables: (a) => { },
@@ -2863,6 +2866,89 @@ describe('BrightScriptDebugSession', () => {
 
             // original filePath must be preserved — never overwritten with undefined
             expect(threads[0].filePath).to.equal('pkg:/source/main.brs');
+        });
+    });
+
+    describe('smartStep', () => {
+        beforeEach(() => {
+            session['entryBreakpointWasHandled'] = true;
+            session['launchConfiguration'].smartStep = true;
+        });
+
+        it('continues stepping when suspended on a generated line not covered by source map', async () => {
+            const activeThread = {
+                isSelected: true,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 50,
+                threadId: 0
+            };
+            sinon.stub(session as any, 'setupSuspendedState').resolves([activeThread]);
+            sinon.stub(session.projectManager, 'getStagingFileInfo').resolves({
+                absolutePath: s`${stagingDir}/source/main.brs`
+            } as any);
+            sinon.stub(session.sourceMapManager, 'generatedLineIsMapped').resolves(false);
+            sinon.stub(session.sourceMapManager, 'getSourceMapPath').resolves(s`${stagingDir}/source/main.brs.map`);
+            sinon.stub(session.sourceMapManager, 'getSourceMap').resolves({} as any);
+            const stepOverStub = sinon.stub(rokuAdapter as any, 'stepOver').resolves();
+            const sendEventSpy = sinon.spy(session, 'sendEvent');
+
+            session['pendingSmartStep'] = { kind: 'next', threadId: 0, attempts: 0 };
+            await session['onSuspend']();
+
+            expect(stepOverStub.calledOnce).to.be.true;
+            expect(sendEventSpy.called).to.be.false;
+        });
+
+        it('emits a step stopped event when smart step lands on a mapped line', async () => {
+            const activeThread = {
+                isSelected: true,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 4,
+                threadId: 0
+            };
+            sinon.stub(session as any, 'setupSuspendedState').resolves([activeThread]);
+            sinon.stub(session.projectManager, 'getStagingFileInfo').resolves({
+                absolutePath: s`${stagingDir}/source/main.brs`
+            } as any);
+            sinon.stub(session.sourceMapManager, 'generatedLineIsMapped').resolves(true);
+            const stepOverStub = sinon.stub(rokuAdapter as any, 'stepOver').resolves();
+            const sendEventSpy = sinon.spy(session, 'sendEvent');
+
+            session['pendingSmartStep'] = { kind: 'next', threadId: 0, attempts: 0 };
+            await session['onSuspend']();
+
+            expect(stepOverStub.called).to.be.false;
+            expect(sendEventSpy.calledOnce).to.be.true;
+            expect((sendEventSpy.getCall(0).args[0] as any).body.reason).to.equal(StoppedEventReason.step);
+        });
+
+        it('continues stepping when no source map exists but location is remapped by roku-debug', async () => {
+            const activeThread = {
+                isSelected: true,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 7,
+                threadId: 0
+            };
+            sinon.stub(session as any, 'setupSuspendedState').resolves([activeThread]);
+            sinon.stub(session.projectManager, 'getStagingFileInfo').resolves({
+                absolutePath: s`${stagingDir}/source/main.brs`
+            } as any);
+            sinon.stub(session.sourceMapManager, 'generatedLineIsMapped').resolves(false);
+            sinon.stub(session.sourceMapManager, 'getSourceMapPath').resolves(s`${stagingDir}/source/main.brs.map`);
+            sinon.stub(session.sourceMapManager, 'getSourceMap').resolves(undefined);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves({
+                filePath: s`${rootDir}/source/main.bs`,
+                lineNumber: 7,
+                columnIndex: 0
+            });
+            const stepOverStub = sinon.stub(rokuAdapter as any, 'stepOver').resolves();
+            const sendEventSpy = sinon.spy(session, 'sendEvent');
+
+            session['pendingSmartStep'] = { kind: 'next', threadId: 0, attempts: 0 };
+            await session['onSuspend']();
+
+            expect(stepOverStub.calledOnce).to.be.true;
+            expect(sendEventSpy.called).to.be.false;
         });
     });
 

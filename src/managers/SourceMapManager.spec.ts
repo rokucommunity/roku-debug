@@ -209,4 +209,29 @@ describe('SourceMapManager', () => {
             expect(location).to.be.undefined;
         });
     });
+
+    describe('generatedLineIsMapped', () => {
+        it('returns true only for generated lines with mappings', async () => {
+            const brsPath = s`${tmpPath}/staging/components/foo.brs`;
+            const mapPath = `${brsPath}.map`;
+            fsExtra.ensureDirSync(path.dirname(mapPath));
+
+            const { SourceMapGenerator } = await import('source-map');
+            const gen = new SourceMapGenerator({ file: 'foo.brs' });
+            gen.addMapping({
+                generated: { line: 1, column: 0 },
+                original: { line: 5, column: 0 },
+                source: '../../src/components/foo.brs'
+            });
+            fsExtra.writeFileSync(mapPath, gen.toString());
+
+            expect(await manager.generatedLineIsMapped(brsPath, 1)).to.be.true;
+            expect(await manager.generatedLineIsMapped(brsPath, 2)).to.be.false;
+        });
+
+        it('returns false when no source map exists', async () => {
+            const brsPath = s`${tmpPath}/staging/source/main.brs`;
+            expect(await manager.generatedLineIsMapped(brsPath, 1)).to.be.false;
+        });
+    });
 });

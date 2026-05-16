@@ -20,6 +20,7 @@ export class SourceMapManager {
     * So take that into consideration when deciding to use falsey checking
     */
     private cache = {} as Record<string, RawSourceMap | null>;
+    private generatedMappedLinesCache: Record<string, Set<number>> = {};
 
     /**
      * Does a source map exist at the specified path?
@@ -71,6 +72,8 @@ export class SourceMapManager {
             //casings to be safe across platforms.
             delete this.sourceMapConsumerCache[sourceMapPath];
             delete this.sourceMapConsumerCache[key];
+            delete this.generatedMappedLinesCache[sourceMapPath];
+            delete this.generatedMappedLinesCache[key];
             //standardize the source map paths
             const mapDir = path.dirname(sourceMapPath);
             // Resolve sourceRoot relative to the map file's directory (handles relative sourceRoot correctly)
@@ -177,6 +180,32 @@ export class SourceMapManager {
         }
 
         return consumer;
+    }
+
+    /**
+     * Returns true when the generated line has at least one explicit mapping in the source map.
+     */
+    public async generatedLineIsMapped(filePath: string, generatedLineNumber: number) {
+        const sourceMapPath = await this.getSourceMapPath(filePath);
+        const parsedSourceMap = await this.getSourceMap(sourceMapPath);
+        if (!parsedSourceMap) {
+            return false;
+        }
+
+        const cacheKey = s`${sourceMapPath.toLowerCase()}`;
+        let mappedLines = this.generatedMappedLinesCache[cacheKey];
+        if (!mappedLines) {
+            const consumer = await this.getSourceMapConsumer(sourceMapPath, parsedSourceMap);
+            mappedLines = new Set<number>();
+            consumer.eachMapping((mapping) => {
+                if (mapping?.source && mapping.generatedLine) {
+                    mappedLines.add(mapping.generatedLine);
+                }
+            }, undefined, SourceMapConsumer.GENERATED_ORDER);
+            this.generatedMappedLinesCache[cacheKey] = mappedLines;
+        }
+
+        return mappedLines.has(generatedLineNumber);
     }
 
     /**
