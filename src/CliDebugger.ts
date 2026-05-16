@@ -64,6 +64,17 @@ export class CliDebugger {
     private rl: readline.Interface | undefined;
     private parser = new DapMessageParser();
 
+    /** Thread the adapter last reported as stopped. */
+    private currentThreadId: number | undefined;
+    /** Top stack-frame ID from the most recent stackTrace response. */
+    private currentFrameId: number | undefined;
+
+    /**
+     * Callbacks waiting for a specific response, keyed by the request sequence number.
+     * Used to correlate async DAP responses with the action that triggered them.
+     */
+    private pendingRequests = new Map<number, (response: Record<string, any>) => void>();
+
     public constructor(private readonly config: Partial<LaunchConfiguration>) {
     }
 
@@ -174,13 +185,21 @@ export class CliDebugger {
         }
     }
 
-    private sendRequest(command: string, args?: Record<string, any>): void {
+    /**
+     * Sends a DAP request. If `onResponse` is provided it will be called with the
+     * adapter's response for that request (identified by its sequence number).
+     */
+    private sendRequest(command: string, args?: Record<string, any>, onResponse?: (response: Record<string, any>) => void): void {
+        const seq = this.nextSeq();
         this.sendMessage({
-            seq: this.nextSeq(),
+            seq,
             type: 'request',
             command,
             arguments: args ?? {}
         });
+        if (onResponse) {
+            this.pendingRequests.set(seq, onResponse);
+        }
     }
 
     private sendInitialize(): void {
@@ -241,6 +260,73 @@ export class CliDebugger {
             expression,
             frameId,
             context: 'repl'
+        }, (response) => {
+            if (response.success) {
+                const body = response.body as Record<string, any> | undefined;
+                if (body?.result !== undefined) {
+                    process.stdout.write(`= ${body.result}\n`);
+                }
+            }
+        });
+    }
+
+    /**
+     * Fetches the call stack for the current thread and resolves with the frames.
+     */
+    private fetchStackTrace(threadId: number, onDone: (frames: Array<Record<string, any>>) => void): void {
+        this.sendRequest('stackTrace', { threadId, startFrame: 0, levels: 20 }, (response) => {
+            if (response.success) {
+                const body = response.body as Record<string, any> | undefined;
+                const frames = (body?.stackFrames as Array<Record<string, any>>) ?? [];
+                onDone(frames);
+            }
+        });
+    }
+
+    /**
+     * Fetches scopes for the given frame, then fetches all variables for each scope,
+     * and calls onDone with a map of scopeName → variable array.
+     */
+    private fetchVariables(frameId: number, onDone: (scopeMap: Array<{ name: string; variables: Array<Record<string, any>> }>) => void): void {
+        this.sendRequest('scopes', { frameId }, (scopesResponse) => {
+            if (!scopesResponse.success) {
+                return;
+            }
+            const body = scopesResponse.body as Record<string, any> | undefined;
+            const scopes = (body?.scopes as Array<Record<string, any>>) ?? [];
+            if (scopes.length === 0) {
+                onDone([]);
+                return;
+            }
+
+            const result: Array<{ name: string; variables: Array<Record<string, any>> }> = [];
+            const counter = { remaining: scopes.length };
+
+            for (const scope of scopes) {
+                const scopeName = String(scope.name ?? 'Variables');
+                const variablesRef = scope.variablesReference as number;
+                this.sendRequest('variables', { variablesReference: variablesRef }, (varsResponse) => {
+                    const varsBody = varsResponse.body as Record<string, any> | undefined;
+                    const variables = (varsBody?.variables as Array<Record<string, any>>) ?? [];
+                    result.push({ name: scopeName, variables });
+                    counter.remaining--;
+                    if (counter.remaining === 0) {
+                        onDone(result);
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * Fetches child variables for an arbitrary variablesReference (used by `expand`).
+     */
+    private fetchChildVariables(variablesReference: number, onDone: (variables: Array<Record<string, any>>) => void): void {
+        this.sendRequest('variables', { variablesReference }, (response) => {
+            if (response.success) {
+                const body = response.body as Record<string, any> | undefined;
+                onDone((body?.variables as Array<Record<string, any>>) ?? []);
+            }
         });
     }
 
@@ -282,16 +368,23 @@ export class CliDebugger {
     }
 
     private handleResponse(response: Record<string, any>): void {
+        // Dispatch to a pending-request callback if one was registered.
+        const reqSeq = response.request_seq as number | undefined;
+        if (reqSeq !== undefined) {
+            const callback = this.pendingRequests.get(reqSeq);
+            if (callback) {
+                this.pendingRequests.delete(reqSeq);
+                callback(response);
+                return;
+            }
+        }
+
+        // Fallback handling for responses with no registered callback.
         if (!response.success && response.message) {
             console.error(`[roku-debug] Error response for '${response.command}': ${response.message}`);
         }
         if (response.command === 'initialize' && response.success) {
             this.sendLaunch();
-        } else if (response.command === 'evaluate' && response.success) {
-            const body = response.body as Record<string, any> | undefined;
-            if (body?.result !== undefined) {
-                process.stdout.write(`= ${body.result}\n`);
-            }
         }
     }
 
@@ -320,8 +413,24 @@ export class CliDebugger {
             return;
         }
         const reason = body.reason ?? 'breakpoint';
-        process.stdout.write(`\n[roku-debug] Stopped: ${reason}\n`);
-        this.rl?.prompt();
+        const threadId = (body.threadId as number | undefined) ?? 1;
+        this.currentThreadId = threadId;
+
+        // Fetch the stack trace to display current location and store the top frame ID.
+        this.fetchStackTrace(threadId, (frames) => {
+            if (frames.length > 0) {
+                this.currentFrameId = frames[0].id as number;
+            }
+            process.stdout.write(`\n[roku-debug] Stopped: ${reason}\n`);
+            if (frames.length > 0) {
+                const top = frames[0];
+                const src = (top.source as Record<string, any> | undefined)?.path ?? (top.source as Record<string, any> | undefined)?.name ?? '<unknown>';
+                const line = top.line ?? '?';
+                const name = top.name ?? '<unknown>';
+                process.stdout.write(`  at ${name} (${src}:${line})\n`);
+            }
+            this.rl?.prompt();
+        });
     }
 
     // ------------------------------------------------------------------ user input
@@ -336,31 +445,54 @@ export class CliDebugger {
             case 'c':
             case 'cont':
             case 'continue':
-                this.sendContinue();
+                this.sendContinue(this.currentThreadId);
                 break;
             case 'n':
             case 'next':
-                this.sendNext();
+                this.sendNext(this.currentThreadId);
                 break;
             case 's':
             case 'step':
             case 'stepin':
-                this.sendStepIn();
+                this.sendStepIn(this.currentThreadId);
                 break;
             case 'o':
             case 'stepout':
-                this.sendStepOut();
+                this.sendStepOut(this.currentThreadId);
                 break;
             case 'p':
             case 'pause':
-                this.sendPause();
+                this.sendPause(this.currentThreadId);
                 break;
             case 'eval':
             case 'e':
                 if (args.length > 0) {
-                    this.sendEvaluate(args.join(' '));
+                    this.sendEvaluate(args.join(' '), this.currentFrameId);
                 } else {
                     process.stdout.write('Usage: eval <expression>\n');
+                }
+                break;
+            case 'vars':
+            case 'variables':
+            case 'v':
+                this.commandVariables();
+                break;
+            case 'bt':
+            case 'backtrace':
+            case 'stack':
+                this.commandBacktrace();
+                break;
+            case 'expand':
+            case 'ex':
+                if (args.length > 0) {
+                    const ref = parseInt(args[0], 10);
+                    if (isNaN(ref)) {
+                        process.stdout.write('Usage: expand <variablesReference>\n');
+                    } else {
+                        this.commandExpand(ref);
+                    }
+                } else {
+                    process.stdout.write('Usage: expand <variablesReference>\n');
                 }
                 break;
             case 'q':
@@ -378,18 +510,107 @@ export class CliDebugger {
         }
     }
 
+    /**
+     * Lists all variables in every scope of the current stack frame.
+     */
+    private commandVariables(): void {
+        if (this.currentFrameId === undefined) {
+            process.stdout.write('[roku-debug] Not stopped at a frame. Use \'pause\' or wait for a breakpoint.\n');
+            return;
+        }
+        this.fetchVariables(this.currentFrameId, (scopeMap) => {
+            if (scopeMap.length === 0) {
+                process.stdout.write('(no variables)\n');
+            }
+            for (const scope of scopeMap) {
+                process.stdout.write(`\n--- ${scope.name} ---\n`);
+                this.printVariableTable(scope.variables);
+            }
+            this.rl?.prompt();
+        });
+    }
+
+    /**
+     * Prints the current call stack.
+     */
+    private commandBacktrace(): void {
+        if (this.currentThreadId === undefined) {
+            process.stdout.write('[roku-debug] Not stopped. Use \'pause\' or wait for a breakpoint.\n');
+            return;
+        }
+        this.fetchStackTrace(this.currentThreadId, (frames) => {
+            if (frames.length === 0) {
+                process.stdout.write('(empty stack)\n');
+            } else {
+                process.stdout.write('\n');
+                for (let i = 0; i < frames.length; i++) {
+                    const frame = frames[i];
+                    const src = (frame.source as Record<string, any> | undefined)?.path ?? (frame.source as Record<string, any> | undefined)?.name ?? '<unknown>';
+                    const line = frame.line ?? '?';
+                    const name = frame.name ?? '<unknown>';
+                    const marker = i === 0 ? '▶' : ' ';
+                    process.stdout.write(`  ${marker} #${i}  ${name}  (${src}:${line})\n`);
+                }
+            }
+            this.rl?.prompt();
+        });
+    }
+
+    /**
+     * Expands a nested variable by its variablesReference number.
+     */
+    private commandExpand(variablesReference: number): void {
+        this.fetchChildVariables(variablesReference, (variables) => {
+            if (variables.length === 0) {
+                process.stdout.write('(no children)\n');
+            } else {
+                this.printVariableTable(variables);
+            }
+            this.rl?.prompt();
+        });
+    }
+
+    /**
+     * Formats a list of DAP Variable objects as a two-column table.
+     * Variables that have children include their variablesReference in brackets so
+     * the user knows they can use `expand <ref>` to drill in.
+     */
+    private printVariableTable(variables: Array<Record<string, any>>): void {
+        if (variables.length === 0) {
+            return;
+        }
+        // Determine column widths for name and type
+        const maxName = Math.max(...variables.map((v) => String(v.name ?? '').length), 4);
+        const maxType = Math.max(...variables.map((v) => String(v.type ?? '').length), 4);
+
+        const header = `  ${'Name'.padEnd(maxName)}  ${'Type'.padEnd(maxType)}  Value`;
+        const divider = `  ${'-'.repeat(maxName)}  ${'-'.repeat(maxType)}  -----`;
+        process.stdout.write(`${header}\n${divider}\n`);
+
+        for (const v of variables) {
+            const name = String(v.name ?? '').padEnd(maxName);
+            const type = String(v.type ?? '').padEnd(maxType);
+            const ref = (v.variablesReference as number) > 0 ? ` [expand ${v.variablesReference}]` : '';
+            const value = `${String(v.value ?? '')}${ref}`;
+            process.stdout.write(`  ${name}  ${type}  ${value}\n`);
+        }
+    }
+
     private printHelp(): void {
         process.stdout.write([
             '',
             'roku-debug CLI commands:',
-            '  c, cont, continue  - Resume execution',
-            '  n, next            - Step over (next line)',
-            '  s, step, stepin    - Step into function',
-            '  o, stepout         - Step out of function',
-            '  p, pause           - Pause execution',
-            '  e, eval <expr>     - Evaluate an expression',
-            '  h, help            - Show this help',
-            '  q, quit, exit      - Quit the debugger',
+            '  c, cont, continue        - Resume execution',
+            '  n, next                  - Step over (next line)',
+            '  s, step, stepin          - Step into function',
+            '  o, stepout               - Step out of function',
+            '  p, pause                 - Pause execution',
+            '  v, vars, variables       - Inspect variables in current scope',
+            '  bt, backtrace, stack     - Show the call stack',
+            '  expand, ex <ref>         - Expand a nested variable by its reference ID',
+            '  e, eval <expr>           - Evaluate an expression in current frame',
+            '  h, help                  - Show this help',
+            '  q, quit, exit            - Quit the debugger',
             ''
         ].join('\n'));
     }
