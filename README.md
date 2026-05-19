@@ -2,7 +2,7 @@
 A [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/) server (for editors like VSCode) and a socket adapter for Roku's [BrightScript Debug Protocol](https://developer.roku.com/en-ca/docs/developer-program/debugging/socket-based-debugger.md)
 
 [![build status](https://img.shields.io/github/actions/workflow/status/rokucommunity/roku-debug/build.yml?branch=master)](https://github.com/rokucommunity/roku-debug/actions?query=branch%3Amaster+workflow%3Abuild)
-<!-- [![coverage status](https://img.shields.io/coveralls/github/rokucommunity/roku-debug?logo=coveralls)](https://coveralls.io/github/rokucommunity/roku-debug?branch=master) -->
+[![coverage status](https://img.shields.io/coveralls/github/rokucommunity/roku-debug?logo=coveralls)](https://coveralls.io/github/rokucommunity/roku-debug?branch=master)
 [![monthly downloads](https://img.shields.io/npm/dm/roku-debug.svg?sanitize=true&logo=npm&logoColor=)](https://npmcharts.com/compare/roku-debug?minimal=true)
 [![npm version](https://img.shields.io/npm/v/roku-debug.svg?logo=npm)](https://www.npmjs.com/package/roku-debug)
 [![license](https://img.shields.io/github/license/rokucommunity/roku-debug.svg)](LICENSE)
