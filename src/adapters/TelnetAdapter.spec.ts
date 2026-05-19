@@ -196,6 +196,65 @@ describe('TelnetAdapter ', () => {
         });
     });
 
+    describe('after destroy()', () => {
+        //Regression tests for https://github.com/rokucommunity/roku-debug/issues/348
+        //destroy() nulls out this.cache, so any subsequent call routed through resolve()
+        //would crash with `Cannot read properties of undefined (reading '<key>')`.
+
+        beforeEach(() => {
+            //force the "debugger is paused" guard to pass so we reach resolve()
+            adapter['isAtDebuggerPrompt'] = true;
+        });
+
+        it('getThreads() does not throw "Cannot read properties of undefined"', async () => {
+            await adapter.destroy();
+
+            let error: Error | undefined;
+            try {
+                await adapter.getThreads();
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error?.message ?? '').not.to.match(/Cannot read properties of undefined/);
+        });
+
+        it('getStackTrace() does not throw "Cannot read properties of undefined"', async () => {
+            await adapter.destroy();
+
+            let error: Error | undefined;
+            try {
+                await adapter.getStackTrace();
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error?.message ?? '').not.to.match(/Cannot read properties of undefined/);
+        });
+
+        it('getScopeVariables() does not throw "Cannot read properties of undefined"', async () => {
+            await adapter.destroy();
+
+            let error: Error | undefined;
+            try {
+                await adapter.getScopeVariables();
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error?.message ?? '').not.to.match(/Cannot read properties of undefined/);
+        });
+
+        it('getVariableType() does not throw "Cannot read properties of undefined"', async () => {
+            await adapter.destroy();
+
+            let error: Error | undefined;
+            try {
+                await adapter.getVariableType('foo');
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error?.message ?? '').not.to.match(/Cannot read properties of undefined/);
+        });
+    });
+
     describe('connect', () => {
         it('does not crash and triggers shutdown when the socket errors after the connection is established', async () => {
             // Stub pressHomeButton so we don't need a real device

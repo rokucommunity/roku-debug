@@ -1041,6 +1041,9 @@ export class TelnetAdapter {
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         try {
+            if (this.isDestroyed || !this.cache) {
+                return Promise.reject(new Error(`Cannot resolve "${key}": adapter is destroyed`));
+            }
             if (this.cache[key]) {
                 this.logger.debug(`resolve cache "${key}": already exists`);
                 return this.cache[key];
