@@ -8,6 +8,7 @@
         "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
         "preversion": "npm run build && npm run lint && npm run test",
         "lint": "eslint \"src/**\"",
+        "audit": "npm audit",
         "watch": "tsc --watch",
         "test": "nyc mocha \"src/**/*spec.ts\" --exclude \"src/**/*.device.spec.ts\"",
         "device-test": "mocha --spec \"src/**/*.device.spec.ts\"",
