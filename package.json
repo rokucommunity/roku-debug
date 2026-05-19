@@ -101,7 +101,7 @@
         "serialize-javascript": "^7.0.5"
     },
     "dependencies": {
-        "@rokucommunity/logger": "^0.3.11",
+        "@rokucommunity/logger": "^0.3.12",
         "@types/request": "^2.48.8",
         "@vscode/debugadapter": "^1.68.0",
         "@vscode/debugprotocol": "^1.68.0",
