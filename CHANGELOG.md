@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.8](https://github.com/rokucommunity/roku-debug/compare/0.23.7...v0.23.8) - 2026-05-19
+### Changed
+ - Inject breakpoint STOPs _after_ `InitializedEvent` ([#340](https://github.com/rokucommunity/roku-debug/pull/340))
+ - Defer DAP capabilities and InitializedEvent until after adapter connects ([#328](https://github.com/rokucommunity/roku-debug/pull/328))
+ - upgrade to [@rokucommunity/logger@0.3.12](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#0312---2026-05-19). Notable changes since 0.3.11:
+     - Security enhancements ([#17](https://github.com/rokucommunity/logger/pull/17))
+ - upgrade to [brighterscript@0.72.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0722---2026-05-19). Notable changes since 0.72.1:
+     - Security enhancements ([#1714](https://github.com/rokucommunity/brighterscript/pull/1714))
+ - upgrade to [roku-deploy@3.17.4](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3174---2026-05-19). Notable changes since 3.17.2:
+     - Security enhancements ([#263](https://github.com/rokucommunity/roku-deploy/pull/263))
+     - Add `autoLaunch` option to control `dev_autolaunch` on sideload ([#261](https://github.com/rokucommunity/roku-deploy/pull/261))
+### Fixed
+ - security enhancements ([#350](https://github.com/rokucommunity/roku-debug/pull/350))
+ - TelnetAdapter crash when methods are called after destroy ([#349](https://github.com/rokucommunity/roku-debug/pull/349))
+ - deferred capability handling for exception breakpoints ([#342](https://github.com/rokucommunity/roku-debug/pull/342))
+ - bug on windows with rdb file copying ([#343](https://github.com/rokucommunity/roku-debug/pull/343))
+ - sourcemap race in preprocessStagingFiles ([#339](https://github.com/rokucommunity/roku-debug/pull/339))
+
+
+
 ## [0.23.7](https://github.com/rokucommunity/roku-debug/compare/0.23.6...v0.23.7) - 2026-05-11
 ### Changed
  - upgrade to [brighterscript@0.72.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0721---2026-05-11). Notable changes since 0.72.0:
