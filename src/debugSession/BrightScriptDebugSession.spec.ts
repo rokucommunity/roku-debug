@@ -2417,6 +2417,22 @@ describe('BrightScriptDebugSession', () => {
             expect(enableTracingStub.callCount).to.equal(0);
         });
 
+        it('logs a warning and shows a popup when enable is true but device firmware is too old', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+            const warnSpy = sinon.spy(session.logger, 'warn');
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+            expect(warnSpy.callCount).to.be.greaterThan(0);
+            expect(warnSpy.getCall(0).args[0]).to.include('14.0.0');
+            expect(warnSpy.getCall(0).args[0]).to.include('15.2');
+            expect(sendCustomRequestStub.callCount).to.equal(1);
+            expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
+        });
+
         it('catches and logs error when enableTracing throws (enable=true)', async () => {
             launchConfiguration.profiling = { tracing: { enable: true } } as any;
             enableTracingStub.rejects(new Error('connection failed'));
@@ -2433,6 +2449,70 @@ describe('BrightScriptDebugSession', () => {
             await session['initializeProfiling']();
 
             expect(enableTracingStub.callCount).to.equal(0);
+        });
+    });
+
+    describe('tryProfilingConnectOnStart', () => {
+        let startTracingStub: SinonStub;
+
+        beforeEach(() => {
+            //set device info to support perfetto tracing (OS >= 15.2)
+            session['deviceInfo'] = { softwareVersion: '15.2.0' } as any;
+
+            //stub PerfettoManager prototype methods so no real connections are made
+            startTracingStub = sinon.stub(PerfettoManager.prototype, 'startTracing').resolves();
+            sinon.stub(PerfettoManager.prototype, 'on').returns(() => { });
+            session['perfettoManager'] = new PerfettoManager({ host: 'localhost' });
+        });
+
+        it('calls startTracing when connectOnStart is true and device supports perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(1);
+        });
+
+        it('does not call startTracing when connectOnStart is false', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: false } } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call startTracing when connectOnStart is undefined', async () => {
+            launchConfiguration.profiling = { tracing: {} } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+        });
+
+        it('logs a warning and shows a popup when connectOnStart is true but device firmware is too old', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+            const warnSpy = sinon.spy(session.logger, 'warn');
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+            expect(warnSpy.callCount).to.be.greaterThan(0);
+            expect(warnSpy.getCall(0).args[0]).to.include('14.0.0');
+            expect(warnSpy.getCall(0).args[0]).to.include('15.2');
+            expect(sendCustomRequestStub.callCount).to.equal(1);
+            expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
+        });
+
+        it('catches and logs error when startTracing throws', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            startTracingStub.rejects(new Error('connection failed'));
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(errorSpy.callCount).to.be.greaterThan(0);
+            expect(errorSpy.getCall(0).args[0]).to.include('Failed to start perfetto tracing on start');
         });
     });
 
