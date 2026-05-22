@@ -21,5 +21,9 @@ To run the language server standalone, you simply need to:
 - install this project (`npm install roku-debug`)
 - run the project in dap mode (`npx roku-debug --dap`)
 
+## Accepted security advisories
+
+Dependencies flagged by `npm audit` that we have reviewed and chosen not to upgrade are tracked in [audit-ci.jsonc](https://github.com/RokuCommunity/roku-debug/blob/master/audit-ci.jsonc). Each entry includes the advisory ID, the date it was added, and the reason it does not apply to this project.
+
 ## Changelog
 Click [here](CHANGELOG.md) to view the changelog
