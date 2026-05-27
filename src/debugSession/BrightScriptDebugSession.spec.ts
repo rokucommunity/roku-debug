@@ -1243,6 +1243,42 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('disconnectRequest', () => {
+        //Regression tests for DAP crashes from unhandled pressHomeButton rejections at disconnect time:
+        //  - https://github.com/rokucommunity/vscode-brightscript-language/issues/807 (EHOSTDOWN)
+        //  - https://github.com/rokucommunity/roku-debug/issues/332 (ECONNREFUSED)
+        //@vscode/debugadapter dispatches disconnectRequest without awaiting the returned Promise
+        //(debugSession.js:391), so any rejection from `await this.rokuDeploy.pressHomeButton(...)`
+        //becomes an unhandled rejection that crashes the DAP process. When the device is powered
+        //off / unreachable at disconnect time, the ECP connect attempt fails — the specific Node
+        //error code depends on the OS-level reason (host unresponsive vs. connection refused).
+        function makeTelnetDisconnectSession(rejection: Error) {
+            (session as any).launchConfiguration = {
+                ...launchConfiguration,
+                enableDebugProtocol: false,
+                host: '192.168.1.17',
+                remotePort: 8060
+            };
+            session.rokuDeploy.pressHomeButton = () => Promise.reject(rejection);
+            //stub shutdown so the test doesn't tear down the whole session machinery
+            sinon.stub(session, 'shutdown').resolves();
+        }
+
+        it('does not reject when pressHomeButton fails with EHOSTDOWN (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect EHOSTDOWN 192.168.1.17:8060 - Local (192.168.1.18:51783)'), { code: 'EHOSTDOWN' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
+        });
+
+        it('does not reject when pressHomeButton fails with ECONNREFUSED (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect ECONNREFUSED 192.168.1.17:8060'), { code: 'ECONNREFUSED' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
+        });
+    });
+
     describe('handleDiagnostics', () => {
         it('ends launch progress when a compile error diagnostic is received', async () => {
             const clock = sinon.useFakeTimers();
