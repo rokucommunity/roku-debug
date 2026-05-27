@@ -2532,9 +2532,18 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      * @param args
      */
     protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
-        //return to the home screen
+        //return to the home screen — best effort. The device may already be powered off or unreachable
+        //at disconnect time; without a guard pressHomeButton rejects (EHOSTDOWN / ECONNREFUSED / etc)
+        //and because @vscode/debugadapter dispatches this method without awaiting the returned Promise,
+        //that rejection escapes as an unhandledRejection and crashes the DAP process.
+        //See https://github.com/rokucommunity/vscode-brightscript-language/issues/807
+        //    https://github.com/rokucommunity/roku-debug/issues/332
         if (!this.enableDebugProtocol) {
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            try {
+                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            } catch (e) {
+                this.logger.warn('Failed to press home button during disconnect; device may be unreachable', e);
+            }
         }
         this.sendResponse(response);
         await this.shutdown();
