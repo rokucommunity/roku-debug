@@ -792,4 +792,38 @@ describe('DebugProtocolAdapter', function() {
         });
     });
 
+    describe('getThreads', () => {
+        //Regression test for DAP crash: unhandledRejection - Cannot get threads: debugger is not paused.
+        //adapter.emit('suspend') defers the actual event delivery via setTimeout(0). If isStopped
+        //flips from true to false during that window (auto-continue on entry breakpoint, rapid
+        //step, etc.), the suspend handler — which calls getThreads — throws an unhandled rejection.
+        //See https://github.com/rokucommunity/vscode-brightscript-language/issues/798
+        it('does not throw "Cannot get threads" when isStopped flips false between emit and the suspend handler running', async () => {
+            await initialize();
+
+            //mirror what BrightScriptDebugSession.onSuspend does: call getThreads from the suspend handler
+            let handlerError: Error | undefined;
+            adapter.on('suspend', async () => {
+                try {
+                    await adapter.getThreads();
+                } catch (e) {
+                    handlerError = e as Error;
+                }
+            });
+
+            //synchronously trigger the adapter's internal 'suspend' listener — this schedules adapter.emit('suspend') via setTimeout(0)
+            adapter['client']['emitter'].emit('suspend', {});
+            //before the setTimeout fires, the debugger transitions back to running (e.g. auto-continue
+            //on entry breakpoint kicked off by a previous suspend, or a rapid step request)
+            adapter['client'].isStopped = false;
+
+            //let the setTimeout(0) fire and the async suspend handler complete
+            await util.sleep(50);
+
+            expect(
+                handlerError?.message ?? ''
+            ).to.not.include('Cannot get threads: debugger is not paused');
+        });
+    });
+
 });

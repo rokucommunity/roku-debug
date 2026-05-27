@@ -155,9 +155,18 @@ export class DebugProtocolAdapter {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            if (this.emitter) {
-                this.emitter.emit(eventName, data);
+            if (!this.emitter) {
+                return;
             }
+            //drop stale 'suspend'/'runtime-error' events when the debugger has already resumed.
+            //emit() defers via setTimeout, so isStopped can flip false between queue and fire (e.g. auto-continue on entry breakpoint),
+            //causing downstream handlers to call getThreads() against a running debugger.
+            //See https://github.com/rokucommunity/vscode-brightscript-language/issues/798
+            if ((eventName === 'suspend' || eventName === 'runtime-error') && !this.isAtDebuggerPrompt) {
+                this.logger.warn(`Dropping stale "${eventName}" event because debugger is no longer paused`);
+                return;
+            }
+            this.emitter.emit(eventName, data);
         }, 0);
     }
 
