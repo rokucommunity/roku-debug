@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.9](https://github.com/rokucommunity/roku-debug/compare/0.23.8...v0.23.9) - 2026-05-27
+### Added
+ - Add security-audit-required job to security-audit workflow ([#353](https://github.com/rokucommunity/roku-debug/pull/353))
+### Changed
+ - Drop stale suspend/runtime-error events when debugger is no longer paused ([#356](https://github.com/rokucommunity/roku-debug/pull/356))
+ - Update minimum audit threshold ([#359](https://github.com/rokucommunity/roku-debug/pull/359))
+ - Reset connected flag on close so _syncBreakpoints doesn't crash on a missing client ([#357](https://github.com/rokucommunity/roku-debug/pull/357))
+ - Accept GHSA-w5hq-g745-h8pq (uuid <11.1.1) advisory ([#355](https://github.com/rokucommunity/roku-debug/pull/355))
+ - Security Audit workflow ([#352](https://github.com/rokucommunity/roku-debug/pull/352))
+ - upgrade to [brighterscript@0.72.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0723---2026-05-27). Notable changes since 0.72.2:
+     - Add parameter name inlay hints ([#1703](https://github.com/rokucommunity/brighterscript/pull/1703))
+     - Update minimum audit threshold ([#1723](https://github.com/rokucommunity/brighterscript/pull/1723))
+     - Accept GHSA-w5hq-g745-h8pq (uuid <11.1.1) advisory ([#1722](https://github.com/rokucommunity/brighterscript/pull/1722))
+     - Add security-audit-required gate job to security-audit workflow ([#1720](https://github.com/rokucommunity/brighterscript/pull/1720))
+     - Security Audit workflow ([#1718](https://github.com/rokucommunity/brighterscript/pull/1718))
+### Fixed
+ - Fix pressHomeButton crash in disconnectRequest ([#358](https://github.com/rokucommunity/roku-debug/pull/358))
+
+
+
 ## [0.23.8](https://github.com/rokucommunity/roku-debug/compare/0.23.7...v0.23.8) - 2026-05-19
 ### Changed
  - Inject breakpoint STOPs _after_ `InitializedEvent` ([#340](https://github.com/rokucommunity/roku-debug/pull/340))
