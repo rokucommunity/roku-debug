@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.9](https://github.com/rokucommunity/roku-debug/compare/0.23.8...v0.23.9) - 2026-05-27
+### Changed
+ - upgrade to [brighterscript@0.72.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0723---2026-05-27).
+### Fixed
+ - stale suspend/runtime-error events when debugger is no longer paused ([#356](https://github.com/rokucommunity/roku-debug/pull/356))
+ - crash related to missing client when trying to sync breakpoints with device ([#357](https://github.com/rokucommunity/roku-debug/pull/357))
+ - pressHomeButton crash in disconnectRequest ([#358](https://github.com/rokucommunity/roku-debug/pull/358))
+
+
+
 ## [0.23.8](https://github.com/rokucommunity/roku-debug/compare/0.23.7...v0.23.8) - 2026-05-19
 ### Changed
  - Inject breakpoint STOPs _after_ `InitializedEvent` ([#340](https://github.com/rokucommunity/roku-debug/pull/340))
