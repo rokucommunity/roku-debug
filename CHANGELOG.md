@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.23.10](https://github.com/rokucommunity/roku-debug/compare/0.23.9...v0.23.10) - 2026-05-28
 ### Changed
- - Defer initializeProfiling until after InitializedEvent ([#362](https://github.com/rokucommunity/roku-debug/pull/362))
+ - Defer initializeProfiling until after InitializedEvent for backwards compatability with DAP clients ([#362](https://github.com/rokucommunity/roku-debug/pull/362))
 
 
 
