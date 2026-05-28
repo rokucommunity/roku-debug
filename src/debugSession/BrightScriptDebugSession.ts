@@ -326,6 +326,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      * A magic number to represent a fake thread that will be used for showing compile errors in the UI as if they were runtime crashes
      */
     private COMPILE_ERROR_THREAD_ID = 7_777;
+    private pendingSmartStep: { kind: 'next' | 'stepIn' | 'stepOut'; threadId: number; attempts: number } | undefined;
+    private readonly maxSmartStepAttempts = 100;
 
     private get enableDebugProtocol() {
         return this.launchConfiguration?.enableDebugProtocol;
@@ -529,6 +531,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         config.stagingDir ??= config.stagingFolderPath;
         config.emitChannelPublishedEvent ??= true;
         config.rewriteDevicePathsInLogs ??= true;
+        config.smartStep ??= false;
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
@@ -900,6 +903,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // launchRequest gets invoked by our restart session flow.
         // We need to clear/reset some state to avoid issues.
         this.entryBreakpointWasHandled = false;
+        this.pendingSmartStep = undefined;
         this.breakpointManager.clearBreakpointLastState();
     }
 
@@ -1725,6 +1729,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         }
 
         this.logger.log('continueRequest');
+        this.pendingSmartStep = undefined;
         await this.setTransientsToInvalid(); // call before clearState
         this.clearState();
 
@@ -1735,6 +1740,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
     protected async pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments) {
         this.logger.log('pauseRequest');
+        this.pendingSmartStep = undefined;
 
         //if we have a compile error, we should shut down
         if (this.compileError) {
@@ -1769,12 +1775,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         await this.setTransientsToInvalid(); // call before clearState
         this.clearState();
+        this.beginSmartStep('next', args.threadId);
 
         // The debug session ends after the next line. Do not put new work after this line.
         try {
             await this.rokuAdapter.stepOver(args.threadId);
             this.logger.info('[nextRequest] end');
         } catch (error) {
+            this.pendingSmartStep = undefined;
             this.logger.error(`[nextRequest] Error running '${BrightScriptDebugSession.prototype.nextRequest.name}()'`, error);
         }
         this.sendResponse(response);
@@ -1792,8 +1800,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         await this.setTransientsToInvalid(); // call before clearState
         this.clearState();
+        this.beginSmartStep('stepIn', args.threadId);
         // The debug session ends after the next line. Do not put new work after this line.
-        await this.rokuAdapter.stepInto(args.threadId);
+        try {
+            await this.rokuAdapter.stepInto(args.threadId);
+        } catch (error) {
+            this.pendingSmartStep = undefined;
+            throw error;
+        }
         this.sendResponse(response);
         this.logger.info('[stepInRequest] end');
     }
@@ -1810,9 +1824,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         await this.setTransientsToInvalid(); // call before clearState
         this.clearState();
+        this.beginSmartStep('stepOut', args.threadId);
 
         // The debug session ends after the next line. Do not put new work after this line.
-        await this.rokuAdapter.stepOut(args.threadId);
+        try {
+            await this.rokuAdapter.stepOut(args.threadId);
+        } catch (error) {
+            this.pendingSmartStep = undefined;
+            throw error;
+        }
         this.sendResponse(response);
         this.logger.info('[stepOutRequest] end');
     }
@@ -2673,8 +2693,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             }
         }
 
+        if (await this.trySmartStep(activeThread)) {
+            return;
+        }
+
+        const stoppedEventReason = this.pendingSmartStep ? StoppedEventReason.step : StoppedEventReason.breakpoint;
+        this.pendingSmartStep = undefined;
+
         const event: StoppedEvent = new StoppedEvent(
-            StoppedEventReason.breakpoint,
+            stoppedEventReason,
             //Not sure why, but sometimes there is no active thread. Just pick thread 0 to prevent the app from totally crashing
             activeThread?.threadId ?? 0,
             '' //exception text
@@ -2682,6 +2709,79 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // Socket debugger will always stop all threads and supports multi thread inspection.
         (event.body as any).allThreadsStopped = this.enableDebugProtocol;
         this.sendEvent(event);
+    }
+
+    private beginSmartStep(kind: 'next' | 'stepIn' | 'stepOut', threadId: number) {
+        if (this.launchConfiguration?.smartStep) {
+            this.pendingSmartStep = {
+                kind: kind,
+                threadId: threadId,
+                attempts: 0
+            };
+        } else {
+            this.pendingSmartStep = undefined;
+        }
+    }
+
+    private async trySmartStep(activeThread: { filePath: string; lineNumber: number; threadId: number }) {
+        if (!this.pendingSmartStep || !this.launchConfiguration?.smartStep || !activeThread) {
+            return false;
+        }
+
+        if (!await this.shouldSmartStepThroughLine(activeThread)) {
+            return false;
+        }
+
+        if (this.pendingSmartStep.attempts >= this.maxSmartStepAttempts) {
+            this.logger.warn(`Smart step reached max attempts (${this.maxSmartStepAttempts}). Stopping on current line.`);
+            this.pendingSmartStep = undefined;
+            return false;
+        }
+
+        this.pendingSmartStep.attempts++;
+
+        await this.setTransientsToInvalid(); // call before clearState
+        this.clearState();
+
+        try {
+            const threadId = this.pendingSmartStep.threadId ?? activeThread.threadId;
+            if (this.pendingSmartStep.kind === 'next') {
+                await this.rokuAdapter.stepOver(threadId);
+            } else if (this.pendingSmartStep.kind === 'stepIn') {
+                await this.rokuAdapter.stepInto(threadId);
+            } else {
+                await this.rokuAdapter.stepOut(threadId);
+            }
+            return true;
+        } catch (error) {
+            this.logger.error('Error running smart step', error);
+            this.pendingSmartStep = undefined;
+            return false;
+        }
+    }
+
+    private async shouldSmartStepThroughLine(activeThread: { filePath: string; lineNumber: number; threadId: number }) {
+        const stagingFileInfo = await this.projectManager.getStagingFileInfo(activeThread.filePath);
+        if (!stagingFileInfo) {
+            return false;
+        }
+
+        const hasMappedGeneratedLine = await this.sourceMapManager.generatedLineIsMapped(stagingFileInfo.absolutePath, activeThread.lineNumber);
+        if (hasMappedGeneratedLine) {
+            return false;
+        }
+
+        const sourceMapPath = await this.sourceMapManager.getSourceMapPath(stagingFileInfo.absolutePath);
+        const hasSourceMap = !!(await this.sourceMapManager.getSourceMap(sourceMapPath));
+        if (hasSourceMap) {
+            return true;
+        }
+
+        const sourceLocation = await this.projectManager.getSourceLocation(activeThread.filePath, activeThread.lineNumber);
+        if (!sourceLocation?.filePath) {
+            return false;
+        }
+        return fileUtils.standardizePath(sourceLocation.filePath).toLowerCase() !== fileUtils.standardizePath(stagingFileInfo.absolutePath).toLowerCase();
     }
 
     private async setupSuspendedState() {

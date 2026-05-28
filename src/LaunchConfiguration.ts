@@ -277,6 +277,12 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     enableSourceMaps?: boolean;
 
     /**
+     * If true, automatically continue stepping through generated/uninteresting code until a mapped source line is reached.
+     * @default false
+     */
+    smartStep?: boolean;
+
+    /**
      * If true, then any pkg path found in the device logs will be converted to a source location leveraging source maps if available
      *
      * Supported formats:
