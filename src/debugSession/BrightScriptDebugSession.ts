@@ -588,8 +588,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 return await this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
             }
 
-            await this.initializeProfiling();
-
             // everything is ready, send the response to the launch request so the UI can update and configuration can begin
             this.sendResponse(response);
 
@@ -656,6 +654,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
             // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
             this.sendEvent(new InitializedEvent());
+
+            await this.initializeProfiling();
 
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
