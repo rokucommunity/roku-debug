@@ -1019,7 +1019,7 @@ describe('BreakpointManager', () => {
 
                 //now set a breakpoint in the .bs file (mimicking VS Code setting a bp on the source)
                 bpManager.setBreakpoint(bsPath, { line: 2, column: 0 });
-                await bpManager.writeBreakpointsForProject(project);
+                await bpManager.injectBreakpointsForProject(project);
 
                 //figure out where on device/staging the injected STOP pushed line 2 to
                 const postStopMap = await sourceMapManager.getSourceMap(s`${stagingDir}/source/main.brs.map`);
@@ -1062,7 +1062,7 @@ describe('BreakpointManager', () => {
                 });
                 await project.stage();
 
-                //no writeBreakpointsForProject here — we are simulating a user-placed STOP
+                //no injectBreakpointsForProject here — we are simulating a user-placed STOP
                 let found = false;
                 for (let stagingLine = 1; stagingLine <= 10; stagingLine++) {
                     const loc = await locationManager.getSourceLocation({
@@ -1124,7 +1124,7 @@ describe('BreakpointManager', () => {
 
                 //inject a BP on .bs line 2 (firstName = "John") — shifts line 3 and below
                 bpManager.setBreakpoint(bsPath, { line: 2, column: 0 });
-                await bpManager.writeBreakpointsForProject(project);
+                await bpManager.injectBreakpointsForProject(project);
 
                 const stagingToBs = await buildStagingToBsMap(s`${stagingDir}/source/main.brs`, bsPath, project);
 
@@ -1153,7 +1153,7 @@ describe('BreakpointManager', () => {
 
                 //BP only on main.bs — lib.bs is untouched by BreakpointManager
                 bpManager.setBreakpoint(bsPath, { line: 2, column: 0 });
-                await bpManager.writeBreakpointsForProject(project);
+                await bpManager.injectBreakpointsForProject(project);
 
                 //lib.brs staging lines should still resolve back to lib.bs
                 const libMapping = await buildStagingToBsMap(s`${stagingDir}/source/lib.brs`, libBsPath, project);
@@ -1177,7 +1177,7 @@ describe('BreakpointManager', () => {
 
                 bpManager.setBreakpoint(bsPath, { line: 2, column: 0 });
                 bpManager.setBreakpoint(bsPath, { line: 3, column: 0 });
-                await bpManager.writeBreakpointsForProject(project);
+                await bpManager.injectBreakpointsForProject(project);
 
                 const mapping = await buildStagingToBsMap(s`${stagingDir}/source/main.brs`, bsPath, project);
                 const reachable = new Set(Object.values(mapping).filter((n): n is number => n !== null));
@@ -1306,7 +1306,7 @@ describe('BreakpointManager', () => {
                 // Set a breakpoint on src/source/main.brs line 2
                 bpManager.setBreakpoint(srcFilePath, { line: 2, column: 0 });
 
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1377,7 +1377,7 @@ describe('BreakpointManager', () => {
                 fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
 
                 bpManager.setBreakpoint(srcFilePath, { line: 2, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1432,7 +1432,7 @@ describe('BreakpointManager', () => {
                 const rootDirMapBefore = compiled.map.toString();
 
                 bpManager.setBreakpoint(srcFilePath, { line: 2, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1506,7 +1506,7 @@ describe('BreakpointManager', () => {
 
                 // Set a breakpoint on src line 3 (print "hello") — compiles to staging line 2
                 bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1586,7 +1586,7 @@ describe('BreakpointManager', () => {
                 fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
 
                 bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1627,7 +1627,7 @@ describe('BreakpointManager', () => {
                 fsExtra.outputFileSync(`${stagingBrs}.map`, compiled.map.toString());
 
                 bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1668,7 +1668,7 @@ describe('BreakpointManager', () => {
 
                 bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
                 bpManager.setBreakpoint(srcFilePath, { line: 5, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1711,7 +1711,7 @@ describe('BreakpointManager', () => {
                 fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
 
                 bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0, condition: 'x = 1' });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1746,7 +1746,7 @@ describe('BreakpointManager', () => {
                 fsExtra.outputFileSync(s`${rootDir}/source/main.brs.map`, compiled.map.toString());
 
                 bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0, logMessage: 'hello {name}' });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1788,7 +1788,7 @@ describe('BreakpointManager', () => {
                 // BP on src line 3 -> staging line 2. After injection:
                 // staging 1=function main(), 2=STOP, 3=print"hello", 4=print"world", 5=end function
                 bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1862,7 +1862,7 @@ describe('BreakpointManager', () => {
 
                 // BP on src line 3 — getStagingLocations will resolve this to staging line 8
                 bpManager.setBreakpoint(srcFilePath, { line: 3, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,
@@ -1938,7 +1938,7 @@ describe('BreakpointManager', () => {
 
                 // BP on src line 8 — getStagingLocations resolves this to staging line 3
                 bpManager.setBreakpoint(srcFilePath, { line: 8, column: 0 });
-                await bpManager.writeBreakpointsForProject(new Project({
+                await bpManager.injectBreakpointsForProject(new Project({
                     files: ['source/main.brs'],
                     rootDir: rootDir,
                     outDir: outDir,

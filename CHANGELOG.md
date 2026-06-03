@@ -6,6 +6,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.10](https://github.com/rokucommunity/roku-debug/compare/0.23.9...v0.23.10) - 2026-05-28
+### Changed
+ - Defer initializeProfiling until after InitializedEvent for backwards compatability with DAP clients ([#362](https://github.com/rokucommunity/roku-debug/pull/362))
+
+
+
+## [0.23.9](https://github.com/rokucommunity/roku-debug/compare/0.23.8...v0.23.9) - 2026-05-27
+### Changed
+ - upgrade to [brighterscript@0.72.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0723---2026-05-27).
+### Fixed
+ - stale suspend/runtime-error events when debugger is no longer paused ([#356](https://github.com/rokucommunity/roku-debug/pull/356))
+ - crash related to missing client when trying to sync breakpoints with device ([#357](https://github.com/rokucommunity/roku-debug/pull/357))
+ - pressHomeButton crash in disconnectRequest ([#358](https://github.com/rokucommunity/roku-debug/pull/358))
+
+
+
+## [0.23.8](https://github.com/rokucommunity/roku-debug/compare/0.23.7...v0.23.8) - 2026-05-19
+### Changed
+ - Inject breakpoint STOPs _after_ `InitializedEvent` ([#340](https://github.com/rokucommunity/roku-debug/pull/340))
+ - Defer DAP capabilities and InitializedEvent until after adapter connects ([#328](https://github.com/rokucommunity/roku-debug/pull/328))
+ - upgrade to [@rokucommunity/logger@0.3.12](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#0312---2026-05-19). Notable changes since 0.3.11:
+     - Security enhancements ([#17](https://github.com/rokucommunity/logger/pull/17))
+ - upgrade to [brighterscript@0.72.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0722---2026-05-19). Notable changes since 0.72.1:
+     - Security enhancements ([#1714](https://github.com/rokucommunity/brighterscript/pull/1714))
+ - upgrade to [roku-deploy@3.17.4](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3174---2026-05-19). Notable changes since 3.17.2:
+     - Security enhancements ([#263](https://github.com/rokucommunity/roku-deploy/pull/263))
+     - Add `autoLaunch` option to control `dev_autolaunch` on sideload ([#261](https://github.com/rokucommunity/roku-deploy/pull/261))
+### Fixed
+ - security enhancements ([#350](https://github.com/rokucommunity/roku-debug/pull/350))
+ - TelnetAdapter crash when methods are called after destroy ([#349](https://github.com/rokucommunity/roku-debug/pull/349))
+ - deferred capability handling for exception breakpoints ([#342](https://github.com/rokucommunity/roku-debug/pull/342))
+ - bug on windows with rdb file copying ([#343](https://github.com/rokucommunity/roku-debug/pull/343))
+ - sourcemap race in preprocessStagingFiles ([#339](https://github.com/rokucommunity/roku-debug/pull/339))
+
+
+
+## [0.23.7](https://github.com/rokucommunity/roku-debug/compare/0.23.6...v0.23.7) - 2026-05-11
+### Changed
+ - upgrade to [brighterscript@0.72.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0721---2026-05-11). Notable changes since 0.72.0:
+     - feat: allow line continuation in .brs files when minFirmwareVersion >= 15.3 ([#1693](https://github.com/rokucommunity/brighterscript/pull/1693))
+ - upgrade to [roku-deploy@3.17.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3172---2026-05-05). Notable changes since 3.17.1:
+     - Expanded the default files array to include the locale folder ([#237](https://github.com/rokucommunity/roku-deploy/pull/237))
+
+
+
 ## [0.23.6](https://github.com/rokucommunity/roku-debug/compare/0.23.5...v0.23.6) - 2026-04-30
 ### Changed
  - Increase `app-ready` timeout to 60 seconds for slow Roku launches ([#334](https://github.com/rokucommunity/roku-debug/pull/334))

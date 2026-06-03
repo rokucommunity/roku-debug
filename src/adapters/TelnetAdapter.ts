@@ -74,6 +74,11 @@ export class TelnetAdapter {
 
     public supportsExceptionBreakpoints = false;
 
+    //BreakpointManager rewrites `stop` statements as `if <cond> then : STOP : end if` and
+    //`if hits >= N then STOP`, so both forms work in telnet mode regardless of firmware.
+    public supportsConditionalBreakpoints = true;
+    public supportsHitConditionalBreakpoints = true;
+
     public once(eventName: 'app-ready'): Promise<void>;
     public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: string) {
@@ -1036,6 +1041,9 @@ export class TelnetAdapter {
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         try {
+            if (this.isDestroyed || !this.cache) {
+                return Promise.reject(new Error(`Cannot resolve "${key}": adapter is destroyed`));
+            }
             if (this.cache[key]) {
                 this.logger.debug(`resolve cache "${key}": already exists`);
                 return this.cache[key];

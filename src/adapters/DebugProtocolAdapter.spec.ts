@@ -2,6 +2,7 @@
 
 import { expect } from 'chai';
 import type { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
+import { ProtocolCapabilities } from '../debugProtocol/client/ProtocolCapabilities';
 import { DebugProtocolAdapter, KeyType } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import { VariableType, VariablesResponse } from '../debugProtocol/events/responses/VariablesResponse';
@@ -194,7 +195,7 @@ describe('DebugProtocolAdapter', function() {
         it('retries at next sync() to delete breakpoints if first request failed', async () => {
             await initialize();
             //disable auto breakpoint verification
-            client.protocolVersion = '3.2.0';
+            client.capabilities = new ProtocolCapabilities('3.2.0');
 
             //add a single breakpoint first and do a diff to lock in the diff
             const bp2 = breakpointManager.setBreakpoint(srcPath, { line: 2 });
@@ -327,7 +328,7 @@ describe('DebugProtocolAdapter', function() {
             await initialize();
 
             //force the client to expect the device to verify breakpoints (instead of auto-verifying them as soon as seen)
-            client.protocolVersion = '3.2.0';
+            client.capabilities = new ProtocolCapabilities('3.2.0');
 
             breakpointManager.setBreakpoint(srcPath, {
                 line: bpLine
@@ -504,6 +505,105 @@ describe('DebugProtocolAdapter', function() {
 
             // Should not throw
             await adapter._syncBreakpoints();
+        });
+
+        //Regression tests for DAP crash: unhandledRejection - Cannot read properties of undefined (reading 'addBreakpoints').
+        //After the protocol client closes mid-session, this.client becomes undefined but this.connected
+        //is never reset — and even when both flags agree, an await inside _syncBreakpoints can yield
+        //while the close handler nulls the client. Either path crashes at `this.client.addBreakpoints(...)`.
+        //See https://github.com/rokucommunity/vscode-brightscript-language/issues/811 for the full report.
+        it('does not crash when client closes after connect leaves connected flag stale', async () => {
+            await initialize();
+            //force the fallback capabilities to a protocol version that supports breakpoint
+            //registration while running (production crash was on protocol 3.5.0). Without this,
+            //the second guard short-circuits on protocols <3.2.0 and never reaches this.client.addBreakpoints.
+            adapter['fallbackCapabilities'] = new ProtocolCapabilities('3.5.0');
+            //add a breakpoint so the diff has an 'added' entry — forces the function past the early returns into this.client.addBreakpoints
+            breakpointManager.replaceBreakpoints(srcPath, [{ line: 1 }]);
+            //simulate the device disconnecting mid-session: the close handler sets this.client = undefined
+            //but the existing code never resets this.connected, so the entry guard at the top of _syncBreakpoints
+            //still passes
+            adapter['client'] = undefined;
+            //precondition: stale connected flag is the root cause of the production crash
+            expect(adapter.connected).to.be.true;
+
+            //should not throw — currently crashes at `this.client.addBreakpoints(...)`
+            await adapter.syncBreakpoints();
+        });
+
+        it('does not crash when client becomes undefined mid-sync (TOCTOU between guard and addBreakpoints)', async () => {
+            await initialize();
+            breakpointManager.replaceBreakpoints(srcPath, [{ line: 1 }]);
+            //simulate close handler running during the getDiff await — the entry guard already passed, then the client gets nulled
+            sinon.stub(breakpointManager, 'getDiff').callsFake(() => {
+                adapter['client'] = undefined;
+                return Promise.resolve({
+                    added: [{
+                        pkgPath: 'pkg:/source/main.brs',
+                        line: 1,
+                        srcHash: 'a',
+                        destHash: 'a'
+                    } as any],
+                    removed: [],
+                    unchanged: []
+                });
+            });
+
+            //should not throw — currently crashes at `this.client.addBreakpoints(...)`
+            await adapter.syncBreakpoints();
+        });
+
+        it('pushes pending breakpoints to a fresh client after the previous one closed (relaunch/reload recovery)', async () => {
+            await initialize();
+            adapter['fallbackCapabilities'] = new ProtocolCapabilities('3.5.0');
+
+            //user sets a breakpoint while the first client is alive
+            breakpointManager.replaceBreakpoints(srcPath, [{ line: 1 }]);
+            plugin.pushResponse(AddBreakpointsResponse.fromJson({
+                breakpoints: [{ id: 1, errorCode: ErrorCode.OK, ignoreCount: 0 }],
+                requestId: 1
+            }));
+            await adapter.syncBreakpoints();
+
+            //device disconnects: trigger the real close handler so adapter state matches production
+            //(matches the bad window from https://github.com/rokucommunity/vscode-brightscript-language/issues/811 — between close and app-exit firing).
+            adapter['client']['emitter'].emit('close');
+
+            //post-fix invariant: the close handler resets connected so subsequent syncs early-return
+            expect(adapter.connected).to.be.false;
+
+            //user adds another breakpoint while the client is offline
+            breakpointManager.replaceBreakpoints(srcPath, [{ line: 1 }, { line: 2 }]);
+
+            //the no-client sync must not crash; with connected=false it early-returns before getDiff
+            //so the breakpoint baseline is preserved for the next reconnect
+            await adapter.syncBreakpoints();
+
+            //app-exit fires ~200ms after close in production and resets the breakpoint baseline so the
+            //next client sees every breakpoint as a fresh add (BrightScriptDebugSession.resetSessionState)
+            breakpointManager.clearBreakpointLastState();
+
+            //a fresh protocol client comes online (the test server is not designed for reconnects, so
+            //stand up a stub client that captures what sync would send to the new device)
+            const sentBreakpoints: { lineNumber: number }[] = [];
+            adapter['client'] = {
+                capabilities: new ProtocolCapabilities('3.5.0'),
+                isStopped: true,
+                addBreakpoints: (bps: { lineNumber: number }[]) => {
+                    sentBreakpoints.push(...bps);
+                    return Promise.resolve({
+                        data: {
+                            errorCode: ErrorCode.OK,
+                            breakpoints: bps.map((_, i) => ({ id: 100 + i, errorCode: ErrorCode.OK }))
+                        }
+                    });
+                }
+            } as any;
+            adapter['connected'] = true;
+
+            await adapter.syncBreakpoints();
+
+            expect(sentBreakpoints.map(x => x.lineNumber).sort()).to.eql([1, 2]);
         });
     });
 
@@ -689,6 +789,40 @@ describe('DebugProtocolAdapter', function() {
             expect(adapter['compileClientClosed'].isResolved).to.be.false;
             adapter['compileClient'].emit('close');
             expect(adapter['compileClientClosed'].isResolved).to.be.true;
+        });
+    });
+
+    describe('getThreads', () => {
+        //Regression test for DAP crash: unhandledRejection - Cannot get threads: debugger is not paused.
+        //adapter.emit('suspend') defers the actual event delivery via setTimeout(0). If isStopped
+        //flips from true to false during that window (auto-continue on entry breakpoint, rapid
+        //step, etc.), the suspend handler — which calls getThreads — throws an unhandled rejection.
+        //See https://github.com/rokucommunity/vscode-brightscript-language/issues/798
+        it('does not throw "Cannot get threads" when isStopped flips false between emit and the suspend handler running', async () => {
+            await initialize();
+
+            //mirror what BrightScriptDebugSession.onSuspend does: call getThreads from the suspend handler
+            let handlerError: Error | undefined;
+            adapter.on('suspend', async () => {
+                try {
+                    await adapter.getThreads();
+                } catch (e) {
+                    handlerError = e as Error;
+                }
+            });
+
+            //synchronously trigger the adapter's internal 'suspend' listener — this schedules adapter.emit('suspend') via setTimeout(0)
+            adapter['client']['emitter'].emit('suspend', {});
+            //before the setTimeout fires, the debugger transitions back to running (e.g. auto-continue
+            //on entry breakpoint kicked off by a previous suspend, or a rapid step request)
+            adapter['client'].isStopped = false;
+
+            //let the setTimeout(0) fire and the async suspend handler complete
+            await util.sleep(50);
+
+            expect(
+                handlerError?.message ?? ''
+            ).to.not.include('Cannot get threads: debugger is not paused');
         });
     });
 
