@@ -901,10 +901,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // We need to clear/reset some state to avoid issues.
         this.entryBreakpointWasHandled = false;
         this.breakpointManager.clearBreakpointLastState();
-        //a restart re-stages the project, so any cached parsed ASTs and <script>-reference scans
-        //from the previous run are now stale and must be discarded
+        //a restart re-stages the project, so any cached parsed ASTs from the previous run are now stale
+        //and must be discarded. (the <script>-reference set lives on the freshly-created Project, so it
+        //needs no explicit reset here.)
         this.breakpointManager.clearStagingFileAstCache();
-        this.breakpointManager.clearScriptReferencedFilesCache();
     }
 
     /**

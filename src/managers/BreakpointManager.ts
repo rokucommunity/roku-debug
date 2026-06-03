@@ -1,6 +1,5 @@
 import * as path from 'path';
 import * as fsExtra from 'fs-extra';
-import * as fastGlob from 'fast-glob';
 import type { AstNode } from 'brighterscript';
 import {
     Parser as BrsParser,
@@ -407,7 +406,6 @@ export class BreakpointManager {
      */
     private async getBreakpointWork(project: Project, willInjectStop = false) {
         let result = {} as Record<string, Array<BreakpointWorkItem>>;
-        let scriptReferencedFiles: Set<string> | undefined;
 
         //iterate over every file that contains breakpoints
         for (let [sourceFilePath, breakpoints] of this.breakpointsByFilePath) {
@@ -435,11 +433,10 @@ export class BreakpointManager {
                     //skip files we can't inject breakpoints into (e.g. JSON, etc.)
                     //if the extension isn't natively supported, check if the file is referenced
                     //by a <script> tag in an XML component — Roku loads those as BrightScript
-                    //regardless of extension
+                    //regardless of extension. The set is collected once during Project.stage().
                     const ext = path.extname(stagingLocation.filePath).toLowerCase();
                     if (!['.brs', '.xml'].includes(ext)) {
-                        scriptReferencedFiles ??= this.getScriptReferencedFiles(project.stagingDir);
-                        if (!scriptReferencedFiles.has(s`${stagingLocation.filePath}`)) {
+                        if (!project.scriptReferencedFiles.has(s`${stagingLocation.filePath}`)) {
                             continue;
                         }
                     }
@@ -595,64 +592,6 @@ export class BreakpointManager {
      * The list of breakpoints that were permanently written to a file at the start of a debug session. Used for line offset calculations.
      */
     private permanentBreakpointsBySrcPath = new Map<string, BreakpointWorkItem[]>();
-
-    /**
-     * Cache of script-referenced file paths per staging directory.
-     * Keyed by staging dir. Invalidated at the start of each debug session.
-     */
-    private scriptReferencedFilesCache = new Map<string, Set<string>>();
-
-    /**
-     * Scan all XML files in the staging directory for <script> tags and return the set of
-     * absolute file paths they reference. Roku loads any file referenced by a <script> tag
-     * as BrightScript regardless of its extension, so these are valid breakpoint targets.
-     * Results are cached per staging directory.
-     */
-    private getScriptReferencedFiles(stagingDir: string): Set<string> {
-        const cacheKey = s`${stagingDir}`;
-        if (this.scriptReferencedFilesCache.has(cacheKey)) {
-            return this.scriptReferencedFilesCache.get(cacheKey);
-        }
-        const result = new Set<string>();
-        try {
-            const xmlFiles = fastGlob.sync('**/*.xml', { cwd: stagingDir, absolute: true });
-            const scriptUriRegex = /<script\b[^>]*\buri\s*=\s*"([^"]*)"[^>]*\/?>/gi;
-            for (const xmlFile of xmlFiles) {
-                try {
-                    const contents = fsExtra.readFileSync(xmlFile, 'utf-8');
-                    let match: RegExpExecArray;
-                    while ((match = scriptUriRegex.exec(contents)) !== null) {
-                        const uri = match[1];
-                        const protocolIndex = uri.indexOf(':/');
-                        let absolutePath: string;
-                        if (protocolIndex >= 0) {
-                            //pkg:/ or libpkg:/ — resolve from staging root
-                            const relativePath = uri.substring(protocolIndex + 2).replace(/^\//, '');
-                            absolutePath = s`${stagingDir}/${relativePath}`;
-                        } else {
-                            //relative path — resolve from the XML file's directory
-                            absolutePath = s`${path.resolve(path.dirname(xmlFile), uri)}`;
-                        }
-                        result.add(absolutePath);
-                    }
-                } catch (e) {
-                    this.logger.debug('Error reading XML file for script references', { xmlFile, error: e });
-                }
-            }
-        } catch (e) {
-            this.logger.debug('Error scanning staging dir for XML script references', { stagingDir, error: e });
-        }
-        this.scriptReferencedFilesCache.set(cacheKey, result);
-        return result;
-    }
-
-    /**
-     * Clear the script-referenced files cache. Should be called when staging directory
-     * contents may have changed (e.g. at the start of a new debug session).
-     */
-    public clearScriptReferencedFilesCache() {
-        this.scriptReferencedFilesCache.clear();
-    }
 
     /**
      * Cache of parsed ASTs keyed by staging file path.

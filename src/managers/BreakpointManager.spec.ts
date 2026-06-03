@@ -717,28 +717,46 @@ describe('BreakpointManager', () => {
             expect(bp.reason).to.equal('failed');
         });
 
-        it('allows breakpoints in files referenced by an XML script tag', async () => {
+        it('allows breakpoints in non-.brs files that the project marked as script-referenced', async () => {
+            //a file with a non-standard extension that Roku still loads as BrightScript because an XML
+            //<script> tag references it. Project.stage() populates project.scriptReferencedFiles; here we
+            //set it directly since these tests construct the Project without staging.
             const code = `sub main()\n    print 1\nend sub`;
-            fsExtra.writeFileSync(`${rootDir}/source/helper.brs`, code);
-            fsExtra.copyFileSync(`${rootDir}/source/helper.brs`, `${stagingDir}/source/helper.brs`);
+            fsExtra.writeFileSync(`${rootDir}/source/helper.script`, code);
+            fsExtra.copyFileSync(`${rootDir}/source/helper.script`, `${stagingDir}/source/helper.script`);
 
-            //XML component that references helper.brs via a pkg:/ uri
-            fsExtra.outputFileSync(`${stagingDir}/components/MyComp.xml`, `
-                <component name="MyComp">
-                    <script type="text/brightscript" uri="pkg:/source/helper.brs"/>
-                </component>
-            `);
-
-            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/helper.brs`, [{ line: 2 }]);
-
-            await bpManager.injectBreakpointsForProject(new Project(<any>{
+            const project = new Project(<any>{
                 rootDir: rootDir,
                 outDir: outDir,
                 stagingDir: stagingDir
-            }));
+            });
+            project.scriptReferencedFiles.add(s`${stagingDir}/source/helper.script`);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/helper.script`, [{ line: 2 }]);
+
+            await bpManager.injectBreakpointsForProject(project);
 
             expect(bp.verified).to.be.true;
             expect(bp.reason).to.be.undefined;
+        });
+
+        it('fails breakpoints in non-.brs files that are NOT script-referenced', async () => {
+            const code = `sub main()\n    print 1\nend sub`;
+            fsExtra.writeFileSync(`${rootDir}/source/helper.script`, code);
+            fsExtra.copyFileSync(`${rootDir}/source/helper.script`, `${stagingDir}/source/helper.script`);
+
+            //project.scriptReferencedFiles is left empty — nothing references this file
+            const project = new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            });
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/helper.script`, [{ line: 2 }]);
+
+            await bpManager.resolveBreakpointsForProject(project);
+
+            expect(bp.reason).to.equal('failed');
         });
     });
 
