@@ -1193,14 +1193,12 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('resetSessionState', () => {
-        it('clears the breakpoint manager AST cache so a restart does not reuse stale staged data', () => {
-            const clearAst = sinon.stub(session.breakpointManager, 'clearStagingFileAstCache');
-            const clearLastState = sinon.stub(session.breakpointManager, 'clearBreakpointLastState');
+        it('resets the breakpoint manager so a restart does not reuse stale staged data', () => {
+            const reset = sinon.stub(session.breakpointManager, 'reset');
 
             (session as any).resetSessionState();
 
-            expect(clearAst.calledOnce, 'clearStagingFileAstCache should be called').to.be.true;
-            expect(clearLastState.calledOnce, 'clearBreakpointLastState should be called').to.be.true;
+            expect(reset.calledOnce, 'breakpointManager.reset() should be called').to.be.true;
         });
     });
 

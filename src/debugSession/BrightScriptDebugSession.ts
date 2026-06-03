@@ -900,11 +900,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // launchRequest gets invoked by our restart session flow.
         // We need to clear/reset some state to avoid issues.
         this.entryBreakpointWasHandled = false;
-        this.breakpointManager.clearBreakpointLastState();
-        //a restart re-stages the project, so any cached parsed ASTs from the previous run are now stale
-        //and must be discarded. (the <script>-reference set lives on the freshly-created Project, so it
-        //needs no explicit reset here.)
-        this.breakpointManager.clearStagingFileAstCache();
+        //reset all per-session breakpoint state (diff baseline + cached parsed ASTs) since a restart
+        //re-stages the project
+        this.breakpointManager.reset();
     }
 
     /**
@@ -1287,12 +1285,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
-        //resolve breakpoints for all debugger types; additionally write `stop` statements for telnet
-        if (this.enableDebugProtocol) {
-            await this.breakpointManager.resolveBreakpointsForProject(this.projectManager.mainProject);
-        } else {
-            await this.breakpointManager.injectBreakpointsForProject(this.projectManager.mainProject);
-        }
+        //validate breakpoints for all debugger types (and write `stop` statements for telnet — decided internally)
+        await this.breakpointManager.validateAndWriteBreakpointsForProject(this.projectManager.mainProject);
 
         if (this.launchConfiguration.packageTask) {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
@@ -1411,13 +1405,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // Add breakpoint lines to the staging files and before publishing
         util.log('Adding stop statements for active breakpoints in Component Libraries');
 
-        //resolve breakpoints (and write STOPs for telnet), postfix, and zip each complib in parallel — each targets distinct files
+        //validate breakpoints (and write STOPs for telnet), postfix, and zip each complib in parallel — each targets distinct files
         const packagePromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
-            if (this.enableDebugProtocol) {
-                await this.breakpointManager.resolveBreakpointsForProject(compLibProject);
-            } else {
-                await this.breakpointManager.injectBreakpointsForProject(compLibProject);
-            }
+            await this.breakpointManager.validateAndWriteBreakpointsForProject(compLibProject);
             await compLibProject.postfixFiles();
             await compLibProject.zipPackage({ retainStagingFolder: true });
         });

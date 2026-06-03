@@ -48,6 +48,12 @@ export class BreakpointManager {
         sourceDirs: string[];
         rootDir: string;
         enableSourceMaps?: boolean;
+        /**
+         * When true the session uses the DebugProtocol (on-device) debugger, which sets breakpoints by
+         * line number. When false/undefined it's a telnet session, where breakpoints are only possible by
+         * writing literal `STOP` statements into the staged files.
+         */
+        enableDebugProtocol?: boolean;
     };
 
     private emitter = new EventEmitter();
@@ -514,14 +520,23 @@ export class BreakpointManager {
     }
 
     /**
-     * Validate breakpoints against the project's staging files and fail any that cannot be placed
-     * (non-executable lines, unsupported file types, files not in the project).
-     * Called for all debugger types. Returns the resolved breakpoints keyed by staging file path.
-     * @param willInjectStop whether a literal `STOP` will be injected at each breakpoint location (telnet).
-     * Forwarded to `getBreakpointWork` so STOP-injection-only invalid lines are excluded for telnet but
-     * kept for DebugProtocol. See {@link getBreakpointWork}.
+     * Scan the project's staged files and reconcile every breakpoint against them: any breakpoint that
+     * can't be placed (non-executable line, unsupported file type, or a file that isn't part of the
+     * project) is marked failed. Returns the surviving breakpoints keyed by staging file path.
+     *
+     * For telnet sessions this additionally writes literal `STOP` statements into the staged files and
+     * registers the written breakpoints as permanent/verified — telnet has no on-device breakpoint API,
+     * so the only way to break is to bake a `STOP` into the code. For DebugProtocol sessions nothing is
+     * written (the device sets breakpoints by line number); only validation happens.
+     *
+     * The telnet-vs-DebugProtocol decision is made here from `launchConfiguration.enableDebugProtocol`,
+     * so callers don't have to branch.
      */
-    public async resolveBreakpointsForProject(project: Project, willInjectStop = false) {
+    public async validateAndWriteBreakpointsForProject(project: Project) {
+        //telnet injects a literal STOP at each breakpoint, so STOP-injection-unsafe lines must be excluded.
+        //DebugProtocol breaks by line number and writes nothing, so those lines stay valid.
+        const willInjectStop = !this.launchConfiguration?.enableDebugProtocol;
+
         const breakpointsByStagingFilePath = await this.getBreakpointWork(project, willInjectStop);
 
         //track which breakpoints were successfully mapped to a staging location
@@ -538,8 +553,9 @@ export class BreakpointManager {
                 if (!stagedSrcHashes.has(bp.srcHash) && bp.reason !== 'failed') {
                     bp.verified = false;
                     bp.reason = 'failed';
-                    //only set a message for file types we understand — for unknown file types
-                    //(JSON, etc.) leave the message empty so other debuggers can claim the breakpoint
+                    //only set a message for file types we understand. For unknown file types (JSON, etc.)
+                    //leave the message empty — this isn't necessarily a real failure, it just isn't a
+                    //BrightScript file we know how to place a breakpoint in.
                     const srcExt = path.extname(bp.srcPath).toLowerCase();
                     bp.message = ['.brs', '.bs', '.xml'].includes(srcExt)
                         ? 'No executable code at this line'
@@ -549,18 +565,21 @@ export class BreakpointManager {
             }
         }
 
+        //telnet only: bake `STOP` statements into the staged files for every surviving breakpoint
+        if (willInjectStop) {
+            await this.writeBreakpointsForProject(breakpointsByStagingFilePath);
+        }
+
         return breakpointsByStagingFilePath;
     }
 
     /**
-     * Inject STOP statements into the project's staging files for each breakpoint location.
-     * Marks injected breakpoints as verified and registers them as permanent.
-     * Only called for telnet debuggers.
+     * Write STOP statements into the project's staging files for each breakpoint location and update the
+     * sourcemaps to match. Marks the written breakpoints as verified and registers them as permanent.
+     * Telnet only — `validateAndWriteBreakpointsForProject` calls this when no on-device breakpoint API
+     * is available.
      */
-    public async injectBreakpointsForProject(project: Project) {
-        //telnet injects a literal STOP at each breakpoint, so STOP-injection-unsafe lines must be excluded
-        const breakpointsByStagingFilePath = await this.resolveBreakpointsForProject(project, true);
-
+    private async writeBreakpointsForProject(breakpointsByStagingFilePath: Record<string, BreakpointWorkItem[]>) {
         const promises = [] as Promise<any>[];
         for (const stagingFilePath in breakpointsByStagingFilePath) {
             const breakpoints = breakpointsByStagingFilePath[stagingFilePath];
@@ -605,6 +624,17 @@ export class BreakpointManager {
      */
     public clearStagingFileAstCache() {
         this.stagingFileAstCache.clear();
+    }
+
+    /**
+     * Reset all per-session state so a relaunch/restart starts clean. A restart re-stages the project,
+     * so cached parsed ASTs from the previous run are stale, and the diff baseline must be cleared so the
+     * next client sees every breakpoint as a fresh add. (The `<script>`-reference set lives on the
+     * freshly-created Project, so it doesn't need resetting here.)
+     */
+    public reset() {
+        this.clearStagingFileAstCache();
+        this.clearBreakpointLastState();
     }
 
     /**
