@@ -590,12 +590,12 @@ describe('BreakpointManager', () => {
             expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(`sub main()\n    print 1\n    print 2\nend sub`);
         });
 
-        it('marks breakpoints on invalid breakpoint locations as failed and emits a message', async () => {
-            //the file exists in staging; line 3 is `end sub` — not a valid breakpoint location
-            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+        it('marks breakpoints on positively-invalid lines as failed and emits a message', async () => {
+            //line 2 is a comment — positively non-executable, so it fails for ALL debugger types
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    ' just a comment\n    print 1\nend sub`);
             fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
 
-            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }]);
             expect(bp.reason).to.be.undefined;
 
             await bpManager.resolveBreakpointsForProject(new Project(<any>{
@@ -607,6 +607,66 @@ describe('BreakpointManager', () => {
             expect(bp.verified).to.be.false;
             expect(bp.reason).to.equal('failed');
             expect(bp.message).to.equal('No executable code at this line');
+        });
+
+        it('keeps a breakpoint on `end sub` for DebugProtocol but fails it for telnet', async () => {
+            //`end sub` is only invalid when a literal STOP would be injected (telnet). DebugProtocol breaks
+            //by line number and injects nothing, so it cannot prove the device won't break there — keep it.
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\nend sub`);
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+            const projectArgs = <any>{ rootDir: rootDir, outDir: outDir, stagingDir: stagingDir };
+
+            //DebugProtocol path keeps the breakpoint
+            const [dapBp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+            await bpManager.resolveBreakpointsForProject(new Project(projectArgs));
+            expect(dapBp.reason, 'DAP should keep a breakpoint on `end sub`').to.not.equal('failed');
+
+            //telnet path (injectBreakpointsForProject) fails the same breakpoint
+            //re-copy the staging file since the previous run may have modified it
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+            (bpManager as any).clearStagingFileAstCache();
+            const [telnetBp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+            await bpManager.injectBreakpointsForProject(new Project(projectArgs));
+            expect(telnetBp.reason, 'telnet should fail a breakpoint on `end sub`').to.equal('failed');
+        });
+
+        it('keeps a breakpoint on a continuation line of an AA literal for DebugProtocol', async () => {
+            //you CAN set a native (DebugProtocol) breakpoint on a line inside a multi-line AA literal —
+            //the device breaks by line number. line 4 (`b: 2`) is a continuation line, not a statement start.
+            const code = `sub main()\n    data = {\n        a: 1,\n        b: 2\n    }\nend sub`;
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 4 }]);
+
+            await bpManager.resolveBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.reason, 'DAP should keep a breakpoint inside an AA literal').to.not.equal('failed');
+        });
+
+        it('fails a breakpoint on a continuation line of an AA literal for telnet', async () => {
+            //telnet injects a literal STOP before the line; injecting one inside the AA literal would
+            //produce invalid BrightScript, so this location must be failed.
+            const code = `sub main()\n    data = {\n        a: 1,\n        b: 2\n    }\nend sub`;
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 4 }]);
+
+            await bpManager.injectBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            expect(bp.reason, 'telnet should fail a breakpoint inside an AA literal').to.equal('failed');
+            //and the staging file must NOT have had a STOP injected into the literal
+            expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(code);
         });
 
         it('sets message to undefined when failing breakpoints in unknown file types', async () => {
@@ -2339,249 +2399,381 @@ describe('BreakpointManager', () => {
         });
 
         /**
-         * Write the given lines to the staging file and assert the breakpoint validity
-         * for each one. Each entry is a [sourceText, expectedValid] tuple so the
-         * expected value sits right next to the line it describes.
+         * Write the given lines to the staging file and assert breakpoint validity for each one in
+         * BOTH debugger modes. Each entry is a `[sourceText, dapValid, telnetValid]` triple so the
+         * expected value for each mode sits right next to the line it describes.
+         *
+         * `dapValid`    = expected validity for DebugProtocol (no STOP injection — device breaks by line)
+         * `telnetValid` = expected validity for telnet (a literal `STOP` is injected before the line)
+         *
+         * The guiding rule, asserted line-by-line: a breakpoint is allowed unless we can point to
+         * specific code proving it invalid. DAP therefore keeps everything except the positively-
+         * identified non-executable blacklist; telnet additionally excludes lines where injecting a
+         * `STOP` would break the BrightScript (structural keywords, multi-line continuation lines).
          *
          * @example
          * checkLines(
-         *     ['sub foo()',  true],   // function header — valid breakpoint location
-         *     ['    x = 1', true],
-         *     ['end sub',   false],  // end sub is NOT a valid breakpoint location
+         *     ['sub foo()',  true,  true],   // function header — valid in both modes
+         *     ['    x = 1',  true,  true],
+         *     ['end sub',    true,  false],  // DAP keeps it; telnet can't inject a STOP before `end sub`
          * );
          */
-        function checkLines(...lines: [string, boolean][]) {
+        function checkLines(...lines: [string, boolean, boolean][]) {
             const code = lines.map(([line]) => line).join('\n');
             fsExtra.outputFileSync(stagingFile, code);
-            (bpManager as any).stagingFileAstCache.clear();
-            for (let i = 0; i < lines.length; i++) {
-                const [lineText, expected] = lines[i];
-                const actual = (bpManager as any).isValidBreakpointLine(stagingFile, i + 1).isValid;
-                expect(actual, `line ${i + 1}: \`${lineText.trim()}\``).to.equal(expected);
+            for (const [willInjectStop, modeName, pick] of [
+                [false, 'DebugProtocol', (t: [string, boolean, boolean]) => t[1]] as const,
+                [true, 'telnet', (t: [string, boolean, boolean]) => t[2]] as const
+            ]) {
+                (bpManager as any).stagingFileAstCache.clear();
+                for (let i = 0; i < lines.length; i++) {
+                    const expected = pick(lines[i]);
+                    const actual = (bpManager as any).isValidBreakpointLine(stagingFile, i + 1, willInjectStop).isValid;
+                    expect(actual, `[${modeName}] line ${i + 1}: \`${lines[i][0].trim()}\``).to.equal(expected);
+                }
             }
         }
 
-        // ─── valid breakpoint locations ──────────────────────────────────────────
+        // Triples are [sourceText, dapValid, telnetValid].
+        // Rule under test: keep every breakpoint unless we can prove it invalid.
+        //   - blacklist (comment/import/decl) -> invalid in BOTH modes (positively non-executable)
+        //   - real statement start            -> valid in BOTH modes
+        //   - covered-but-no-statement-start  -> valid for DAP (can't prove), invalid for telnet (STOP unsafe)
+
+        // ─── lines that are valid in BOTH modes ──────────────────────────────────
 
         it('marks regular assignment and print statements as valid breakpoint locations', () => {
             checkLines(
-                ['sub foo()', true],   // function header IS a valid breakpoint
-                ['    x = 1', true],
-                ['    print x', true],
-                ['end sub', false]   // end sub is NOT a valid breakpoint location
+                ['sub foo()', true, true],   // function header
+                ['    x = 1', true, true],
+                ['    print x', true, true],
+                ['end sub', true, false]   // DAP keeps; telnet can't inject STOP before `end sub`
             );
         });
 
-        it('marks sub/function header as valid and end as invalid breakpoint location', () => {
+        it('marks sub/function header as valid; `end` keeps for DAP but not telnet', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    x = 1', true],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    x = 1', true, true],
+                ['end sub', true, false]
             );
             checkLines(
-                ['function getValue()', true],
-                ['    return 42', true],
-                ['end function', false]
-            );
-        });
-
-        it('marks `if` as a valid breakpoint location, `end if` as invalid', () => {
-            checkLines(
-                ['sub foo()', true],
-                ['    if true then', true],
-                ['        x = 1', true],
-                ['    end if', false],
-                ['end sub', false]
+                ['function getValue()', true, true],
+                ['    return 42', true, true],
+                ['end function', true, false]
             );
         });
 
-        it('marks `else` and `end if` as invalid breakpoint locations', () => {
+        it('marks `if` as valid; `end if` keeps for DAP but not telnet', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    if true then', true],
-                ['        x = 1', true],
-                ['    else', false],
-                ['        x = 2', true],
-                ['    end if', false],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    if true then', true, true],
+                ['        x = 1', true, true],
+                ['    end if', true, false],
+                ['end sub', true, false]
             );
         });
 
-        it('marks `else if` as a valid breakpoint location', () => {
+        it('handles `else` and `end if`: valid for DAP, invalid for telnet', () => {
+            checkLines(
+                ['sub foo()', true, true],
+                ['    if true then', true, true],
+                ['        x = 1', true, true],
+                ['    else', true, false],
+                ['        x = 2', true, true],
+                ['    end if', true, false],
+                ['end sub', true, false]
+            );
+        });
+
+        it('marks `else if` as a valid breakpoint location in both modes', () => {
             // BSC models `else if` as a nested IfStatement starting on that line
             checkLines(
-                ['sub foo()', true],
-                ['    if true then', true],
-                ['        x = 1', true],
-                ['    else if false then', true],
-                ['        x = 2', true],
-                ['    end if', false],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    if true then', true, true],
+                ['        x = 1', true, true],
+                ['    else if false then', true, true],
+                ['        x = 2', true, true],
+                ['    end if', true, false],
+                ['end sub', true, false]
             );
         });
 
-        it('marks `for` as a valid breakpoint location, `end for` as invalid', () => {
+        it('marks `for` as valid; `end for` keeps for DAP but not telnet', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    for i = 0 to 10', true],
-                ['        x = i', true],
-                ['    end for', false],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    for i = 0 to 10', true, true],
+                ['        x = i', true, true],
+                ['    end for', true, false],
+                ['end sub', true, false]
             );
         });
 
-        it('marks `for each` as a valid breakpoint location, `end for` as invalid', () => {
+        it('marks `for each` as valid; `end for` keeps for DAP but not telnet', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    for each item in arr', true],
-                ['        x = item', true],
-                ['    end for', false],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    for each item in arr', true, true],
+                ['        x = item', true, true],
+                ['    end for', true, false],
+                ['end sub', true, false]
             );
         });
 
-        it('marks `while` as a valid breakpoint location, `end while` as invalid', () => {
+        it('marks `while` as valid; `end while` keeps for DAP but not telnet', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    while true', true],
-                ['        x = 1', true],
-                ['    end while', false],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    while true', true, true],
+                ['        x = 1', true, true],
+                ['    end while', true, false],
+                ['end sub', true, false]
             );
         });
 
         it('marks function call and return as valid breakpoint locations', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    bar()', true],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    bar()', true, true],
+                ['end sub', true, false]
             );
             checkLines(
-                ['function foo()', true],
-                ['    return 42', true],
-                ['end function', false]
-            );
-        });
-
-        // ─── invalid breakpoint locations ────────────────────────────────────────
-
-        it('marks blank lines as invalid breakpoint locations', () => {
-            checkLines(
-                ['sub foo()', true],
-                ['', false],  // blank line
-                ['    x = 1', true],
-                ['', false],  // blank line
-                ['end sub', false]
-            );
-        });
-
-        it('marks comment lines as invalid breakpoint locations', () => {
-            checkLines(
-                ['sub foo()', true],
-                ['    \' this is a comment', false],
-                ['    x = 1', true],
-                ['end sub', false]
-            );
-        });
-
-        it('marks `import` statement as an invalid breakpoint location', () => {
-            checkLines(
-                ['import "pkg:/source/utils.brs"', false]
-            );
-        });
-
-        it('marks `library` statement as an invalid breakpoint location', () => {
-            checkLines(
-                ['library "v30/bslCore.brs"', false]
-            );
-        });
-
-        it('marks namespace header and `end namespace` as invalid breakpoint locations', () => {
-            checkLines(
-                ['namespace MyNS', false],
-                ['    function helper()', true],   // method header IS a valid breakpoint location
-                ['        return 1', true],
-                ['    end function', false],
-                ['end namespace', false]
-            );
-        });
-
-        it('marks class header, fields, and `end class` as invalid; method header as valid breakpoint location', () => {
-            checkLines(
-                ['class MyClass', false],
-                ['    public name as string', false],  // field declaration
-                ['    function greet()', true],   // method header IS a valid breakpoint location
-                ['        print m.name', true],
-                ['    end function', false],
-                ['end class', false]
-            );
-        });
-
-        it('marks enum block (header, members, end) as invalid breakpoint locations', () => {
-            checkLines(
-                ['enum Color', false],
-                ['    red = "red"', false],  // enum member
-                ['    blue = "blue"', false],  // enum member
-                ['end enum', false]
-            );
-        });
-
-        it('marks interface block (header, fields, methods, end) as invalid breakpoint locations', () => {
-            checkLines(
-                ['interface IFoo', false],
-                ['    name as string', false],  // interface field
-                ['    function doThing() as void', false],  // interface method
-                ['end interface', false]
+                ['function foo()', true, true],
+                ['    return 42', true, true],
+                ['end function', true, false]
             );
         });
 
         it('marks label statement as a valid breakpoint location', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    myLabel:', true],
-                ['    x = 1', true],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    myLabel:', true, true],
+                ['    x = 1', true, true],
+                ['end sub', true, false]
             );
         });
 
         it('marks `dim` statement as a valid breakpoint location', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    dim arr[10]', true],
-                ['    arr[0] = 1', true],
-                ['end sub', false]
-            );
-        });
-
-        it('marks `const` statement as an invalid breakpoint location', () => {
-            checkLines(
-                ['const MAX = 100', false],
-                ['sub foo()', true],
-                ['    x = MAX', true],
-                ['end sub', false]
-            );
-        });
-
-        it('marks `type` alias statement as an invalid breakpoint location', () => {
-            checkLines(
-                ['type MyType = string', false],
-                ['sub foo()', true],
-                ['    x = "hello"', true],
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    dim arr[10]', true, true],
+                ['    arr[0] = 1', true, true],
+                ['end sub', true, false]
             );
         });
 
         it('marks standalone `end` program terminator as a valid breakpoint location', () => {
             checkLines(
-                ['sub foo()', true],
-                ['    end', true],   // program terminator — valid breakpoint location
-                ['end sub', false]
+                ['sub foo()', true, true],
+                ['    end', true, true],   // program terminator — a real statement
+                ['end sub', true, false]
             );
         });
 
-        it('fails open when the file cannot be read', () => {
-            const result = (bpManager as any).isValidBreakpointLine(s`${stagingDir}/nonexistent.brs`, 1);
-            expect(result.isValid).to.be.true;
+        // ─── lines that are invalid in BOTH modes (positively non-executable) ─────
+
+        it('marks comment lines as invalid breakpoint locations in both modes', () => {
+            checkLines(
+                ['sub foo()', true, true],
+                ['    \' this is a comment', false, false],
+                ['    x = 1', true, true],
+                ['end sub', true, false]
+            );
+        });
+
+        it('marks `import` statement as an invalid breakpoint location in both modes', () => {
+            checkLines(
+                ['import "pkg:/source/utils.brs"', false, false]
+            );
+        });
+
+        it('marks `library` statement as an invalid breakpoint location in both modes', () => {
+            checkLines(
+                ['library "v30/bslCore.brs"', false, false]
+            );
+        });
+
+        it('marks namespace header and members appropriately', () => {
+            checkLines(
+                ['namespace MyNS', false, false],   // namespace declaration — blacklisted
+                ['    function helper()', true, true],   // method header
+                ['        return 1', true, true],
+                ['    end function', true, false],   // covered-no-statement
+                ['end namespace', true, false]   // covered-no-statement
+            );
+        });
+
+        it('marks class header and fields as invalid; method header valid', () => {
+            checkLines(
+                ['class MyClass', false, false],   // class declaration — blacklisted
+                ['    public name as string', false, false],  // field declaration — blacklisted
+                ['    function greet()', true, true],   // method header
+                ['        print m.name', true, true],
+                ['    end function', true, false],   // covered-no-statement
+                ['end class', true, false]   // covered-no-statement
+            );
+        });
+
+        it('marks enum block (header, members) as invalid in both modes', () => {
+            checkLines(
+                ['enum Color', false, false],
+                ['    red = "red"', false, false],  // enum member
+                ['    blue = "blue"', false, false],  // enum member
+                ['end enum', true, false]   // covered-no-statement
+            );
+        });
+
+        it('marks interface header, fields, and methods as invalid in both modes', () => {
+            checkLines(
+                ['interface IFoo', false, false],
+                ['    name as string', false, false],  // interface field
+                ['    function doThing() as void', false, false],  // interface method
+                ['end interface', true, false]   // covered-no-statement
+            );
+        });
+
+        it('marks `const` statement as an invalid breakpoint location in both modes', () => {
+            checkLines(
+                ['const MAX = 100', false, false],
+                ['sub foo()', true, true],
+                ['    x = MAX', true, true],
+                ['end sub', true, false]
+            );
+        });
+
+        it('marks `type` alias statement as an invalid breakpoint location in both modes', () => {
+            checkLines(
+                ['type MyType = string', false, false],
+                ['sub foo()', true, true],
+                ['    x = "hello"', true, true],
+                ['end sub', true, false]
+            );
+        });
+
+        // ─── blank lines ─────────────────────────────────────────────────────────
+
+        it('marks blank lines inside a block as invalid for telnet, valid for DAP', () => {
+            //blank lines inside a sub are *covered* by the FunctionStatement range
+            checkLines(
+                ['sub foo()', true, true],
+                ['', true, false],  // blank line (covered by the sub)
+                ['    x = 1', true, true],
+                ['', true, false],  // blank line (covered by the sub)
+                ['end sub', true, false]
+            );
+        });
+
+        it('marks a genuinely empty (uncovered) line as invalid in both modes', () => {
+            //a blank line between top-level functions is not covered by any node, and is truly empty
+            checkLines(
+                ['sub one()', true, true],
+                ['    x = 1', true, true],
+                ['end sub', true, false],
+                ['', false, false],  // truly empty, uncovered -> invalid everywhere
+                ['sub two()', true, true],
+                ['    y = 1', true, true],
+                ['end sub', true, false]
+            );
+        });
+
+        // ─── multi-line statement continuation lines ─────────────────────────────
+
+        it('keeps continuation lines of a multi-line AA literal for DAP but not telnet', () => {
+            //you CAN set a DAP breakpoint on a line inside an AA literal; you CANNOT inject a STOP there
+            checkLines(
+                ['sub foo()', true, true],
+                ['    x = {', true, true],   // statement starts here
+                ['        a: 1,', true, false],  // continuation — covered, no statement start
+                ['        b: 2', true, false],   // continuation
+                ['    }', true, false],   // continuation (closing brace)
+                ['end sub', true, false]
+            );
+        });
+
+        it('keeps continuation lines of a multi-line array literal for DAP but not telnet', () => {
+            checkLines(
+                ['sub foo()', true, true],
+                ['    x = [', true, true],
+                ['        1,', true, false],
+                ['        2', true, false],
+                ['    ]', true, false],
+                ['end sub', true, false]
+            );
+        });
+
+        it('fails open when the file cannot be read (both modes)', () => {
+            expect((bpManager as any).isValidBreakpointLine(s`${stagingDir}/nonexistent.brs`, 1, false).isValid).to.be.true;
+            expect((bpManager as any).isValidBreakpointLine(s`${stagingDir}/nonexistent.brs`, 1, true).isValid).to.be.true;
+        });
+
+        it('keeps a breakpoint when the cached AST is missing the function it lives in (simulated failed parse)', async () => {
+            //a file with 3 functions, each with a single print statement inside it
+            const code = [
+                'sub one()',         // line 1
+                '    print "one"',   // line 2
+                'end sub',           // line 3
+                '',                  // line 4
+                'sub two()',         // line 5
+                '    print "two"',   // line 6  <-- breakpoint goes here (middle function)
+                'end sub',           // line 7
+                '',                  // line 8
+                'sub three()',       // line 9
+                '    print "three"', // line 10
+                'end sub'            // line 11
+            ].join('\n');
+            const middlePrintLine = 6;
+
+            //register the file in both rootDir (where the user sets the breakpoint) and stagingDir (what the device runs)
+            fsExtra.outputFileSync(s`${rootDir}/source/main.brs`, code);
+            fsExtra.outputFileSync(s`${stagingDir}/source/main.brs`, code);
+
+            const project = new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            });
+
+            //add a breakpoint on the print inside the middle function
+            const [bp] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: middlePrintLine }]);
+
+            //resolve against the (intact) staging file — the breakpoint should be added/valid
+            await bpManager.resolveBreakpointsForProject(project);
+            expect(bp.reason, 'breakpoint on a valid line should not be failed').to.not.equal('failed');
+
+            //remove the breakpoint
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, []);
+
+            //Manipulate the AST data model to simulate a failed/partial parse: parse the staging file,
+            //delete the AST for the middle function, and seed the cache with the broken AST. The file on
+            //disk is untouched — we are only corrupting the in-memory model.
+            const stagingFilePath = s`${stagingDir}/source/main.brs`;
+            // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+            const { Parser } = require('brighterscript');
+            const parsed = Parser.parse(code);
+            //the 3 functions are the 3 top-level statements; drop the middle one (function "two")
+            parsed.ast.statements.splice(1, 1);
+            (bpManager as any).stagingFileAstCache.set(s`${stagingFilePath}`, parsed);
+
+            //with the broken AST the line is not covered by any node, but the file on disk has real code
+            //there — so it must be kept in BOTH modes (a broken AST is never proof a location is invalid).
+            expect(
+                (bpManager as any).isValidBreakpointLine(stagingFilePath, middlePrintLine, false).isValid,
+                '[DAP] an incomplete AST must not be treated as a known-invalid location'
+            ).to.be.true;
+            //re-seed the broken AST (the validity check above may have re-read/re-cached nothing, but be safe)
+            const reparsed = Parser.parse(code);
+            reparsed.ast.statements.splice(1, 1);
+            (bpManager as any).stagingFileAstCache.set(s`${stagingFilePath}`, reparsed);
+            expect(
+                (bpManager as any).isValidBreakpointLine(stagingFilePath, middlePrintLine, true).isValid,
+                '[telnet] an incomplete AST must not be treated as a known-invalid location'
+            ).to.be.true;
+
+            //add the breakpoint back at the same location and resolve (DebugProtocol path)
+            const [bp2] = bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: middlePrintLine }]);
+            await bpManager.resolveBreakpointsForProject(project);
+
+            //the breakpoint MUST be kept: we cannot prove the location is invalid (the AST is incomplete),
+            //so it must not be dropped/failed.
+            expect(bp2.reason, 'breakpoint must be KEPT when we cannot prove the location is invalid').to.not.equal('failed');
         });
     });
 });

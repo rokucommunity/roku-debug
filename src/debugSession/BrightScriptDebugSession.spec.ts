@@ -1192,6 +1192,20 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('resetSessionState', () => {
+        it('clears the breakpoint manager caches so a restart does not reuse stale staged data', () => {
+            const clearAst = sinon.stub(session.breakpointManager, 'clearStagingFileAstCache');
+            const clearScriptRefs = sinon.stub(session.breakpointManager, 'clearScriptReferencedFilesCache');
+            const clearLastState = sinon.stub(session.breakpointManager, 'clearBreakpointLastState');
+
+            (session as any).resetSessionState();
+
+            expect(clearAst.calledOnce, 'clearStagingFileAstCache should be called').to.be.true;
+            expect(clearScriptRefs.calledOnce, 'clearScriptReferencedFilesCache should be called').to.be.true;
+            expect(clearLastState.calledOnce, 'clearBreakpointLastState should be called').to.be.true;
+        });
+    });
+
     describe('shutdown', () => {
         it('erases all staging folders when configured to do so', async () => {
             let stub = sinon.stub(fsExtra, 'removeSync').returns(null);

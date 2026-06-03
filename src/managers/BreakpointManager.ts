@@ -400,8 +400,12 @@ export class BreakpointManager {
     /**
      * Get a list of all breakpoint tasks that should be performed.
      * This will also exclude files with breakpoints that are not in scope.
+     * @param willInjectStop whether a literal `STOP` statement will be injected at each breakpoint location
+     * (telnet debugging). When true, lines where injecting a `STOP` would produce invalid BrightScript
+     * (e.g. continuation lines of a multi-line literal, structural keyword lines) are excluded. When false
+     * (DebugProtocol — the device breaks by line number, nothing is injected) those lines are kept.
      */
-    private async getBreakpointWork(project: Project) {
+    private async getBreakpointWork(project: Project, willInjectStop = false) {
         let result = {} as Record<string, Array<BreakpointWorkItem>>;
         let scriptReferencedFiles: Set<string> | undefined;
 
@@ -441,7 +445,7 @@ export class BreakpointManager {
                     }
 
                     //skip breakpoints on lines that are not valid breakpoint locations
-                    if (!this.isValidBreakpointLine(stagingLocation.filePath, stagingLocation.lineNumber).isValid) {
+                    if (!this.isValidBreakpointLine(stagingLocation.filePath, stagingLocation.lineNumber, willInjectStop).isValid) {
                         continue;
                     }
                     let relativeStagingPath = fileUtils.replaceCaseInsensitive(
@@ -516,9 +520,12 @@ export class BreakpointManager {
      * Validate breakpoints against the project's staging files and fail any that cannot be placed
      * (non-executable lines, unsupported file types, files not in the project).
      * Called for all debugger types. Returns the resolved breakpoints keyed by staging file path.
+     * @param willInjectStop whether a literal `STOP` will be injected at each breakpoint location (telnet).
+     * Forwarded to `getBreakpointWork` so STOP-injection-only invalid lines are excluded for telnet but
+     * kept for DebugProtocol. See {@link getBreakpointWork}.
      */
-    public async resolveBreakpointsForProject(project: Project) {
-        const breakpointsByStagingFilePath = await this.getBreakpointWork(project);
+    public async resolveBreakpointsForProject(project: Project, willInjectStop = false) {
+        const breakpointsByStagingFilePath = await this.getBreakpointWork(project, willInjectStop);
 
         //track which breakpoints were successfully mapped to a staging location
         const stagedSrcHashes = new Set<string>();
@@ -554,7 +561,8 @@ export class BreakpointManager {
      * Only called for telnet debuggers.
      */
     public async injectBreakpointsForProject(project: Project) {
-        const breakpointsByStagingFilePath = await this.resolveBreakpointsForProject(project);
+        //telnet injects a literal STOP at each breakpoint, so STOP-injection-unsafe lines must be excluded
+        const breakpointsByStagingFilePath = await this.resolveBreakpointsForProject(project, true);
 
         const promises = [] as Promise<any>[];
         for (const stagingFilePath in breakpointsByStagingFilePath) {
@@ -661,20 +669,35 @@ export class BreakpointManager {
     }
 
     /**
-     * Returns whether a 1-based line number in a staging file is a valid breakpoint
-     * location — i.e. somewhere the Roku debugger can actually break.
+     * Returns whether a 1-based line number in a staging file is a valid breakpoint location.
      *
-     * Uses a blacklist: finds the innermost statement at the target line and rejects
-     * known invalid types (declarations, structural keywords, etc.). Lines where no
-     * statement starts (blank lines, `else`, `end if/for/while/sub/function`) are
-     * always invalid. Fails open so breakpoints are never silently dropped due to a
-     * parse error.
+     * Guiding principle: a breakpoint is ALWAYS allowed unless we can point to specific, real
+     * code proving it is invalid. We never drop a breakpoint just because we are unsure.
      *
-     * The returned object is designed to support future breakpoint-correction: callers
-     * can check `correctedLine` to suggest moving the breakpoint to a nearby valid line
-     * (like other debuggers do), rather than simply dropping it.
+     * The only thing we are always certain about is the blacklist: the innermost statement at the
+     * line is a positively-identified non-executable construct (comment, import/library, namespace/
+     * class/enum/interface/const/field/type declaration). Those are invalid for every debugger type.
+     *
+     * Everything else depends on `willInjectStop`:
+     * - DebugProtocol (`willInjectStop === false`): the device breaks by line number and we inject
+     *   nothing, so we cannot prove any non-blacklisted line is unbreakable. We KEEP it — including
+     *   continuation lines of a multi-line literal and structural keyword lines (`end if`, `else`,
+     *   `end sub`, ...).
+     * - Telnet (`willInjectStop === true`): we inject a literal `STOP` statement *before* the line.
+     *   Injecting a `STOP` into the middle of a multi-line literal, or before a structural keyword,
+     *   produces invalid BrightScript. We can identify those lines precisely: they are *covered* by
+     *   some statement's range but no statement *starts* on them. Those are excluded for telnet only.
+     *
+     * A truly empty (whitespace-only) line that no node covers is genuinely non-executable in both
+     * modes. A non-empty line that no node covers means the AST is incomplete/broken (partial or
+     * failed parse) — we fail open and KEEP it. A read/parse error also fails open.
+     *
+     * The returned object is designed to support future breakpoint-correction: callers can check
+     * `correctedLine` to suggest moving the breakpoint to a nearby valid line rather than dropping it.
+     *
+     * @param willInjectStop true when a literal `STOP` will be injected at this location (telnet)
      */
-    private isValidBreakpointLine(stagingFilePath: string, lineNumber: number): LineValidationResult {
+    private isValidBreakpointLine(stagingFilePath: string, lineNumber: number, willInjectStop = false): LineValidationResult {
         try {
             const cacheKey = s`${stagingFilePath}`;
             if (!this.stagingFileAstCache.has(cacheKey)) {
@@ -688,9 +711,11 @@ export class BreakpointManager {
 
             // Walk depth-first (parent before children).
             // - Track the innermost statement whose start line equals targetLine.
+            // - Track whether *any* node's range covers targetLine (start <= line <= end).
             // - Cancel as soon as a node starts past targetLine.
             const handle = new CancellationTokenSource();
             let deepestStatement: AstNode | undefined;
+            let lineIsCovered = false;
 
             parsed.ast.walk((node) => {
                 if (!node.range) {
@@ -699,6 +724,10 @@ export class BreakpointManager {
                 if (node.range.start.line > targetLine) {
                     handle.cancel();
                     return;
+                }
+                //the target line falls within this node's span (even if no statement starts on it)
+                if (node.range.end.line >= targetLine) {
+                    lineIsCovered = true;
                 }
                 if (isStatement(node) && node.range.start.line === targetLine) {
                     deepestStatement = node;
@@ -709,10 +738,27 @@ export class BreakpointManager {
             });
 
             if (!deepestStatement) {
-                // No statement starts here: blank line, `else`, `end if/for/while/sub/function`, etc.
-                return { isValid: false };
+                //No statement starts here. There are two very different reasons this can happen:
+                // 1. The line sits *inside* some statement's range ("covered") but isn't itself a statement
+                //    start — e.g. a structural keyword (`else`, `end if/for/while/sub/function`) or a
+                //    continuation line of a multi-line literal/call. Injecting a `STOP` before such a line
+                //    produces invalid BrightScript, so it is invalid *for telnet only*. For DebugProtocol
+                //    (no injection) we cannot prove the device won't break there, so we KEEP it.
+                // 2. The line is *not* covered by any node. Either the line is genuinely empty (whitespace
+                //    only) — non-executable in both modes — or the AST is incomplete/broken (partial/failed
+                //    parse) and is simply missing the code that the file actually contains, in which case we
+                //    fail open and KEEP it.
+                if (lineIsCovered) {
+                    //only telnet's STOP injection makes a covered-but-statement-less line invalid
+                    return { isValid: !willInjectStop };
+                }
+                //the line is not covered by any node. If the source line is empty/whitespace it is genuinely
+                //non-executable; otherwise the AST is missing code that the file actually contains, so keep it.
+                const sourceLine = fsExtra.readFileSync(stagingFilePath, 'utf-8').split(/\r?\n/)[targetLine] ?? '';
+                return { isValid: sourceLine.trim().length > 0 };
             }
 
+            //the only thing we are always certain is invalid: a positively-identified non-executable statement
             if (isInvalidBreakpointLine(deepestStatement)) {
                 return { isValid: false };
             }
