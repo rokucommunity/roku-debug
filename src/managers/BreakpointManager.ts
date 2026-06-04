@@ -35,19 +35,14 @@ import { logger, Logger } from '../logging';
 
 export class BreakpointManager {
 
-    /**
-     * @param enableAstBreakpointValidation when true, breakpoints on lines the AST says are
-     * non-executable (comments, declarations, structural keywords, multi-line continuation lines, etc.)
-     * are rejected. Defaults to **false** at runtime: Roku silently relocates a breakpoint set on a
-     * non-runnable line to the next runnable line, so rejecting these would actually take away behavior
-     * the user had. The AST validation logic is retained (and exercised by tests with this flag on) so
-     * it can be re-enabled once we can correct/relocate breakpoints ourselves rather than dropping them.
-     */
     public constructor(
         private sourceMapManager: SourceMapManager,
         private locationManager: LocationManager,
         /**
-         * @deprecated this is a temporary flag to disable AST-based breakpoint validation until we can implement breakpoint correction/relocation. It's disabled in production, but enabled for tests. It can be removed once breakpoint correction is implemented.
+         * @deprecated temporary flag. AST-based breakpoint validation is disabled in production because Roku
+         * silently relocates a breakpoint on a non-runnable line to the next runnable line, so rejecting it
+         * would take away behavior the user has. Enabled in tests. Remove once we can relocate breakpoints
+         * ourselves instead of dropping them.
          */
         private enableAstBreakpointValidation = false
     ) {
@@ -417,10 +412,9 @@ export class BreakpointManager {
     /**
      * Get a list of all breakpoint tasks that should be performed.
      * This will also exclude files with breakpoints that are not in scope.
-     * @param willInjectStop whether a literal `STOP` statement will be injected at each breakpoint location
-     * (telnet debugging). When true, lines where injecting a `STOP` would produce invalid BrightScript
-     * (e.g. continuation lines of a multi-line literal, structural keyword lines) are excluded. When false
-     * (DebugProtocol — the device breaks by line number, nothing is injected) those lines are kept.
+     * @param willInjectStop true for telnet (a literal `STOP` is baked in at each breakpoint). Only used by
+     * the AST line check (see {@link isValidBreakpointLine}), which is gated behind enableAstBreakpointValidation
+     * and off by default; when on, it lets telnet exclude lines where injecting a `STOP` would be invalid.
      */
     private async getBreakpointWork(project: Project, willInjectStop = false) {
         let result = {} as Record<string, Array<BreakpointWorkItem>>;
@@ -535,21 +529,16 @@ export class BreakpointManager {
     }
 
     /**
-     * Scan the project's staged files and reconcile every breakpoint against them: any breakpoint that
-     * can't be placed (non-executable line, unsupported file type, or a file that isn't part of the
-     * project) is marked failed. Returns the surviving breakpoints keyed by staging file path.
+     * Reconcile every breakpoint against the project's staged files, marking any that can't be placed
+     * (unsupported file type, or a file not in the project) as failed. Returns the placeable breakpoints
+     * keyed by staging file path.
      *
-     * For telnet sessions this additionally writes literal `STOP` statements into the staged files and
-     * registers the written breakpoints as permanent/verified — telnet has no on-device breakpoint API,
-     * so the only way to break is to bake a `STOP` into the code. For DebugProtocol sessions nothing is
-     * written (the device sets breakpoints by line number); only validation happens.
-     *
-     * The telnet-vs-DebugProtocol decision is made here from `launchConfiguration.enableDebugProtocol`,
-     * so callers don't have to branch.
+     * For telnet there is no on-device breakpoint API, so this also bakes a literal `STOP` into the staged
+     * files for each breakpoint and registers them as permanent/verified. DebugProtocol writes nothing
+     * (the device breaks by line number). The choice is made here from `launchConfiguration.enableDebugProtocol`.
      */
     public async validateAndWriteBreakpointsForProject(project: Project) {
-        //telnet injects a literal STOP at each breakpoint, so STOP-injection-unsafe lines must be excluded.
-        //DebugProtocol breaks by line number and writes nothing, so those lines stay valid.
+        //telnet bakes in a literal STOP per breakpoint; DebugProtocol breaks by line number and writes nothing
         const willInjectStop = !this.launchConfiguration?.enableDebugProtocol;
 
         const breakpointsByStagingFilePath = await this.getBreakpointWork(project, willInjectStop);
@@ -568,9 +557,8 @@ export class BreakpointManager {
                 if (!stagedSrcHashes.has(bp.srcHash) && bp.reason !== 'failed') {
                     bp.verified = false;
                     bp.reason = 'failed';
-                    //only set a message for file types we understand. For unknown file types (JSON, etc.)
-                    //leave the message empty — this isn't necessarily a real failure, it just isn't a
-                    //BrightScript file we know how to place a breakpoint in.
+                    //only message for BrightScript file types; leave others blank (not necessarily a real
+                    //failure — just not a file we know how to place a breakpoint in)
                     const srcExt = path.extname(bp.srcPath).toLowerCase();
                     bp.message = ['.brs', '.bs', '.xml'].includes(srcExt)
                         ? 'No executable code at this line'
@@ -580,7 +568,6 @@ export class BreakpointManager {
             }
         }
 
-        //telnet only: bake `STOP` statements into the staged files for every surviving breakpoint
         if (willInjectStop) {
             await this.writeBreakpointsForProject(breakpointsByStagingFilePath);
         }

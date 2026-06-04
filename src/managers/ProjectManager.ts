@@ -457,7 +457,6 @@ export class Project {
         const stagedFiles: string[] = (await fastGlob('**/*', { cwd: this.stagingDir, absolute: true, onlyFiles: true }))
             .map((f: string) => fileUtils.standardizePath(f));
 
-
         await Promise.all(stagedFiles.map(async (stagingFilePath: string) => {
             const ext = path.extname(stagingFilePath).toLowerCase();
             const originalSrcPath = destToSrcMap.get(stagingFilePath);
