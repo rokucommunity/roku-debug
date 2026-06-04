@@ -1271,6 +1271,96 @@ describe('Project', () => {
         });
     });
 
+    describe('scriptReferencedFiles', () => {
+        afterEach(() => {
+            try {
+                fsExtra.removeSync(tempPath);
+            } catch (e) { }
+        });
+
+        async function stageXml(xmlRelPath: string, xmlContents: string) {
+            project.stagingDir = stagingDir;
+            const xmlStagingPath = s`${stagingDir}/${xmlRelPath}`;
+            fsExtra.outputFileSync(xmlStagingPath, xmlContents);
+            //the xml file isn't required to be in fileMappings — script scanning happens for all staged xml
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+        }
+
+        it('collects pkg:/ script uris resolved from the staging root', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="pkg:/source/helper.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/helper.brs`);
+        });
+
+        it('collects libpkg:/ script uris resolved from the staging root', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="libpkg:/source/lib.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/lib.brs`);
+        });
+
+        it('collects relative script uris resolved from the xml file directory', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="sibling.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/components/sibling.brs`);
+        });
+
+        it('collects multiple script tags across multiple xml files', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/components/A.xml`, `
+                <component name="A">
+                    <script uri="pkg:/source/a1.brs"/>
+                    <script uri="pkg:/source/a2.brs"/>
+                </component>
+            `);
+            fsExtra.outputFileSync(s`${stagingDir}/components/B.xml`, `
+                <component name="B">
+                    <script uri="pkg:/source/b1.brs"/>
+                </component>
+            `);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+
+            expect([...project.scriptReferencedFiles].sort()).to.eql([
+                s`${stagingDir}/source/a1.brs`,
+                s`${stagingDir}/source/a2.brs`,
+                s`${stagingDir}/source/b1.brs`
+            ].sort());
+        });
+
+        it('resets the set on each preprocess so a re-stage does not accumulate stale entries', async () => {
+            await stageXml('components/First.xml', `
+                <component name="First"><script uri="pkg:/source/first.brs"/></component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/first.brs`);
+
+            //remove the first xml and stage a different one — the old entry must not survive
+            fsExtra.removeSync(s`${stagingDir}/components/First.xml`);
+            await stageXml('components/Second.xml', `
+                <component name="Second"><script uri="pkg:/source/second.brs"/></component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/second.brs`);
+            expect([...project.scriptReferencedFiles]).to.not.include(s`${stagingDir}/source/first.brs`);
+        });
+
+        it('is empty when there are no xml files', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/source/main.brs`, `sub main()\nend sub`);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(project.scriptReferencedFiles.size).to.equal(0);
+        });
+    });
+
     describe('updateManifestBsConsts', () => {
         let constsLine: string;
         let startingFileContents: string;

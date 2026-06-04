@@ -1137,7 +1137,8 @@ describe('BrightScriptDebugSession', () => {
             await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //add breakpoint during live debug session. one was there before, the other is new. Neither will be verified right now
+            //add breakpoint during live debug session. one was there before, the other is new.
+            //line 1 was already staged so it comes back verified; line 2 is new so it is not.
             args.breakpoints = [{ line: 1 }, { line: 2 }];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(
@@ -1188,6 +1189,16 @@ describe('BrightScriptDebugSession', () => {
             let stub = sinon.stub(session.projectManager, 'registerEntryBreakpoint').returns(Promise.resolve());
             await session.handleEntryBreakpoint();
             expect(stub.called).to.be.false;
+        });
+    });
+
+    describe('resetSessionState', () => {
+        it('resets the breakpoint manager so a restart does not reuse stale staged data', () => {
+            const reset = sinon.stub(session.breakpointManager, 'reset');
+
+            (session as any).resetSessionState();
+
+            expect(reset.calledOnce, 'breakpointManager.reset() should be called').to.be.true;
         });
     });
 
