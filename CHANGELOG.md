@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.11](https://github.com/rokucommunity/roku-debug/compare/0.23.10...v0.23.11) - 2026-06-04
+### Changed
+ - Validate breakpoint file types; add (disabled) AST line validation ([#317](https://github.com/rokucommunity/roku-debug/pull/317))
+ - upgrade to [brighterscript@0.72.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0724---2026-05-29). Notable changes since 0.72.3:
+ - upgrade to [roku-deploy@3.17.6](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3176---2026-06-04). Notable changes since 3.17.4:
+     - Fix case-insensitive matching for absolute `files.src` glob patterns on case-insensitive file systems ([#279](https://github.com/rokucommunity/roku-deploy/pull/279))
+     - Preserve `!` glob-negation prefix in standardizePath ([#277](https://github.com/rokucommunity/roku-deploy/pull/277))
+
+
+
 ## [0.23.10](https://github.com/rokucommunity/roku-debug/compare/0.23.9...v0.23.10) - 2026-05-28
 ### Changed
  - Defer initializeProfiling until after InitializedEvent for backwards compatability with DAP clients ([#362](https://github.com/rokucommunity/roku-debug/pull/362))
