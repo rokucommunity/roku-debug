@@ -66,7 +66,9 @@ describe('BreakpointManager', () => {
 
         sourceMapManager = new SourceMapManager();
         locationManager = new LocationManager(sourceMapManager);
-        bpManager = new BreakpointManager(sourceMapManager, locationManager);
+        //enable AST-based breakpoint validation so the validity tests exercise it. At runtime this is
+        //off by default (Roku relocates breakpoints on non-runnable lines, so we don't reject them).
+        bpManager = new BreakpointManager(sourceMapManager, locationManager, true);
         projectManager = new ProjectManager({
             breakpointManager: bpManager,
             locationManager: locationManager
@@ -822,6 +824,77 @@ describe('BreakpointManager', () => {
 
                 //file is untouched — the device sets breakpoints by line number
                 expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(code);
+            });
+        });
+
+        describe('with AST validation disabled (runtime default)', () => {
+            //the runtime BreakpointManager is constructed WITHOUT enableAstBreakpointValidation, so the
+            //AST line check is skipped entirely. Roku silently relocates breakpoints on non-runnable lines
+            //to the next runnable line, so we must NOT reject them. Only the file-type/<script> gate runs.
+            let offManager: BreakpointManager;
+
+            beforeEach(() => {
+                offManager = new BreakpointManager(sourceMapManager, locationManager);
+            });
+
+            async function resolveOff(srcLine: number, srcPath = s`${rootDir}/source/main.brs`) {
+                const [bp] = offManager.replaceBreakpoints(srcPath, [{ line: srcLine }]);
+                await offManager.validateAndWriteBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir,
+                    outDir: outDir,
+                    stagingDir: stagingDir
+                }));
+                return bp;
+            }
+
+            it('keeps a breakpoint on a comment line', async () => {
+                const code = `sub main()\n    ' just a comment\n    print 1\nend sub`;
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+                const bp = await resolveOff(2); //the comment line
+                expect(bp.reason, 'comment-line breakpoint should be kept (Roku relocates it)').to.not.equal('failed');
+            });
+
+            it('keeps a breakpoint on `end sub`', async () => {
+                const code = `sub main()\n    print 1\nend sub`;
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+                const bp = await resolveOff(3); //end sub
+                expect(bp.reason, '`end sub` breakpoint should be kept').to.not.equal('failed');
+            });
+
+            it('keeps a breakpoint on a blank line', async () => {
+                const code = `sub main()\n\n    print 1\nend sub`;
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+                const bp = await resolveOff(2); //the blank line
+                expect(bp.reason, 'blank-line breakpoint should be kept').to.not.equal('failed');
+            });
+
+            it('still rejects a breakpoint in an unsupported file type (file-type gate always runs)', async () => {
+                fsExtra.writeFileSync(`${rootDir}/source/data.json`, '{"a":1}');
+                fsExtra.copyFileSync(`${rootDir}/source/data.json`, `${stagingDir}/source/data.json`);
+
+                const bp = await resolveOff(1, s`${rootDir}/source/data.json`);
+                expect(bp.reason, '.json is not .brs/.xml/script-referenced, so it must still be rejected').to.equal('failed');
+            });
+
+            it('still injects STOPs for telnet on valid lines', async () => {
+                const code = `sub main()\n    print 1\n    print 2\nend sub`;
+                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
+                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+
+                offManager.launchConfiguration = { enableDebugProtocol: false } as any;
+                offManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
+                await offManager.validateAndWriteBreakpointsForProject(new Project(<any>{
+                    rootDir: rootDir, outDir: outDir, stagingDir: stagingDir
+                }));
+
+                expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString())
+                    .to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
             });
         });
     });

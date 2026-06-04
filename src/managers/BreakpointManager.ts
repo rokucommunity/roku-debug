@@ -35,9 +35,21 @@ import { logger, Logger } from '../logging';
 
 export class BreakpointManager {
 
+    /**
+     * @param enableAstBreakpointValidation when true, breakpoints on lines the AST says are
+     * non-executable (comments, declarations, structural keywords, multi-line continuation lines, etc.)
+     * are rejected. Defaults to **false** at runtime: Roku silently relocates a breakpoint set on a
+     * non-runnable line to the next runnable line, so rejecting these would actually take away behavior
+     * the user had. The AST validation logic is retained (and exercised by tests with this flag on) so
+     * it can be re-enabled once we can correct/relocate breakpoints ourselves rather than dropping them.
+     */
     public constructor(
         private sourceMapManager: SourceMapManager,
-        private locationManager: LocationManager
+        private locationManager: LocationManager,
+        /**
+         * @deprecated this is a temporary flag to disable AST-based breakpoint validation until we can implement breakpoint correction/relocation. It's disabled in production, but enabled for tests. It can be removed once breakpoint correction is implemented.
+         */
+        private enableAstBreakpointValidation = false
     ) {
 
     }
@@ -447,8 +459,11 @@ export class BreakpointManager {
                         }
                     }
 
-                    //skip breakpoints on lines that are not valid breakpoint locations
-                    if (!this.isValidBreakpointLine(stagingLocation.filePath, stagingLocation.lineNumber, willInjectStop).isValid) {
+                    //skip breakpoints on lines that are not valid breakpoint locations.
+                    //disabled by default: Roku silently relocates a breakpoint on a non-runnable line to
+                    //the next runnable line, so rejecting it here would remove behavior the user had. The
+                    //AST check is retained behind a flag (on in tests) until we can relocate rather than drop.
+                    if (this.enableAstBreakpointValidation && !this.isValidBreakpointLine(stagingLocation.filePath, stagingLocation.lineNumber, willInjectStop).isValid) {
                         continue;
                     }
                     let relativeStagingPath = fileUtils.replaceCaseInsensitive(
