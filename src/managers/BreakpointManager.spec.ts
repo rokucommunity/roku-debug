@@ -837,49 +837,85 @@ describe('BreakpointManager', () => {
                 offManager = new BreakpointManager(sourceMapManager, locationManager);
             });
 
-            async function resolveOff(srcLine: number, srcPath = s`${rootDir}/source/main.brs`) {
-                const [bp] = offManager.replaceBreakpoints(srcPath, [{ line: srcLine }]);
-                await offManager.validateAndWriteBreakpointsForProject(new Project(<any>{
-                    rootDir: rootDir,
-                    outDir: outDir,
-                    stagingDir: stagingDir
-                }));
+            function project() {
+                return new Project(<any>{ rootDir: rootDir, outDir: outDir, stagingDir: stagingDir });
+            }
+
+            /**
+             * Write `code` to staging, set a breakpoint on the given 1-based line, resolve, and return the
+             * breakpoint so the caller can assert whether it was kept. Defaults to the DebugProtocol path
+             * (no STOP injection) so we're purely measuring whether the AST check would have dropped it.
+             */
+            async function resolveOff(code: string, line: number, srcPath = s`${rootDir}/source/main.brs`) {
+                //write the same contents to both rootDir (where the bp is set) and stagingDir (what runs)
+                fsExtra.outputFileSync(srcPath, code);
+                fsExtra.outputFileSync(srcPath.replace(s`${rootDir}`, s`${stagingDir}`), code);
+                offManager.launchConfiguration = { enableDebugProtocol: true } as any;
+                const [bp] = offManager.replaceBreakpoints(srcPath, [{ line: line }]);
+                await offManager.validateAndWriteBreakpointsForProject(project());
                 return bp;
             }
 
-            it('keeps a breakpoint on a comment line', async () => {
-                const code = `sub main()\n    ' just a comment\n    print 1\nend sub`;
-                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
-                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+            //Every one of these line types was rejected by the AST blacklist when validation was ON.
+            //With it OFF they must ALL flow through (Roku relocates them), so none should be 'failed'.
+            //[description, full file source, 1-based line to break on]
+            const keptCases: [string, string, number][] = [
+                ['comment line', `sub main()\n    ' a comment\n    print 1\nend sub`, 2],
+                ['blank line', `sub main()\n\n    print 1\nend sub`, 2],
+                ['sub header', `sub main()\n    print 1\nend sub`, 1],
+                ['function header', `function f()\n    return 1\nend function`, 1],
+                ['end sub', `sub main()\n    print 1\nend sub`, 3],
+                ['end function', `function f()\n    return 1\nend function`, 3],
+                ['else', `sub main()\n    if true then\n        print 1\n    else\n        print 2\n    end if\nend sub`, 4],
+                ['end if', `sub main()\n    if true then\n        print 1\n    end if\nend sub`, 4],
+                ['end for', `sub main()\n    for i = 0 to 1\n        print i\n    end for\nend sub`, 4],
+                ['end while', `sub main()\n    while true\n        print 1\n    end while\nend sub`, 4],
+                ['import statement', `import "pkg:/source/lib.brs"\nsub main()\n    print 1\nend sub`, 1],
+                ['library statement', `library "v30/bslCore.brs"\nsub main()\n    print 1\nend sub`, 1],
+                ['namespace header', `namespace ns\n    sub f()\n        print 1\n    end sub\nend namespace`, 1],
+                ['end namespace', `namespace ns\n    sub f()\n        print 1\n    end sub\nend namespace`, 5],
+                ['class header', `class C\n    name as string\n    sub f()\n        print 1\n    end sub\nend class`, 1],
+                ['class field', `class C\n    name as string\n    sub f()\n        print 1\n    end sub\nend class`, 2],
+                ['enum header', `enum E\n    a = "a"\nend enum`, 1],
+                ['enum member', `enum E\n    a = "a"\nend enum`, 2],
+                ['interface header', `interface I\n    name as string\nend interface`, 1],
+                ['interface field', `interface I\n    name as string\nend interface`, 2],
+                ['const statement', `const MAX = 1\nsub main()\n    print MAX\nend sub`, 1],
+                ['type alias statement', `type T = string\nsub main()\n    print 1\nend sub`, 1],
+                ['AA-literal continuation line', `sub main()\n    x = {\n        a: 1,\n        b: 2\n    }\nend sub`, 4],
+                ['array-literal continuation line', `sub main()\n    x = [\n        1,\n        2\n    ]\nend sub`, 4]
+            ];
 
-                const bp = await resolveOff(2); //the comment line
-                expect(bp.reason, 'comment-line breakpoint should be kept (Roku relocates it)').to.not.equal('failed');
-            });
-
-            it('keeps a breakpoint on `end sub`', async () => {
-                const code = `sub main()\n    print 1\nend sub`;
-                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
-                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
-
-                const bp = await resolveOff(3); //end sub
-                expect(bp.reason, '`end sub` breakpoint should be kept').to.not.equal('failed');
-            });
-
-            it('keeps a breakpoint on a blank line', async () => {
-                const code = `sub main()\n\n    print 1\nend sub`;
-                fsExtra.writeFileSync(`${rootDir}/source/main.brs`, code);
-                fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
-
-                const bp = await resolveOff(2); //the blank line
-                expect(bp.reason, 'blank-line breakpoint should be kept').to.not.equal('failed');
-            });
+            for (const [description, code, line] of keptCases) {
+                it(`keeps a breakpoint on ${description}`, async () => {
+                    const bp = await resolveOff(code, line);
+                    expect(bp.reason, `${description}: breakpoint should be KEPT when AST validation is off`).to.not.equal('failed');
+                });
+            }
 
             it('still rejects a breakpoint in an unsupported file type (file-type gate always runs)', async () => {
-                fsExtra.writeFileSync(`${rootDir}/source/data.json`, '{"a":1}');
-                fsExtra.copyFileSync(`${rootDir}/source/data.json`, `${stagingDir}/source/data.json`);
-
-                const bp = await resolveOff(1, s`${rootDir}/source/data.json`);
+                const bp = await resolveOff('{"a":1}', 1, s`${rootDir}/source/data.json`);
                 expect(bp.reason, '.json is not .brs/.xml/script-referenced, so it must still be rejected').to.equal('failed');
+            });
+
+            it('keeps a breakpoint in an .xml file', async () => {
+                const bp = await resolveOff(`<component name="C">\n    <script uri="pkg:/source/c.brs"/>\n</component>`, 1, s`${rootDir}/components/C.xml`);
+                expect(bp.reason, 'xml file breakpoint should be kept').to.not.equal('failed');
+            });
+
+            it('keeps a breakpoint in a non-.brs file referenced by a <script> tag', async () => {
+                const code = `sub main()\n    print 1\nend sub`;
+                fsExtra.outputFileSync(s`${rootDir}/source/helper.script`, code);
+                fsExtra.outputFileSync(s`${stagingDir}/source/helper.script`, code);
+
+                const proj = project();
+                proj.scriptReferencedFiles.add(s`${stagingDir}/source/helper.script`);
+
+                offManager.launchConfiguration = { enableDebugProtocol: true } as any;
+                const [bp] = offManager.replaceBreakpoints(s`${rootDir}/source/helper.script`, [{ line: 2 }]);
+                await offManager.validateAndWriteBreakpointsForProject(proj);
+
+                expect(bp.reason, 'script-referenced non-.brs file breakpoint should be kept').to.not.equal('failed');
             });
 
             it('still injects STOPs for telnet on valid lines', async () => {
@@ -889,9 +925,7 @@ describe('BreakpointManager', () => {
 
                 offManager.launchConfiguration = { enableDebugProtocol: false } as any;
                 offManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
-                await offManager.validateAndWriteBreakpointsForProject(new Project(<any>{
-                    rootDir: rootDir, outDir: outDir, stagingDir: stagingDir
-                }));
+                await offManager.validateAndWriteBreakpointsForProject(project());
 
                 expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString())
                     .to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
