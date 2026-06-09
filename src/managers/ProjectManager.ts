@@ -323,6 +323,14 @@ export class Project {
     public files: Array<FileEntry>;
     public stagingDir: string;
     public fileMappings: Array<{ src: string; dest: string }>;
+
+    /**
+     * Absolute staging paths of every file referenced by a `<script uri="...">` tag in any staged XML
+     * component. Roku loads these as BrightScript regardless of file extension, so they are valid
+     * breakpoint targets even when they don't end in `.brs`. Populated during `stage()` (the single
+     * staging-file walk in `preprocessStagingFiles`) so consumers don't have to re-scan the staging dir.
+     */
+    public scriptReferencedFiles = new Set<string>();
     public bsConst: Record<string, boolean>;
     public injectRaleTrackerTask: boolean;
     public raleTrackerTaskFileLocation: string;
@@ -442,29 +450,81 @@ export class Project {
             destToSrcMap.set(mapping.dest, mapping.src);
         }
 
+        //reset before re-scanning
+        this.scriptReferencedFiles.clear();
+
         //walk over every file
         const stagedFiles: string[] = (await fastGlob('**/*', { cwd: this.stagingDir, absolute: true, onlyFiles: true }))
             .map((f: string) => fileUtils.standardizePath(f));
 
         await Promise.all(stagedFiles.map(async (stagingFilePath: string) => {
+            const ext = path.extname(stagingFilePath).toLowerCase();
             const originalSrcPath = destToSrcMap.get(stagingFilePath);
 
-            // Skip files not in fileMappings (e.g. generated after staging)
-            if (!originalSrcPath) {
+            //.map files are handled separately (they get their own JSON read), and never need the
+            //text-content path below. Skip maps that aren't in fileMappings (generated after staging).
+            if (ext === '.map') {
+                if (originalSrcPath) {
+                    await this.fixSourceMapSources({
+                        stagingMapPath: stagingFilePath,
+                        originalMapPath: originalSrcPath
+                    });
+                }
                 return;
             }
 
-            const ext = path.extname(stagingFilePath).toLowerCase();
+            //read each text file at most once and share the contents between the two consumers below:
+            // - collectScriptReferencedFiles: runs for ALL staged xml (a component may be generated during
+            //   staging, so it isn't necessarily in fileMappings)
+            // - fixSourceMapComment: runs only for files that were moved from a source dir (in fileMappings)
+            //binary files need neither, so we never read them.
+            const isXml = ext === '.xml';
+            const needsCommentFix = !!originalSrcPath;
+            if (Project.binaryExtensions.has(ext) || (!isXml && !needsCommentFix)) {
+                return;
+            }
 
-            if (ext === '.map') {
-                await this.fixSourceMapSources({
-                    stagingMapPath: stagingFilePath,
-                    originalMapPath: originalSrcPath
-                });
-            } else {
-                await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap);
+            let contents: string;
+            try {
+                contents = await fsExtra.readFile(stagingFilePath, 'utf8');
+            } catch (e) {
+                this.logger.debug('Error reading staged file during preprocess', { stagingFilePath, error: e });
+                return;
+            }
+
+            if (isXml) {
+                this.collectScriptReferencedFiles(stagingFilePath, contents);
+            }
+            if (needsCommentFix) {
+                await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap, contents);
             }
         }));
+    }
+
+    /**
+     * Parse a staged XML file's contents for `<script uri="...">` tags and add each referenced file's
+     * absolute staging path to {@link scriptReferencedFiles}. `pkg:/`/`libpkg:/` uris resolve from the
+     * staging root; bare relative uris resolve from the XML file's own directory. Roku loads these as
+     * BrightScript regardless of extension, so they are valid breakpoint targets.
+     * @param contents the already-loaded file contents (read once by the staging walk)
+     */
+    private collectScriptReferencedFiles(xmlStagingPath: string, contents: string) {
+        const scriptUriRegex = /<script\b[^>]*\buri\s*=\s*"([^"]*)"[^>]*\/?>/gi;
+        let match: RegExpExecArray;
+        while ((match = scriptUriRegex.exec(contents)) !== null) {
+            const uri = match[1];
+            const protocolIndex = uri.indexOf(':/');
+            let absolutePath: string;
+            if (protocolIndex >= 0) {
+                //pkg:/ or libpkg:/ — resolve from staging root
+                const relativePath = uri.substring(protocolIndex + 2).replace(/^\//, '');
+                absolutePath = s`${this.stagingDir}/${relativePath}`;
+            } else {
+                //relative path — resolve from the XML file's directory
+                absolutePath = s`${path.resolve(path.dirname(xmlStagingPath), uri)}`;
+            }
+            this.scriptReferencedFiles.add(absolutePath);
+        }
     }
 
     /**
@@ -611,14 +671,8 @@ export class Project {
      *   XML:   <!--//# sourceMappingURL=<path> -->
      *   other: //# sourceMappingURL=<path>
      */
-    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>) {
+    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>, contents: string) {
         try {
-            //if this is a media file, skip it because it won't have a source map
-            if (Project.binaryExtensions.has(path.extname(stagingFilePath).toLowerCase())) {
-                return;
-            }
-            let contents = await fsExtra.readFile(stagingFilePath, 'utf8');
-
             const commentMatch = Project.getSourceMapComment(contents);
 
             let absoluteMapPath: string;

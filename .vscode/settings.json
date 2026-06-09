@@ -22,5 +22,6 @@
   "editor.insertSpaces": true,
   "editor.detectIndentation": false,
   "editor.tabSize": 4,
-  "typescript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": false
+  "js/ts.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": false,
+  "js/ts.tsdk.path": "node_modules/typescript/lib"
 }
