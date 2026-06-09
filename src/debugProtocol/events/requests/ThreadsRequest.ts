@@ -44,7 +44,7 @@ export class ThreadsRequest implements ProtocolRequest {
         packetLength: number;
         requestId: number;
         command: Command;
-        threadsRequestFlags?: number; 
+        threadsRequestFlags?: number;
     } = {
             packetLength: undefined as number,
             requestId: undefined as number,
@@ -53,5 +53,5 @@ export class ThreadsRequest implements ProtocolRequest {
 }
 
 export enum ThreadRequestFlags {
-    includeThreadInfo = 0x0001
+    includeIdentityInfo = 0x0001
 }
