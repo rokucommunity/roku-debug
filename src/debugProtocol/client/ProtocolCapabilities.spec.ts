@@ -69,5 +69,170 @@ describe('ProtocolCapabilities', () => {
             expect(caps.supportsVirtualVariables).to.be.false;
             expect(caps.enableThreadHoppingWorkaround).to.be.false;
         });
+
+        describe('enableThreadHoppingWorkaround', () => {
+            it('is true for protocol versions < 3.1.0', () => {
+                expect(new ProtocolCapabilities('1.0.0').enableThreadHoppingWorkaround).to.be.true;
+                expect(new ProtocolCapabilities('2.0.0').enableThreadHoppingWorkaround).to.be.true;
+                expect(new ProtocolCapabilities('3.0.0').enableThreadHoppingWorkaround).to.be.true;
+            });
+
+            it('is false for protocol versions >= 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.1.0').enableThreadHoppingWorkaround).to.be.false;
+                expect(new ProtocolCapabilities('3.2.0').enableThreadHoppingWorkaround).to.be.false;
+                expect(new ProtocolCapabilities('3.5.0').enableThreadHoppingWorkaround).to.be.false;
+            });
+        });
+
+        describe('enableComponentLibrarySpecificBreakpoints', () => {
+            it('is false for protocol versions < 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.0.0').enableComponentLibrarySpecificBreakpoints).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.1.0').enableComponentLibrarySpecificBreakpoints).to.be.true;
+                expect(new ProtocolCapabilities('3.2.0').enableComponentLibrarySpecificBreakpoints).to.be.true;
+            });
+        });
+
+        describe('supportsConditionalBreakpoints', () => {
+            it('is false for protocol versions < 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.0.0').supportsConditionalBreakpoints).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.1.0').supportsConditionalBreakpoints).to.be.true;
+                expect(new ProtocolCapabilities('3.2.0').supportsConditionalBreakpoints).to.be.true;
+            });
+        });
+
+        describe('supportsHitConditionalBreakpoints', () => {
+            it('is false for protocol versions < 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.0.0').supportsHitConditionalBreakpoints).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.1.0').supportsHitConditionalBreakpoints).to.be.true;
+                expect(new ProtocolCapabilities('3.2.0').supportsHitConditionalBreakpoints).to.be.true;
+            });
+        });
+
+        describe('supportsBreakpointRegistrationWhileRunning', () => {
+            it('is false for protocol versions < 3.2.0', () => {
+                expect(new ProtocolCapabilities('3.1.0').supportsBreakpointRegistrationWhileRunning).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.2.0', () => {
+                expect(new ProtocolCapabilities('3.2.0').supportsBreakpointRegistrationWhileRunning).to.be.true;
+                expect(new ProtocolCapabilities('3.3.0').supportsBreakpointRegistrationWhileRunning).to.be.true;
+            });
+        });
+
+        describe('supportsBreakpointVerification', () => {
+            it('is false for protocol versions < 3.2.0', () => {
+                expect(new ProtocolCapabilities('3.1.0').supportsBreakpointVerification).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.2.0', () => {
+                expect(new ProtocolCapabilities('3.2.0').supportsBreakpointVerification).to.be.true;
+                expect(new ProtocolCapabilities('3.3.0').supportsBreakpointVerification).to.be.true;
+            });
+        });
+
+        describe('supportsVirtualVariables', () => {
+            it('is false for protocol versions < 3.3.0', () => {
+                expect(new ProtocolCapabilities('3.2.0').supportsVirtualVariables).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.3.0', () => {
+                expect(new ProtocolCapabilities('3.3.0').supportsVirtualVariables).to.be.true;
+                expect(new ProtocolCapabilities('3.4.0').supportsVirtualVariables).to.be.true;
+            });
+        });
+
+        describe('supportsExceptionBreakpoints', () => {
+            it('is false for protocol versions < 3.3.0', () => {
+                expect(new ProtocolCapabilities('3.2.0').supportsExceptionBreakpoints).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.3.0', () => {
+                expect(new ProtocolCapabilities('3.3.0').supportsExceptionBreakpoints).to.be.true;
+                expect(new ProtocolCapabilities('3.4.0').supportsExceptionBreakpoints).to.be.true;
+            });
+        });
+
+        describe('enableVariablesLowerCaseRetry', () => {
+            it('is true for protocol versions < 3.1.0', () => {
+                expect(new ProtocolCapabilities('1.0.0').enableVariablesLowerCaseRetry).to.be.true;
+                expect(new ProtocolCapabilities('3.0.0').enableVariablesLowerCaseRetry).to.be.true;
+            });
+
+            it('is false for protocol versions >= 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.1.0').enableVariablesLowerCaseRetry).to.be.false;
+                expect(new ProtocolCapabilities('3.2.0').enableVariablesLowerCaseRetry).to.be.false;
+            });
+        });
+
+        describe('supportsExecuteCommand', () => {
+            it('is false for protocol versions < 3.0.0', () => {
+                expect(new ProtocolCapabilities('1.0.0').supportsExecuteCommand).to.be.false;
+                expect(new ProtocolCapabilities('2.0.0').supportsExecuteCommand).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.0.0', () => {
+                expect(new ProtocolCapabilities('3.0.0').supportsExecuteCommand).to.be.true;
+                expect(new ProtocolCapabilities('3.1.0').supportsExecuteCommand).to.be.true;
+            });
+        });
+
+        describe('supportsCompileErrorReporting', () => {
+            it('is false for protocol versions < 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.0.0').supportsCompileErrorReporting).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.1.0', () => {
+                expect(new ProtocolCapabilities('3.1.0').supportsCompileErrorReporting).to.be.true;
+                expect(new ProtocolCapabilities('3.2.0').supportsCompileErrorReporting).to.be.true;
+            });
+        });
+
+        describe('supportsThreadIdentityInfo', () => {
+            it('is false for protocol versions < 3.5.0', () => {
+                expect(new ProtocolCapabilities('3.0.0').supportsThreadIdentityInfo).to.be.false;
+                expect(new ProtocolCapabilities('3.1.0').supportsThreadIdentityInfo).to.be.false;
+                expect(new ProtocolCapabilities('3.2.0').supportsThreadIdentityInfo).to.be.false;
+                expect(new ProtocolCapabilities('3.3.0').supportsThreadIdentityInfo).to.be.false;
+                expect(new ProtocolCapabilities('3.4.0').supportsThreadIdentityInfo).to.be.false;
+            });
+
+            it('is true for protocol versions >= 3.5.0', () => {
+                expect(new ProtocolCapabilities('3.5.0').supportsThreadIdentityInfo).to.be.true;
+                expect(new ProtocolCapabilities('3.6.0').supportsThreadIdentityInfo).to.be.true;
+                expect(new ProtocolCapabilities('4.0.0').supportsThreadIdentityInfo).to.be.true;
+            });
+
+            it('is false just below the 3.5.0 boundary', () => {
+                expect(new ProtocolCapabilities('3.4.99').supportsThreadIdentityInfo).to.be.false;
+            });
+
+            it('is false when the protocol version is unknown', () => {
+                //unresolved/invalid versions should never opt into a newer capability
+                expect(new ProtocolCapabilities(undefined).supportsThreadIdentityInfo).to.be.false;
+                expect(new ProtocolCapabilities('').supportsThreadIdentityInfo).to.be.false;
+                expect(new ProtocolCapabilities('not-a-version').supportsThreadIdentityInfo).to.be.false;
+            });
+
+            it('is false for every OS-derived version, since the OS table tops out at protocol 3.3.0', () => {
+                //no Roku OS currently maps to protocol >=3.5.0, so identity info can only be enabled
+                //via an explicit protocol version reported during the handshake
+                expect(new ProtocolCapabilities(undefined, '14.1.0').supportsThreadIdentityInfo).to.be.false;
+                expect(new ProtocolCapabilities(undefined, '99.99.99').supportsThreadIdentityInfo).to.be.false;
+            });
+
+            it('uses the explicit protocol version even when an older OS is also supplied', () => {
+                //an explicit, valid protocol version always wins over OS derivation
+                expect(new ProtocolCapabilities('3.5.0', '11.0.0').supportsThreadIdentityInfo).to.be.true;
+            });
+        });
     });
 });

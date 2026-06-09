@@ -114,4 +114,12 @@ export class ProtocolCapabilities {
     public get supportsCompileErrorReporting() {
         return semver.satisfies(this.protocolVersion, '>=3.1.0');
     }
+
+    /**
+     * Starting in protocol v3.5.0, the threads request can ask the device to include per-thread
+     * identity info (os thread id, name, and type) by setting the `includeIdentityInfo` flag.
+     */
+    public get supportsThreadIdentityInfo() {
+        return semver.satisfies(this.protocolVersion, '>=3.5.0');
+    }
 }

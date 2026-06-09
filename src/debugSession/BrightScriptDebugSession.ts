@@ -30,7 +30,7 @@ import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
-import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
@@ -1531,9 +1531,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 let rokuThreads = await this.rokuAdapter.getThreads();
 
                 for (let thread of rokuThreads) {
-                    const threadName = thread.isDetached
-                        ? `Thread ${thread.threadId} [detached]`
-                        : `Thread ${thread.threadId}`;
+                    const threadName = this.getThreadName(thread as AdapterThread);
                     threads.push(
                         new Thread(thread.threadId, threadName)
                     );
@@ -1558,6 +1556,45 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         };
 
         this.sendResponse(response);
+    }
+
+    /**
+     * Get the thread name to display in the UI based on the thread info we have.
+     * This is what displays in the `call stack` region in vscode
+     * @param thread
+     * @returns
+     */
+    private getThreadName(thread: AdapterThread) {
+        let threadName = '';
+        if (thread.type || thread.name || thread.osThreadId) {
+            //build the name from only the parts that are present, so missing values don't leak into the name
+            const parts: string[] = [];
+            if (thread.type) {
+                parts.push(`[${thread.type}]`);
+            }
+            if (thread.name) {
+                parts.push(thread.name);
+            }
+            if (thread.osThreadId) {
+                parts.push(thread.osThreadId);
+            }
+            threadName = parts.join(' ');
+        }
+        //remove any extraneous whitespace to deal with missing values
+        threadName = threadName.replace(/\s+/g, ' ').trim();
+
+        if (threadName === '') {
+            threadName = `Thread ${thread.threadId}`;
+        }
+
+        if (thread.isDetached) {
+            threadName += ' [detached]';
+        }
+
+        //remove any extraneous whitespace to deal with missing values
+        threadName = threadName.replace(/\s+/g, ' ').trim();
+
+        return threadName;
     }
 
     protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {

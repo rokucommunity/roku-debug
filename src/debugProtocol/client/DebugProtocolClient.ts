@@ -388,11 +388,14 @@ export class DebugProtocolClient {
     public async threads() {
         const result = await this.processThreadsRequest(
             ThreadsRequest.fromJson({
-                requestId: this.requestIdSequence++
+                requestId: this.requestIdSequence++,
+                //only ask the device for per-thread identity info on firmware that supports it
+                includeIdentityInfo: this.capabilities?.supportsThreadIdentityInfo
             })
         );
         return result;
     }
+
     public async processThreadsRequest(request: ThreadsRequest) {
         if (this.isStopped) {
             let result = await this.sendRequest<ThreadsResponse>(request);
