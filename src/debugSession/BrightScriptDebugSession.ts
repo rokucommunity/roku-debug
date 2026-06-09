@@ -588,8 +588,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 return await this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
             }
 
-            await this.initializeProfiling();
-
             // everything is ready, send the response to the launch request so the UI can update and configuration can begin
             this.sendResponse(response);
 
@@ -656,6 +654,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
             // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
             this.sendEvent(new InitializedEvent());
+
+            await this.initializeProfiling();
 
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
@@ -912,7 +912,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // launchRequest gets invoked by our restart session flow.
         // We need to clear/reset some state to avoid issues.
         this.entryBreakpointWasHandled = false;
-        this.breakpointManager.clearBreakpointLastState();
+        //reset all per-session breakpoint state (diff baseline + cached parsed ASTs) since a restart
+        //re-stages the project
+        this.breakpointManager.reset();
     }
 
     /**
@@ -1295,10 +1297,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
-        //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-        if (!this.enableDebugProtocol) {
-            await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
-        }
+        //validate breakpoints for all debugger types (and write `stop` statements for telnet — decided internally)
+        await this.breakpointManager.validateAndWriteBreakpointsForProject(this.projectManager.mainProject);
 
         if (this.launchConfiguration.packageTask) {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
@@ -1417,11 +1417,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // Add breakpoint lines to the staging files and before publishing
         util.log('Adding stop statements for active breakpoints in Component Libraries');
 
-        //write STOPs (telnet only), postfix, and zip each complib in parallel — each targets distinct files
+        //validate breakpoints (and write STOPs for telnet), postfix, and zip each complib in parallel — each targets distinct files
         const packagePromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
-            if (!this.enableDebugProtocol) {
-                await this.breakpointManager.writeBreakpointsForProject(compLibProject);
-            }
+            await this.breakpointManager.validateAndWriteBreakpointsForProject(compLibProject);
             await compLibProject.postfixFiles();
             await compLibProject.zipPackage({ retainStagingFolder: true });
         });
@@ -2544,9 +2542,18 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      * @param args
      */
     protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
-        //return to the home screen
+        //return to the home screen — best effort. The device may already be powered off or unreachable
+        //at disconnect time; without a guard pressHomeButton rejects (EHOSTDOWN / ECONNREFUSED / etc)
+        //and because @vscode/debugadapter dispatches this method without awaiting the returned Promise,
+        //that rejection escapes as an unhandledRejection and crashes the DAP process.
+        //See https://github.com/rokucommunity/vscode-brightscript-language/issues/807
+        //    https://github.com/rokucommunity/roku-debug/issues/332
         if (!this.enableDebugProtocol) {
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            try {
+                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            } catch (e) {
+                this.logger.warn('Failed to press home button during disconnect; device may be unreachable', e);
+            }
         }
         this.sendResponse(response);
         await this.shutdown();

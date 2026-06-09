@@ -155,9 +155,18 @@ export class DebugProtocolAdapter {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
-            if (this.emitter) {
-                this.emitter.emit(eventName, data);
+            if (!this.emitter) {
+                return;
             }
+            //drop stale 'suspend'/'runtime-error' events when the debugger has already resumed.
+            //emit() defers via setTimeout, so isStopped can flip false between queue and fire (e.g. auto-continue on entry breakpoint),
+            //causing downstream handlers to call getThreads() against a running debugger.
+            //See https://github.com/rokucommunity/vscode-brightscript-language/issues/798
+            if ((eventName === 'suspend' || eventName === 'runtime-error') && !this.isAtDebuggerPrompt) {
+                this.logger.warn(`Dropping stale "${eventName}" event because debugger is no longer paused`);
+                return;
+            }
+            this.emitter.emit(eventName, data);
         }, 0);
     }
 
@@ -297,6 +306,10 @@ export class DebugProtocolAdapter {
                 await this.client.destroy()
             ]);
             this.client = undefined;
+            //keep `connected` in sync with `client` so the _syncBreakpoints entry guard
+            //(and similar checks elsewhere) reflects the actual state. Restored to true below
+            //once the new client finishes connecting.
+            this.connected = false;
         }
         this.client = new DebugProtocolClient(this.options);
         try {
@@ -331,6 +344,11 @@ export class DebugProtocolAdapter {
                 this.beginAppExit();
                 void this.client?.destroy();
                 this.client = undefined;
+                //the protocol client is gone — keep `connected` in sync so any subsequent
+                //syncBreakpoints / setExceptionBreakpoints calls during the close→app-exit
+                //window early-return instead of dereferencing the undefined client.
+                //See https://github.com/rokucommunity/vscode-brightscript-language/issues/811
+                this.connected = false;
             });
 
             // Listen for the app exit event
@@ -1068,6 +1086,15 @@ export class DebugProtocolAdapter {
             return;
         }
 
+        //getDiff above can yield to other microtasks. If the protocol client closed while we were
+        //awaiting (mid-sync TOCTOU), bail out before dereferencing this.client. The app-exit handler
+        //resets the breakpoint baseline so the next reconnect re-pushes any pending changes.
+        //See https://github.com/rokucommunity/vscode-brightscript-language/issues/811
+        if (!this.client) {
+            this.logger.info('Skipping breakpoint sync because the protocol client closed mid-sync');
+            return;
+        }
+
         // REMOVE breakpoints (delete these breakpoints from the device)
         if (diff.removed.length > 0) {
             const response = await this.client.removeBreakpoints(
@@ -1081,6 +1108,11 @@ export class DebugProtocolAdapter {
         }
 
         if (diff.added.length > 0) {
+            //the removeBreakpoints await above can also yield; re-check before attempting the add
+            if (!this.client) {
+                this.logger.info('Skipping breakpoint add because the protocol client closed mid-sync');
+                return;
+            }
             const breakpointsToSendToDevice = diff.added.map(breakpoint => {
                 const hitCount = parseInt(breakpoint.hitCondition);
                 return {

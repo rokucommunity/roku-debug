@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
-import { DebugSession, Logger as DapLogger, logger as dapLogger, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
+import { DebugSession, InitializedEvent, Logger as DapLogger, logger as dapLogger, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
@@ -1137,7 +1137,8 @@ describe('BrightScriptDebugSession', () => {
             await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //add breakpoint during live debug session. one was there before, the other is new. Neither will be verified right now
+            //add breakpoint during live debug session. one was there before, the other is new.
+            //line 1 was already staged so it comes back verified; line 2 is new so it is not.
             args.breakpoints = [{ line: 1 }, { line: 2 }];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(
@@ -1191,6 +1192,16 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('resetSessionState', () => {
+        it('resets the breakpoint manager so a restart does not reuse stale staged data', () => {
+            const reset = sinon.stub(session.breakpointManager, 'reset');
+
+            (session as any).resetSessionState();
+
+            expect(reset.calledOnce, 'breakpointManager.reset() should be called').to.be.true;
+        });
+    });
+
     describe('shutdown', () => {
         it('erases all staging folders when configured to do so', async () => {
             let stub = sinon.stub(fsExtra, 'removeSync').returns(null);
@@ -1240,6 +1251,42 @@ describe('BrightScriptDebugSession', () => {
             await session.shutdown();
 
             expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
+        });
+    });
+
+    describe('disconnectRequest', () => {
+        //Regression tests for DAP crashes from unhandled pressHomeButton rejections at disconnect time:
+        //  - https://github.com/rokucommunity/vscode-brightscript-language/issues/807 (EHOSTDOWN)
+        //  - https://github.com/rokucommunity/roku-debug/issues/332 (ECONNREFUSED)
+        //@vscode/debugadapter dispatches disconnectRequest without awaiting the returned Promise
+        //(debugSession.js:391), so any rejection from `await this.rokuDeploy.pressHomeButton(...)`
+        //becomes an unhandled rejection that crashes the DAP process. When the device is powered
+        //off / unreachable at disconnect time, the ECP connect attempt fails — the specific Node
+        //error code depends on the OS-level reason (host unresponsive vs. connection refused).
+        function makeTelnetDisconnectSession(rejection: Error) {
+            (session as any).launchConfiguration = {
+                ...launchConfiguration,
+                enableDebugProtocol: false,
+                host: '192.168.1.17',
+                remotePort: 8060
+            };
+            session.rokuDeploy.pressHomeButton = () => Promise.reject(rejection);
+            //stub shutdown so the test doesn't tear down the whole session machinery
+            sinon.stub(session, 'shutdown').resolves();
+        }
+
+        it('does not reject when pressHomeButton fails with EHOSTDOWN (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect EHOSTDOWN 192.168.1.17:8060 - Local (192.168.1.18:51783)'), { code: 'EHOSTDOWN' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
+        });
+
+        it('does not reject when pressHomeButton fails with ECONNREFUSED (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect ECONNREFUSED 192.168.1.17:8060'), { code: 'ECONNREFUSED' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
         });
     });
 
@@ -2712,6 +2759,28 @@ describe('BrightScriptDebugSession', () => {
 
                 expect(getProgressEvents()).to.be.empty;
             });
+        });
+
+        it('runs initializeProfiling after InitializedEvent so the extension does not clear profiling context keys on session start', async function() {
+            this.timeout(5000);
+            setupLaunchStubs();
+
+            const calls: string[] = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => {
+                calls.push(`sendEvent:${event.constructor.name}`);
+            });
+            sinon.stub(session as any, 'initializeProfiling').callsFake(() => {
+                calls.push('initializeProfiling');
+                return Promise.resolve();
+            });
+
+            await session.launchRequest({} as any, launchConfiguration);
+
+            const initializedIdx = calls.indexOf('sendEvent:InitializedEvent');
+            const profilingIdx = calls.indexOf('initializeProfiling');
+            expect(initializedIdx, 'InitializedEvent was not sent').to.be.greaterThan(-1);
+            expect(profilingIdx, 'initializeProfiling was not called').to.be.greaterThan(-1);
+            expect(profilingIdx, 'initializeProfiling must run after InitializedEvent').to.be.greaterThan(initializedIdx);
         });
     });
 
