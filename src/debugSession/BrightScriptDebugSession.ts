@@ -874,6 +874,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             this.logger.info('Disabling perfetto tracing because it is disabled in the launch configuration');
             //TODO implement a way to disable perfetto tracing on the device
 
+            //tracing was requested but the device firmware does not meet the minimum requirement
+        } else if (this.launchConfiguration.profiling?.tracing?.enable && !this.supportsPerfettoTracing) {
+            const firmwareVersion = this.deviceInfo?.softwareVersion ?? 'unknown';
+            const message = `Perfetto profiling is not available: device firmware ${firmwareVersion} is below the minimum required version (15.2). The Perfetto profiling buttons will not be available during this session.`;
+            this.logger.warn(message);
+            this.showPopupMessage(message, 'warn').catch(e => this.logger.error('Failed to show Perfetto unavailable notification', e));
+
             //profiling.tracing.enabled is set to `undefined`, which means we should do nothing
         } else {
             this.logger.info('Skipping perfetto initalization because `profiling.tracing.enable` is not defined in the launch configuration');
@@ -890,6 +897,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             } catch (e) {
                 this.logger.error('Failed to start perfetto tracing on start', e);
             }
+        } else if (this.launchConfiguration.profiling?.tracing?.connectOnStart && !this.supportsPerfettoTracing) {
+            const firmwareVersion = this.deviceInfo?.softwareVersion ?? 'unknown';
+            const message = `Perfetto profiling is not available: device firmware ${firmwareVersion} is below the minimum required version (15.2). Tracing will not start automatically.`;
+            this.logger.warn(message);
+            this.showPopupMessage(message, 'warn').catch(e => this.logger.error('Failed to show Perfetto unavailable notification', e));
         }
     }
 
