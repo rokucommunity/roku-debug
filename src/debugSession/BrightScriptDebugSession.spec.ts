@@ -21,7 +21,7 @@ import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
 import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
-import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { PerfettoManager } from '../PerfettoManager';
 
@@ -2701,6 +2701,123 @@ describe('BrightScriptDebugSession', () => {
             ]));
             const response = await getThreadsResponse();
             expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+    });
+
+    describe('getThreadName', () => {
+        //small helper to build a Thread with only the fields getThreadName cares about, plus required filler fields
+        function buildThread(overrides: Partial<AdapterThread>): AdapterThread {
+            return {
+                threadId: 0,
+                isSelected: false,
+                lineNumber: 1,
+                filePath: '',
+                functionName: '',
+                lineContents: '',
+                ...overrides
+            };
+        }
+
+        function getThreadName(overrides: Partial<AdapterThread>) {
+            return session['getThreadName'](buildThread(overrides));
+        }
+
+        //
+        // "Thread {threadId}" branch: none of type/name/osThreadId present
+        //
+        describe('falls back to "Thread {threadId}" when type, name, and osThreadId are all missing', () => {
+            it('uses the threadId', () => {
+                expect(getThreadName({ threadId: 0 })).to.equal('Thread 0');
+            });
+
+            it('uses a nonzero threadId', () => {
+                expect(getThreadName({ threadId: 7 })).to.equal('Thread 7');
+            });
+
+            it('treats explicit undefined fields as missing', () => {
+                expect(getThreadName({ threadId: 3, type: undefined, name: undefined, osThreadId: undefined })).to.equal('Thread 3');
+            });
+
+            it('treats empty-string fields as missing (falsy)', () => {
+                expect(getThreadName({ threadId: 4, type: '', name: '', osThreadId: '' })).to.equal('Thread 4');
+            });
+
+            it('appends [detached] when detached', () => {
+                expect(getThreadName({ threadId: 2, isDetached: true })).to.equal('Thread 2 [detached]');
+            });
+
+            it('does not append [detached] when isDetached is false', () => {
+                expect(getThreadName({ threadId: 2, isDetached: false })).to.equal('Thread 2');
+            });
+
+            it('does not append [detached] when isDetached is undefined', () => {
+                expect(getThreadName({ threadId: 2, isDetached: undefined })).to.equal('Thread 2');
+            });
+        });
+
+        //
+        // "[type] name osThreadId" branch: at least one of type/name/osThreadId present.
+        // Only the fields that are present are included; missing fields are omitted entirely
+        // (no "undefined" tokens leak into the name).
+        //
+        describe('builds "[type] name osThreadId" from only the present fields', () => {
+            it('all three present', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234' })).to.equal('[render] MainThread 1234');
+            });
+
+            it('only type present', () => {
+                expect(getThreadName({ type: 'render' })).to.equal('[render]');
+            });
+
+            it('only name present', () => {
+                expect(getThreadName({ name: 'MainThread' })).to.equal('MainThread');
+            });
+
+            it('only osThreadId present', () => {
+                expect(getThreadName({ osThreadId: '1234' })).to.equal('1234');
+            });
+
+            it('type and name present, osThreadId missing', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread' })).to.equal('[render] MainThread');
+            });
+
+            it('type and osThreadId present, name missing', () => {
+                expect(getThreadName({ type: 'render', osThreadId: '1234' })).to.equal('[render] 1234');
+            });
+
+            it('name and osThreadId present, type missing', () => {
+                expect(getThreadName({ name: 'MainThread', osThreadId: '1234' })).to.equal('MainThread 1234');
+            });
+
+            it('appends [detached] when detached', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234', isDetached: true })).to.equal('[render] MainThread 1234 [detached]');
+            });
+
+            it('appends [detached] even when only one field is present', () => {
+                expect(getThreadName({ type: 'render', isDetached: true })).to.equal('[render] [detached]');
+            });
+
+            it('does not append [detached] when isDetached is false', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234', isDetached: false })).to.equal('[render] MainThread 1234');
+            });
+        });
+
+        //
+        // whitespace normalization
+        //
+        describe('whitespace handling', () => {
+            it('collapses internal whitespace within field values', () => {
+                expect(getThreadName({ type: 'render', name: 'Main   Thread', osThreadId: '1234' })).to.equal('[render] Main Thread 1234');
+            });
+
+            it('collapses tabs and newlines in field values to single spaces', () => {
+                expect(getThreadName({ type: 'render', name: 'Main\t\nThread', osThreadId: '1234' })).to.equal('[render] Main Thread 1234');
+            });
+
+            it('trims leading/trailing whitespace produced by field values', () => {
+                //leading space inside type and trailing space in osThreadId get collapsed/trimmed
+                expect(getThreadName({ type: ' render', name: 'MainThread', osThreadId: '1234 ' })).to.equal('[ render] MainThread 1234');
+            });
         });
     });
 
