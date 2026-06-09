@@ -30,7 +30,7 @@ export class ThreadsResponse {
                 const flags = smartBuffer.readUInt8();
                 thread.isPrimary = (flags & ThreadInfoFlags.isPrimary) > 0;
                 thread.isDetached = (flags & ThreadInfoFlags.isDetached) > 0;
-                const hasIdentityInfo = (flags & ThreadInfoFlags.isIdentityInfo) > 0;
+                const hasIdentityInfo = (flags & ThreadInfoFlags.includesIdentityInfo) > 0;
                 thread.stopReason = StopReasonCode[smartBuffer.readUInt32LE()] as StopReason; // stop_reason
                 thread.stopReasonDetail = protocolUtil.readStringNT(smartBuffer); // stop_reason_detail
                 thread.lineNumber = smartBuffer.readUInt32LE(); // line_number
@@ -59,7 +59,7 @@ export class ThreadsResponse {
             let flags = 0;
             flags |= thread.isPrimary ? ThreadInfoFlags.isPrimary : 0;
             flags |= thread.isDetached ? ThreadInfoFlags.isDetached : 0;
-            flags |= hasOptionalFields ? ThreadInfoFlags.isIdentityInfo : 0;
+            flags |= hasOptionalFields ? ThreadInfoFlags.includesIdentityInfo : 0;
             smartBuffer.writeUInt8(flags); //flags
             //stop_reason is an 8-bit value (same as the other locations in this protocol); however, it is sent in this response as a 32bit value for historical purposes
             smartBuffer.writeUInt32LE(StopReasonCode[thread.stopReason]); // stop_reason
@@ -148,5 +148,8 @@ export interface ThreadInfo {
 enum ThreadInfoFlags {
     isPrimary = 0x01,
     isDetached = 0x02,
-    isIdentityInfo = 0x04
+    /**
+     * Does the response include the optional identity info fields (id, name, type)?
+     */
+    includesIdentityInfo = 0x04
 }
