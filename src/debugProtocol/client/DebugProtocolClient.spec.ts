@@ -310,6 +310,45 @@ describe('DebugProtocolClient', () => {
             await client.threads();
             expect(client?.primaryThread).to.eql(1);
         });
+
+        it('sets includeIdentityInfo to false when protocol version < 3.5.0', async () => {
+            await connect();
+            client.capabilities = new ProtocolCapabilities('3.4.0');
+            plugin.pushResponse(ThreadsResponse.fromJson({
+                requestId: 1,
+                threads: [thread()]
+            }));
+
+            await client.threads();
+            const request = plugin.getLatestRequest<any>();
+            expect(request.data.includeIdentityInfo).to.be.false;
+        });
+
+        it('sets includeIdentityInfo to true when protocol version >= 3.5.0', async () => {
+            await connect();
+            client.capabilities = new ProtocolCapabilities('3.5.0');
+            plugin.pushResponse(ThreadsResponse.fromJson({
+                requestId: 1,
+                threads: [thread()]
+            }));
+
+            await client.threads();
+            const request = plugin.getLatestRequest<any>();
+            expect(request.data.includeIdentityInfo).to.be.true;
+        });
+
+        it('sets includeIdentityInfo to false when capabilities is undefined', async () => {
+            await connect();
+            client.capabilities = undefined;
+            plugin.pushResponse(ThreadsResponse.fromJson({
+                requestId: 1,
+                threads: [thread()]
+            }));
+
+            await client.threads();
+            const request = plugin.getLatestRequest<any>();
+            expect(request.data.includeIdentityInfo).to.be.false;
+        });
     });
 
     describe('getStackTrace', () => {
@@ -545,6 +584,34 @@ describe('DebugProtocolClient', () => {
         client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
             client.capabilities.supportsExceptionBreakpoints
+        ).to.be.true;
+    });
+
+    it('knows when to enable thread identity info', () => {
+        //only supported on version 3.5.0 and above
+        client.capabilities = new ProtocolCapabilities('1.0.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
+        ).to.be.false;
+
+        client.capabilities = new ProtocolCapabilities('3.0.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
+        ).to.be.false;
+
+        client.capabilities = new ProtocolCapabilities('3.4.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
+        ).to.be.false;
+
+        client.capabilities = new ProtocolCapabilities('3.5.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
+        ).to.be.true;
+
+        client.capabilities = new ProtocolCapabilities('4.0.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
         ).to.be.true;
     });
 

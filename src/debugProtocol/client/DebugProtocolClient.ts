@@ -19,7 +19,7 @@ import { RemoveBreakpointsRequest } from '../events/requests/RemoveBreakpointsRe
 import { ListBreakpointsRequest } from '../events/requests/ListBreakpointsRequest';
 import { VariablesRequest } from '../events/requests/VariablesRequest';
 import { StackTraceRequest } from '../events/requests/StackTraceRequest';
-import { ThreadsRequest, ThreadRequestFlags } from '../events/requests/ThreadsRequest';
+import { ThreadsRequest } from '../events/requests/ThreadsRequest';
 import type { ExceptionBreakpoint } from '../events/requests/SetExceptionBreakpointsRequest';
 import { SetExceptionBreakpointsRequest } from '../events/requests/SetExceptionBreakpointsRequest';
 import { ExecuteRequest } from '../events/requests/ExecuteRequest';
@@ -389,11 +389,13 @@ export class DebugProtocolClient {
         const result = await this.processThreadsRequest(
             ThreadsRequest.fromJson({
                 requestId: this.requestIdSequence++,
-                threadsRequestFlags: ThreadRequestFlags.includeIdentityInfo
+                //only ask the device for per-thread identity info on firmware that supports it
+                includeIdentityInfo: this.capabilities?.supportsThreadIdentityInfo
             })
         );
         return result;
     }
+
     public async processThreadsRequest(request: ThreadsRequest) {
         if (this.isStopped) {
             let result = await this.sendRequest<ThreadsResponse>(request);
