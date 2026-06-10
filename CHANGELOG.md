@@ -11,13 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Enhanced thread names ([#303](https://github.com/rokucommunity/roku-debug/pull/303))
  - Log Perfetto availability and notify user when device firmware is below the minimum requirement ([#354](https://github.com/rokucommunity/roku-debug/pull/354))
  - upgrade to [@rokucommunity/logger@0.3.13](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#0313---2026-06-08). Notable changes since 0.3.12:
-     - chore: Support dispatch workflows ([#15](https://github.com/rokucommunity/logger/pull/15))
-     - chore: Shared CI - remove merged check on publish releases ([#14](https://github.com/rokucommunity/logger/pull/14))
-     - Update minimum audit threshold ([#27](https://github.com/rokucommunity/logger/pull/27))
-     - Accept GHSA-w5hq-g745-h8pq (uuid <11.1.1) advisory ([#26](https://github.com/rokucommunity/logger/pull/26))
-     - Slim security-audit-required to a single conditional check ([#24](https://github.com/rokucommunity/logger/pull/24))
-     - Only block release-branch PRs on Security Audit failures ([#21](https://github.com/rokucommunity/logger/pull/21))
-     - Security Audit workflow ([#19](https://github.com/rokucommunity/logger/pull/19))
+     - chore: Security updates ([#15](https://github.com/rokucommunity/logger/pull/15), [#14](https://github.com/rokucommunity/logger/pull/14), [#27](https://github.com/rokucommunity/logger/pull/27), [#26](https://github.com/rokucommunity/logger/pull/26), [#24](https://github.com/rokucommunity/logger/pull/24), [#21](https://github.com/rokucommunity/logger/pull/21), [#19](https://github.com/rokucommunity/logger/pull/19))
  - upgrade to [brighterscript@0.72.5](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0725---2026-06-10). Notable changes since 0.72.4:
 
 
