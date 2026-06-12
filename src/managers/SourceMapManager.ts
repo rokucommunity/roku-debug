@@ -5,6 +5,8 @@ import { standardizePath as s, fileUtils } from '../FileUtils';
 import * as path from 'path';
 import type { SourceLocation } from './LocationManager';
 import { logger } from '../logging';
+import type { MaybePromise } from '../interfaces';
+import { Project } from './ProjectManager';
 
 /**
  * Unifies access to source files across the whole project
@@ -64,14 +66,22 @@ export class SourceMapManager {
             let parsedSourceMap = JSON.parse(sourceMap) as RawSourceMap;
             //remove the file from cache
             delete this.cache[key];
+            //also evict any stale SourceMapConsumer built from the old map.
+            //the consumer cache is keyed by the raw path (not lowercased), so clear both
+            //casings to be safe across platforms.
+            delete this.sourceMapConsumerCache[sourceMapPath];
+            delete this.sourceMapConsumerCache[key];
             //standardize the source map paths
+            const mapDir = path.dirname(sourceMapPath);
+            // Resolve sourceRoot relative to the map file's directory (handles relative sourceRoot correctly)
+            const sourceRoot = parsedSourceMap.sourceRoot
+                ? path.resolve(mapDir, parsedSourceMap.sourceRoot)
+                : mapDir;
             parsedSourceMap.sources = parsedSourceMap.sources.map(source => fileUtils.standardizePath(
-                path.resolve(
-                    //use the map's sourceRoot, or the map's folder path (to support relative paths)
-                    parsedSourceMap.sourceRoot || path.dirname(sourceMapPath),
-                    source
-                )
+                path.resolve(sourceRoot, source)
             ));
+            // Clear sourceRoot since sources are now absolute — prevents SourceMapConsumer from double-applying it
+            parsedSourceMap.sourceRoot = '';
             this.cache[key] = parsedSourceMap;
         } catch (e) {
             this.cache[key] = null;
@@ -80,14 +90,47 @@ export class SourceMapManager {
     }
 
     /**
+     * Get the path to the sourcemap for a given file, either from a sourceMappingURL comment or by assuming a co-located .map file.
+     *
+     * Returns undefined if no source map is found.
+     * @param stagingFilePath
+     * @returns
+     */
+    public async getSourceMapPath(stagingFilePath: string) {
+        stagingFilePath = s`${stagingFilePath}`;
+        let sourceMapPath = this.sourceMapPathCache.get(stagingFilePath);
+        if (!sourceMapPath) {
+            //read the file on disk and find the sourceMapURL comment (if available)
+            let contents: string | undefined;
+            try {
+                contents = await fsExtra.readFile(stagingFilePath, 'utf8');
+            } catch {
+                // file doesn't exist — fall through to the colocated map assumption
+            }
+            const match = contents ? Project.getSourceMapComment(contents) : undefined;
+            //if we have a comment, use it
+            if (match) {
+                sourceMapPath = path.resolve(path.dirname(stagingFilePath), match.mapPath ?? '');
+
+                //we don't have a comment. Assume a co-located source map with the same name as the file + .map
+            } else {
+                sourceMapPath = `${stagingFilePath}.map`;
+            }
+
+            this.sourceMapPathCache.set(stagingFilePath, sourceMapPath);
+        }
+        return sourceMapPath;
+    }
+    private sourceMapPathCache = new Map<string, string>();
+
+    /**
      * Get the source location of a position using a source map. If no source map is found, undefined is returned
      * @param filePath - the absolute path to the file
      * @param currentLineNumber - the 1-based line number of the current location.
      * @param currentColumnIndex - the 0-based column number of the current location.
      */
     public async getOriginalLocation(filePath: string, currentLineNumber: number, currentColumnIndex = 0): Promise<SourceLocation> {
-        //look for a source map for this file
-        let sourceMapPath = `${filePath}.map`;
+        const sourceMapPath = await this.getSourceMapPath(filePath);
 
         //if we have a source map, use it
         let parsedSourceMap = await this.getSourceMap(sourceMapPath);
@@ -119,14 +162,20 @@ export class SourceMapManager {
         }
     }
 
-    private sourceMapConsumerCache: Record<string, SourceMapConsumer> = {};
+    private sourceMapConsumerCache: Record<string, MaybePromise<SourceMapConsumer>> = {};
 
     private async getSourceMapConsumer(sourceMapPath: string, parsedSourceMap: RawSourceMap) {
         let consumer = this.sourceMapConsumerCache[sourceMapPath];
         if (!consumer) {
-            consumer = await new SourceMapConsumer(parsedSourceMap);
+            consumer = new SourceMapConsumer(parsedSourceMap);
             this.sourceMapConsumerCache[sourceMapPath] = consumer;
         }
+
+        if (typeof (consumer as Promise<SourceMapConsumer>)?.then === 'function') {
+            consumer = await consumer;
+            this.sourceMapConsumerCache[sourceMapPath] = consumer;
+        }
+
         return consumer;
     }
 
@@ -159,6 +208,7 @@ export class SourceMapManager {
                         locations.push({
                             lineNumber: position.line,
                             columnIndex: position.column,
+                            //TODO this may be wrong if the sourcemap is not colocated with the generated file
                             filePath: sourceMapPath.replace(/\.map$/g, '')
                         });
                     }
@@ -170,11 +220,18 @@ export class SourceMapManager {
         return locations;
     }
 
-    public destroy() {
+    public async destroy() {
         // Clean up all source map consumers
         for (let key in this.sourceMapConsumerCache) {
-            let consumer = this.sourceMapConsumerCache[key];
-            consumer?.destroy?.();
+            try {
+                let consumer = this.sourceMapConsumerCache[key];
+                if (typeof (consumer as Promise<SourceMapConsumer>)?.then === 'function') {
+                    consumer = await consumer;
+                }
+                (consumer as SourceMapConsumer)?.destroy?.();
+            } catch (error) {
+                this.logger.error('Error destroying source map consumer', key, { error });
+            }
         }
     }
 }

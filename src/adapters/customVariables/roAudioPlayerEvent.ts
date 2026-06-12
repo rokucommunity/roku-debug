@@ -104,7 +104,7 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     });
 
     pushCustomVariableToContainer(adapter, container, {
-        name: '$formatDetected',
+        name: '$isFormatDetected',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsFormatDetected()`,
@@ -113,7 +113,7 @@ export function pushRoAudioPlayerEventVariables(adapter: DebugProtocolAdapter, e
     });
 
     pushCustomVariableToContainer(adapter, container, {
-        name: '$segmentDownloadStarted',
+        name: '$isSegmentDownloadStarted',
         type: VariableType.Boolean,
         presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.IsSegmentDownloadStarted()`,

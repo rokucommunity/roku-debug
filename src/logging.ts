@@ -60,7 +60,7 @@ export class FileLoggingManager {
                 filePath: undefined
             }
         };
-        //diisable all file logging if top-level config is omitted or set to false
+        //disable all file logging if top-level config is omitted or set to false
         if (!config || (typeof config === 'object' && config?.enabled === false)) {
             return;
         }

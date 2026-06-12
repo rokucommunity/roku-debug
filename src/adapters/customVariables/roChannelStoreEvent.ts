@@ -15,6 +15,15 @@ export function pushRoChannelStoreEventVariables(adapter: DebugProtocolAdapter, 
     });
 
     pushCustomVariableToContainer(adapter, container, {
+        name: '$sourceIdentity',
+        type: VariableType.Integer,
+        presentationHint: { kind: 'virtual', lazy: true },
+        evaluateName: `${expression}.GetSourceIdentity()`,
+        value: '',
+        children: []
+    });
+
+    pushCustomVariableToContainer(adapter, container, {
         name: '$response',
         type: VariableType.AssociativeArray,
         presentationHint: { kind: 'virtual' },

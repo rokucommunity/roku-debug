@@ -1,7 +1,21 @@
 import { expect } from 'chai';
 import dedent = require('dedent');
+import * as fsExtra from 'fs-extra';
 import { SmartBuffer } from 'smart-buffer';
 import { bscProjectWorkerPool } from './bsc/threading/BscProjectWorkerPool';
+import { DisallowedFunctionIdentifiersText, standardizePath as s } from 'brighterscript';
+
+export const tempDir = s`${__dirname}/../.tmp`;
+export const rootDir = s`${tempDir}/rootDir`;
+export const stagingDir = s`${tempDir}/stagingDir`;
+
+beforeEach(() => {
+    fsExtra.emptyDirSync(tempDir);
+});
+
+afterEach(() => {
+    fsExtra.removeSync(tempDir);
+});
 
 /**
  * Forces all line endings to \n

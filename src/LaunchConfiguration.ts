@@ -26,6 +26,17 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     rootDir: string;
 
     /**
+     * Should this component library be installed onto the Roku device prior to launching the application```
+     */
+    install?: boolean;
+
+    /**
+     * Username for the developer page on the target Roku device. This is hardcoded to "rokudev"
+     * @default "rokudev"
+     */
+    username?: string;
+
+    /**
      * If you have a build system, rootDir will point to the build output folder, and this path should point to the actual source folder
      * so that breakpoints can be set in the source files when debugging. In order for this to work, your build process cannot change
      * line offsets between source files and built files, otherwise debugger lines will be out of sync.
@@ -161,8 +172,15 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
 
     /**
      * Enables automatic population of the debug variable panel on a breakpoint or runtime errors.
+     * @deprecated Use `deferScopeLoading` instead
      */
     enableVariablesPanel: boolean;
+
+    /**
+     * Will defer the population of the 'Local' scope variables until the user expands it in the variables panel.
+     * @default false
+     */
+    deferScopeLoading: boolean;
 
     /**
      * Enables automatic population of the virtual variables.
@@ -196,6 +214,30 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * Will inject the OnDeviceComponent used by RDB for RALE like functionality inside of vscode.
      */
     injectRdbOnDeviceComponent: boolean;
+
+    /**
+     * Configuration for profiling functionality
+     */
+    profiling?: {
+        tracing?: {
+            /**
+             * Whether perfetto event profiling is enabled
+             */
+            enable?: boolean;
+            /**
+             * Directory where perfetto profile files should be stored
+             */
+            dir?: string;
+            /**
+             * The name of the perfetto profile file. Can include variables like ${appTitle} and ${timestamp}
+             */
+            filename?: string;
+            /**
+             * Whether to connect to perfetto on debug session start
+             */
+            connectOnStart?: boolean;
+        };
+    };
 
     /**
      * Base path to the folder containing RDB files for OnDeviceComponent
@@ -354,6 +396,25 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default true
      */
     emitChannelPublishedEvent?: boolean;
+
+    /**
+     * Optional capabilities advertised by the client (such as the VSCode extension) so the debug adapter
+     * can enable optional features the client supports. This is populated by the client itself, not by the user.
+     */
+    clientCapabilities?: ClientCapabilities;
+}
+
+/**
+ * Optional features the client advertises support for via `LaunchConfiguration.clientCapabilities`.
+ * The debug adapter only enables the matching behavior when the client opts in here.
+ */
+export interface ClientCapabilities {
+    /**
+     * The client supports the `processStagingDir` reverse request. When true, the debug adapter sends that
+     * request after all projects are staged and before they are packaged, giving the client a chance to
+     * inspect or modify each project's staging directory.
+     */
+    supportsProcessStagingDir?: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
@@ -361,6 +422,32 @@ export interface ComponentLibraryConfiguration {
      * The root directory for the component library project. This path should point to the folder containing the manifest file
      */
     rootDir: string;
+    /**
+     * Install component library on device if true
+     */
+    install: boolean;
+    /**
+     * Task to run instead of roku-deploy to produce the .zip file that will be uploaded to the Roku.
+     */
+    packageTask?: string;
+    /**
+     * Path to the .zip that will be uploaded to the Roku
+     */
+    packagePath?: string;
+    /**
+     * Overrides for values used during the roku-deploy zip upload process, like the route and various form data. You probably don't need to change these..
+     */
+    packageUploadOverrides?: {
+        /**
+         * The route to use for uploading to the Roku device. Defaults to 'plugin_install'
+         * @default 'plugin_install'
+         */
+        route: string;
+        /**
+         * A dictionary of form fields to be included in the package upload request. Set a value to null to delete from the form
+         */
+        formData: Record<string, any>;
+    };
     /**
      * The filename for the package.
      */

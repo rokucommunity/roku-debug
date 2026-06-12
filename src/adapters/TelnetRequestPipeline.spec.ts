@@ -22,7 +22,7 @@ describe('RequestPipeline', () => {
     let socket = {
         listeners: [],
         messageQueue: [] as Array<string | string[]>,
-        addListener: function(eventName: string, listener: (data: Buffer) => void) {
+        on: function(eventName: string, listener: (data: Buffer) => void) {
             this.listeners.push(listener);
         },
         /**
@@ -304,6 +304,32 @@ describe('RequestPipeline', () => {
         //should have executed the second command after the first one failed
         expect(executeStub.callCount).to.equal(2);
 
+    });
+
+    it('Sets a timer to detect unresponsive devices', () => {
+        pipeline.isAtDebuggerPrompt = true;
+        const setTimerStub = sinon.stub(pipeline as any, 'setActiveDeviceTimer').callsFake(() => { });
+
+        void pipeline.executeCommand('test 1', { waitForPrompt: true });
+        handleData('test');
+
+        expect(setTimerStub.callCount).to.equal(2);
+    });
+
+    it('Clears timer when there are no active commands', async () => {
+        pipeline.isAtDebuggerPrompt = true;
+        let command1: TelnetCommand;
+        const setTimerStub = sinon.stub(pipeline as any, 'setActiveDeviceTimer').callsFake(() => { });
+        const clearTimerStub = sinon.stub(pipeline as any, 'clearActiveDeviceTimer').callsFake(() => { });
+
+        void pipeline.executeCommand('test 1', { waitForPrompt: true });
+        command1 = pipeline['activeCommand'];
+        pipeline['executeNextCommand']();
+        command1['deferred'].resolve('');
+        await command1.promise;
+
+        expect(setTimerStub.callCount).to.equal(1);
+        expect(clearTimerStub.callCount).to.equal(1);
     });
 
     describe('TelnetCommand', () => {

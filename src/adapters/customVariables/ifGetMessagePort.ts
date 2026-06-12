@@ -6,8 +6,8 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfGetMessagePortVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(adapter, container, {
         name: '$messagePort',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.Object,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetMessagePort()`,
         value: '',
         children: []

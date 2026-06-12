@@ -8,7 +8,6 @@ import { CompileErrorProcessor } from '../CompileErrorProcessor';
 import type { RendezvousTracker } from '../RendezvousTracker';
 import type { ChanperfData } from '../ChanperfTracker';
 import { ChanperfTracker } from '../ChanperfTracker';
-import type { SourceLocation } from '../managers/LocationManager';
 import { defer, util } from '../util';
 import { logger } from '../logging';
 import type { AdapterOptions, RokuAdapterEvaluateResponse } from '../interfaces';
@@ -16,6 +15,7 @@ import { HighLevelType } from '../interfaces';
 import { TelnetRequestPipeline } from './TelnetRequestPipeline';
 import type { DebugProtocolAdapter, EvaluateContainer } from './DebugProtocolAdapter';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
+import { SocketConnectionInUseError } from '../Exceptions';
 
 /**
  * A class that connects to a Roku device over telnet debugger port and provides a standardized way of interacting with it.
@@ -74,6 +74,11 @@ export class TelnetAdapter {
 
     public supportsExceptionBreakpoints = false;
 
+    //BreakpointManager rewrites `stop` statements as `if <cond> then : STOP : end if` and
+    //`if hits >= N then STOP`, so both forms work in telnet mode regardless of firmware.
+    public supportsConditionalBreakpoints = true;
+    public supportsHitConditionalBreakpoints = true;
+
     public once(eventName: 'app-ready'): Promise<void>;
     public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: string) {
@@ -90,18 +95,20 @@ export class TelnetAdapter {
      * @param eventName
      * @param handler
      */
-    public on(eventName: 'cannot-continue', handler: () => void);
-    public on(eventname: 'chanperf', handler: (output: ChanperfData) => void);
-    public on(eventName: 'close', handler: () => void);
-    public on(eventName: 'app-exit', handler: () => void);
-    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
-    public on(eventName: 'connected', handler: (params: boolean) => void);
-    public on(eventname: 'console-output', handler: (output: string) => void);
-    public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => void);
-    public on(eventName: 'suspend', handler: () => void);
-    public on(eventName: 'start', handler: () => void);
-    public on(eventname: 'unhandled-console-output', handler: (output: string) => void);
-    public on(eventName: string, handler: (payload: any) => void) {
+    public on(eventName: 'cannot-continue', handler: () => any);
+    public on(eventname: 'chanperf', handler: (output: ChanperfData) => any);
+    public on(eventName: 'close', handler: () => any);
+    public on(eventName: 'app-exit', handler: () => any);
+    public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => any);
+    public on(eventName: 'launch-status', handler: (message: string) => any);
+    public on(eventName: 'connected', handler: (params: boolean) => any);
+    public on(eventname: 'console-output', handler: (output: string) => any);
+    public on(eventName: 'runtime-error', handler: (error: BrightScriptRuntimeError) => any);
+    public on(eventName: 'suspend', handler: () => any);
+    public on(eventName: 'start', handler: () => any);
+    public on(eventname: 'device-unresponsive', handler: (data: { lastCommand: string }) => any);
+    public on(eventname: 'unhandled-console-output', handler: (output: string) => any);
+    public on(eventName: string, handler: (payload: any) => any) {
         this.emitter.on(eventName, handler);
         return () => {
             if (this.emitter !== undefined) {
@@ -111,6 +118,7 @@ export class TelnetAdapter {
     }
 
     private emit(eventName: 'diagnostics', data: BSDebugDiagnostic[]);
+    private emit(eventName: 'launch-status', message: string);
     private emit(
         /* eslint-disable @typescript-eslint/indent */
         eventName:
@@ -125,7 +133,8 @@ export class TelnetAdapter {
             'runtime-error' |
             'start' |
             'suspend' |
-            'unhandled-console-output',
+            'unhandled-console-output' |
+            'device-unresponsive',
         /* eslint-enable @typescript-eslint/indent */
         data?);
     private emit(eventName: string, data?) {
@@ -183,31 +192,44 @@ export class TelnetAdapter {
     /**
      * Wait until the client has stopped sending messages. This is used mainly during .connect so we can ignore all old messages from the server
      * @param client
-     * @param name
      * @param maxWaitMilliseconds
      */
-    private settle(client: Socket, name: string, maxWaitMilliseconds = 400) {
+    private settleTelnetConnection(client: Socket, maxWaitMilliseconds = 400) {
         const startTime = new Date();
         this.logger.log('Waiting for telnet client to settle');
-        return new Promise((resolve) => {
+        return new Promise<string>((resolve) => {
+            let timeoutStarted = false;
             let callCount = -1;
+            let logs = '';
 
-            const handler = () => {
+            const handler = (buffer) => {
                 callCount++;
+                logs += buffer.toString();
                 let myCallCount = callCount;
+                timeoutStarted = true;
                 setTimeout(() => {
-                    //if no other calls have been made since the timeout started, then the listener has settled
                     if (myCallCount === callCount) {
-                        client.removeListener(name, handler);
+                        // stop listening for data events
+                        client.removeListener('data', handler);
                         this.logger.log(`Telnet client has settled after ${new Date().getTime() - startTime.getTime()} milliseconds`);
-                        resolve(callCount);
+                        resolve(logs);
                     }
                 }, maxWaitMilliseconds);
             };
 
-            client.addListener(name, handler);
-            //call the handler immediately so we have a timeout
-            handler();
+            const startTimeout = () => {
+                if (timeoutStarted === false) {
+                    handler(Buffer.from(''));
+                }
+            };
+
+            // watch for data events
+            client.on('data', handler);
+
+            // watch for different connection related events to start the timeout logic
+            client.on('ready', startTimeout);
+            client.on('end', startTimeout);
+            client.on('closed', startTimeout);
         });
     }
 
@@ -249,30 +271,40 @@ export class TelnetAdapter {
             this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
             await rokuDeploy.pressHomeButton(this.options.host, this.options.remotePort);
-            let client: Socket = new Socket();
+            let telnetSocket: Socket = new Socket({ allowHalfOpen: false });
+            util.registerSocketLogging(telnetSocket, this.logger, 'TelnetSocket');
 
             //listen for the close event
-            client.addListener('close', (err, data) => {
+            telnetSocket.on('close', () => {
                 this.emit('close');
             });
 
-            //if the connection fails, reject the connect promise
-            client.addListener('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
+            //if the connection fails, reject the connect promise.
+            //Use tryReject (not reject) because this handler persists for the socket's lifetime.
+            //After a successful connection the deferred is already resolved, so a post-connection
+            //socket error (e.g. ETIMEDOUT on device disconnect) must not crash the process.
+            telnetSocket.on('error', (err) => {
+                deferred.tryReject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
-            const settlePromise = this.settle(client, 'data');
-            client.connect(this.options.brightScriptConsolePort, this.options.host, () => {
+            const settlePromise = this.settleTelnetConnection(telnetSocket);
+            telnetSocket.connect(this.options.brightScriptConsolePort, this.options.host, () => {
                 this.logger.log(`Telnet connection established to ${this.options.host}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
                 this.connectionDeferred.resolve();
                 this.emit('connected', this.connected);
             });
 
-            await settlePromise;
+            const settledLogs = await settlePromise;
+            if (settledLogs.trim().startsWith('Console connection is already in use.')) {
+                throw new SocketConnectionInUseError(`Telnet connection ${this.options.host}:${this.options.brightScriptConsolePort} already is use`, {
+                    port: this.options.brightScriptConsolePort,
+                    host: this.options.host
+                });
+            }
 
             //hook up the pipeline to the socket
-            this.requestPipeline = new TelnetRequestPipeline(client);
+            this.requestPipeline = new TelnetRequestPipeline(telnetSocket);
             this.requestPipeline.connect();
 
             let lastPartialLine = '';
@@ -294,6 +326,10 @@ export class TelnetAdapter {
             //listen for any compile errors
             this.compileErrorProcessor.on('diagnostics', (errors) => {
                 this.emit('diagnostics', errors);
+            });
+
+            this.compileErrorProcessor.on('launch-status', (message) => {
+                this.emit('launch-status', message);
             });
 
             //listen for any console output that was not handled by other methods in the adapter
@@ -370,6 +406,10 @@ export class TelnetAdapter {
                 }
             });
 
+            this.requestPipeline.on('device-unresponsive', (data: { lastCommand: string }) => {
+                this.emit('device-unresponsive', data);
+            });
+
             //the adapter is connected and running smoothly. resolve the promise
             deferred.resolve();
         } catch (e) {
@@ -429,19 +469,19 @@ export class TelnetAdapter {
      */
     public stepOver() {
         this.logger.log('stepOver');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('over', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepInto() {
         this.logger.log('stepInto');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('step', { waitForPrompt: false, insertAtFront: true });
     }
 
     public stepOut() {
         this.logger.log('stepOut');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('out', { waitForPrompt: false, insertAtFront: true });
 
     }
@@ -451,7 +491,7 @@ export class TelnetAdapter {
      */
     public continue() {
         this.logger.log('continue');
-        this.clearCache();
+        this.clearCache(true);
         return this.requestPipeline.executeCommand('c', { waitForPrompt: false, insertAtFront: true });
     }
 
@@ -460,7 +500,7 @@ export class TelnetAdapter {
      */
     public pause() {
         this.logger.log('pause');
-        this.clearCache();
+        this.clearCache(true);
         //send the kill signal, which breaks into debugger mode. This gets written immediately, regardless of debugger prompt status.
         this.requestPipeline.write('\x03;');
     }
@@ -468,11 +508,13 @@ export class TelnetAdapter {
     /**
      * Clears the state, which means that everything will be retrieved fresh next time it is requested
      */
-    public clearCache() {
+    public clearCache(clearStackFrameCache = false) {
         this.logger.info('Clearing TelnetAdapter cache');
         this.cache = {};
-        this.stackFramesCache = {};
         this.isAtDebuggerPrompt = false;
+        if (clearStackFrameCache) {
+            this.stackFramesCache = {};
+        }
     }
 
     /**
@@ -588,8 +630,9 @@ export class TelnetAdapter {
     /**
      * Given an expression, evaluate that statement ON the roku
      * @param expression
+     * @param frameId unused but added to match signature of DebugProtocolAdapter
      */
-    public async getVariable(expression: string) {
+    public async getVariable(expression: string, frameId = -1) {
         const logger = this.logger.createLogger('[getVariable]');
         logger.info('begin', { expression });
         if (!this.isAtDebuggerPrompt) {
@@ -998,6 +1041,9 @@ export class TelnetAdapter {
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         try {
+            if (this.isDestroyed || !this.cache) {
+                return Promise.reject(new Error(`Cannot resolve "${key}": adapter is destroyed`));
+            }
             if (this.cache[key]) {
                 this.logger.debug(`resolve cache "${key}": already exists`);
                 return this.cache[key];
@@ -1112,6 +1158,14 @@ export class TelnetAdapter {
     public async syncBreakpoints() {
         //we can't send dynamic breakpoints to the server...so just do nothing
     }
+
+    public isTelnetAdapter(): this is TelnetAdapter {
+        return true;
+    }
+
+    public isDebugProtocolAdapter(): this is DebugProtocolAdapter {
+        return false;
+    }
 }
 
 export interface StackFrame {
@@ -1136,6 +1190,7 @@ export interface Thread {
      * Is this thread selected
      */
     isSelected: boolean;
+    isDetached?: boolean;
     /**
      * The 1-based line number
      */
@@ -1152,6 +1207,9 @@ export interface Thread {
      * The id of this thread
      */
     threadId: number;
+    osThreadId?: string;
+    name?: string;
+    type?: string;
 }
 
 export enum PrimativeType {
@@ -1165,8 +1223,4 @@ export enum PrimativeType {
 interface BrightScriptRuntimeError {
     message: string;
     errorCode: string;
-}
-
-export function isTelnetAdapterAdapter(adapter: TelnetAdapter | DebugProtocolAdapter): adapter is TelnetAdapter {
-    return adapter?.constructor.name === TelnetAdapter.name;
 }

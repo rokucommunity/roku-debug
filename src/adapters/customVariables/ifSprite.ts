@@ -60,8 +60,8 @@ export function pushIfSpriteVariables(adapter: DebugProtocolAdapter, expression:
 
     pushCustomVariableToContainer(adapter, container, {
         name: '$region',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.Object,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetRegion()`,
         value: '',
         children: []

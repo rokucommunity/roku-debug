@@ -6,8 +6,8 @@ import { pushCustomVariableToContainer } from './utils';
 export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression: string, container: EvaluateContainer) {
     pushCustomVariableToContainer(adapter, container, {
         name: '$address',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.Object,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetAddress()`,
         value: '',
         children: []
@@ -15,8 +15,8 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
 
     pushCustomVariableToContainer(adapter, container, {
         name: '$sendToAddress',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.Object,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetSendToAddress()`,
         value: '',
         children: []
@@ -24,8 +24,8 @@ export function pushIfSocketVariables(adapter: DebugProtocolAdapter, expression:
 
     pushCustomVariableToContainer(adapter, container, {
         name: '$receivedFromAddress',
-        type: '',
-        presentationHint: { kind: 'virtual', lazy: true },
+        type: VariableType.Object,
+        presentationHint: { kind: 'virtual' },
         evaluateName: `${expression}.GetReceivedFromAddress()`,
         value: '',
         children: []

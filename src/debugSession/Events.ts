@@ -4,8 +4,9 @@ import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { ChanperfData } from '../ChanperfTracker';
 import type { RendezvousHistory } from '../RendezvousTracker';
+import type { ProjectStagingInfo } from '../managers/ProjectManager';
 
-export class CustomEvent<T> implements DebugProtocol.Event {
+export class CustomEvent<T> {
     public constructor(body: T) {
         this.body = body;
         this.event = this.constructor.name;
@@ -125,22 +126,6 @@ export function isLaunchStartEvent(event: any): event is LaunchStartEvent {
 }
 
 /**
- * This event indicates that the client should show a popup message with the supplied information
- */
-export class PopupMessageEvent extends CustomEvent<{ message: string; severity: 'error' | 'info' | 'warn'; modal: boolean }> {
-    constructor(message: string, severity: 'error' | 'info' | 'warn', modal = false) {
-        super({ message, severity, modal });
-    }
-}
-
-/**
- * Is the object a `PopupMessageEvent`
- */
-export function isPopupMessageEvent(event: any): event is PopupMessageEvent {
-    return !!event && event.event === PopupMessageEvent.name;
-}
-
-/**
  * Emitted once the channel has been sideloaded to the channel and the session is ready to start actually debugging.
  */
 export class ChannelPublishedEvent extends CustomEvent<{ launchConfiguration: LaunchConfiguration }> {
@@ -156,6 +141,83 @@ export class ChannelPublishedEvent extends CustomEvent<{ launchConfiguration: La
  */
 export function isChannelPublishedEvent(event: any): event is ChannelPublishedEvent {
     return !!event && event.event === ChannelPublishedEvent.name;
+}
+
+export type ProfileType = 'trace' | 'heapSnapshot';
+
+export interface ProfilingEnabledEventData {
+    /**
+     * List of profiling types that have been enabled and are available to be started. This is typically determined by what the Roku device and current firmware version support, as well as what the user has enabled via ECP. Note that just because a profiling type is listed here doesn't necessarily mean it will be able to start successfully, but if a type is not listed here then it definitely won't be able to start
+     */
+    types: ProfileType[];
+}
+/**
+ * Emitted when profiling has been enabled on the system. Typically profiling must be
+ * enabled via ECP first before the channel launches.
+ */
+export class ProfilingEnabledEvent extends CustomEvent<ProfilingEnabledEventData> {
+    constructor(data: ProfilingEnabledEventData) {
+        super(data);
+    }
+}
+export function isProfilingEnabledEvent(event: any): event is ProfilingEnabledEvent {
+    return !!event && event.event === ProfilingEnabledEvent.name;
+}
+
+export interface ProfilingStartEventData {
+    type: ProfileType;
+}
+
+/**
+ * Emitted when profiling has started
+ */
+export class ProfilingStartEvent extends CustomEvent<ProfilingStartEventData> {
+    constructor(data: ProfilingStartEventData) {
+        super(data);
+    }
+}
+export function isProfilingStartEvent(event: any): event is ProfilingStartEvent {
+    return !!event && event.event === ProfilingStartEvent.name;
+}
+
+export interface ProfilingStopEventData {
+    type: ProfileType;
+    result: string;
+}
+
+/**
+ * Emitted when profiling has stopped (either due to completion or an error).
+ * Contains the type of profiling that was being done, and .result contains what was produced
+ * during that session (often a file path)
+ */
+export class ProfilingStopEvent extends CustomEvent<ProfilingStopEventData> {
+    constructor(data: ProfilingStopEventData) {
+        super(data);
+    }
+}
+export function isProfilingStopEvent(event: any): event is ProfilingStopEvent {
+    return !!event && event.event === ProfilingStopEvent.name;
+}
+
+
+export interface ProfilingErrorEventData {
+    error: {
+        message: string;
+        stack?: string;
+    };
+}
+
+/**
+ * Emitted anytime there's an error realted to profiling. These should typically be
+ * presented to the user in a toast or some other non-intrusive way
+ */
+export class ProfilingErrorEvent extends CustomEvent<ProfilingErrorEventData> {
+    constructor(data: ProfilingErrorEventData) {
+        super(data);
+    }
+}
+export function isProfilingErrorEvent(event: any): event is ProfilingErrorEvent {
+    return !!event && event.event === ProfilingErrorEvent.name;
 }
 
 /**
@@ -176,6 +238,47 @@ export function isCustomRequestEvent(event: any): event is CustomRequestEvent {
 
 export function isExecuteTaskCustomRequest(event: any): event is CustomRequestEvent<{ task: string }> {
     return !!event && event.event === CustomRequestEvent.name && event.body.name === 'executeTask';
+}
+
+export function isShowPopupMessageCustomRequest(event: any): event is CustomRequestEvent<{ message: string; severity: 'error' | 'warn' | 'info'; modal: boolean; actions: string[] }> {
+    return !!event && event.event === CustomRequestEvent.name && event.body.name === 'showPopupMessage';
+}
+
+export function isProcessStagingDirCustomRequest(event: any): event is CustomRequestEvent<{ projects: ProjectStagingInfo[] }> {
+    return !!event && event.event === CustomRequestEvent.name && event.body.name === 'processStagingDir';
+}
+
+export interface ProcessCrashEventData {
+    type: 'uncaughtException' | 'unhandledRejection';
+    message: string;
+    stack?: string;
+    /**
+     * Optional extra diagnostic data provided by the debugger. Keys are human-readable labels;
+     * values are serialized as JSON when displayed to the user.
+     */
+    additionalInfo?: {
+        clientName?: string;
+        rokuDebugVersion?: string;
+        ecpMode?: string;
+        developerMode?: boolean;
+        firmware?: string;
+        protocolVersion?: string;
+        protocolEnabled?: boolean;
+    };
+}
+
+/**
+ * Emitted when the debug adapter process encounters an uncaught exception or unhandled rejection.
+ * The client should display an error to the user and terminate the debug session.
+ */
+export class ProcessCrashEvent extends CustomEvent<ProcessCrashEventData> {
+    constructor(data: ProcessCrashEventData) {
+        super(data);
+    }
+}
+
+export function isProcessCrashEvent(event: any): event is ProcessCrashEvent {
+    return !!event && event.event === ProcessCrashEvent.name;
 }
 
 export enum ClientToServerCustomEventName {

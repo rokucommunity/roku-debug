@@ -1,4 +1,5 @@
-import { ProgramBuilder } from 'brighterscript';
+import type { BrsFile, Position, Range } from 'brighterscript';
+import { isFunctionExpression, ProgramBuilder } from 'brighterscript';
 import type { MaybePromise } from '../interfaces';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 
@@ -46,6 +47,21 @@ export class BscProject {
                 completionItemKind: count === scopes.length ? 'function' : 'text'
             };
         });
+    }
+
+    /**
+     * Get the range of the scope that contains the specified position
+     */
+    public getScopeRange(options: { relativePath: string; position: Position }): MaybePromise<Range> {
+        try {
+            const file = this.programBuilder.program.getFile<BrsFile>(options.relativePath);
+            const expression = file.getClosestExpression(options.position);
+            const parentFunction = expression.findAncestor(isFunctionExpression);
+
+            return parentFunction.range;
+        } catch (error) {
+            return undefined;
+        }
     }
 
     public dispose() {

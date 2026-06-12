@@ -14,7 +14,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(adapter, container, {
-        name: '$seconds',
+        name: '$asSeconds',
         type: VariableType.Integer,
         presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.AsSeconds()`,
@@ -23,7 +23,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(adapter, container, {
-        name: '$secondsLong',
+        name: '$asSecondsLong',
         type: VariableType.LongInteger,
         presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.AsSecondsLong()`,
@@ -41,16 +41,7 @@ export function pushIfDateTimeVariables(adapter: DebugProtocolAdapter, expressio
     });
 
     pushCustomVariableToContainer(adapter, container, {
-        name: '$dateLocalized',
-        type: VariableType.String,
-        presentationHint: { kind: 'virtual', lazy: true },
-        evaluateName: `${expression}.asDateStringLoc("full")`,
-        value: '',
-        children: []
-    });
-
-    pushCustomVariableToContainer(adapter, container, {
-        name: '$timeLocalized',
+        name: '$time',
         type: VariableType.String,
         presentationHint: { kind: 'virtual', lazy: true },
         evaluateName: `${expression}.asTimeStringLoc("short")`,

@@ -60,6 +60,56 @@ describe('ProjectManager', () => {
         sinon.restore();
     });
 
+    describe('getProjectStagingInfo', () => {
+        function makeMainProject() {
+            return new Project({ rootDir: rootDir, outDir: outDir, files: [], stagingDir: stagingDir, enhanceREPLCompletions: false });
+        }
+        function makeComponentLibraryProject(libraryIndex: number) {
+            return new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib${libraryIndex}-staging`,
+                libraryIndex: libraryIndex,
+                outFile: `complib${libraryIndex}.zip`,
+                enhanceREPLCompletions: false
+            });
+        }
+
+        it('always lists the main project first, even when component libraries are assigned first', () => {
+            const mainProject = makeMainProject();
+            const complib0 = makeComponentLibraryProject(0);
+            const complib1 = makeComponentLibraryProject(1);
+
+            //deliberately assign component libraries before the main project to prove the ordering is
+            //enforced by getProjectStagingInfo and not just an artifact of assignment order
+            manager.componentLibraryProjects = [complib0, complib1];
+            manager.mainProject = mainProject;
+
+            const info = manager.getProjectStagingInfo();
+
+            //contract: the main project is always first and typed as 'main'
+            expect(info[0]).to.eql({ type: 'main', stagingDir: mainProject.stagingDir });
+            //component libraries follow, in order, typed as 'componentLibrary'
+            expect(info.map(x => x.type)).to.eql(['main', 'componentLibrary', 'componentLibrary']);
+            expect(info.map(x => x.stagingDir)).to.eql([
+                mainProject.stagingDir,
+                complib0.stagingDir,
+                complib1.stagingDir
+            ]);
+        });
+
+        it('returns only the main project when there are no component libraries', () => {
+            const mainProject = makeMainProject();
+            manager.componentLibraryProjects = [];
+            manager.mainProject = mainProject;
+
+            expect(manager.getProjectStagingInfo()).to.eql([
+                { type: 'main', stagingDir: mainProject.stagingDir }
+            ]);
+        });
+    });
+
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
         it('accounts for the entry breakpoint', () => {
@@ -224,6 +274,55 @@ describe('ProjectManager', () => {
     });
 
     describe('getSourceLocation', () => {
+        it('resolves a pkg path back to the original rootDir source file via a relative sourcemap', async () => {
+            // Simulate the full flow:
+            // 1. compiler produces MainScene.brs + MainScene.brs.map in srcDir, with sources relative to srcDir
+            // 2. prepublishToStaging copies them to stagingDir (recorded in fileMappings)
+            // 3. preprocessStagingFiles rewrites the map's sources to be relative to stagingDir
+            // 4. getSourceLocation('pkg:/source/MainScene.brs', 1) resolves back to rootDir/source/MainScene.bs
+
+            const srcDir = s`${tempPath}/srcDir/source`;
+            const originalBsFile = s`${rootDir}/source/MainScene.bs`;
+            const originalMapPath = s`${srcDir}/MainScene.brs.map`;
+            const stagingBrsPath = s`${stagingDir}/source/MainScene.brs`;
+            const stagingMapPath = s`${stagingDir}/source/MainScene.brs.map`;
+
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+            fsExtra.ensureDirSync(path.dirname(originalBsFile));
+            fsExtra.writeFileSync(originalBsFile, `sub main()\n    print "hello"\nend sub`);
+            fsExtra.writeFileSync(stagingBrsPath, `sub main()\n    print "hello"\nend sub`);
+
+            // Source map produced by compiler in srcDir — source is relative from srcDir back to rootDir
+            const { SourceMapGenerator } = await import('source-map');
+            const gen = new SourceMapGenerator({ file: 'MainScene.brs' });
+            gen.addMapping({
+                generated: { line: 1, column: 0 },
+                original: { line: 1, column: 0 },
+                source: path.relative(srcDir, originalBsFile)
+            });
+            fsExtra.writeFileSync(originalMapPath, gen.toString());
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            // fileMappings records the src->dest move that prepublishToStaging performed
+            const fileMappings = [
+                { src: originalBsFile, dest: stagingBrsPath },
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            // preprocessStagingFiles rewrites the on-disk map to use paths relative to stagingDir
+            const project = new Project({ rootDir: rootDir, outDir: outDir, files: [], stagingDir: stagingDir, enhanceREPLCompletions: false });
+            project.fileMappings = fileMappings;
+            await project['preprocessStagingFiles']();
+
+            // Point the manager's mainProject at this project
+            manager.mainProject = project as any;
+
+            const sourceLocation = await manager.getSourceLocation('pkg:/source/MainScene.brs', 1);
+            expect(n(sourceLocation.filePath)).to.equal(n(originalBsFile));
+            expect(sourceLocation.lineNumber).to.equal(1);
+        });
+
         it(`does not crash when file is missing`, async () => {
             manager.mainProject.fileMappings = [];
             let sourceLocation = await manager.getSourceLocation('pkg:/source/file-we-dont-know-about.brs', 1);
@@ -351,6 +450,964 @@ describe('Project', () => {
             ];
             await project.stage();
             expect(fsExtra.pathExistsSync(`${stagingDir}/manifest`)).to.be.true;
+        });
+    });
+
+    describe('getSourceMapComment', () => {
+        const call = (contents: string) => Project.getSourceMapComment(contents);
+
+        it('returns undefined when no sourceMappingURL comment is present', () => {
+            expect(call(`sub main()\nend sub`)).to.be.undefined;
+            expect(call(``)).to.be.undefined;
+        });
+
+        it('returns the correct named fields for a standard brs comment', () => {
+            const result = call(`sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`);
+            expect(result).to.exist;
+            expect(result.fullMatch).to.equal(`'//# sourceMappingURL=main.brs.map`);
+            expect(result.leadingInfo).to.equal(`'`);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.brs.map`);
+            expect(result.mapPath).to.equal(`main.brs.map`);
+        });
+
+        it('returns the correct named fields for a standard xml comment', () => {
+            const result = call(`<component>\n</component>\n<!--//# sourceMappingURL=main.xml.map -->`);
+            expect(result).to.exist;
+            // fullMatch does not include the trailing ' -->' (it's consumed by the non-capturing (?:|-->) group)
+            expect(result.fullMatch).to.equal(`<!--//# sourceMappingURL=main.xml.map`);
+            expect(result.leadingInfo).to.equal(`<!--`);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.xml.map`);
+            expect(result.mapPath).to.equal(`main.xml.map`);
+        });
+
+        it('returns the correct named fields for a standard js-style comment', () => {
+            const result = call(`//# sourceMappingURL=main.js.map`);
+            expect(result).to.exist;
+            expect(result.fullMatch).to.equal(`//# sourceMappingURL=main.js.map`);
+            expect(result.leadingInfo).to.equal(``);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.js.map`);
+            expect(result.mapPath).to.equal(`main.js.map`);
+        });
+
+        it('returns the last comment when multiple are present', () => {
+            const result = call(`'//# sourceMappingURL=first.brs.map\ncode\n'//# sourceMappingURL=last.brs.map`);
+            expect(result?.mapPath).to.equal(`last.brs.map`);
+        });
+
+        it('captures an absolute path in mapPath', () => {
+            const result = call(`'//# sourceMappingURL=/absolute/path/to/main.brs.map`);
+            expect(result?.mapPath).to.equal(`/absolute/path/to/main.brs.map`);
+        });
+
+        it('captures a relative path with directory traversal in mapPath', () => {
+            const result = call(`'//# sourceMappingURL=../../maps/main.brs.map`);
+            expect(result?.mapPath).to.equal(`../../maps/main.brs.map`);
+        });
+
+        it('leadingInfo preserves whitespace before the comment character', () => {
+            const result = call(`  '//# sourceMappingURL=main.brs.map`);
+            expect(result?.leadingInfo).to.equal(`  '`);
+        });
+
+        describe('legacy and variant forms', () => {
+            it('brs: legacy @ form', () => {
+                const result = call(`'//@ sourceMappingURL=main.brs.map`);
+                expect(result?.fullMatch).to.equal(`'//@ sourceMappingURL=main.brs.map`);
+                expect(result?.leadingInfo).to.equal(`'`);
+                expect(result?.mapPath).to.equal(`main.brs.map`);
+            });
+
+            it('brs: // omitted', () => {
+                expect(call(`'# sourceMappingURL=main.brs.map`)?.mapPath).to.equal(`main.brs.map`);
+            });
+
+            it('xml: // omitted', () => {
+                const result = call(`<!--# sourceMappingURL=main.xml.map -->`);
+                expect(result?.leadingInfo).to.equal(`<!--`);
+                expect(result?.mapPath).to.equal(`main.xml.map`);
+            });
+
+            it('xml: whitespace between <!-- and //#', () => {
+                const result = call(`<!--  //# sourceMappingURL=main.xml.map -->`);
+                expect(result?.leadingInfo).to.equal(`<!--  `);
+                expect(result?.mapPath).to.equal(`main.xml.map`);
+            });
+
+            it('no space between # and sourceMappingURL', () => {
+                expect(call(`'//# sourceMappingURL=main.brs.map`)?.mapPath).to.equal(`main.brs.map`);
+            });
+        });
+    });
+
+    describe('preprocessStagingFiles', () => {
+        afterEach(() => {
+            try {
+                fsExtra.removeSync(tempPath);
+            } catch (e) { }
+        });
+
+        it('rewrites sources paths in map files that were moved to staging', async () => {
+            // Simulate a .map file that was compiled in a source dir, then copied to a different stagingDir
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            // The map's original location is in srcDir
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // The original .bs file is one level up from the map file
+            const originalSourceMap = {
+                version: 3,
+                sources: ['../../rootDir/source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            // Copy to staging (simulating what prepublishToStaging does)
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            // Set up fileMappings to record the move
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            // Resolve what the source path should be after rewriting
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../rootDir/source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('does not modify a map file that is not in fileMappings (generated in staging)', async () => {
+            fsExtra.ensureDirSync(stagingDir);
+            const mapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(mapPath));
+            const originalSourceMap = { version: 3, sources: ['../source/main.bs'], mappings: '' };
+            fsExtra.writeJsonSync(mapPath, originalSourceMap);
+
+            // fileMappings does NOT include this map file
+            project.fileMappings = [];
+
+            await project['preprocessStagingFiles']();
+
+            const unchanged = fsExtra.readJsonSync(mapPath);
+            expect(unchanged.sources[0]).to.equal('../source/main.bs');
+        });
+
+        it('rewrites sources correctly when sourceRoot is omitted', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // No sourceRoot — sources are relative to the map file's directory
+            const originalSourceMap = {
+                version: 3,
+                sources: ['../../rootDir/source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../rootDir/source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites sources correctly when sourceRoot is a relative path', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // sourceRoot is relative to the map file's directory; sources are relative to sourceRoot
+            const originalSourceMap = {
+                version: 3,
+                sourceRoot: '../rootDir',
+                sources: ['source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../rootDir', 'source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites sources correctly when sourceRoot is an absolute path', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            const absoluteSourceRoot = s`${tempPath}/rootDir`;
+            // sourceRoot is absolute; sources are relative to sourceRoot
+            const originalSourceMap = {
+                version: 3,
+                sourceRoot: absoluteSourceRoot,
+                sources: ['source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(absoluteSourceRoot, 'source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites all sources in a map with multiple sources', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            fsExtra.writeJsonSync(originalMapPath, {
+                version: 3,
+                sources: ['../../rootDir/source/a.bs', '../../rootDir/source/b.bs'],
+                mappings: ''
+            });
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [{ src: originalMapPath, dest: stagingMapPath }];
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const stagingMapDir = path.dirname(stagingMapPath);
+            const originalMapDir = path.dirname(originalMapPath);
+            expect(updated.sources[0]).to.equal(s`${path.relative(stagingMapDir, path.resolve(originalMapDir, '../../rootDir/source/a.bs'))}`);
+            expect(updated.sources[1]).to.equal(s`${path.relative(stagingMapDir, path.resolve(originalMapDir, '../../rootDir/source/b.bs'))}`);
+        });
+
+        it('treats an empty string sourceRoot the same as omitted', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            fsExtra.writeJsonSync(originalMapPath, {
+                version: 3,
+                sourceRoot: '',
+                sources: ['../../rootDir/source/main.bs'],
+                mappings: ''
+            });
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [{ src: originalMapPath, dest: stagingMapPath }];
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../rootDir/source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites sources correctly for a map nested deep in a subdirectory', async () => {
+            const srcDir = s`${tempPath}/srcDir/components/views/details`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/Details.brs.map`;
+            fsExtra.writeJsonSync(originalMapPath, {
+                version: 3,
+                sources: ['../../../../src/components/views/details/Details.bs'],
+                mappings: ''
+            });
+
+            const stagingMapPath = s`${stagingDir}/components/views/details/Details.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [{ src: originalMapPath, dest: stagingMapPath }];
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../../../src/components/views/details/Details.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites multiple map files in a single pass', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPathA = s`${srcDir}/a.brs.map`;
+            const originalMapPathB = s`${srcDir}/b.brs.map`;
+            fsExtra.writeJsonSync(originalMapPathA, { version: 3, sources: ['../../rootDir/a.bs'], mappings: '' });
+            fsExtra.writeJsonSync(originalMapPathB, { version: 3, sources: ['../../rootDir/b.bs'], mappings: '' });
+
+            const stagingMapPathA = s`${stagingDir}/source/a.brs.map`;
+            const stagingMapPathB = s`${stagingDir}/source/b.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPathA));
+            fsExtra.copySync(originalMapPathA, stagingMapPathA);
+            fsExtra.copySync(originalMapPathB, stagingMapPathB);
+
+            project.fileMappings = [
+                { src: originalMapPathA, dest: stagingMapPathA },
+                { src: originalMapPathB, dest: stagingMapPathB }
+            ];
+            await project['preprocessStagingFiles']();
+
+            const stagingMapDir = path.dirname(stagingMapPathA);
+            const originalMapDir = path.dirname(originalMapPathA);
+            const updatedA = fsExtra.readJsonSync(stagingMapPathA);
+            const updatedB = fsExtra.readJsonSync(stagingMapPathB);
+            expect(updatedA.sources[0]).to.equal(s`${path.relative(stagingMapDir, path.resolve(originalMapDir, '../../rootDir/a.bs'))}`);
+            expect(updatedB.sources[0]).to.equal(s`${path.relative(stagingMapDir, path.resolve(originalMapDir, '../../rootDir/b.bs'))}`);
+        });
+
+        it('does not crash when map has no sources field', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            fsExtra.writeJsonSync(originalMapPath, { version: 3, mappings: '' });
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [{ src: originalMapPath, dest: stagingMapPath }];
+
+            // should not throw
+            await project['preprocessStagingFiles']();
+
+            // file should be unchanged
+            const unchanged = fsExtra.readJsonSync(stagingMapPath);
+            expect(unchanged.sources).to.be.undefined;
+        });
+
+        it('does not crash when map contains invalid JSON', async () => {
+            fsExtra.ensureDirSync(stagingDir);
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.writeFileSync(stagingMapPath, 'not-valid-json');
+
+            project.fileMappings = [{ src: s`${tempPath}/srcDir/main.brs.map`, dest: stagingMapPath }];
+
+            // should not throw
+            await project['preprocessStagingFiles']();
+        });
+
+        describe('concurrent staging-map write race regression', () => {
+            /**
+             * The .map branch and the colocateSourceMap step of the .brs branch can both target the
+             * same staging map path (the typical bsc transpile case: main.brs and main.brs.map land
+             * in the same staging folder). Writes to that path must be serialized so the resulting
+             * file is valid JSON. We don't care whether the work runs once or twice — only that the
+             * end state is uncorrupted.
+             */
+            it('produces a valid staging .map when .brs comment and staged .map target the same staging map path', async () => {
+                const srcDir = s`${tempPath}/srcDir/source`;
+                fsExtra.ensureDirSync(srcDir);
+                const stagingBrsDir = s`${stagingDir}/source`;
+                fsExtra.ensureDirSync(stagingBrsDir);
+
+                const originalBrsPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+                const stagingBrsPath = s`${stagingBrsDir}/main.brs`;
+                const stagingMapPath = s`${stagingBrsDir}/main.brs.map`;
+
+                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: ['main.bs'], mappings: '' });
+
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+                fsExtra.copySync(originalMapPath, stagingMapPath);
+
+                project.fileMappings = [
+                    { src: originalBrsPath, dest: stagingBrsPath },
+                    { src: originalMapPath, dest: stagingMapPath }
+                ];
+
+                await project['preprocessStagingFiles']();
+
+                //the resulting .map must still parse as valid JSON — concurrent writes
+                //serialized by the lock should not have torn the file
+                expect(() => fsExtra.readJsonSync(stagingMapPath)).to.not.throw();
+            });
+
+            /**
+             * When the .map is staged to a different folder than the .brs, the colocate path writes
+             * to a separate file. Both writes happen, but they target different paths, so there is
+             * no conflict and dedup correctly does NOT merge them.
+             */
+            it('runs fixSourceMapSources for each unique staging map path when .map and colocate target different folders', async () => {
+                const srcDir = s`${tempPath}/srcDir/source`;
+                const srcMapDir = s`${tempPath}/srcDir/maps`;
+                fsExtra.ensureDirSync(srcDir);
+                fsExtra.ensureDirSync(srcMapDir);
+                const stagingBrsDir = s`${stagingDir}/source`;
+                const stagingMapsDir = s`${stagingDir}/maps`;
+                fsExtra.ensureDirSync(stagingBrsDir);
+                fsExtra.ensureDirSync(stagingMapsDir);
+
+                const originalBrsPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcMapDir}/main.brs.map`;
+                const stagingBrsPath = s`${stagingBrsDir}/main.brs`;
+                //map gets staged to a separate folder
+                const stagedMapAtMapsDir = s`${stagingMapsDir}/main.brs.map`;
+                //colocate will write here (next to the .brs)
+                const colocatedMapPath = s`${stagingBrsDir}/main.brs.map`;
+
+                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=../maps/main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: ['main.bs'], mappings: '' });
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+                fsExtra.copySync(originalMapPath, stagedMapAtMapsDir);
+
+                project.fileMappings = [
+                    { src: originalBrsPath, dest: stagingBrsPath },
+                    { src: originalMapPath, dest: stagedMapAtMapsDir }
+                ];
+
+                const spy = sinon.spy(project as any, 'fixSourceMapSources');
+
+                await project['preprocessStagingFiles']();
+
+                const paths = spy.getCalls().map(call => {
+                    const arg = call.args[0] as { stagingMapPath: string };
+                    return fileUtils.standardizePath(arg.stagingMapPath).toLowerCase();
+                });
+                expect(paths).to.include(fileUtils.standardizePath(stagedMapAtMapsDir).toLowerCase());
+                expect(paths).to.include(fileUtils.standardizePath(colocatedMapPath).toLowerCase());
+
+                //both .map files exist on disk and are valid JSON
+                expect(() => fsExtra.readJsonSync(stagedMapAtMapsDir)).to.not.throw();
+                expect(() => fsExtra.readJsonSync(colocatedMapPath)).to.not.throw();
+            });
+        });
+
+        describe('fixSourceMapComment', () => {
+            /**
+             * Stage a source file (with a sourceMappingURL comment) and its map, run
+             * preprocessStagingFiles, and return the updated staged file contents.
+             *
+             * originalDir/main<ext> has the comment pointing at originalMapDir/main<ext>.map.
+             * The source file is always staged to stagingDir/source/main<ext>.
+             * The map is staged to stagingMapDest (default: stagingDir/source/main<ext>.map).
+             */
+            async function stageFileWithComment(ext: string, commentLine: string, opts: {
+                originalDir?: string;
+                originalMapDir?: string;
+                stageMap?: boolean;
+                stagingMapDest?: string;
+            } = {}) {
+                const {
+                    originalDir = s`${tempPath}/src/components/views`,
+                    originalMapDir = s`${tempPath}/src/components/maps`,
+                    stageMap = true,
+                    stagingMapDest = s`${stagingDir}/source/main${ext}.map`
+                } = opts;
+                const originalPath = s`${originalDir}/main${ext}`;
+                const originalMapPath = s`${originalMapDir}/main${ext}.map`;
+                const stagingPath = s`${stagingDir}/source/main${ext}`;
+
+                fsExtra.ensureDirSync(path.dirname(originalPath));
+                fsExtra.ensureDirSync(path.dirname(originalMapPath));
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+
+                fsExtra.writeFileSync(originalPath, `content\n${commentLine}`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+
+                if (stageMap) {
+                    fsExtra.ensureDirSync(path.dirname(stagingMapDest));
+                    fsExtra.copySync(originalMapPath, stagingMapDest);
+                    project.fileMappings = [
+                        { src: originalPath, dest: stagingPath },
+                        { src: originalMapPath, dest: stagingMapDest }
+                    ];
+                } else {
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+                }
+
+                await project['preprocessStagingFiles']();
+                return fsExtra.readFileSync(stagingPath, 'utf8');
+            }
+
+            /**
+             * Stage a source file with NO sourceMappingURL comment but with a colocated .map
+             * next to the original, run preprocessStagingFiles, and return the staged file contents.
+             *
+             * When stageMap is true the map is staged to stagingMapDest
+             * (default: right next to the source file, i.e. stagingDir/source/main<ext>.map).
+             */
+            async function stageFileWithColocatedMap(ext: string, opts: {
+                stageMap?: boolean;
+                stagingMapDest?: string;
+                crlf?: boolean;
+            } = {}) {
+                const srcDir = s`${tempPath}/rootDir/source`;
+                const originalPath = s`${srcDir}/main${ext}`;
+                const originalMapPath = s`${srcDir}/main${ext}.map`;
+                const stagingPath = s`${stagingDir}/source/main${ext}`;
+                const {
+                    stageMap = false,
+                    stagingMapDest = s`${stagingDir}/source/main${ext}.map`,
+                    crlf = false
+                } = opts;
+
+                fsExtra.ensureDirSync(srcDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+
+                fsExtra.writeFileSync(originalPath, crlf ? `sub main()\r\nend sub` : `sub main()\nend sub`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+
+                if (stageMap) {
+                    fsExtra.ensureDirSync(path.dirname(stagingMapDest));
+                    fsExtra.copySync(originalMapPath, stagingMapDest);
+                    project.fileMappings = [
+                        { src: originalPath, dest: stagingPath },
+                        { src: originalMapPath, dest: stagingMapDest }
+                    ];
+                } else {
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+                }
+
+                await project['preprocessStagingFiles']();
+                return fsExtra.readFileSync(stagingPath, 'utf8');
+            }
+
+            // ── comment rewrite: map not in fileMappings ─────────────────────────────
+            it('rewrites the comment to point at the colocated map even when the map was not in fileMappings', async () => {
+                const rootDirSource = s`${tempPath}/alpha/beta/charlie/rootDir/source`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                const originalRelative = s`${path.relative(rootDirSource, s`${tempPath}/alpha/maps/main.brs.map`)}`;
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${originalRelative}`, {
+                    originalDir: rootDirSource,
+                    originalMapDir: s`${tempPath}/alpha/maps`,
+                    stageMap: false
+                });
+
+                // The map should have been copied right next to the staging file
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been colocated next to the staging file').to.be.true;
+                // The comment should now point at the colocated copy
+                const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(result);
+                expect(commentMatch, 'sourceMappingURL comment should still be present').to.exist;
+                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(stagingMapPath);
+            });
+
+            // ── comment rewrite: map staged ───────────────────────────────────────────
+            it('rewrites the brs comment to point at the staged map', async () => {
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=../maps/main.brs.map`);
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+            });
+
+            it('rewrites the xml comment to point at the staged map', async () => {
+                const result = await stageFileWithComment('.xml', `<!--//# sourceMappingURL=../maps/main.xml.map -->`);
+                expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+            });
+
+            it('rewrites the comment in an arbitrary text-based file format', async () => {
+                const result = await stageFileWithComment('.md', `//# sourceMappingURL=../maps/main.md.map`);
+                expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+            });
+
+            it('keeps the correct path when brs and map are siblings in both source and staging', async () => {
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=main.brs.map`, {
+                    originalDir: s`${tempPath}/src/source`,
+                    originalMapDir: s`${tempPath}/src/source`
+                });
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+            });
+
+            it('rewrites an absolute comment path to point at the colocated map in staging', async () => {
+                const absoluteMapPath = s`${tempPath}/src/source/main.brs.map`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${absoluteMapPath}`, {
+                    originalDir: s`${tempPath}/src/source`,
+                    originalMapDir: s`${tempPath}/src/source`,
+                    stageMap: false
+                });
+                // Map should be colocated next to the staging file
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been colocated').to.be.true;
+                // Comment should point at the colocated copy (relative path = 'main.brs.map')
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+            });
+
+            it('uses the last comment when multiple sourceMappingURL comments exist in one file', async () => {
+                // Only the last comment should be rewritten; the first should be left as-is.
+                const originalDir = s`${tempPath}/src/source`;
+                const originalMapDir = s`${tempPath}/src/source`;
+                const originalPath = s`${originalDir}/main.brs`;
+                const originalMapPath = s`${originalMapDir}/main.brs.map`;
+                const stagingPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                fsExtra.ensureDirSync(originalDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+                fsExtra.writeFileSync(originalPath, `line1\n'//# sourceMappingURL=first.brs.map\nline2\n'//# sourceMappingURL=main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+                fsExtra.copySync(originalMapPath, stagingMapPath);
+                project.fileMappings = [
+                    { src: originalPath, dest: stagingPath },
+                    { src: originalMapPath, dest: stagingMapPath }
+                ];
+
+                await project['preprocessStagingFiles']();
+                const result = fsExtra.readFileSync(stagingPath, 'utf8');
+                expect(result).to.equal(`line1\n'//# sourceMappingURL=first.brs.map\nline2\n'//# sourceMappingURL=main.brs.map`);
+            });
+
+            // ── colocated map (no comment) ────────────────────────────────────────────
+            it('does not modify the file when there is no comment but a colocated .map exists — copies the map next to the staging file instead', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                const result = await stageFileWithColocatedMap('.brs');
+
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+
+            it('copies the colocated map next to the staging file for xml files', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingXmlPath = s`${stagingDir}/source/main.xml`;
+                const stagingMapPath = s`${stagingDir}/source/main.xml.map`;
+
+                const result = await stageFileWithColocatedMap('.xml');
+
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+
+            it('copies the colocated map next to the staging file for other file types', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingMapPath = s`${stagingDir}/source/main.md.map`;
+
+                const result = await stageFileWithColocatedMap('.md');
+
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+
+            it('does not modify the file when the colocated .map was already staged right next to the source file', async () => {
+                const original = `sub main()\nend sub`;
+                const result = await stageFileWithColocatedMap('.brs', { stageMap: true });
+                expect(result).to.equal(original);
+            });
+
+            it('does not modify the file when the colocated .map was staged at a different location — colocates the map next to the staging file', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+                const mapStagedElsewhere = s`${stagingDir}/maps/main.brs.map`;
+
+                const result = await stageFileWithColocatedMap('.brs', { stageMap: true, stagingMapDest: mapStagedElsewhere });
+
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+
+            // ── no comment, no colocated map ──────────────────────────────────────────
+            it('leaves the file untouched when there is no comment and no colocated map', async () => {
+                const originalBrsPath = s`${tempPath}/src/source/main.brs`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+
+                fsExtra.ensureDirSync(path.dirname(originalBrsPath));
+                fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+
+                const originalContents = `sub main()\nend sub\n`;
+                fsExtra.writeFileSync(originalBrsPath, originalContents);
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+                project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
+
+                await project['preprocessStagingFiles']();
+
+                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
+            });
+
+            // ── binary files ──────────────────────────────────────────────────────────
+            it('skips binary files without modifying them', async () => {
+                for (const ext of Project.binaryExtensions) {
+                    const originalPath = s`${tempPath}/src/source/file${ext}`;
+                    const stagingPath = s`${stagingDir}/source/file${ext}`;
+
+                    fsExtra.ensureDirSync(path.dirname(originalPath));
+                    fsExtra.ensureDirSync(path.dirname(stagingPath));
+
+                    const binaryContents = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+                    fsExtra.writeFileSync(originalPath, binaryContents);
+                    fsExtra.copySync(originalPath, stagingPath);
+
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+                    await project['preprocessStagingFiles']();
+
+                    expect(Buffer.compare(fsExtra.readFileSync(stagingPath), binaryContents)).to.equal(0, `${ext} file should be untouched`);
+                }
+            });
+
+            // ── legacy and variant comment forms ──────────────────────────────────────
+            describe('legacy and variant comment forms', () => {
+                // brs variants
+                it('brs: rewrites legacy @ form', async () => {
+                    expect(await stageFileWithComment('.brs', `'//@ sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it(`brs: rewrites when // is omitted  ('# sourceMappingURL=...)`, async () => {
+                    expect(await stageFileWithComment('.brs', `'# sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it(`brs: rewrites when // is omitted with legacy @  ('@ sourceMappingURL=...)`, async () => {
+                    expect(await stageFileWithComment('.brs', `'@ sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it(`brs: rewrites with whitespace between ' and //# ('  //# sourceMappingURL=...)`, async () => {
+                    expect(await stageFileWithComment('.brs', `'  //# sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it(`brs: rewrites with whitespace and no // ('  # sourceMappingURL=...)`, async () => {
+                    expect(await stageFileWithComment('.brs', `'  # sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.brs', `'//#sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: no space between @ and sourceMappingURL (legacy)', async () => {
+                    expect(await stageFileWithComment('.brs', `'//@sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+
+                // xml variants
+                it('xml: rewrites legacy @ form  (<!--//@ sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--//@ sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites when // is omitted  (<!--# sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--# sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites with whitespace between <!-- and //# (<!--  //# sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--  //# sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites with whitespace and no // (<!--  # sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--  # sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--//#sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+
+                // other (markdown) variants
+                it('other: rewrites legacy @ form  (//@ sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//@ sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: rewrites with whitespace between // and # (//  # sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//  # sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: rewrites with whitespace between // and @ (//  @ sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//  @ sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.md', `//#sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+            });
+
+            // ── map file lifecycle ────────────────────────────────────────────────────
+            it('leaves the original map in place when a comment references it', async () => {
+                const originalMapDir = s`${tempPath}/src/components/maps`;
+                const originalMapPath = s`${originalMapDir}/main.brs.map`;
+
+                await stageFileWithComment('.brs', `'//# sourceMappingURL=../maps/main.brs.map`, {
+                    originalMapDir: originalMapDir
+                });
+
+                //BreakpointManager.writeBreakpointsToFile relies on the original map still existing
+                //so the sourcemap chain walk can resolve back to the .bs source.
+                expect(fsExtra.pathExistsSync(originalMapPath), 'original map must be left in place so the chain walk in LocationManager can still resolve through it').to.be.true;
+            });
+
+            it('leaves the original colocated map in place', async () => {
+                const srcDir = s`${tempPath}/rootDir/source`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+
+                await stageFileWithColocatedMap('.brs');
+
+                expect(fsExtra.pathExistsSync(originalMapPath), 'original colocated map must be left in place so the chain walk in LocationManager can still resolve through it').to.be.true;
+            });
+
+            it('copies the map file to staging and it is valid JSON', async () => {
+                const mapContent = { version: 3, sources: ['main.brs'], mappings: 'AAAA' };
+                const srcDir = s`${tempPath}/rootDir/source`;
+                const originalPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+                const stagingPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                fsExtra.ensureDirSync(srcDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+                fsExtra.writeFileSync(originalPath, `sub main()\nend sub`);
+                fsExtra.writeJsonSync(originalMapPath, mapContent);
+                fsExtra.copySync(originalPath, stagingPath);
+                project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+
+                await project['preprocessStagingFiles']();
+
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied to staging').to.be.true;
+                const copiedMap = fsExtra.readJsonSync(stagingMapPath);
+                // version is preserved; sources are rewritten by fixSourceMapSources (which is expected)
+                expect(copiedMap.version).to.equal(mapContent.version);
+                expect(copiedMap.mappings).to.equal(mapContent.mappings);
+            });
+
+            it('rewrites the comment and copies the map even when the map was not listed in fileMappings', async () => {
+                // The map exists on disk but was not staged through fileMappings — colocateSourceMap
+                // should still copy it next to the staging file and the comment should point at it.
+                const originalDir = s`${tempPath}/src/source`;
+                const originalMapDir = s`${tempPath}/src/source`;
+                const originalPath = s`${originalDir}/main.brs`;
+                const originalMapPath = s`${originalMapDir}/main.brs.map`;
+                const stagingPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                fsExtra.ensureDirSync(originalDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+                fsExtra.writeFileSync(originalPath, `content\n'//# sourceMappingURL=main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+                // Only stage the source file, not the map
+                project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+
+                await project['preprocessStagingFiles']();
+
+                const result = fsExtra.readFileSync(stagingPath, 'utf8');
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+        });
+    });
+
+    describe('scriptReferencedFiles', () => {
+        afterEach(() => {
+            try {
+                fsExtra.removeSync(tempPath);
+            } catch (e) { }
+        });
+
+        async function stageXml(xmlRelPath: string, xmlContents: string) {
+            project.stagingDir = stagingDir;
+            const xmlStagingPath = s`${stagingDir}/${xmlRelPath}`;
+            fsExtra.outputFileSync(xmlStagingPath, xmlContents);
+            //the xml file isn't required to be in fileMappings — script scanning happens for all staged xml
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+        }
+
+        it('collects pkg:/ script uris resolved from the staging root', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="pkg:/source/helper.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/helper.brs`);
+        });
+
+        it('collects libpkg:/ script uris resolved from the staging root', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="libpkg:/source/lib.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/lib.brs`);
+        });
+
+        it('collects relative script uris resolved from the xml file directory', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="sibling.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/components/sibling.brs`);
+        });
+
+        it('collects multiple script tags across multiple xml files', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/components/A.xml`, `
+                <component name="A">
+                    <script uri="pkg:/source/a1.brs"/>
+                    <script uri="pkg:/source/a2.brs"/>
+                </component>
+            `);
+            fsExtra.outputFileSync(s`${stagingDir}/components/B.xml`, `
+                <component name="B">
+                    <script uri="pkg:/source/b1.brs"/>
+                </component>
+            `);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+
+            expect([...project.scriptReferencedFiles].sort()).to.eql([
+                s`${stagingDir}/source/a1.brs`,
+                s`${stagingDir}/source/a2.brs`,
+                s`${stagingDir}/source/b1.brs`
+            ].sort());
+        });
+
+        it('resets the set on each preprocess so a re-stage does not accumulate stale entries', async () => {
+            await stageXml('components/First.xml', `
+                <component name="First"><script uri="pkg:/source/first.brs"/></component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/first.brs`);
+
+            //remove the first xml and stage a different one — the old entry must not survive
+            fsExtra.removeSync(s`${stagingDir}/components/First.xml`);
+            await stageXml('components/Second.xml', `
+                <component name="Second"><script uri="pkg:/source/second.brs"/></component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/second.brs`);
+            expect([...project.scriptReferencedFiles]).to.not.include(s`${stagingDir}/source/first.brs`);
+        });
+
+        it('is empty when there are no xml files', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/source/main.brs`, `sub main()\nend sub`);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(project.scriptReferencedFiles.size).to.equal(0);
         });
     });
 
@@ -575,6 +1632,71 @@ describe('Project', () => {
             expect(fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`), `${componentsFileRelativePath} was not copied to staging`).to.be.true;
         });
 
+        //regression: on Windows, an absolute rdbFilesBasePath contains backslashes,
+        //which fast-glob treats as escape characters. Without normalization, the glob
+        //matches nothing and no files get copied.
+        it('copies the RDB files when rdbFilesBasePath is an absolute path with native separators', async () => {
+            fsExtra.emptyDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = true;
+            project.rdbFilesBasePath = path.resolve(rdbFilesBasePath);
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} was not copied to staging from absolute path ${project.rdbFilesBasePath}`
+            ).to.be.true;
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`),
+                `${componentsFileRelativePath} was not copied to staging from absolute path ${project.rdbFilesBasePath}`
+            ).to.be.true;
+        });
+
+        it('does not copy files when injectRdbOnDeviceComponent is false', async () => {
+            fsExtra.emptyDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = false;
+            project.rdbFilesBasePath = rdbFilesBasePath;
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`),
+                `${componentsFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
+        });
+
+        it('does not copy files when rdbFilesBasePath is not set', async () => {
+            fsExtra.emptyDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = true;
+            project.rdbFilesBasePath = undefined;
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
+        });
+
         it('works for inline comments brs files', async () => {
             let brsSample = `\nsub main()\n  screen.show  <ENTRY>\nend sub`;
             let expectedBrs = brsSample.replace('<ENTRY>', `: ${Project.RDB_ODC_NODE_CODE}`);
@@ -722,6 +1844,7 @@ describe('ComponentLibraryProject', () => {
                     <script type="text/brightscript" uri="common:/LibCore/v30/bslCore.brs"/>
                     <script type="text/brightscript" uri="CustomComponent.brs"/>
                     <script type="text/brightscript" uri="pkg:/source/utils.brs"/>
+                    <script type="text/brightscript" uri="libpkg:/components/component.brs"/>
                 </component>
             `);
             await project.postfixFiles();
@@ -732,6 +1855,7 @@ describe('ComponentLibraryProject', () => {
                     <script type="text/brightscript" uri="common:/LibCore/v30/bslCore.brs"/>
                     <script type="text/brightscript" uri="CustomComponent__lib0.brs"/>
                     <script type="text/brightscript" uri="pkg:/source/utils__lib0.brs"/>
+                    <script type="text/brightscript" uri="libpkg:/components/component__lib0.brs"/>
                 </component>
             `);
         });
@@ -745,6 +1869,7 @@ describe('ComponentLibraryProject', () => {
                     <script type="text/brightscript" uri = "common:/LibCore/v30/bslCore.brs"/>
                     <script type="text/brightscript" uri = "CustomComponent.brs"/>
                     <script type="text/brightscript" uri = "pkg:/source/utils.brs"/>
+                    <script type="text/brightscript" uri = "libpkg:/components/component.brs"/>
                 </component>
             `);
             await project.postfixFiles();
@@ -755,6 +1880,7 @@ describe('ComponentLibraryProject', () => {
                     <script type="text/brightscript" uri = "common:/LibCore/v30/bslCore.brs"/>
                     <script type="text/brightscript" uri = "CustomComponent__lib0.brs"/>
                     <script type="text/brightscript" uri = "pkg:/source/utils__lib0.brs"/>
+                    <script type="text/brightscript" uri = "libpkg:/components/component__lib0.brs"/>
                 </component>
             `);
         });
@@ -764,10 +1890,12 @@ describe('ComponentLibraryProject', () => {
         it('computes stagingDir before calling getFileMappings', async () => {
             delete params.stagingDir;
             let project = new ComponentLibraryProject(params);
+            // The default stagingDir is resolved at construction time by roku-deploy
+            let defaultStagingDir = project.stagingDir;
 
             sinon.stub(rokuDeploy, 'getFilePaths').returns(Promise.resolve([
-                { src: s`${rootDir}/manifest`, dest: s`manifest` },
-                { src: s`${rootDir}/source/main.brs`, dest: s`source/main.brs` }
+                { src: s`${rootDir}/manifest`, dest: s`${defaultStagingDir}/manifest` },
+                { src: s`${rootDir}/source/main.brs`, dest: s`${defaultStagingDir}/source/main.brs` }
             ]));
             sinon.stub(Project.prototype, 'stage').returns(Promise.resolve());
             sinon.stub(util, 'convertManifestToObject').returns(Promise.resolve({}));
@@ -813,6 +1941,60 @@ describe('ComponentLibraryProject', () => {
                 await testManifestRead('test.manifest');
                 await testManifestRead('not_even_close');
             });
+        });
+
+        it('uses sg_component_libs_provided from manifest when present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nsg_component_libs_provided=MyLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('MyLibrary');
+        });
+
+        it('uses bs_libs_provided from manifest when sg_component_libs_provided is not present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nbs_libs_provided=MyBSLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('MyBSLibrary');
+        });
+
+        it('prioritizes sg_component_libs_provided over bs_libs_provided when both are present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nsg_component_libs_provided=SGLibrary\nbs_libs_provided=BSLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('SGLibrary');
         });
     });
 });

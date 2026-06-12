@@ -13,6 +13,9 @@ import * as r from 'postman-request';
 import type { Response } from 'request';
 import type * as requestType from 'request';
 import { OutputEvent } from '@vscode/debugadapter';
+import * as xml2js from 'xml2js';
+import { isPromise } from 'util/types';
+import type { Logger } from '@rokucommunity/logger';
 const request = r as typeof requestType;
 
 class Util {
@@ -136,7 +139,7 @@ class Util {
     public log(message: string) {
         if (this._debugSession) {
             this._debugSession.sendEvent(new LogOutputEvent(`DebugServer: ${message}`));
-            this._debugSession.sendEvent(new OutputEvent(`DebugServer: ${message}`, 'stdout'));
+            this._debugSession.sendEvent(new OutputEvent(`DebugServer: ${message}\n`, 'stdout'));
         }
     }
 
@@ -424,9 +427,9 @@ class Util {
     /**
      * Do an http GET request
      */
-    public httpGet(url: string) {
+    public httpGet(url: string, options?: requestType.CoreOptions) {
         return new Promise<Response>((resolve, reject) => {
-            request.get(url, (err, response) => {
+            request.get(url, options, (err, response) => {
                 return err ? reject(err) : resolve(response);
             });
         });
@@ -452,7 +455,7 @@ class Util {
         ).some(x => !this.isNullish(x));
     }
 
-    private minPort = 1;
+    private minPort = 1024;
 
     public async getPort() {
         let port: number;
@@ -462,7 +465,7 @@ class Util {
                 port: this.minPort
             });
         } catch {
-            this.minPort = 1;
+            this.minPort = 1024;
             port = await portfinder.getPortPromise({
                 //startPort
                 port: this.minPort
@@ -498,17 +501,143 @@ class Util {
      * @param disposables a list of functions or disposables
      */
     public applyDispose(disposables: DisposableLike[]) {
+        let promises = [];
+        let exceptions = [];
+
         disposables ??= [];
         for (const disposable of disposables) {
-            if (typeof disposable === 'function') {
-                disposable();
-            } else {
-                disposable?.dispose?.();
+            let value: any;
+            try {
+                if (typeof disposable === 'function') {
+                    value = disposable();
+                } else {
+                    value = disposable?.dispose?.();
+                }
+            } catch (e) {
+                exceptions.push(e);
+            }
+            //if this value is a promise, add a .catch to it so we don't bring down the app
+            if (isPromise(value)) {
+                value.catch(e => {
+                    console.error('Unhandled promise during dispose', e);
+                });
             }
         }
         //empty the array
         disposables.splice(0, disposables.length);
     }
+
+    /**
+     * Parse an xml file and get back a javascript object containing its results
+     */
+    public parseXml<T = any>(text: string): Promise<T> {
+        return new Promise<any>((resolve, reject) => {
+            xml2js.parseString(text, (err, data) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(data);
+                }
+            });
+        });
+    }
+
+    /**
+     * Register the socket events for logging
+     * @param socket - the socket to listen to for events
+     * @param logger - the logger to use for logging
+     * @param socketType - the type of socket (e.g. "client", "server")
+     */
+    public registerSocketLogging(socket: net.Socket, logger: Logger, socketType: string) {
+        // create a new child logger for the socket events
+        let socketLogger = logger.createLogger(`[${socketType}]`);
+
+        socket.on('error', (error: Error) => {
+            socketLogger.error(`socket error: ${this.getSocketAddressForLogs(socket)}`, error);
+        });
+
+        socket.on('close', (hadError: boolean) => {
+            if (hadError) {
+                socketLogger.error(`socket closed with error: ${this.getSocketAddressForLogs(socket)}`);
+            } else {
+                socketLogger.log(`socket closed: ${this.getSocketAddressForLogs(socket)}`);
+            }
+        });
+
+        socket.on('end', () => {
+            socketLogger.log(`device signalling to end socket connection: ${this.getSocketAddressForLogs(socket)}`);
+        });
+
+        socket.on('timeout', () => {
+            socketLogger.log(`socket timeout. duration: ${socket.timeout}. ${this.getSocketAddressForLogs(socket)}`);
+        });
+
+        socket.on('lookup', (err: Error | null, address: string, family: number | null, host: string) => {
+            if (err) {
+                socketLogger.error(`socket lookup error. family: ${family ? `IPv${family}` : 'unknown'} address: ${address}, host: ${host}, error: ${err}`);
+            } else {
+                socketLogger.log(`socket lookup. family: ${family ? `IPv${family}` : 'unknown'} address: ${address}, host: ${host}`);
+            }
+        });
+
+        socket.on('connectionAttempt', (ip: string, port: number, family: number) => {
+            socketLogger.log(`socket connection attempt: ${this.getSocketAddressForLogs(socket, ip, port, family)}`);
+        });
+
+        socket.on('connectionAttemptFailed', (ip: string, port: number, family: number, error: Error) => {
+            socketLogger.error(`socket connection attempt failed: ${this.getSocketAddressForLogs(socket, ip, port, family)}, error: ${error.message}`);
+        });
+
+        socket.on('connectionAttemptTimeout', (ip: string, port: number, family: number) => {
+            socketLogger.log(`socket connection timed out: ${this.getSocketAddressForLogs(socket, ip, port, family)}`);
+        });
+
+        socket.on('connect', () => {
+            socketLogger.log(`socket connected: ${this.getSocketAddressForLogs(socket)}`);
+        });
+
+        socket.on('ready', () => {
+            socketLogger.log(`socket is ready for use: ${this.getSocketAddressForLogs(socket)}`);
+        });
+    }
+
+    private getSocketAddressForLogs(socket: net.Socket, ip?: string, port?: number, family?: number): string {
+        let familyString: string;
+        if (typeof family === 'number') {
+            familyString = `IPv${family}`;
+        } else {
+            familyString = socket.localFamily;
+        }
+
+        const remoteString = `remote: ${familyString} ${ip ?? socket.remoteAddress}:${port ?? socket.remotePort}`;
+
+        if (socket.localAddress !== undefined && socket.localPort !== undefined) {
+            return `local: ${socket.localFamily ? socket.localFamily : ''}${socket.localAddress}:${socket.localPort} -> ${remoteString}`;
+        } else {
+            return remoteString;
+        }
+    }
+
+    public truncate(value: string, maxLength: number): string {
+        if (value.length > maxLength) {
+            return value.substring(0, maxLength - 3) + '...';
+        }
+        return value;
+    }
+
+    /**
+     * Coerce any value into an Error object. If it's already an Error, return it as-is. If it's not, create a new Error with the stringified value as the message
+     * @param error
+     * @returns
+     */
+    public toError(error: any): Error {
+        if (error?.constructor.name === Error.constructor.name) {
+            return error;
+        } else {
+            return new Error(String(error));
+        }
+    }
+
 }
 
 export function defer<T>() {

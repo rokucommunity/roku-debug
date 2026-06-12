@@ -1,5 +1,4 @@
 import { logger } from './logging';
-
 // eslint-disable-next-line
 const Telnet = require('telnet-client');
 
@@ -16,7 +15,6 @@ export class SceneGraphDebugCommandController {
     public execTimeout = 2000;
     private port;
     private maxBufferLength = 5242880;
-
     private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);
 
     public async connect(options: { execTimeout?: number; timeout?: number } = {}) {
@@ -298,7 +296,6 @@ export class SceneGraphDebugCommandController {
             }
         }
     }
-
 
     /**
      * Returns a simple starting object used for responses

@@ -203,7 +203,7 @@ export class RendezvousTracker {
      */
     public async getEcpRendezvous(): Promise<EcpRendezvousData> {
         const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/sgrendezvous`;
-        this.logger.info(`Sending ECP rendezvous request:`, url);
+        this.logger.trace(`Sending ECP rendezvous request:`, url);
         // Send rendezvous query to ECP
         const rendezvousQuery = await util.httpGet(url);
         let rendezvousQueryData = rendezvousQuery.body as string;
@@ -212,7 +212,7 @@ export class RendezvousTracker {
             items: []
         };
 
-        this.logger.debug('Parsing rendezvous response', rendezvousQuery);
+        this.logger.trace('Parsing rendezvous response', rendezvousQuery);
         // Parse rendezvous query data
         await new Promise<EcpRendezvousData>((resolve, reject) => {
             xml2js.parseString(rendezvousQueryData, (err, result) => {
@@ -234,7 +234,7 @@ export class RendezvousTracker {
                 }
             });
         });
-        this.logger.debug('Parsed ECP rendezvous data:', ecpData);
+        this.logger.trace('Parsed ECP rendezvous data:', ecpData);
         return ecpData;
     }
 
