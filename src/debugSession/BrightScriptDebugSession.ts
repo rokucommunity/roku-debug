@@ -611,6 +611,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             //all of the projects have been successfully staged.
             this.stagingDefered.tryResolve();
 
+            //if the client supports it, let it process (inspect/modify) each project's staging dir before we package them
+            if (this.launchConfiguration.clientCapabilities?.supportsProcessStagingDir) {
+                await this.sendCustomRequest('processStagingDir', {
+                    projects: this.projectManager.getProjectStagingInfo()
+                });
+            }
+
             packageEnd();
 
             if (this.enableDebugProtocol) {
