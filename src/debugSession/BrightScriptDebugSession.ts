@@ -30,7 +30,7 @@ import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
-import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
@@ -588,8 +588,6 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 return await this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
             }
 
-            await this.initializeProfiling();
-
             // everything is ready, send the response to the launch request so the UI can update and configuration can begin
             this.sendResponse(response);
 
@@ -612,6 +610,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             //all of the projects have been successfully staged.
             this.stagingDefered.tryResolve();
+
+            //if the client supports it, let it process (inspect/modify) each project's staging dir before we package them
+            if (this.launchConfiguration.clientCapabilities?.supportsProcessStagingDir) {
+                await this.sendCustomRequest('processStagingDir', {
+                    projects: this.projectManager.getProjectStagingInfo()
+                });
+            }
 
             packageEnd();
 
@@ -656,6 +661,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
             // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
             this.sendEvent(new InitializedEvent());
+
+            await this.initializeProfiling();
 
         } catch (e) {
             //if the message is anything other than compile errors, we want to display the error
@@ -874,6 +881,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             this.logger.info('Disabling perfetto tracing because it is disabled in the launch configuration');
             //TODO implement a way to disable perfetto tracing on the device
 
+            //tracing was requested but the device firmware does not meet the minimum requirement
+        } else if (this.launchConfiguration.profiling?.tracing?.enable && !this.supportsPerfettoTracing) {
+            const firmwareVersion = this.deviceInfo?.softwareVersion ?? 'unknown';
+            const message = `Perfetto profiling is not available: device firmware ${firmwareVersion} is below the minimum required version (15.2). The Perfetto profiling buttons will not be available during this session.`;
+            this.logger.warn(message);
+            this.showPopupMessage(message, 'warn').catch(e => this.logger.error('Failed to show Perfetto unavailable notification', e));
+
             //profiling.tracing.enabled is set to `undefined`, which means we should do nothing
         } else {
             this.logger.info('Skipping perfetto initalization because `profiling.tracing.enable` is not defined in the launch configuration');
@@ -890,6 +904,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             } catch (e) {
                 this.logger.error('Failed to start perfetto tracing on start', e);
             }
+        } else if (this.launchConfiguration.profiling?.tracing?.connectOnStart && !this.supportsPerfettoTracing) {
+            const firmwareVersion = this.deviceInfo?.softwareVersion ?? 'unknown';
+            const message = `Perfetto profiling is not available: device firmware ${firmwareVersion} is below the minimum required version (15.2). Tracing will not start automatically.`;
+            this.logger.warn(message);
+            this.showPopupMessage(message, 'warn').catch(e => this.logger.error('Failed to show Perfetto unavailable notification', e));
         }
     }
 
@@ -900,7 +919,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // launchRequest gets invoked by our restart session flow.
         // We need to clear/reset some state to avoid issues.
         this.entryBreakpointWasHandled = false;
-        this.breakpointManager.clearBreakpointLastState();
+        //reset all per-session breakpoint state (diff baseline + cached parsed ASTs) since a restart
+        //re-stages the project
+        this.breakpointManager.reset();
     }
 
     /**
@@ -1283,10 +1304,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
-        //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-        if (!this.enableDebugProtocol) {
-            await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
-        }
+        //validate breakpoints for all debugger types (and write `stop` statements for telnet — decided internally)
+        await this.breakpointManager.validateAndWriteBreakpointsForProject(this.projectManager.mainProject);
 
         if (this.launchConfiguration.packageTask) {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
@@ -1405,11 +1424,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // Add breakpoint lines to the staging files and before publishing
         util.log('Adding stop statements for active breakpoints in Component Libraries');
 
-        //write STOPs (telnet only), postfix, and zip each complib in parallel — each targets distinct files
+        //validate breakpoints (and write STOPs for telnet), postfix, and zip each complib in parallel — each targets distinct files
         const packagePromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
-            if (!this.enableDebugProtocol) {
-                await this.breakpointManager.writeBreakpointsForProject(compLibProject);
-            }
+            await this.breakpointManager.validateAndWriteBreakpointsForProject(compLibProject);
             await compLibProject.postfixFiles();
             await compLibProject.zipPackage({ retainStagingFolder: true });
         });
@@ -1521,9 +1538,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 let rokuThreads = await this.rokuAdapter.getThreads();
 
                 for (let thread of rokuThreads) {
-                    const threadName = thread.isDetached
-                        ? `Thread ${thread.threadId} [detached]`
-                        : `Thread ${thread.threadId}`;
+                    const threadName = this.getThreadName(thread as AdapterThread);
                     threads.push(
                         new Thread(thread.threadId, threadName)
                     );
@@ -1548,6 +1563,45 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         };
 
         this.sendResponse(response);
+    }
+
+    /**
+     * Get the thread name to display in the UI based on the thread info we have.
+     * This is what displays in the `call stack` region in vscode
+     * @param thread
+     * @returns
+     */
+    private getThreadName(thread: AdapterThread) {
+        let threadName = '';
+        if (thread.type || thread.name || thread.osThreadId) {
+            //build the name from only the parts that are present, so missing values don't leak into the name
+            const parts: string[] = [];
+            if (thread.type) {
+                parts.push(`[${thread.type}]`);
+            }
+            if (thread.name) {
+                parts.push(thread.name);
+            }
+            if (thread.osThreadId) {
+                parts.push(thread.osThreadId);
+            }
+            threadName = parts.join(' ');
+        }
+        //remove any extraneous whitespace to deal with missing values
+        threadName = threadName.replace(/\s+/g, ' ').trim();
+
+        if (threadName === '') {
+            threadName = `Thread ${thread.threadId}`;
+        }
+
+        if (thread.isDetached) {
+            threadName += ' [detached]';
+        }
+
+        //remove any extraneous whitespace to deal with missing values
+        threadName = threadName.replace(/\s+/g, ' ').trim();
+
+        return threadName;
     }
 
     protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
@@ -2532,9 +2586,18 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      * @param args
      */
     protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
-        //return to the home screen
+        //return to the home screen — best effort. The device may already be powered off or unreachable
+        //at disconnect time; without a guard pressHomeButton rejects (EHOSTDOWN / ECONNREFUSED / etc)
+        //and because @vscode/debugadapter dispatches this method without awaiting the returned Promise,
+        //that rejection escapes as an unhandledRejection and crashes the DAP process.
+        //See https://github.com/rokucommunity/vscode-brightscript-language/issues/807
+        //    https://github.com/rokucommunity/roku-debug/issues/332
         if (!this.enableDebugProtocol) {
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            try {
+                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            } catch (e) {
+                this.logger.warn('Failed to press home button during disconnect; device may be unreachable', e);
+            }
         }
         this.sendResponse(response);
         await this.shutdown();

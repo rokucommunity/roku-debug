@@ -60,6 +60,56 @@ describe('ProjectManager', () => {
         sinon.restore();
     });
 
+    describe('getProjectStagingInfo', () => {
+        function makeMainProject() {
+            return new Project({ rootDir: rootDir, outDir: outDir, files: [], stagingDir: stagingDir, enhanceREPLCompletions: false });
+        }
+        function makeComponentLibraryProject(libraryIndex: number) {
+            return new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib${libraryIndex}-staging`,
+                libraryIndex: libraryIndex,
+                outFile: `complib${libraryIndex}.zip`,
+                enhanceREPLCompletions: false
+            });
+        }
+
+        it('always lists the main project first, even when component libraries are assigned first', () => {
+            const mainProject = makeMainProject();
+            const complib0 = makeComponentLibraryProject(0);
+            const complib1 = makeComponentLibraryProject(1);
+
+            //deliberately assign component libraries before the main project to prove the ordering is
+            //enforced by getProjectStagingInfo and not just an artifact of assignment order
+            manager.componentLibraryProjects = [complib0, complib1];
+            manager.mainProject = mainProject;
+
+            const info = manager.getProjectStagingInfo();
+
+            //contract: the main project is always first and typed as 'main'
+            expect(info[0]).to.eql({ type: 'main', stagingDir: mainProject.stagingDir });
+            //component libraries follow, in order, typed as 'componentLibrary'
+            expect(info.map(x => x.type)).to.eql(['main', 'componentLibrary', 'componentLibrary']);
+            expect(info.map(x => x.stagingDir)).to.eql([
+                mainProject.stagingDir,
+                complib0.stagingDir,
+                complib1.stagingDir
+            ]);
+        });
+
+        it('returns only the main project when there are no component libraries', () => {
+            const mainProject = makeMainProject();
+            manager.componentLibraryProjects = [];
+            manager.mainProject = mainProject;
+
+            expect(manager.getProjectStagingInfo()).to.eql([
+                { type: 'main', stagingDir: mainProject.stagingDir }
+            ]);
+        });
+    });
+
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
         it('accounts for the entry breakpoint', () => {
@@ -1268,6 +1318,96 @@ describe('Project', () => {
                 expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
                 expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
             });
+        });
+    });
+
+    describe('scriptReferencedFiles', () => {
+        afterEach(() => {
+            try {
+                fsExtra.removeSync(tempPath);
+            } catch (e) { }
+        });
+
+        async function stageXml(xmlRelPath: string, xmlContents: string) {
+            project.stagingDir = stagingDir;
+            const xmlStagingPath = s`${stagingDir}/${xmlRelPath}`;
+            fsExtra.outputFileSync(xmlStagingPath, xmlContents);
+            //the xml file isn't required to be in fileMappings — script scanning happens for all staged xml
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+        }
+
+        it('collects pkg:/ script uris resolved from the staging root', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="pkg:/source/helper.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/helper.brs`);
+        });
+
+        it('collects libpkg:/ script uris resolved from the staging root', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="libpkg:/source/lib.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/lib.brs`);
+        });
+
+        it('collects relative script uris resolved from the xml file directory', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="sibling.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/components/sibling.brs`);
+        });
+
+        it('collects multiple script tags across multiple xml files', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/components/A.xml`, `
+                <component name="A">
+                    <script uri="pkg:/source/a1.brs"/>
+                    <script uri="pkg:/source/a2.brs"/>
+                </component>
+            `);
+            fsExtra.outputFileSync(s`${stagingDir}/components/B.xml`, `
+                <component name="B">
+                    <script uri="pkg:/source/b1.brs"/>
+                </component>
+            `);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+
+            expect([...project.scriptReferencedFiles].sort()).to.eql([
+                s`${stagingDir}/source/a1.brs`,
+                s`${stagingDir}/source/a2.brs`,
+                s`${stagingDir}/source/b1.brs`
+            ].sort());
+        });
+
+        it('resets the set on each preprocess so a re-stage does not accumulate stale entries', async () => {
+            await stageXml('components/First.xml', `
+                <component name="First"><script uri="pkg:/source/first.brs"/></component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/first.brs`);
+
+            //remove the first xml and stage a different one — the old entry must not survive
+            fsExtra.removeSync(s`${stagingDir}/components/First.xml`);
+            await stageXml('components/Second.xml', `
+                <component name="Second"><script uri="pkg:/source/second.brs"/></component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/second.brs`);
+            expect([...project.scriptReferencedFiles]).to.not.include(s`${stagingDir}/source/first.brs`);
+        });
+
+        it('is empty when there are no xml files', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/source/main.brs`, `sub main()\nend sub`);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(project.scriptReferencedFiles.size).to.equal(0);
         });
     });
 

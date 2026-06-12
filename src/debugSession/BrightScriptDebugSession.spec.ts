@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
-import { DebugSession, Logger as DapLogger, logger as dapLogger, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
+import { DebugSession, InitializedEvent, Logger as DapLogger, logger as dapLogger, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
@@ -21,7 +21,7 @@ import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
 import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
-import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { PerfettoManager } from '../PerfettoManager';
 
@@ -1137,7 +1137,8 @@ describe('BrightScriptDebugSession', () => {
             await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //add breakpoint during live debug session. one was there before, the other is new. Neither will be verified right now
+            //add breakpoint during live debug session. one was there before, the other is new.
+            //line 1 was already staged so it comes back verified; line 2 is new so it is not.
             args.breakpoints = [{ line: 1 }, { line: 2 }];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(
@@ -1191,6 +1192,16 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('resetSessionState', () => {
+        it('resets the breakpoint manager so a restart does not reuse stale staged data', () => {
+            const reset = sinon.stub(session.breakpointManager, 'reset');
+
+            (session as any).resetSessionState();
+
+            expect(reset.calledOnce, 'breakpointManager.reset() should be called').to.be.true;
+        });
+    });
+
     describe('shutdown', () => {
         it('erases all staging folders when configured to do so', async () => {
             let stub = sinon.stub(fsExtra, 'removeSync').returns(null);
@@ -1240,6 +1251,42 @@ describe('BrightScriptDebugSession', () => {
             await session.shutdown();
 
             expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
+        });
+    });
+
+    describe('disconnectRequest', () => {
+        //Regression tests for DAP crashes from unhandled pressHomeButton rejections at disconnect time:
+        //  - https://github.com/rokucommunity/vscode-brightscript-language/issues/807 (EHOSTDOWN)
+        //  - https://github.com/rokucommunity/roku-debug/issues/332 (ECONNREFUSED)
+        //@vscode/debugadapter dispatches disconnectRequest without awaiting the returned Promise
+        //(debugSession.js:391), so any rejection from `await this.rokuDeploy.pressHomeButton(...)`
+        //becomes an unhandled rejection that crashes the DAP process. When the device is powered
+        //off / unreachable at disconnect time, the ECP connect attempt fails — the specific Node
+        //error code depends on the OS-level reason (host unresponsive vs. connection refused).
+        function makeTelnetDisconnectSession(rejection: Error) {
+            (session as any).launchConfiguration = {
+                ...launchConfiguration,
+                enableDebugProtocol: false,
+                host: '192.168.1.17',
+                remotePort: 8060
+            };
+            session.rokuDeploy.pressHomeButton = () => Promise.reject(rejection);
+            //stub shutdown so the test doesn't tear down the whole session machinery
+            sinon.stub(session, 'shutdown').resolves();
+        }
+
+        it('does not reject when pressHomeButton fails with EHOSTDOWN (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect EHOSTDOWN 192.168.1.17:8060 - Local (192.168.1.18:51783)'), { code: 'EHOSTDOWN' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
+        });
+
+        it('does not reject when pressHomeButton fails with ECONNREFUSED (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect ECONNREFUSED 192.168.1.17:8060'), { code: 'ECONNREFUSED' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
         });
     });
 
@@ -2417,6 +2464,22 @@ describe('BrightScriptDebugSession', () => {
             expect(enableTracingStub.callCount).to.equal(0);
         });
 
+        it('logs a warning and shows a popup when enable is true but device firmware is too old', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+            const warnSpy = sinon.spy(session.logger, 'warn');
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+            expect(warnSpy.callCount).to.be.greaterThan(0);
+            expect(warnSpy.getCall(0).args[0]).to.include('14.0.0');
+            expect(warnSpy.getCall(0).args[0]).to.include('15.2');
+            expect(sendCustomRequestStub.callCount).to.equal(1);
+            expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
+        });
+
         it('catches and logs error when enableTracing throws (enable=true)', async () => {
             launchConfiguration.profiling = { tracing: { enable: true } } as any;
             enableTracingStub.rejects(new Error('connection failed'));
@@ -2433,6 +2496,70 @@ describe('BrightScriptDebugSession', () => {
             await session['initializeProfiling']();
 
             expect(enableTracingStub.callCount).to.equal(0);
+        });
+    });
+
+    describe('tryProfilingConnectOnStart', () => {
+        let startTracingStub: SinonStub;
+
+        beforeEach(() => {
+            //set device info to support perfetto tracing (OS >= 15.2)
+            session['deviceInfo'] = { softwareVersion: '15.2.0' } as any;
+
+            //stub PerfettoManager prototype methods so no real connections are made
+            startTracingStub = sinon.stub(PerfettoManager.prototype, 'startTracing').resolves();
+            sinon.stub(PerfettoManager.prototype, 'on').returns(() => { });
+            session['perfettoManager'] = new PerfettoManager({ host: 'localhost' });
+        });
+
+        it('calls startTracing when connectOnStart is true and device supports perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(1);
+        });
+
+        it('does not call startTracing when connectOnStart is false', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: false } } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call startTracing when connectOnStart is undefined', async () => {
+            launchConfiguration.profiling = { tracing: {} } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+        });
+
+        it('logs a warning and shows a popup when connectOnStart is true but device firmware is too old', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+            const warnSpy = sinon.spy(session.logger, 'warn');
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+            expect(warnSpy.callCount).to.be.greaterThan(0);
+            expect(warnSpy.getCall(0).args[0]).to.include('14.0.0');
+            expect(warnSpy.getCall(0).args[0]).to.include('15.2');
+            expect(sendCustomRequestStub.callCount).to.equal(1);
+            expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
+        });
+
+        it('catches and logs error when startTracing throws', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            startTracingStub.rejects(new Error('connection failed'));
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(errorSpy.callCount).to.be.greaterThan(0);
+            expect(errorSpy.getCall(0).args[0]).to.include('Failed to start perfetto tracing on start');
         });
     });
 
@@ -2633,6 +2760,28 @@ describe('BrightScriptDebugSession', () => {
                 expect(getProgressEvents()).to.be.empty;
             });
         });
+
+        it('runs initializeProfiling after InitializedEvent so the extension does not clear profiling context keys on session start', async function() {
+            this.timeout(5000);
+            setupLaunchStubs();
+
+            const calls: string[] = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => {
+                calls.push(`sendEvent:${event.constructor.name}`);
+            });
+            sinon.stub(session as any, 'initializeProfiling').callsFake(() => {
+                calls.push('initializeProfiling');
+                return Promise.resolve();
+            });
+
+            await session.launchRequest({} as any, launchConfiguration);
+
+            const initializedIdx = calls.indexOf('sendEvent:InitializedEvent');
+            const profilingIdx = calls.indexOf('initializeProfiling');
+            expect(initializedIdx, 'InitializedEvent was not sent').to.be.greaterThan(-1);
+            expect(profilingIdx, 'initializeProfiling was not called').to.be.greaterThan(-1);
+            expect(profilingIdx, 'initializeProfiling must run after InitializedEvent').to.be.greaterThan(initializedIdx);
+        });
     });
 
     describe('publish', () => {
@@ -2701,6 +2850,123 @@ describe('BrightScriptDebugSession', () => {
             ]));
             const response = await getThreadsResponse();
             expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+    });
+
+    describe('getThreadName', () => {
+        //small helper to build a Thread with only the fields getThreadName cares about, plus required filler fields
+        function buildThread(overrides: Partial<AdapterThread>): AdapterThread {
+            return {
+                threadId: 0,
+                isSelected: false,
+                lineNumber: 1,
+                filePath: '',
+                functionName: '',
+                lineContents: '',
+                ...overrides
+            };
+        }
+
+        function getThreadName(overrides: Partial<AdapterThread>) {
+            return session['getThreadName'](buildThread(overrides));
+        }
+
+        //
+        // "Thread {threadId}" branch: none of type/name/osThreadId present
+        //
+        describe('falls back to "Thread {threadId}" when type, name, and osThreadId are all missing', () => {
+            it('uses the threadId', () => {
+                expect(getThreadName({ threadId: 0 })).to.equal('Thread 0');
+            });
+
+            it('uses a nonzero threadId', () => {
+                expect(getThreadName({ threadId: 7 })).to.equal('Thread 7');
+            });
+
+            it('treats explicit undefined fields as missing', () => {
+                expect(getThreadName({ threadId: 3, type: undefined, name: undefined, osThreadId: undefined })).to.equal('Thread 3');
+            });
+
+            it('treats empty-string fields as missing (falsy)', () => {
+                expect(getThreadName({ threadId: 4, type: '', name: '', osThreadId: '' })).to.equal('Thread 4');
+            });
+
+            it('appends [detached] when detached', () => {
+                expect(getThreadName({ threadId: 2, isDetached: true })).to.equal('Thread 2 [detached]');
+            });
+
+            it('does not append [detached] when isDetached is false', () => {
+                expect(getThreadName({ threadId: 2, isDetached: false })).to.equal('Thread 2');
+            });
+
+            it('does not append [detached] when isDetached is undefined', () => {
+                expect(getThreadName({ threadId: 2, isDetached: undefined })).to.equal('Thread 2');
+            });
+        });
+
+        //
+        // "[type] name osThreadId" branch: at least one of type/name/osThreadId present.
+        // Only the fields that are present are included; missing fields are omitted entirely
+        // (no "undefined" tokens leak into the name).
+        //
+        describe('builds "[type] name osThreadId" from only the present fields', () => {
+            it('all three present', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234' })).to.equal('[render] MainThread 1234');
+            });
+
+            it('only type present', () => {
+                expect(getThreadName({ type: 'render' })).to.equal('[render]');
+            });
+
+            it('only name present', () => {
+                expect(getThreadName({ name: 'MainThread' })).to.equal('MainThread');
+            });
+
+            it('only osThreadId present', () => {
+                expect(getThreadName({ osThreadId: '1234' })).to.equal('1234');
+            });
+
+            it('type and name present, osThreadId missing', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread' })).to.equal('[render] MainThread');
+            });
+
+            it('type and osThreadId present, name missing', () => {
+                expect(getThreadName({ type: 'render', osThreadId: '1234' })).to.equal('[render] 1234');
+            });
+
+            it('name and osThreadId present, type missing', () => {
+                expect(getThreadName({ name: 'MainThread', osThreadId: '1234' })).to.equal('MainThread 1234');
+            });
+
+            it('appends [detached] when detached', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234', isDetached: true })).to.equal('[render] MainThread 1234 [detached]');
+            });
+
+            it('appends [detached] even when only one field is present', () => {
+                expect(getThreadName({ type: 'render', isDetached: true })).to.equal('[render] [detached]');
+            });
+
+            it('does not append [detached] when isDetached is false', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234', isDetached: false })).to.equal('[render] MainThread 1234');
+            });
+        });
+
+        //
+        // whitespace normalization
+        //
+        describe('whitespace handling', () => {
+            it('collapses internal whitespace within field values', () => {
+                expect(getThreadName({ type: 'render', name: 'Main   Thread', osThreadId: '1234' })).to.equal('[render] Main Thread 1234');
+            });
+
+            it('collapses tabs and newlines in field values to single spaces', () => {
+                expect(getThreadName({ type: 'render', name: 'Main\t\nThread', osThreadId: '1234' })).to.equal('[render] Main Thread 1234');
+            });
+
+            it('trims leading/trailing whitespace produced by field values', () => {
+                //leading space inside type and trailing space in osThreadId get collapsed/trimmed
+                expect(getThreadName({ type: ' render', name: 'MainThread', osThreadId: '1234 ' })).to.equal('[ render] MainThread 1234');
+            });
         });
     });
 

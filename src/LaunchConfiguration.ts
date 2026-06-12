@@ -396,6 +396,25 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default true
      */
     emitChannelPublishedEvent?: boolean;
+
+    /**
+     * Optional capabilities advertised by the client (such as the VSCode extension) so the debug adapter
+     * can enable optional features the client supports. This is populated by the client itself, not by the user.
+     */
+    clientCapabilities?: ClientCapabilities;
+}
+
+/**
+ * Optional features the client advertises support for via `LaunchConfiguration.clientCapabilities`.
+ * The debug adapter only enables the matching behavior when the client opts in here.
+ */
+export interface ClientCapabilities {
+    /**
+     * The client supports the `processStagingDir` reverse request. When true, the debug adapter sends that
+     * request after all projects are staged and before they are packaged, giving the client a chance to
+     * inspect or modify each project's staging directory.
+     */
+    supportsProcessStagingDir?: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
