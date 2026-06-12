@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.13](https://github.com/rokucommunity/roku-debug/compare/0.23.12...v0.23.13) - 2026-06-12
+### Added
+ - Add processStagingDir reverse request support ([#366](https://github.com/rokucommunity/roku-debug/pull/366))
+
+
+
 ## [0.23.12](https://github.com/rokucommunity/roku-debug/compare/0.23.11...v0.23.12) - 2026-06-10
 ### Changed
  - Enhanced thread names ([#303](https://github.com/rokucommunity/roku-debug/pull/303))
