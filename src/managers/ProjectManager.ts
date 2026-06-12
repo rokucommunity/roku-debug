@@ -20,6 +20,21 @@ const replaceInFile = require('replace-in-file');
 export const componentLibraryPostfix = '__lib';
 
 /**
+ * Staging info for a single project, used when describing all projects to a client.
+ */
+export interface ProjectStagingInfo {
+    /**
+     * The kind of project. `main` is the application project (always exactly one); `componentLibrary`
+     * is a component library project.
+     */
+    type: 'main' | 'componentLibrary';
+    /**
+     * Absolute path to the project's staging directory.
+     */
+    stagingDir: string;
+}
+
+/**
  * Manages the collection of brightscript projects being used in a debug session.
  * Will contain the main project (in rootDir), as well as component libraries.
  */
@@ -73,6 +88,18 @@ export class ProjectManager {
             ...(this.componentLibraryProjects ?? [])
         ];
         return projects.map(x => x.stagingDir);
+    }
+
+    /**
+     * Get staging-dir info for every project. The main project is always first; component libraries
+     * follow in order. This main-first ordering is a contract that clients rely on, so it is covered
+     * by unit tests to guard against regressions.
+     */
+    public getProjectStagingInfo(): ProjectStagingInfo[] {
+        return this.getAllProjects().map((project) => ({
+            type: project instanceof ComponentLibraryProject ? 'componentLibrary' : 'main',
+            stagingDir: project.stagingDir
+        }));
     }
 
     /**

@@ -60,6 +60,56 @@ describe('ProjectManager', () => {
         sinon.restore();
     });
 
+    describe('getProjectStagingInfo', () => {
+        function makeMainProject() {
+            return new Project({ rootDir: rootDir, outDir: outDir, files: [], stagingDir: stagingDir, enhanceREPLCompletions: false });
+        }
+        function makeComponentLibraryProject(libraryIndex: number) {
+            return new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib${libraryIndex}-staging`,
+                libraryIndex: libraryIndex,
+                outFile: `complib${libraryIndex}.zip`,
+                enhanceREPLCompletions: false
+            });
+        }
+
+        it('always lists the main project first, even when component libraries are assigned first', () => {
+            const mainProject = makeMainProject();
+            const complib0 = makeComponentLibraryProject(0);
+            const complib1 = makeComponentLibraryProject(1);
+
+            //deliberately assign component libraries before the main project to prove the ordering is
+            //enforced by getProjectStagingInfo and not just an artifact of assignment order
+            manager.componentLibraryProjects = [complib0, complib1];
+            manager.mainProject = mainProject;
+
+            const info = manager.getProjectStagingInfo();
+
+            //contract: the main project is always first and typed as 'main'
+            expect(info[0]).to.eql({ type: 'main', stagingDir: mainProject.stagingDir });
+            //component libraries follow, in order, typed as 'componentLibrary'
+            expect(info.map(x => x.type)).to.eql(['main', 'componentLibrary', 'componentLibrary']);
+            expect(info.map(x => x.stagingDir)).to.eql([
+                mainProject.stagingDir,
+                complib0.stagingDir,
+                complib1.stagingDir
+            ]);
+        });
+
+        it('returns only the main project when there are no component libraries', () => {
+            const mainProject = makeMainProject();
+            manager.componentLibraryProjects = [];
+            manager.mainProject = mainProject;
+
+            expect(manager.getProjectStagingInfo()).to.eql([
+                { type: 'main', stagingDir: mainProject.stagingDir }
+            ]);
+        });
+    });
+
     describe('getLineNumberOffsetByBreakpoints', () => {
         let filePath = 'does not matter';
         it('accounts for the entry breakpoint', () => {

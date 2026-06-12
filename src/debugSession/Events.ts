@@ -4,6 +4,7 @@ import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { ChanperfData } from '../ChanperfTracker';
 import type { RendezvousHistory } from '../RendezvousTracker';
+import type { ProjectStagingInfo } from '../managers/ProjectManager';
 
 export class CustomEvent<T> {
     public constructor(body: T) {
@@ -241,6 +242,10 @@ export function isExecuteTaskCustomRequest(event: any): event is CustomRequestEv
 
 export function isShowPopupMessageCustomRequest(event: any): event is CustomRequestEvent<{ message: string; severity: 'error' | 'warn' | 'info'; modal: boolean; actions: string[] }> {
     return !!event && event.event === CustomRequestEvent.name && event.body.name === 'showPopupMessage';
+}
+
+export function isProcessStagingDirCustomRequest(event: any): event is CustomRequestEvent<{ projects: ProjectStagingInfo[] }> {
+    return !!event && event.event === CustomRequestEvent.name && event.body.name === 'processStagingDir';
 }
 
 export interface ProcessCrashEventData {
