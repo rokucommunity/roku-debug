@@ -9,12 +9,73 @@ export const tempDir = s`${__dirname}/../.tmp`;
 export const rootDir = s`${tempDir}/rootDir`;
 export const stagingDir = s`${tempDir}/stagingDir`;
 
+/**
+ * List every path remaining inside `dir` (recursively).
+ */
+function listTempLeftovers(dir: string): string[] {
+    const result: string[] = [];
+    const walk = (current: string) => {
+        let entries: string[];
+        try {
+            entries = fsExtra.readdirSync(current);
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            const fullPath = `${current}/${entry}`;
+            result.push(fullPath);
+            try {
+                if (fsExtra.statSync(fullPath).isDirectory()) {
+                    walk(fullPath);
+                }
+            } catch {
+                //entry may have been removed concurrently; ignore
+            }
+        }
+    };
+    walk(dir);
+    return result.sort();
+}
+
+/**
+ * Run a temp-dir cleanup operation. If it throws (most often Windows `ENOTEMPTY`, which happens when an
+ * earlier test left a file or handle open in the shared temp dir), log exactly what is still present so CI
+ * tells us which leftovers locked the dir, then re-throw. This diagnoses the failure; it does not hide it.
+ */
+function cleanupTempDir(label: string, dir: string, action: () => void) {
+    try {
+        action();
+    } catch (error) {
+        const leftovers = listTempLeftovers(dir);
+        console.error(`[temp-teardown] ${label}: ${(error as Error).message}`);
+        console.error(`[temp-teardown] ${label}: ${leftovers.length} path(s) still present under ${dir}:`);
+        for (const leftover of leftovers) {
+            console.error(`[temp-teardown]   ${leftover}`);
+        }
+        throw error;
+    }
+}
+
+/**
+ * `fsExtra.removeSync` for a temp dir, with diagnostics logged if the removal fails.
+ */
+export function removeTempDir(dir: string, label: string) {
+    cleanupTempDir(label, dir, () => fsExtra.removeSync(dir));
+}
+
+/**
+ * `fsExtra.emptyDirSync` for a temp dir, with diagnostics logged if the empty fails.
+ */
+export function emptyTempDir(dir: string, label: string) {
+    cleanupTempDir(label, dir, () => fsExtra.emptyDirSync(dir));
+}
+
 beforeEach(() => {
-    fsExtra.emptyDirSync(tempDir);
+    emptyTempDir(tempDir, 'global beforeEach');
 });
 
 afterEach(() => {
-    fsExtra.removeSync(tempDir);
+    removeTempDir(tempDir, 'global afterEach');
 });
 
 /**
