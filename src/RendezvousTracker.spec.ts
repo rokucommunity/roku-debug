@@ -327,12 +327,12 @@ describe('BrightScriptFileUtils ', () => {
         async function doTest(rawResponse: string, expectedValue: boolean) {
             const stub = sinon.stub(SceneGraphDebugCommandController.prototype, 'logrendezvous').returns(Promise.resolve({
                 result: {
-                    rawResponse: 'on\n'
+                    rawResponse: rawResponse
                 }
             } as any));
             expect(
                 await rendezvousTracker.getIsTelnetRendezvousTrackingEnabled()
-            ).to.be.true;
+            ).to.equal(expectedValue);
             stub.restore();
         }
 
@@ -340,13 +340,15 @@ describe('BrightScriptFileUtils ', () => {
             await doTest('on', true);
             await doTest('on\n', true);
             await doTest('on \n', true);
+            await doTest('logrendezvous: rendezvous logging is on', true);
             await doTest('off', false);
             await doTest('off\n', false);
             await doTest('off \n', false);
+            await doTest('logrendezvous: rendezvous logging is off', false);
         });
 
         it('does not crash on missing response', async () => {
-            await doTest(undefined, true);
+            await doTest(undefined, false);
         });
 
         it('logs an error', async () => {
