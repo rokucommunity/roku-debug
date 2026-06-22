@@ -35,6 +35,10 @@ describe('PerfettoManager', () => {
             // Simulate async close behavior with proper code and reason arguments
             process.nextTick(() => mockSocket.emit('close', 1000, Buffer.from('')));
         });
+        mockSocket.terminate = sinon.stub().callsFake(() => {
+            mockSocket.readyState = WebSocket.CLOSED;
+            process.nextTick(() => mockSocket.emit('close', 1006, Buffer.from('')));
+        });
         mockSocket.ping = sinon.stub();
         mockSocket.pause = sinon.stub();
         mockSocket.resume = sinon.stub();
@@ -221,6 +225,84 @@ describe('PerfettoManager', () => {
             expect(perfettoManager['writeStream']).to.be.null;
             expect(perfettoManager['pingTimer']).to.be.null;
             expect(perfettoManager['filePath']).to.be.undefined;
+        });
+
+        it('terminates after the stream goes quiet when the device never sends a close frame', async () => {
+            const clock = sinon.useFakeTimers();
+            try {
+                // Mimic the real device: close() halts the stream but the device never sends a close frame back,
+                // so 'close' only fires once we terminate. A plain close() would otherwise hang on the ws closeTimeout.
+                const deviceSocket: any = new EventEmitter();
+                deviceSocket.readyState = WebSocket.OPEN;
+                deviceSocket.close = sinon.stub();
+                deviceSocket.pause = sinon.stub();
+                deviceSocket.resume = sinon.stub();
+                deviceSocket.terminate = sinon.stub().callsFake(() => {
+                    deviceSocket.readyState = WebSocket.CLOSED;
+                    deviceSocket.emit('close', 1006, Buffer.from(''));
+                });
+
+                perfettoManager['socket'] = deviceSocket;
+                perfettoManager['writeStream'] = mockWriteStream;
+                perfettoManager['filePath'] = s`${tempDir}/profiling/test.perfetto-trace`;
+                // pretend a trace message just arrived so the quiet window must elapse before we close
+                perfettoManager['lastMessageTime'] = Date.now();
+
+                const stopPromise = perfettoManager.stopTracing();
+
+                // within the quiet window: the close frame is sent but we have not terminated yet
+                await clock.tickAsync(100);
+                expect(deviceSocket.close.called, 'should send the close frame').to.be.true;
+                expect(deviceSocket.terminate.called, 'should not terminate within the quiet window').to.be.false;
+
+                // once the stream has been silent past the quiet window, force-terminate so 'close' fires immediately
+                await clock.tickAsync(500);
+                expect(deviceSocket.terminate.called, 'should terminate after the quiet window').to.be.true;
+
+                await stopPromise;
+                expect(perfettoManager['socket']).to.be.null;
+            } finally {
+                clock.restore();
+            }
+        });
+
+        it('terminates at the ceiling if the device never stops streaming', async () => {
+            const clock = sinon.useFakeTimers();
+            try {
+                const deviceSocket: any = new EventEmitter();
+                deviceSocket.readyState = WebSocket.OPEN;
+                deviceSocket.close = sinon.stub();
+                deviceSocket.pause = sinon.stub();
+                deviceSocket.resume = sinon.stub();
+                deviceSocket.terminate = sinon.stub().callsFake(() => {
+                    deviceSocket.readyState = WebSocket.CLOSED;
+                    deviceSocket.emit('close', 1006, Buffer.from(''));
+                });
+
+                perfettoManager['socket'] = deviceSocket;
+                perfettoManager['writeStream'] = mockWriteStream;
+                perfettoManager['filePath'] = s`${tempDir}/profiling/test.perfetto-trace`;
+
+                const stopPromise = perfettoManager.stopTracing();
+
+                // keep the stream "alive" so the quiet window never elapses
+                const keepAlive = setInterval(() => {
+                    perfettoManager['lastMessageTime'] = Date.now();
+                }, 50);
+
+                // before the ceiling we should still be waiting
+                await clock.tickAsync(2000);
+                expect(deviceSocket.terminate.called, 'should still be waiting before the ceiling').to.be.false;
+
+                // past the 3s ceiling we force-terminate regardless of ongoing data
+                await clock.tickAsync(1100);
+                clearInterval(keepAlive);
+                expect(deviceSocket.terminate.called, 'should terminate at the ceiling').to.be.true;
+
+                await stopPromise;
+            } finally {
+                clock.restore();
+            }
         });
     });
 
