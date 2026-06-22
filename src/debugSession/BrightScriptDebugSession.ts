@@ -2789,6 +2789,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         let v: AugmentedVariable;
 
         if (result) {
+            let variableName = result.name;
+            if (result?.presentationHint?.kind === 'virtual') {
+                // remove the leading $ from the variable name if their is one
+                // and wrap the variable name in square brackets
+                variableName = `[${variableName.replace(/^\$/, '')}]`;
+            }
+
             if (this.rokuAdapter.isDebugProtocolAdapter()) {
                 let refId = this.getEvaluateRefId(result.evaluateName, frameId);
                 if (result.isCustom && !result.presentationHint?.lazy && result.evaluateNow) {
@@ -2826,10 +2833,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     // check to see if this is an dictionary or a list
                     if (result.keyType === 'Integer') {
                         // list type
-                        v = new Variable(result.name, value, refId, indexedVariables as number, namedVariables as number);
+                        v = new Variable(variableName, value, refId, indexedVariables as number, namedVariables as number);
                     } else if (result.keyType === 'String') {
                         // dictionary type
-                        v = new Variable(result.name, value, refId, indexedVariables as number, namedVariables as number);
+                        v = new Variable(variableName, value, refId, indexedVariables as number, namedVariables as number);
                     }
                     v.type = result.type;
                 } else {
@@ -2844,15 +2851,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     }
                     // If the variable is lazy we must assign a refId to inform the system
                     // to request this variable again in the future for value resolution
-                    v = new Variable(result.name, value, result?.presentationHint?.lazy ? refId : 0);
+                    v = new Variable(variableName, value, result?.presentationHint?.lazy ? refId : 0);
                 }
                 this.variables[refId] = v;
             } else if (this.rokuAdapter.isTelnetAdapter()) {
                 if (result.highLevelType === 'primative' || result.highLevelType === 'uninitialized') {
-                    v = new Variable(result.name, `${result.value}`);
+                    v = new Variable(variableName, `${result.value}`);
                 } else if (result.highLevelType === 'array') {
                     let refId = this.getEvaluateRefId(result.evaluateName, frameId);
-                    v = new Variable(result.name, result.type, refId, result.children?.length ?? 0, 0);
+                    v = new Variable(variableName, result.type, refId, result.children?.length ?? 0, 0);
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'object') {
                     let refId: number;
@@ -2860,13 +2867,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     if (this.rokuAdapter.isScrapableContainObject(result.type)) {
                         refId = this.getEvaluateRefId(result.evaluateName, frameId);
                     }
-                    v = new Variable(result.name, result.type, refId, 0, result.children?.length ?? 0);
+                    v = new Variable(variableName, result.type, refId, 0, result.children?.length ?? 0);
                     this.variables[refId] = v;
                 } else if (result.highLevelType === 'function') {
-                    v = new Variable(result.name, `${result.value}`);
+                    v = new Variable(variableName, `${result.value}`);
                 } else {
                     //all other cases, but mostly for HighLevelType.unknown
-                    v = new Variable(result.name, `${result.value}`);
+                    v = new Variable(variableName, `${result.value}`);
                 }
             }
 
