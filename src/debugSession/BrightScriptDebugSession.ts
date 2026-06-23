@@ -75,6 +75,17 @@ import { SocketConnectionInUseError } from '../Exceptions';
 
 const diagnosticSource = 'roku-debug';
 
+/**
+ * Sort tiers for debug-console completions. Lower values sort first, so a variable's own members rank
+ * above interface methods, then the file's scope functions, and finally the (large) set of globals.
+ */
+enum CompletionSortTier {
+    Member = '1',
+    Method = '2',
+    ScopeFunction = '3',
+    Global = '4'
+}
+
 export class BrightScriptDebugSession extends LoggingDebugSession {
     public constructor() {
         super();
@@ -2344,8 +2355,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     supplyLocalScopeCompletions = true;
                 }
 
-                // Look up the parent variable
-                let parentVariable = this.findVariableByPath(Object.values(this.variables), parentVariablePath, args.frameId);
+                // Look up the parent variable, scoped to the current frame's local variables so a nested
+                // field that happens to share a name with a local can't shadow the real local.
+                let parentVariable = this.findFrameVariableByPath(parentVariablePath, args.frameId);
 
                 if (!parentVariable || parentVariable.childVariables.length === 0) {
                     // We did not find the parent variable, so try to look it up from the device
@@ -2394,7 +2406,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                         completions.set(`${completionType}-${v.name}`, {
                             label: label,
                             type: completionType,
-                            sortText: '000000'
+                            //rank a variable's own members/locals above everything else
+                            sortText: `${CompletionSortTier.Member}${label}`
                         });
                     }
 
@@ -2415,7 +2428,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                             label: method.name,
                             type: 'method',
                             detail: method.description ?? '',
-                            sortText: '000000'
+                            sortText: `${CompletionSortTier.Method}${method.name}`
                         });
                     }
 
@@ -2426,7 +2439,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                                 label: globalCallable.name,
                                 type: 'function',
                                 detail: globalCallable.shortDescription ?? globalCallable.documentation ?? '',
-                                sortText: '000000'
+                                sortText: `${CompletionSortTier.Global}${globalCallable.name}`
                             });
                         }
 
@@ -2439,7 +2452,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                                     completions.set(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`, {
                                         label: scopeFunction.name,
                                         type: scopeFunction.completionItemKind,
-                                        sortText: '000000'
+                                        sortText: `${CompletionSortTier.ScopeFunction}${scopeFunction.name}`
                                     });
                                 }
                             }
@@ -2473,34 +2486,68 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         let lineNumber = this.toDebuggerLine(args.line, 0);
         let column = this.toDebuggerColumn(args.column);
 
-        const targetLine = lines[lineNumber];
-        let variablePathString = '';
+        const targetLine = lines[lineNumber] ?? '';
 
-        let i = column - 1;
+        const cursorIndex = column - 1;
         const variableChars = /[a-z0-9_\.]/i;
 
-        // If the character at immediate to the right of the cursor is a variable character, then we are not at the end of the variable path.
-        if (targetLine.length - 1 > i && variableChars.test(targetLine[i + 1])) {
+        // If the character immediately to the right of the cursor is a variable character, then we are
+        // in the middle of a token and should not supply completions yet.
+        if (cursorIndex + 1 < targetLine.length && variableChars.test(targetLine[cursorIndex + 1])) {
             return undefined;
         }
 
-        // Find the start of the variable path by looking for the first non-alphanumeric or non_underscore character before the cursor
-        while (i >= 0 && (variableChars.test(targetLine[i]))) {
-            i--;
+        // Determine where the expression we want to complete ends, and whether we are completing the
+        // members of that expression. A trailing `.` or being inside an unclosed string-key bracket
+        // (ex: `m["fo`) are both treated as member access on the parent expression.
+        let endColumn = column;
+        let isMemberAccess = false;
+
+        const openBracket = this.findUnclosedOpener(targetLine, column);
+        if (openBracket?.char === '[') {
+            const indexText = targetLine.slice(openBracket.index + 1, column).trimStart();
+            if (indexText.startsWith('"') || indexText.startsWith(`'`)) {
+                // The user is typing a string key, so complete the keys of the expression before the `[`
+                endColumn = openBracket.index;
+                isMemberAccess = true;
+            }
         }
 
-        // Pull the variable path string from the line
-        variablePathString = targetLine.slice(i + 1, column);
+        // Walk backwards from `endColumn` to find the start of the variable path, stepping over balanced
+        // `[...]` index access so paths like `arr[0].name` are captured as a whole.
+        let startIndex = endColumn - 1;
+        let bracketDepth = 0;
+        while (startIndex >= 0) {
+            const char = targetLine[startIndex];
+            if (char === ']') {
+                bracketDepth++;
+            } else if (char === '[') {
+                if (bracketDepth === 0) {
+                    // An unbalanced `[` means we hit the start of an index/key being typed; stop here.
+                    break;
+                }
+                bracketDepth--;
+            } else if (bracketDepth === 0 && (char === undefined || !variableChars.test(char))) {
+                break;
+            }
+            startIndex--;
+        }
 
-        // Attempted dot access something unexpected
-        // Example: `getPerson().name` where `getPerson()` is not a valid variable
-        // and results in `.name` being the variable path string
+        const variablePathString = targetLine.slice(startIndex + 1, endColumn);
+
+        // Attempted dot access on something unexpected.
+        // Example: `getPerson().name` where `getPerson()` is not a valid variable path,
+        // which leaves `.name` as the variable path string.
         if (variablePathString.startsWith('.')) {
             return undefined;
         }
 
+        if (variablePathString.endsWith('.')) {
+            isMemberAccess = true;
+        }
+
         // Get the variable path from the text
-        let variablePath: string[] = [];
+        let variablePath: string[];
         if (!variablePathString.trim()) {
             // The text was empty so assume via '' that we are looking up the local scope variables and global functions
             variablePath = [''];
@@ -2516,21 +2563,49 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             return undefined;
         }
 
-        let parentVariablePath: string[];
-        // If the last character is a period, then pull completions for the parent variable before the period
-        if (variablePathString.endsWith('.')) {
-            parentVariablePath = variablePath;
-        } else {
-            // Otherwise, pull completions for the parent variable
-            parentVariablePath = variablePath.slice(0, variablePath.length - 1);
-        }
+        // For member access we complete the members of the full expression. Otherwise we complete the
+        // siblings of the final (partial) segment, so drop it to get the parent.
+        let parentVariablePath = isMemberAccess ? variablePath : variablePath.slice(0, variablePath.length - 1);
 
-        // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
+        // An empty parent path means we are looking up the local scope variables and global functions
         if (parentVariablePath.length === 0) {
             parentVariablePath = [''];
         }
 
         return { parentVariablePath: parentVariablePath };
+    }
+
+    /**
+     * Scan backwards from `column` to find the nearest opening bracket (`(`, `[`, or `{`) that has not
+     * been closed before the cursor. Returns the opener's index and character, or undefined if none.
+     */
+    private findUnclosedOpener(line: string, column: number): { index: number; char: string } {
+        let depth = 0;
+        for (let i = column - 1; i >= 0; i--) {
+            const char = line[i];
+            if (char === ')' || char === ']' || char === '}') {
+                depth++;
+            } else if (char === '(' || char === '[' || char === '{') {
+                if (depth === 0) {
+                    return { index: i, char: char };
+                }
+                depth--;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Resolve a variable path against the current frame's local scope. The first path segment is matched
+     * against the frame's locals (not the global pool of every materialized variable), then we walk down
+     * the child variables. The empty path (`['']`) resolves to the locals scope container itself.
+     */
+    private findFrameVariableByPath(path: string[], frameId: number): AugmentedVariable {
+        const localsContainer = this.variables[this.getEvaluateRefId('$$locals', frameId)];
+        if (path.length === 1 && path[0] === '') {
+            return localsContainer;
+        }
+        return this.findVariableByPath(localsContainer?.childVariables ?? [], path, frameId);
     }
 
     private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {

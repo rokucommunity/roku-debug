@@ -2199,8 +2199,9 @@ describe('BrightScriptDebugSession', () => {
                 })).to.eql(undefined);
             });
 
-            it('returns undefined following closing brackets columnsStartAt1 false but cursor is not at the end', () => {
+            it('returns undefined following a function call result columnsStartAt1 false', () => {
                 session['_clientColumnsStartAt1'] = false;
+                //a call result is not a resolvable variable path
                 expect(session['getClosestCompletionDetails']({
                     text: 'getPerson().name',
                     column: 16,
@@ -2208,16 +2209,20 @@ describe('BrightScriptDebugSession', () => {
                     frameId: 0
                 })).to.eql(undefined);
 
+                //indexed access, however, is a resolvable variable path
                 expect(session['getClosestCompletionDetails']({
                     text: 'getPerson[0].name',
                     column: 17,
                     line: undefined,
                     frameId: 0
-                })).to.eql(undefined);
+                })).to.eql({
+                    parentVariablePath: ['getPerson', '0']
+                });
             });
 
-            it('returns undefined following closing brackets columnsStartAt1 true but cursor is not at the end', () => {
+            it('returns undefined following a function call result columnsStartAt1 true', () => {
                 session['_clientColumnsStartAt1'] = true;
+                //a call result is not a resolvable variable path
                 expect(session['getClosestCompletionDetails']({
                     text: 'getPerson().name',
                     column: 17,
@@ -2225,12 +2230,15 @@ describe('BrightScriptDebugSession', () => {
                     frameId: 0
                 })).to.eql(undefined);
 
+                //indexed access, however, is a resolvable variable path
                 expect(session['getClosestCompletionDetails']({
                     text: 'getPerson[0].name',
                     column: 18,
                     line: undefined,
                     frameId: 0
-                })).to.eql(undefined);
+                })).to.eql({
+                    parentVariablePath: ['getPerson', '0']
+                });
             });
 
 
@@ -2389,6 +2397,291 @@ describe('BrightScriptDebugSession', () => {
                     parentVariablePath: ['']
                 });
 
+            });
+
+            it('handles the print shorthand (?) before member access', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: '?m.',
+                    column: 4,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['m']
+                });
+            });
+
+            it('handles the print keyword before member access', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'print m.',
+                    column: 9,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['m']
+                });
+            });
+
+            it('handles a deeply nested dotted path', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'a.b.c.',
+                    column: 7,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['a', 'b', 'c']
+                });
+            });
+
+            it('treats a trailing space as a fresh (local scope) expression position', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'm.top ',
+                    column: 7,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('treats an open curly brace as a fresh (local scope) expression position', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'getValue({',
+                    column: 11,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            it('does not crash when the cursor column is past the end of the line', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'm',
+                    column: 50,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['']
+                });
+            });
+
+            //indexed (numeric) member access followed by a dot should resolve to the indexed parent
+            //so we can complete the members of `arr[0]`
+            it('resolves indexed access followed by a dot', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'arr[0].',
+                    column: 8,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['arr', '0']
+                });
+            });
+
+            //partial string-key access should resolve to the parent object (so we can complete its keys)
+            //rather than collapsing to the local scope and dumping every global
+            it('resolves partial string-key access to the parent object', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'm["fo',
+                    column: 6,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['m']
+                });
+            });
+        });
+
+        describe('findVariableByPath', () => {
+            it('walks childVariables down a multi-segment path', () => {
+                const variables: AugmentedVariable[] = [{
+                    name: 'a',
+                    value: '',
+                    variablesReference: 1,
+                    frameId: 0,
+                    childVariables: [{
+                        name: 'b',
+                        value: '',
+                        variablesReference: 2,
+                        frameId: 0,
+                        childVariables: [{
+                            name: 'c',
+                            value: '',
+                            variablesReference: 0,
+                            frameId: 0,
+                            childVariables: []
+                        }]
+                    }]
+                }];
+                expect(session['findVariableByPath'](variables, ['a', 'b', 'c'], 0)?.name).to.eql('c');
+            });
+
+            it('returns null when the frameId does not match', () => {
+                const variables: AugmentedVariable[] = [{
+                    name: 'a',
+                    value: '',
+                    variablesReference: 1,
+                    frameId: 0,
+                    childVariables: []
+                }];
+                expect(session['findVariableByPath'](variables, ['a'], 1)).to.be.null;
+            });
+
+            //NOTE: this characterizes the current scope-blind behavior. The first segment is matched
+            //against whatever entry appears first in the list, with no notion of which one is the
+            //frame's actual local. See the matching GAP test in `completionsRequest (full flow)`.
+            it('returns the first matching entry by name (scope-blind)', () => {
+                const variables: AugmentedVariable[] = [{
+                    name: 'person',
+                    value: '',
+                    variablesReference: 1,
+                    frameId: 0,
+                    childVariables: [{ name: 'first', value: '', variablesReference: 0, frameId: 0, childVariables: [] }]
+                }, {
+                    name: 'person',
+                    value: '',
+                    variablesReference: 2,
+                    frameId: 0,
+                    childVariables: [{ name: 'second', value: '', variablesReference: 0, frameId: 0, childVariables: [] }]
+                }];
+                expect(session['findVariableByPath'](variables, ['person'], 0)?.childVariables[0].name).to.eql('first');
+            });
+        });
+
+        describe('completionsRequest (full flow)', () => {
+            let response: DebugProtocol.CompletionsResponse;
+
+            beforeEach(() => {
+                session['_clientColumnsStartAt1'] = true;
+                session['_clientLinesStartAt1'] = true;
+                session['variables'] = {};
+                response = {
+                    request_seq: 0,
+                    success: true,
+                    command: 'completions',
+                    seq: 0,
+                    type: 'response',
+                    body: { targets: [] }
+                } as DebugProtocol.CompletionsResponse;
+            });
+
+            function targetLabels() {
+                return (response.body.targets ?? []).map(target => target.label);
+            }
+
+            //seed the frame's local scope container the same way scopesRequest/populateScopeVariables would
+            function seedLocals(children: AugmentedVariable[], frameId = 0) {
+                const refId = session['getEvaluateRefId']('$$locals', frameId);
+                session['variables'][refId] = {
+                    name: 'Local',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: frameId,
+                    isScope: true,
+                    variablesReference: refId,
+                    childVariables: children
+                } as AugmentedVariable;
+            }
+
+            it('returns object members (fields + interface methods) for dot access, without globals', async () => {
+                seedLocals([{
+                    name: 'person',
+                    value: 'roAssociativeArray',
+                    variablesReference: 10,
+                    frameId: 0,
+                    type: VariableType.AssociativeArray,
+                    childVariables: [
+                        { name: 'firstName', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] },
+                        { name: 'lastName', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] }
+                    ]
+                } as AugmentedVariable]);
+
+                await session['completionsRequest'](response, { text: 'person.', column: 8, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                //child fields
+                expect(targetLabels()).to.include.members(['firstName', 'lastName']);
+                //ifAssociativeArray interface methods
+                expect(targetLabels()).to.include.members(['Count', 'Delete']);
+                //should NOT leak globals on member access
+                expect(targetLabels()).to.not.include('Abs');
+                //the child fields should be typed as `field`
+                expect(response.body.targets.find(target => target.label === 'firstName')?.type).to.eql('field');
+            });
+
+            it('returns locals + globals + scope functions for an empty (local scope) expression', async () => {
+                seedLocals([
+                    { name: 'localA', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] }
+                ]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([
+                    { name: 'MyScopeFunc', completionItemKind: 'function' }
+                ]);
+
+                await session['completionsRequest'](response, { text: '', column: 1, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                expect(targetLabels()).to.include('localA'); //a local
+                expect(targetLabels()).to.include('Abs'); //a global
+                expect(targetLabels()).to.include('MyScopeFunc'); //a scope function
+            });
+
+            it('returns no completions when the parent variable cannot be resolved', async () => {
+                sinon.stub(rokuAdapter, 'getVariable').rejects(new Error('not found'));
+
+                await session['completionsRequest'](response, { text: 'doesNotExist.', column: 14, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                expect(response.body.targets).to.eql([]);
+            });
+
+            it('ranks local variables above globals', async () => {
+                seedLocals([
+                    { name: 'localA', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] }
+                ]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                await session['completionsRequest'](response, { text: '', column: 1, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                const local = response.body.targets.find(target => target.label === 'localA');
+                const global = response.body.targets.find(target => target.label === 'Abs');
+                expect(local?.sortText < global?.sortText, 'local variable should sort before global').to.be.true;
+            });
+
+            it('resolves the first segment against the frame locals, not a same-named nested field', async () => {
+                //the real local `person`
+                seedLocals([{
+                    name: 'person',
+                    value: 'roAssociativeArray',
+                    variablesReference: 10,
+                    frameId: 0,
+                    type: VariableType.AssociativeArray,
+                    childVariables: [
+                        { name: 'firstName', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] }
+                    ]
+                } as AugmentedVariable]);
+                //a nested `person` field that lingers in the flat `variables` map; it must NOT shadow the real local
+                session['variables'][9999] = {
+                    name: 'person',
+                    value: 'roAssociativeArray',
+                    variablesReference: 9999,
+                    frameId: 0,
+                    type: VariableType.AssociativeArray,
+                    childVariables: [
+                        { name: 'wrongField', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] }
+                    ]
+                } as AugmentedVariable;
+
+                await session['completionsRequest'](response, { text: 'person.', column: 8, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                expect(targetLabels()).to.include('firstName');
+                expect(targetLabels()).to.not.include('wrongField');
             });
         });
     });
