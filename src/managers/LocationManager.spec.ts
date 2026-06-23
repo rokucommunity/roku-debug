@@ -18,18 +18,18 @@ const sourceDirs = [
 describe('LocationManager', () => {
     let locationManager: LocationManager;
     let sourceMapManager: SourceMapManager;
-    beforeEach(() => {
+    beforeEach(async () => {
         sourceMapManager = new SourceMapManager();
         locationManager = new LocationManager(sourceMapManager);
-        forceDeleteDir(tempDir);
+        await forceDeleteDir(tempDir);
         fsExtra.ensureDirSync(`${rootDir}/source`);
         fsExtra.ensureDirSync(`${stagingDir}/source`);
         for (let sourceDir of sourceDirs) {
             fsExtra.ensureDirSync(`${sourceDir}/source`);
         }
     });
-    afterEach(() => {
-        forceDeleteDir(tempDir);
+    afterEach(async () => {
+        await forceDeleteDir(tempDir);
     });
     describe('getSourceLocation', () => {
 
