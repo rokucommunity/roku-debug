@@ -10,9 +10,10 @@ export const rootDir = s`${tempDir}/rootDir`;
 export const stagingDir = s`${tempDir}/stagingDir`;
 
 /**
- * List every path remaining inside `dir` (recursively).
+ * List every path remaining inside `dir` (recursively), sorted. Used to show what is still present
+ * when a directory delete fails.
  */
-function listTempLeftovers(dir: string): string[] {
+function listDirContents(dir: string): string[] {
     const result: string[] = [];
     const walk = (current: string) => {
         let entries: string[];
@@ -38,44 +39,44 @@ function listTempLeftovers(dir: string): string[] {
 }
 
 /**
- * Run a temp-dir cleanup operation. If it throws (most often Windows `ENOTEMPTY`, which happens when an
- * earlier test left a file or handle open in the shared temp dir), log exactly what is still present so CI
- * tells us which leftovers locked the dir, then re-throw. This diagnoses the failure; it does not hide it.
+ * Delete a directory, retrying a few times to get past transient locks (most often a Windows file
+ * handle still held open by an earlier test). If every attempt fails, log the paths still present
+ * along with a stack trace so CI shows which leftovers blocked the delete, then re-throw the final error.
+ * @param dir the directory to delete
+ * @param options.retryCount how many times to attempt the delete before giving up (defaults to 1)
+ * @param options.label optional label included in the diagnostic output to identify the calling teardown
  */
-function cleanupTempDir(label: string, dir: string, action: () => void) {
-    try {
-        action();
-    } catch (error) {
-        const leftovers = listTempLeftovers(dir);
-        console.error(`[temp-teardown] ${label}: ${(error as Error).message}`);
-        console.error(`[temp-teardown] ${label}: ${leftovers.length} path(s) still present under ${dir}:`);
-        for (const leftover of leftovers) {
-            console.error(`[temp-teardown]   ${leftover}`);
+export function forceDeleteDir(dir: string, options?: { retryCount?: number; label?: string }) {
+    const retryCount = options?.retryCount ?? 1;
+    const prefix = options?.label ? `[forceDeleteDir ${options.label}]` : '[forceDeleteDir]';
+    let lastError: Error;
+    for (let attempt = 1; attempt <= retryCount; attempt++) {
+        try {
+            fsExtra.removeSync(dir);
+            return;
+        } catch (error) {
+            lastError = error as Error;
         }
-        throw error;
     }
-}
-
-/**
- * `fsExtra.removeSync` for a temp dir, with diagnostics logged if the removal fails.
- */
-export function removeTempDir(dir: string, label: string) {
-    cleanupTempDir(label, dir, () => fsExtra.removeSync(dir));
-}
-
-/**
- * `fsExtra.emptyDirSync` for a temp dir, with diagnostics logged if the empty fails.
- */
-export function emptyTempDir(dir: string, label: string) {
-    cleanupTempDir(label, dir, () => fsExtra.emptyDirSync(dir));
+    const leftovers = listDirContents(dir);
+    console.error(`${prefix} failed to delete '${dir}' after ${retryCount} attempt(s); ${leftovers.length} path(s) still present:`);
+    for (const leftover of leftovers) {
+        console.error(`${prefix}   ${leftover}`);
+    }
+    console.error(`${prefix} ${lastError.message}`);
+    if (lastError.stack) {
+        console.error(lastError.stack);
+    }
+    throw lastError;
 }
 
 beforeEach(() => {
-    emptyTempDir(tempDir, 'global beforeEach');
+    forceDeleteDir(tempDir);
+    fsExtra.ensureDirSync(tempDir);
 });
 
 afterEach(() => {
-    removeTempDir(tempDir, 'global afterEach');
+    forceDeleteDir(tempDir);
 });
 
 /**

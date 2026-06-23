@@ -10,7 +10,7 @@ let n = fileUtils.standardizePath.bind(fileUtils);
 import type { SourceLocation } from '../managers/LocationManager';
 import { LocationManager } from '../managers/LocationManager';
 import { SourceMapManager } from './SourceMapManager';
-import { expectPickEquals, pickArray, removeTempDir } from '../testHelpers.spec';
+import { expectPickEquals, pickArray, forceDeleteDir } from '../testHelpers.spec';
 import { createSandbox } from 'sinon';
 const sinon = createSandbox();
 
@@ -103,7 +103,7 @@ describe('BreakpointManager', () => {
 
     afterEach(() => {
         sinon.restore();
-        removeTempDir(tmpDir, 'BreakpointManager');
+        forceDeleteDir(tmpDir);
     });
 
     describe('reset', () => {
@@ -415,7 +415,7 @@ describe('BreakpointManager', () => {
         });
 
         afterEach(() => {
-            removeTempDir(tmpDir, 'BreakpointManager');
+            forceDeleteDir(tmpDir);
         });
 
         it('works with normal flow', async () => {

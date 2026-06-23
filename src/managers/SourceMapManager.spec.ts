@@ -3,7 +3,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import { standardizePath as s } from '../FileUtils';
 import { SourceMapManager } from './SourceMapManager';
-import { removeTempDir } from '../testHelpers.spec';
+import { forceDeleteDir } from '../testHelpers.spec';
 let tmpPath = s`${process.cwd()}/.tmp`;
 describe('SourceMapManager', () => {
     let manager: SourceMapManager;
@@ -14,7 +14,7 @@ describe('SourceMapManager', () => {
         manager = new SourceMapManager();
     });
     afterEach(() => {
-        removeTempDir(tmpPath, 'SourceMapManager');
+        forceDeleteDir(tmpPath);
     });
 
     it('constructs', () => {
