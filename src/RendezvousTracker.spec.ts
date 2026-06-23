@@ -341,10 +341,14 @@ describe('BrightScriptFileUtils ', () => {
             await doTest('on\n', true);
             await doTest('on \n', true);
             await doTest('logrendezvous: rendezvous logging is on', true);
+            await doTest('logrendezvous: rendezvous logging is on\n', true);
+            await doTest('logrendezvous: rendezvous logging is on \n', true);
             await doTest('off', false);
             await doTest('off\n', false);
             await doTest('off \n', false);
             await doTest('logrendezvous: rendezvous logging is off', false);
+            await doTest('logrendezvous: rendezvous logging is off\n', false);
+            await doTest('logrendezvous: rendezvous logging is off \n', false);
         });
 
         it('does not crash on missing response', async () => {
