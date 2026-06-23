@@ -9,12 +9,74 @@ export const tempDir = s`${__dirname}/../.tmp`;
 export const rootDir = s`${tempDir}/rootDir`;
 export const stagingDir = s`${tempDir}/stagingDir`;
 
+/**
+ * List every path remaining inside `dir` (recursively), sorted. Used to show what is still present
+ * when a directory delete fails.
+ */
+function listDirContents(dir: string): string[] {
+    const result: string[] = [];
+    const walk = (current: string) => {
+        let entries: string[];
+        try {
+            entries = fsExtra.readdirSync(current);
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            const fullPath = `${current}/${entry}`;
+            result.push(fullPath);
+            try {
+                if (fsExtra.statSync(fullPath).isDirectory()) {
+                    walk(fullPath);
+                }
+            } catch {
+                //entry may have been removed concurrently; ignore
+            }
+        }
+    };
+    walk(dir);
+    return result.sort();
+}
+
+/**
+ * Delete a directory, retrying a few times to get past transient locks (most often a Windows file
+ * handle still held open by an earlier test). If every attempt fails, log the paths still present
+ * along with a stack trace so CI shows which leftovers blocked the delete, then re-throw the final error.
+ * @param dir the directory to delete
+ * @param options.retryCount how many times to attempt the delete before giving up (defaults to 1)
+ * @param options.label optional label included in the diagnostic output to identify the calling teardown
+ */
+export function forceDeleteDir(dir: string, options?: { retryCount?: number; label?: string }) {
+    const retryCount = options?.retryCount ?? 1;
+    const prefix = options?.label ? `[forceDeleteDir ${options.label}]` : '[forceDeleteDir]';
+    let lastError: Error;
+    for (let attempt = 1; attempt <= retryCount; attempt++) {
+        try {
+            fsExtra.removeSync(dir);
+            return;
+        } catch (error) {
+            lastError = error as Error;
+        }
+    }
+    const leftovers = listDirContents(dir);
+    console.error(`${prefix} failed to delete '${dir}' after ${retryCount} attempt(s); ${leftovers.length} path(s) still present:`);
+    for (const leftover of leftovers) {
+        console.error(`${prefix}   ${leftover}`);
+    }
+    console.error(`${prefix} ${lastError.message}`);
+    if (lastError.stack) {
+        console.error(lastError.stack);
+    }
+    throw lastError;
+}
+
 beforeEach(() => {
-    fsExtra.emptyDirSync(tempDir);
+    forceDeleteDir(tempDir);
+    fsExtra.ensureDirSync(tempDir);
 });
 
 afterEach(() => {
-    fsExtra.removeSync(tempDir);
+    forceDeleteDir(tempDir);
 });
 
 /**
