@@ -2486,7 +2486,8 @@ describe('BrightScriptDebugSession', () => {
             });
 
             //partial string-key access should resolve to the parent object (so we can complete its keys)
-            //rather than collapsing to the local scope and dumping every global
+            //rather than collapsing to the local scope and dumping every global. It also returns the
+            //replacement range so completions can insert the key wrapped to close the access.
             it('resolves partial string-key access to the parent object', () => {
                 session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
@@ -2495,7 +2496,35 @@ describe('BrightScriptDebugSession', () => {
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    parentVariablePath: ['m']
+                    parentVariablePath: ['m'],
+                    //close the access with `"]` when accepting a key
+                    stringKey: { closing: '"]' }
+                });
+            });
+
+            it('does not auto-close a string key that already has a closing bracket', () => {
+                session['_clientColumnsStartAt1'] = true;
+                //cursor is right after `fo`, with `"]` already present
+                expect(session['getClosestCompletionDetails']({
+                    text: 'm["fo"]',
+                    column: 6,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['m'],
+                    stringKey: { closing: '' }
+                });
+            });
+
+            it('resolves member access on a completed string-key access (bare key, no quotes)', () => {
+                session['_clientColumnsStartAt1'] = true;
+                expect(session['getClosestCompletionDetails']({
+                    text: 'm.global["spoof"].',
+                    column: 19,
+                    line: undefined,
+                    frameId: 0
+                })).to.eql({
+                    parentVariablePath: ['m', 'global', 'spoof']
                 });
             });
         });
@@ -2613,7 +2642,12 @@ describe('BrightScriptDebugSession', () => {
                 //should NOT leak globals on member access
                 expect(targetLabels()).to.not.include('Abs');
                 //the child fields should be typed as `field`
-                expect(response.body.targets.find(target => target.label === 'firstName')?.type).to.eql('field');
+                const firstName = response.body.targets.find(target => target.label === 'firstName');
+                expect(firstName?.type).to.eql('field');
+                //after a trailing `.` the completion inserts at the cursor (nothing to replace yet).
+                //`start` is a 0-based offset into the line ("person." -> offset 7)
+                expect(firstName?.start).to.eql(7);
+                expect(firstName?.length).to.eql(0);
             });
 
             it('returns locals + globals + scope functions for an empty (local scope) expression', async () => {
@@ -2682,6 +2716,178 @@ describe('BrightScriptDebugSession', () => {
 
                 expect(targetLabels()).to.include('firstName');
                 expect(targetLabels()).to.not.include('wrongField');
+            });
+
+            it('completes string keys with a text-edit that closes the access and omits interface methods', async () => {
+                seedLocals([{
+                    name: 'm',
+                    value: 'roAssociativeArray',
+                    variablesReference: 10,
+                    frameId: 0,
+                    type: VariableType.AssociativeArray,
+                    childVariables: [
+                        { name: 'firstName', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] },
+                        { name: 'lastName', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] }
+                    ]
+                } as AugmentedVariable]);
+
+                await session['completionsRequest'](response, { text: 'm["fo', column: 6, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                //the AA keys are offered
+                expect(targetLabels()).to.include.members(['firstName', 'lastName']);
+                //ifAssociativeArray methods are NOT valid string keys, so they are suppressed
+                expect(targetLabels()).to.not.include('Count');
+
+                const firstName = response.body.targets.find(target => target.label === 'firstName');
+                //accepting inserts the key and closes the access, replacing the typed `fo`
+                //(`start` is the 0-based offset of `f` in `m["fo`)
+                expect(firstName.text).to.eql('firstName"]');
+                expect(firstName.start).to.eql(3);
+                expect(firstName.length).to.eql(2);
+            });
+
+            it('falls back to a device lookup and caches the result for the paused state', async () => {
+                //note: no locals are seeded, so the parent must be resolved from the device
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves({
+                    name: 'person',
+                    evaluateName: 'person',
+                    type: VariableType.AssociativeArray,
+                    keyType: 'String',
+                    value: 'roAssociativeArray',
+                    children: [
+                        { name: 'firstName', evaluateName: 'person.firstName', type: VariableType.String, value: '"bob"', keyType: null, children: [] }
+                    ],
+                    indexedVariables: 0,
+                    namedVariables: 1
+                } as unknown as EvaluateContainer);
+
+                await session['completionsRequest'](response, { text: 'person.', column: 8, frameId: 0 } as DebugProtocol.CompletionsArguments);
+                expect(targetLabels()).to.include('firstName');
+                expect(getVariableStub.callCount).to.eql(1);
+
+                //a second identical request should be served from the cache without another device round-trip
+                response.body = { targets: [] };
+                await session['completionsRequest'](response, { text: 'person.', column: 8, frameId: 0 } as DebugProtocol.CompletionsArguments);
+                expect(targetLabels()).to.include('firstName');
+                expect(getVariableStub.callCount).to.eql(1);
+
+                //resuming/stepping clears the cache, so the next lookup hits the device again
+                session['clearState']();
+                response.body = { targets: [] };
+                await session['completionsRequest'](response, { text: 'person.', column: 8, frameId: 0 } as DebugProtocol.CompletionsArguments);
+                expect(getVariableStub.callCount).to.eql(2);
+            });
+
+            it('populates the frame locals on demand for local-scope completions', async () => {
+                //the locals scope exists but has not been populated yet (Variables panel not expanded)
+                const refId = session['getEvaluateRefId']('$$locals', 0);
+                session['variables'][refId] = {
+                    name: 'Locals',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: 0,
+                    isScope: true,
+                    variablesReference: refId,
+                    childVariables: []
+                } as AugmentedVariable;
+                //the device returns the frame's locals when asked
+                (rokuAdapter as any).getLocalVariables = (() => Promise.resolve({
+                    name: '$$locals',
+                    evaluateName: '',
+                    type: VariableType.AssociativeArray,
+                    keyType: 'String',
+                    value: '',
+                    children: [
+                        { name: 'environment', evaluateName: 'environment', type: VariableType.String, value: '"dev"', keyType: null, children: [] }
+                    ],
+                    indexedVariables: 0,
+                    namedVariables: 1
+                })) as any;
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                await session['completionsRequest'](response, { text: '', column: 1, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                //the local was fetched on demand (without the Variables panel being expanded)
+                expect(targetLabels()).to.include('environment');
+                //globals are still present
+                expect(targetLabels()).to.include('Abs');
+            });
+
+            it('anchors completions to the partial word so the client can filter as the user types', async () => {
+                seedLocals([
+                    { name: 'spoofDetails', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] }
+                ]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                //the response must describe the span being replaced (`spo`, a 0-based offset of 0 spanning
+                //3 characters) so the client filters the list correctly as the user keeps typing
+                await session['completionsRequest'](response, { text: 'spo', column: 4, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                const local = response.body.targets.find(target => target.label === 'spoofDetails');
+                expect(local, 'local should be present in the response').to.exist;
+                expect(local.start).to.eql(0);
+                expect(local.length).to.eql(3);
+                //globals carry the same replacement range so the whole list filters consistently
+                const global = response.body.targets.find(target => target.label === 'Abs');
+                expect(global.start).to.eql(0);
+                expect(global.length).to.eql(3);
+            });
+
+            it('rebuilds an indexed path with bracket notation for the device lookup', async () => {
+                //no locals seeded, so resolution falls to the device
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves({
+                    name: 'services[0]',
+                    evaluateName: 'services[0]',
+                    type: VariableType.AssociativeArray,
+                    keyType: 'String',
+                    value: 'roAssociativeArray',
+                    children: [
+                        { name: 'id', evaluateName: 'services[0].id', type: VariableType.String, value: '"x"', keyType: null, children: [] }
+                    ],
+                    indexedVariables: 0,
+                    namedVariables: 1
+                } as unknown as EvaluateContainer);
+
+                await session['completionsRequest'](response, { text: 'services[0].', column: 13, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                //the index must be preserved as `[0]`, not flattened to the invalid `services.0`
+                expect(getVariableStub.calledWith('services[0]', 0)).to.be.true;
+                expect(targetLabels()).to.include('id');
+            });
+
+            it('resolves member access on a string-key result (m.global["spoof"].)', async () => {
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves({
+                    name: 'm.global.spoof',
+                    evaluateName: 'm.global.spoof',
+                    type: VariableType.AssociativeArray,
+                    keyType: 'String',
+                    value: 'roAssociativeArray',
+                    children: [
+                        { name: 'countrycode', evaluateName: 'm.global.spoof.countrycode', type: VariableType.String, value: '"USA"', keyType: null, children: [] },
+                        { name: 'postalcode', evaluateName: 'm.global.spoof.postalcode', type: VariableType.String, value: '"10090"', keyType: null, children: [] }
+                    ],
+                    indexedVariables: 0,
+                    namedVariables: 2
+                } as unknown as EvaluateContainer);
+
+                await session['completionsRequest'](response, { text: 'm.global["spoof"].', column: 19, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                //the string key resolves to a bare segment, so the device lookup is `m.global.spoof`
+                expect(getVariableStub.calledWith('m.global.spoof', 0)).to.be.true;
+                expect(targetLabels()).to.include.members(['countrycode', 'postalcode']);
+                expect(targetLabels()).to.not.include('Abs');
+            });
+        });
+
+        describe('buildVariableExpression', () => {
+            it('uses dot access for identifiers and brackets for indexes and non-identifier keys', () => {
+                expect(session['buildVariableExpression'](['m', 'top'])).to.eql('m.top');
+                expect(session['buildVariableExpression'](['m', 'applicationServices', '0'])).to.eql('m.applicationServices[0]');
+                expect(session['buildVariableExpression'](['arr', '0', 'name'])).to.eql('arr[0].name');
+                expect(session['buildVariableExpression'](['m', 'my-key'])).to.eql('m["my-key"]');
+                expect(session['buildVariableExpression']([''])).to.eql('');
             });
         });
     });
