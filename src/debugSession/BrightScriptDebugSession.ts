@@ -2360,8 +2360,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             let parentVariablePath = closestCompletionDetails.parentVariablePath;
             // When set, the user is typing a string key (ex: `m["fo`) and completions should insert the
-            // key wrapped to close the access (ex: `firstName"]`) rather than appending a bare label.
-            const stringKey = closestCompletionDetails.stringKey;
+            // key wrapped to close the access (ex: `firstName"]`) rather than appending a bare label. The
+            // value is the closing text to append (empty when a closing bracket is already present).
+            const stringKeyClosing = closestCompletionDetails.stringKeyClosing;
             // Get the completions if the variable path was valid
             if (parentVariablePath) {
 
@@ -2412,15 +2413,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                             //rank a variable's own members/locals above everything else
                             sortText: `${CompletionSortTier.Member}${label}`
                         };
-                        if (stringKey) {
+                        if (stringKeyClosing !== undefined) {
                             // Insert the key and close the access, ex: `firstName"]` (the replacement range is applied below)
-                            completionItem.text = `${v.name}${stringKey.closing}`;
+                            completionItem.text = `${v.name}${stringKeyClosing}`;
                         }
                         completions.set(`${completionType}-${v.name}`, completionItem);
                     }
 
                     // Interface methods aren't valid string keys, so skip them when completing a string key
-                    if (!stringKey) {
+                    if (stringKeyClosing === undefined) {
                         let parentComponentType = this.debuggerVarTypeToRoType(parentVariable.type).toLowerCase();
                         //assemble a list of all methods on the parent component
                         const methods = [
@@ -2497,7 +2498,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     /**
      * Gets the closest completion details the incoming completion request.
      */
-    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[]; stringKey?: StringKeyCompletion } {
+    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[]; stringKeyClosing?: string } {
         const incomingText = args.text;
         const lines = incomingText.split('\n');
         let lineNumber = this.toDebuggerLine(args.line, 0);
@@ -2519,7 +2520,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         // (ex: `m["fo`) are both treated as member access on the parent expression.
         let endColumn = column;
         let isMemberAccess = false;
-        let stringKey: StringKeyCompletion;
+        //when set (including ''), the user is completing a string key; the value is the text to append to
+        //close the access (ex: `"]`), empty when a closing bracket is already present
+        let stringKeyClosing: string;
 
         const openBracket = this.findUnclosedOpener(targetLine, column);
         if (openBracket?.char === '[') {
@@ -2533,10 +2536,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 // The user is typing a string key, so complete the keys of the expression before the `[`
                 endColumn = openBracket.index;
                 isMemberAccess = true;
-                stringKey = {
-                    // close the string and bracket only when there is nothing meaningful after the cursor
-                    closing: targetLine.slice(column).trim() === '' ? `${quote}]` : ''
-                };
+                // close the string and bracket only when there is nothing meaningful after the cursor
+                stringKeyClosing = targetLine.slice(column).trim() === '' ? `${quote}]` : '';
             }
         }
 
@@ -2599,10 +2600,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             parentVariablePath = [''];
         }
 
-        const result: { parentVariablePath: string[]; stringKey?: StringKeyCompletion } = { parentVariablePath: parentVariablePath };
+        const result: { parentVariablePath: string[]; stringKeyClosing?: string } = { parentVariablePath: parentVariablePath };
         // Only attach the string-key context when we actually resolved a parent object to complete keys on
-        if (stringKey && !(parentVariablePath.length === 1 && parentVariablePath[0] === '')) {
-            result.stringKey = stringKey;
+        if (stringKeyClosing !== undefined && !(parentVariablePath.length === 1 && parentVariablePath[0] === '')) {
+            result.stringKeyClosing = stringKeyClosing;
         }
         return result;
     }
@@ -3421,14 +3422,4 @@ export interface AugmentedVariable extends DebugProtocol.Variable {
      * and may require special handling
      */
     isScope?: boolean;
-}
-
-/**
- * Describes how to insert a string-key completion (ex: completing `m["fo` to `m["firstName"]`).
- * The replacement range is handled the same as any other completion; this only carries the closing
- * text appended after the inserted key.
- */
-interface StringKeyCompletion {
-    /** text appended after the inserted key to close the access, ex: `"]` (empty when already closed) */
-    closing: string;
 }

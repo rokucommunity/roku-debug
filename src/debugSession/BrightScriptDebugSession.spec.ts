@@ -2498,7 +2498,7 @@ describe('BrightScriptDebugSession', () => {
                 })).to.eql({
                     parentVariablePath: ['m'],
                     //close the access with `"]` when accepting a key
-                    stringKey: { closing: '"]' }
+                    stringKeyClosing: '"]'
                 });
             });
 
@@ -2512,7 +2512,7 @@ describe('BrightScriptDebugSession', () => {
                     frameId: 0
                 })).to.eql({
                     parentVariablePath: ['m'],
-                    stringKey: { closing: '' }
+                    stringKeyClosing: ''
                 });
             });
 
