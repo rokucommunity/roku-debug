@@ -2376,9 +2376,18 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
                 // provide completions for the parent variable if one was found
                 if (parentVariable) {
-                    let possibleFieldsAndMethods: AugmentedVariable[] = [];
-                    // Filter out virtual variables and the empty-named placeholder used for empty scopes
-                    possibleFieldsAndMethods = parentVariable.childVariables.filter((child) => child.name && child.presentationHint?.kind !== 'virtual');
+                    // arrays and lists are integer-indexed; their `[N]` elements aren't valid `.` or `["..."]`
+                    // completions (you can't write `arr.[0]` or `arr["0"]`), so don't offer them as members.
+                    // Only the interface methods below (Count, Push, ...) apply to these containers.
+                    const isIntegerIndexed = parentVariable.type === VariableType.Array ||
+                        parentVariable.type === VariableType.List ||
+                        parentVariable.type === 'roXMLList' ||
+                        parentVariable.type === 'roByteArray';
+
+                    const possibleFieldsAndMethods = isIntegerIndexed
+                        ? []
+                        // Filter out virtual variables and the empty-named placeholder used for empty scopes
+                        : parentVariable.childVariables.filter((child) => child.name && child.presentationHint?.kind !== 'virtual');
 
                     for (let v of possibleFieldsAndMethods) {
                         // Default completion type should be variable
@@ -2399,19 +2408,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                             }
                         }
 
-                        let label = v.name;
-                        if (parentVariable.type === VariableType.Array ||
-                            parentVariable.type === VariableType.List ||
-                            parentVariable.type === 'roXMLList' ||
-                            parentVariable.type === 'roByteArray'
-                        ) {
-                            label = `[${v.name}]`;
-                        }
                         const completionItem: DebugProtocol.CompletionItem = {
-                            label: label,
+                            label: v.name,
                             type: completionType,
                             //rank a variable's own members/locals above everything else
-                            sortText: `${CompletionSortTier.Member}${label}`
+                            sortText: `${CompletionSortTier.Member}${v.name}`
                         };
                         if (stringKeyClosing !== undefined) {
                             // Insert the key and close the access, ex: `firstName"]` (the replacement range is applied below)

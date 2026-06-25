@@ -2761,6 +2761,41 @@ describe('BrightScriptDebugSession', () => {
                 expect(firstName.length).to.eql(2);
             });
 
+            function seedArray() {
+                seedLocals([{
+                    name: 'arr',
+                    value: 'Array(2)',
+                    variablesReference: 10,
+                    frameId: 0,
+                    type: VariableType.Array,
+                    childVariables: [
+                        { name: '0', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] },
+                        { name: '1', value: '', variablesReference: 0, frameId: 0, type: VariableType.String, childVariables: [] }
+                    ]
+                } as AugmentedVariable]);
+            }
+
+            it('offers array methods (not index entries) for member access on an array', async () => {
+                seedArray();
+
+                await session['completionsRequest'](response, { text: 'arr.', column: 5, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                //ifArray methods are offered
+                expect(targetLabels()).to.include.members(['Count', 'Push']);
+                //the integer indexes are NOT offered (`arr.0` / `arr.[0]` aren't valid)
+                expect(targetLabels()).to.not.include('0');
+                expect(targetLabels()).to.not.include('[0]');
+            });
+
+            it('offers no completions for a string-key access on an array', async () => {
+                seedArray();
+
+                //a string-key access on an array is invalid (arrays are integer-indexed)
+                await session['completionsRequest'](response, { text: 'arr["', column: 6, frameId: 0 } as DebugProtocol.CompletionsArguments);
+
+                expect(response.body.targets).to.eql([]);
+            });
+
             it('falls back to a device lookup and caches the result for the paused state', async () => {
                 //note: no locals are seeded, so the parent must be resolved from the device
                 const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves({
