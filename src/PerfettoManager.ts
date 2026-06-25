@@ -199,7 +199,7 @@ export class PerfettoManager {
                         type: 'trace',
                         result: options?.excludeResultOnStop
                             ? undefined
-                            : this.getResult(filePath, { skipEmpty: true })
+                            : this.getResult(filePath)
                     });
                 }).catch(e => this.logger.error(e));
             });
@@ -421,17 +421,15 @@ export class PerfettoManager {
     }
 
     /**
-     * Get a file path if it exists, optionally skipping empty files.
+     * Get the file path if it exists on disk, otherwise undefined. Empty trace files are still reported; the
+     * client (VS Code) renders a dedicated empty-state for zero-byte traces.
      */
-    private getResult(filePath: string | undefined, options?: { skipEmpty?: boolean }): string | undefined {
+    private getResult(filePath: string | undefined): string | undefined {
         if (!filePath) {
             return undefined;
         }
         try {
-            const size = fs.statSync(filePath).size;
-            if (options?.skipEmpty && size === 0) {
-                return undefined;
-            }
+            fs.statSync(filePath);
             return filePath;
         } catch {
             return undefined;
@@ -476,7 +474,7 @@ export class PerfettoManager {
             this.emit('stop', {
                 type: 'heapSnapshot',
                 result: thisFunctionStartedTracing
-                    ? this.getResult(filePath, { skipEmpty: true })
+                    ? this.getResult(filePath)
                     : undefined
             });
 
