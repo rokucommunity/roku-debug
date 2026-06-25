@@ -310,13 +310,9 @@ class Util {
                     return;
                 }
                 if (isLiteralExpression(value.index)) {
-                    let indexText = value.index.token.text;
-                    //string-literal keys arrive quoted (ex: `["spoof"]` => `"spoof"`). Use the bare key name
-                    //so it matches the device's path entries and the in-memory child variable names.
-                    if (indexText.length >= 2 && indexText.startsWith('"') && indexText.endsWith('"')) {
-                        indexText = indexText.slice(1, -1).replace(/""/g, '"');
-                    }
-                    parts.unshift(indexText);
+                    parts.unshift(
+                        value.index.token.text
+                    );
                 } else {
                     //if we found a non-literal value, this entire variable path is NOT a true variable path
                     return;

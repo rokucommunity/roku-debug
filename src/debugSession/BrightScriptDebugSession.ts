@@ -2704,23 +2704,42 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     }
 
     /**
-     * Rebuild a valid BrightScript accessor expression from a resolved variable path. Identifier segments
-     * use dot access, numeric segments use `[index]`, and anything else uses a quoted `["key"]` so paths
-     * with array indices or non-identifier keys round-trip correctly through the device lookup.
+     * Rebuild a valid BrightScript accessor expression from a resolved variable path. String-literal keys
+     * arrive already quoted from `getVariablePath` and are emitted as `["key"]` so they stay case-sensitive
+     * on the device (Roku AAs can be set case-sensitive); numeric segments use `[index]`, and identifiers
+     * use dot access. This keeps array indices and string keys correct through the device lookup.
      */
     private buildVariableExpression(segments: string[]): string {
         return segments.reduce((expression, segment, index) => {
             if (index === 0) {
                 return segment;
             }
-            if (/^[a-z_][a-z0-9_]*$/i.test(segment)) {
-                return `${expression}.${segment}`;
+            //already-quoted string key (preserve the quotes so the device matches it case-sensitively)
+            if (segment.startsWith('"') && segment.endsWith('"')) {
+                return `${expression}[${segment}]`;
             }
             if (/^[0-9]+$/.test(segment)) {
                 return `${expression}[${segment}]`;
             }
+            if (/^[a-z_][a-z0-9_]*$/i.test(segment)) {
+                return `${expression}.${segment}`;
+            }
             return `${expression}["${segment.replace(/"/g, '""')}"]`;
         }, '');
+    }
+
+    /**
+     * Normalize a variable path segment or variable name for matching: drop surrounding string-key quotes
+     * and lower-case it. BrightScript variables and dotted access are case-insensitive, and the device
+     * reports names lower-cased, so this lets the in-memory lookup find the parent regardless of the casing
+     * the user typed (ex: `topRef` matching the cached `topref`).
+     */
+    private normalizeVariableName(name: string): string {
+        let value = name ?? '';
+        if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+            value = value.slice(1, -1).replace(/""/g, '"');
+        }
+        return value.toLowerCase();
     }
 
     /**
@@ -2739,9 +2758,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {
         let current: AugmentedVariable = null;
         for (const name of path) {
-            // Find the object matching the current name in the data
+            const normalizedName = this.normalizeVariableName(name);
+            // Find the object matching the current name in the data (case-insensitive, per BrightScript)
             current = (Array.isArray(variables) ? variables : current?.childVariables)?.find(obj => {
-                return obj.name === name && obj.frameId === frameId;
+                return this.normalizeVariableName(obj.name) === normalizedName && obj.frameId === frameId;
             });
 
             // If no match is found, return null

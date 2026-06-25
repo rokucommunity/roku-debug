@@ -2516,15 +2516,16 @@ describe('BrightScriptDebugSession', () => {
                 });
             });
 
-            it('resolves member access on a completed string-key access (bare key, no quotes)', () => {
+            it('resolves member access on a completed string-key access (key stays quoted)', () => {
                 session['_clientColumnsStartAt1'] = true;
+                //the string key keeps its quotes so it stays case-sensitive when sent to the device
                 expect(session['getClosestCompletionDetails']({
                     text: 'm.global["spoof"].',
                     column: 19,
                     line: undefined,
                     frameId: 0
                 })).to.eql({
-                    parentVariablePath: ['m', 'global', 'spoof']
+                    parentVariablePath: ['m', 'global', '"spoof"']
                 });
             });
         });
@@ -2582,6 +2583,20 @@ describe('BrightScriptDebugSession', () => {
                     childVariables: [{ name: 'second', value: '', variablesReference: 0, frameId: 0, childVariables: [] }]
                 }];
                 expect(session['findVariableByPath'](variables, ['person'], 0)?.childVariables[0].name).to.eql('first');
+            });
+
+            it('matches names case-insensitively and tolerates quoted string keys', () => {
+                const variables: AugmentedVariable[] = [{
+                    //device reports names lower-cased
+                    name: 'topref',
+                    value: '',
+                    variablesReference: 1,
+                    frameId: 0,
+                    childVariables: [{ name: 'spoof', value: '', variablesReference: 0, frameId: 0, childVariables: [] }]
+                }];
+                //user typed `topRef` (different case) and a quoted string key
+                expect(session['findVariableByPath'](variables, ['topRef'], 0)?.name).to.eql('topref');
+                expect(session['findVariableByPath'](variables, ['topRef', '"spoof"'], 0)?.name).to.eql('spoof');
             });
         });
 
@@ -2874,18 +2889,20 @@ describe('BrightScriptDebugSession', () => {
 
                 await session['completionsRequest'](response, { text: 'm.global["spoof"].', column: 19, frameId: 0 } as DebugProtocol.CompletionsArguments);
 
-                //the string key resolves to a bare segment, so the device lookup is `m.global.spoof`
-                expect(getVariableStub.calledWith('m.global.spoof', 0)).to.be.true;
+                //the string key keeps its quotes so the device lookup stays `m.global["spoof"]` (case-sensitive)
+                expect(getVariableStub.calledWith('m.global["spoof"]', 0)).to.be.true;
                 expect(targetLabels()).to.include.members(['countrycode', 'postalcode']);
                 expect(targetLabels()).to.not.include('Abs');
             });
         });
 
         describe('buildVariableExpression', () => {
-            it('uses dot access for identifiers and brackets for indexes and non-identifier keys', () => {
+            it('uses dot access for identifiers and brackets for indexes and string keys', () => {
                 expect(session['buildVariableExpression'](['m', 'top'])).to.eql('m.top');
                 expect(session['buildVariableExpression'](['m', 'applicationServices', '0'])).to.eql('m.applicationServices[0]');
                 expect(session['buildVariableExpression'](['arr', '0', 'name'])).to.eql('arr[0].name');
+                //already-quoted string keys keep their quotes (stay case-sensitive on the device)
+                expect(session['buildVariableExpression'](['m', 'global', '"spoof"'])).to.eql('m.global["spoof"]');
                 expect(session['buildVariableExpression'](['m', 'my-key'])).to.eql('m["my-key"]');
                 expect(session['buildVariableExpression']([''])).to.eql('');
             });
