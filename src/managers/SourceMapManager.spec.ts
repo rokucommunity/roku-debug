@@ -13,8 +13,8 @@ describe('SourceMapManager', () => {
         fsExtra.ensureDirSync(tmpPath);
         manager = new SourceMapManager();
     });
-    afterEach(() => {
-        forceDeleteDir(tmpPath);
+    afterEach(async () => {
+        await forceDeleteDir(tmpPath);
     });
 
     it('constructs', () => {

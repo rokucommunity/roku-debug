@@ -101,9 +101,9 @@ describe('BreakpointManager', () => {
         );
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         sinon.restore();
-        forceDeleteDir(tmpDir);
+        await forceDeleteDir(tmpDir);
     });
 
     describe('reset', () => {
@@ -414,8 +414,8 @@ describe('BreakpointManager', () => {
             fsExtra.ensureDirSync(`${sourceDir2}/source`);
         });
 
-        afterEach(() => {
-            forceDeleteDir(tmpDir);
+        afterEach(async () => {
+            await forceDeleteDir(tmpDir);
         });
 
         it('works with normal flow', async () => {

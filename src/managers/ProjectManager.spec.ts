@@ -24,13 +24,13 @@ let stagingDir = s`${outDir}/stagingDir`;
 let compLibOutDir = s`${outDir}/component-libraries`;
 let compLibstagingDir = s`${rootDir}/component-libraries/CompLibA`;
 
-beforeEach(() => {
-    forceDeleteDir(tempPath);
+beforeEach(async () => {
+    await forceDeleteDir(tempPath);
     fsExtra.ensureDirSync(tempPath);
     sinon.restore();
 });
-afterEach(() => {
-    forceDeleteDir(tempPath);
+afterEach(async () => {
+    await forceDeleteDir(tempPath);
     fsExtra.ensureDirSync(tempPath);
 });
 
@@ -431,9 +431,9 @@ describe('Project', () => {
     });
 
     describe('stage', () => {
-        afterEach(() => {
+        afterEach(async () => {
             try {
-                forceDeleteDir(tempPath);
+                await forceDeleteDir(tempPath);
             } catch (e) { }
         });
         it('actually stages the project', async () => {
@@ -541,9 +541,9 @@ describe('Project', () => {
     });
 
     describe('preprocessStagingFiles', () => {
-        afterEach(() => {
+        afterEach(async () => {
             try {
-                forceDeleteDir(tempPath);
+                await forceDeleteDir(tempPath);
             } catch (e) { }
         });
 
@@ -1323,9 +1323,9 @@ describe('Project', () => {
     });
 
     describe('scriptReferencedFiles', () => {
-        afterEach(() => {
+        afterEach(async () => {
             try {
-                forceDeleteDir(tempPath);
+                await forceDeleteDir(tempPath);
             } catch (e) { }
         });
 
@@ -1488,16 +1488,16 @@ describe('Project', () => {
         before(() => {
             fsExtra.writeFileSync(raleTrackerTaskFileLocation, `<!--dummy contents-->`);
         });
-        after(() => {
-            forceDeleteDir(tempPath);
+        after(async () => {
+            await forceDeleteDir(tempPath);
             fsExtra.removeSync(raleTrackerTaskFileLocation);
         });
-        afterEach(() => {
-            forceDeleteDir(tempPath);
+        afterEach(async () => {
+            await forceDeleteDir(tempPath);
         });
 
         async function doTest(fileContents: string, expectedContents: string, fileExt = 'brs') {
-            forceDeleteDir(tempPath);
+            await forceDeleteDir(tempPath);
             fsExtra.ensureDirSync(tempPath);
             let folder = s`${tempPath}/findMainFunctionTests/`;
             fsExtra.mkdirSync(folder);
@@ -1600,17 +1600,17 @@ describe('Project', () => {
             fsExtra.mkdirSync(path.dirname(componentsFilePath), { recursive: true });
             fsExtra.writeFileSync(componentsFilePath, `' ${componentsFilePath}`);
         });
-        after(() => {
-            forceDeleteDir(tempPath);
+        after(async () => {
+            await forceDeleteDir(tempPath);
             fsExtra.emptyDirSync(rdbFilesBasePath);
             fsExtra.rmdirSync(rdbFilesBasePath);
         });
-        afterEach(() => {
-            forceDeleteDir(tempPath);
+        afterEach(async () => {
+            await forceDeleteDir(tempPath);
         });
 
         async function doTest(fileContents: string, expectedContents: string, fileExt = 'brs', injectRdbOnDeviceComponent = true) {
-            forceDeleteDir(tempPath);
+            await forceDeleteDir(tempPath);
             fsExtra.ensureDirSync(tempPath);
             let folder = s`${tempPath}/findMainFunctionTests/`;
             fsExtra.mkdirSync(folder);
@@ -1637,7 +1637,7 @@ describe('Project', () => {
         //which fast-glob treats as escape characters. Without normalization, the glob
         //matches nothing and no files get copied.
         it('copies the RDB files when rdbFilesBasePath is an absolute path with native separators', async () => {
-            forceDeleteDir(tempPath);
+            await forceDeleteDir(tempPath);
             fsExtra.ensureDirSync(tempPath);
             let folder = s`${tempPath}/copyAndTransformRDBTests/`;
             fsExtra.mkdirSync(folder);
@@ -1660,7 +1660,7 @@ describe('Project', () => {
         });
 
         it('does not copy files when injectRdbOnDeviceComponent is false', async () => {
-            forceDeleteDir(tempPath);
+            await forceDeleteDir(tempPath);
             fsExtra.ensureDirSync(tempPath);
             let folder = s`${tempPath}/copyAndTransformRDBTests/`;
             fsExtra.mkdirSync(folder);
@@ -1683,7 +1683,7 @@ describe('Project', () => {
         });
 
         it('does not copy files when rdbFilesBasePath is not set', async () => {
-            forceDeleteDir(tempPath);
+            await forceDeleteDir(tempPath);
             fsExtra.ensureDirSync(tempPath);
             let folder = s`${tempPath}/copyAndTransformRDBTests/`;
             fsExtra.mkdirSync(folder);
