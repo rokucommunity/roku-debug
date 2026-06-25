@@ -427,6 +427,13 @@ export interface ComponentLibraryConfiguration {
      */
     install: boolean;
     /**
+     * Should this component library's `.brs` files be renamed with a `__lib<index>` postfix during staging?
+     * Postfixing lets the debugger map device-reported file paths back to the component library they came from.
+     * Set to `false` to leave file names untouched (for example, when the library loads files by a fixed name at
+     * runtime); source mapping for this library's files will be degraded while debugging. Defaults to `true`.
+     */
+    enablePostfix?: boolean;
+    /**
      * Task to run instead of roku-deploy to produce the .zip file that will be uploaded to the Roku.
      */
     packageTask?: string;
