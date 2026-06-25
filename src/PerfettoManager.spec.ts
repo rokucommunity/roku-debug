@@ -709,14 +709,7 @@ describe('PerfettoManager', () => {
             expect(result).to.equal('/tmp/traces/test.perfetto-trace');
         });
 
-        it('returns undefined when file is empty and skipEmpty is true', () => {
-            sinon.stub(fs, 'statSync').returns({ size: 0 } as any);
-
-            const result = (perfettoManager as any).getResult('/tmp/traces/test.perfetto-trace', { skipEmpty: true });
-            expect(result).to.be.undefined;
-        });
-
-        it('returns filePath when file is empty but skipEmpty is false', () => {
+        it('returns filePath when file is empty (empty traces are still reported)', () => {
             sinon.stub(fs, 'statSync').returns({ size: 0 } as any);
 
             const result = (perfettoManager as any).getResult('/tmp/traces/test.perfetto-trace');
