@@ -1871,6 +1871,11 @@ describe('BrightScriptDebugSession', () => {
             //deletion now reads the installed list and deletes each one directly; default to a device with nothing installed
             sinon.stub(rokuDeploy as any, 'getInstalledPackages').resolves([]);
             sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            //deletion pauses/resumes compile-error reporting on the adapter
+            session['rokuAdapter'] = <any>{
+                pauseCompileErrors: sinon.stub().resolves(),
+                resumeCompileErrors: sinon.stub().resolves()
+            };
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
@@ -1900,6 +1905,27 @@ describe('BrightScriptDebugSession', () => {
 
             expect(installOrder).to.eql(['lib1.zip', 'lib2.zip']);
             expect(publishStub.callCount).to.equal(2);
+        });
+
+        it('waits for compile-error reporting to fully resume before uploading any zip', async () => {
+            stubDefaults();
+            const events: string[] = [];
+            //resume takes a moment to settle; record when it actually completes
+            (session['rokuAdapter'] as any).resumeCompileErrors = sinon.stub().callsFake(async () => {
+                await util.sleep(20);
+                events.push('resume-complete');
+            });
+            sinon.stub(rokuDeploy, 'publish').callsFake((options) => {
+                events.push(`publish-${options.outFile}`);
+                return Promise.resolve({ message: 'success', results: [] });
+            });
+
+            await runPrepareAndHost([
+                { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
+            ] as any, 8080);
+
+            //resume must finish settling before the first zip is uploaded
+            expect(events).to.eql(['resume-complete', 'publish-lib1.zip']);
         });
 
         it('skips libraries where install is not true', async () => {
@@ -1955,6 +1981,7 @@ describe('BrightScriptDebugSession', () => {
         it('waits for stage and zip before installing (slow lib1, fast lib2)', async () => {
             sinon.stub(rokuDeploy as any, 'getInstalledPackages').resolves([]);
             sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            session['rokuAdapter'] = <any>{ pauseCompileErrors: sinon.stub().resolves(), resumeCompileErrors: sinon.stub().resolves() };
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
@@ -1994,6 +2021,7 @@ describe('BrightScriptDebugSession', () => {
         it('fails build when complib promise fails', async () => {
             sinon.stub(rokuDeploy as any, 'getInstalledPackages').resolves([]);
             sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            session['rokuAdapter'] = <any>{ pauseCompileErrors: sinon.stub().resolves(), resumeCompileErrors: sinon.stub().resolves() };
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
@@ -2121,6 +2149,11 @@ describe('BrightScriptDebugSession', () => {
 
             session['launchConfiguration'].host = '192.168.1.100';
             session['launchConfiguration'].password = 'test123';
+            //deletion pauses/resumes compile-error reporting on the adapter; stub those so the flow works without a device
+            session['rokuAdapter'] = <any>{
+                pauseCompileErrors: sinon.stub().resolves(),
+                resumeCompileErrors: sinon.stub().resolves()
+            };
 
             sinon.stub(rokuDeploy as any, 'getInstalledPackages').callsFake(() => Promise.resolve(
                 [...present].map(archiveFileName => ({ appType: 'dcl', archiveFileName }))
@@ -2138,7 +2171,7 @@ describe('BrightScriptDebugSession', () => {
                 return Promise.resolve(null);
             });
 
-            return { deleteOrder, present };
+            return { deleteOrder, present, adapter: session['rokuAdapter'] as any };
         }
 
         /** point the session's configured complibs at the given outFiles, in declaration order */
@@ -2159,6 +2192,18 @@ describe('BrightScriptDebugSession', () => {
             //reverse of configured order - and because that's dependency-correct, every delete succeeds first try
             expect(deleteOrder).to.eql(['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip']);
             expect(present.size).to.equal(0);
+        });
+
+        it('pauses compile-error reporting during deletion, and leaves it paused (resume happens later, before re-install)', async () => {
+            configureComplibs(['LibAlpha.zip']);
+            const { adapter } = stubDevice(['LibAlpha.zip']);
+
+            await session['deleteAllComponentLibraries']();
+
+            //compile errors are paused so deletion noise doesn't reach the UI...
+            expect(adapter.pauseCompileErrors.called).to.be.true;
+            //...and NOT resumed here - resume is deferred until we put libraries back on the device
+            expect(adapter.resumeCompileErrors.called).to.be.false;
         });
 
         it('deletes everything even when the device lists them in a dependency-breaking order', async () => {

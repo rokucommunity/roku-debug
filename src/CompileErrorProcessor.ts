@@ -14,6 +14,49 @@ export class CompileErrorProcessor {
     private emitter = new EventEmitter();
     public compileErrorTimer: NodeJS.Timeout;
 
+    /**
+     * While paused, incoming device lines are ignored and no `diagnostics` events are emitted. Used to suppress the
+     * compile errors the device produces as a side effect of deleting interdependent component libraries.
+     */
+    private isPaused = false;
+
+    /**
+     * How long to wait for device output to "settle" (stop arriving) so in-flight lines drain before we pause, and
+     * any deletion-induced output drains before we resume.
+     */
+    public settleTimeMs = 300;
+
+    /**
+     * Stop processing incoming lines and emitting diagnostics. Resets any in-progress compile tracking so a
+     * half-captured compile can't fire after we resume. Pair with `resume()`.
+     */
+    public pause() {
+        this.isPaused = true;
+        this.resetCompileErrorTimer(false);
+        this.status = CompileStatus.none;
+        this.compilingLines = [];
+    }
+
+    /**
+     * Resume processing incoming lines. Starts from a clean compile-tracking state so output from before the pause
+     * doesn't bleed into a new compile.
+     */
+    public resume() {
+        this.status = CompileStatus.none;
+        this.compilingLines = [];
+        this.isPaused = false;
+    }
+
+    /**
+     * Wait for the configured settle time so device output can drain. Use it around pause/resume:
+     * `pause()` → `settle()` (let pre-pause output flush) → do the noisy work → `settle()` → `resume()`.
+     */
+    public settle(ms = this.settleTimeMs) {
+        return new Promise<void>(resolve => {
+            setTimeout(resolve, ms);
+        });
+    }
+
     public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
     public on(eventName: 'launch-status', handler: (message: string) => void);
     public on(eventName: string, handler: (payload: any) => void) {
@@ -30,12 +73,21 @@ export class CompileErrorProcessor {
     private emit(eventName: string, data?: unknown): void {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
+            //suppress diagnostics while paused so a timer that fires mid-pause can't surface deletion-induced errors
+            if (this.isPaused && eventName === 'diagnostics') {
+                return;
+            }
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
             this.emitter?.emit?.(eventName, data);
         }, 0);
     }
 
     public processUnhandledLines(responseText: string) {
+        //while paused (e.g. during component-library deletion), ignore device output so deletion-induced compile
+        //errors are never tracked or surfaced
+        if (this.isPaused) {
+            return;
+        }
         let lines = responseText.split(/\r?\n/g);
         for (const line of lines) {
             this.checkForLaunchStatus(line);

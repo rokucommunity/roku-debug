@@ -1480,15 +1480,22 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         }
         const componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
 
+        const needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
+        let resumeCompileErrorsPromise = Promise.resolve();
+        if (needToDeleteComplibs) {
+            //deleteAllComponentLibraries pauses compile-error reporting (to swallow deletion-induced errors) and
+            //leaves it paused. Now that deletion is done and we're about to put libraries back on the device, settle
+            //(draining any lingering deletion output) and resume reporting so real install errors are surfaced.
+            await this.deleteAllComponentLibraries();
+            //resume compile-error reporting (so any install errors are reported to the client). Don't wait for this to settle, we can hopefully make up
+            //all that time during the zipping process next
+            resumeCompileErrorsPromise = this.rokuAdapter?.resumeCompileErrors();
+        }
+
         //seal every complib's zip in parallel — each targets distinct files
         const packagePromises = this.projectManager.componentLibraryProjects.map(
             compLibProject => compLibProject.zipPackage({ retainStagingFolder: true })
         );
-
-        const needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
-        if (needToDeleteComplibs) {
-            await this.deleteAllComponentLibraries();
-        }
 
         //install component libraries strictly in their declared order (which must be dependency order:
         //a library may only depend on libraries declared before it). Each install is fully awaited before the
@@ -1524,6 +1531,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
                 util.log(`Installing component library ${i} (${compLibProject.outFile})`);
                 try {
+                    // wait for compile error settling to finish and then resume compile error reporting so any install errors are reported to the client
+                    // most of the time this should already be done by the time the first library is ready to install, but if the complibs are small and zipping is fast,
+                    // this ensures we don't start installing before compile error reporting is resumed
+                    await resumeCompileErrorsPromise;
                     await rokuDeploy.publish(options);
                     util.log(`Installed component library ${i} (${compLibProject.outFile})`);
                 } catch (error) {
@@ -1586,6 +1597,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //how many times we've tried to delete each complib, and the ones we've given up on after maxAttempts
         const attempts = new Map<string, number>();
         const failed = new Set<string>();
+
+        //deleting interdependent complibs makes the device emit transient compile errors (the main app/other complibs
+        //briefly reference a complib we just removed). Settle, then pause compile-error reporting so those don't reach
+        //the UI. We deliberately DON'T resume here - reporting stays paused until we put things back on the device
+        //(see the resume just before publishing), and the zipping work in between provides the settle time for free.
+        await this.rokuAdapter?.pauseCompileErrors();
 
         while (true) {
             //re-fetch the installed complibs after each iteration: deleting one complib can cascade-delete others, so never delete a stale entry

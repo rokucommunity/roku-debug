@@ -56,6 +56,25 @@ export class TelnetAdapter {
     public connected: boolean;
 
     private compileErrorProcessor: CompileErrorProcessor;
+
+    /**
+     * Stop surfacing compile errors, waiting for in-flight device output to settle first. Use this around an
+     * operation that intentionally produces transient compile errors (e.g. deleting interdependent component
+     * libraries). Pair with `resumeCompileErrors()`.
+     */
+    public async pauseCompileErrors() {
+        await this.compileErrorProcessor.settle();
+        this.compileErrorProcessor.pause();
+    }
+
+    /**
+     * Resume surfacing compile errors, waiting for the noisy output to settle first so it isn't surfaced.
+     */
+    public async resumeCompileErrors() {
+        await this.compileErrorProcessor.settle();
+        this.compileErrorProcessor.resume();
+    }
+
     public requestPipeline: TelnetRequestPipeline;
     private emitter: EventEmitter;
     private isNextBreakpointSkipped = false;
