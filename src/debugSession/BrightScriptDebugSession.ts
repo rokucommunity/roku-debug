@@ -75,6 +75,17 @@ import { SocketConnectionInUseError } from '../Exceptions';
 
 const diagnosticSource = 'roku-debug';
 
+/**
+ * Sort tiers for debug-console completions. Lower values sort first, so a variable's own members rank
+ * above interface methods, then the file's scope functions, and finally the (large) set of globals.
+ */
+enum CompletionSortTier {
+    Member = '1',
+    Method = '2',
+    ScopeFunction = '3',
+    Global = '4'
+}
+
 export class BrightScriptDebugSession extends LoggingDebugSession {
     public constructor() {
         super();
@@ -302,6 +313,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private evaluateRefIdCounter = 1;
 
     private variables: Record<number, AugmentedVariable> = {};
+
+    /**
+     * Caches the device lookups performed while resolving completion requests. Variables don't change
+     * while the debugger is paused, so this avoids repeated round-trips for the same path. Cleared by
+     * `clearState` whenever the debugger resumes or steps.
+     */
+    private completionParentVariableCache = new Map<string, AugmentedVariable>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
 
@@ -1702,24 +1720,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         logger.info('begin', { args });
         try {
             const scopes = new Array<DebugProtocol.Scope>();
-            let v: AugmentedVariable;
 
             // create the locals scope
-            let localsRefId = this.getEvaluateRefId('$$locals', args.frameId);
-            if (this.variables[localsRefId]) {
-                v = this.variables[localsRefId];
-            } else {
-                v = {
-                    variablesReference: localsRefId,
-                    name: 'Locals',
-                    value: '',
-                    type: '$$Locals',
-                    frameId: args.frameId,
-                    isScope: true,
-                    childVariables: []
-                };
-                this.variables[localsRefId] = v;
-            }
+            let v = this.getOrCreateLocalsScope(args.frameId);
 
             let localScope: DebugProtocol.Scope = {
                 name: 'Local',
@@ -1769,6 +1772,26 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         } catch (error) {
             logger.error('Error getting scopes', { error, args });
         }
+    }
+
+    /**
+     * Get the locals scope container for a frame, creating an (unpopulated) one if it doesn't exist yet.
+     * The child variables are filled in lazily by `populateScopeVariables`.
+     */
+    private getOrCreateLocalsScope(frameId: number): AugmentedVariable {
+        const refId = this.getEvaluateRefId('$$locals', frameId);
+        if (!this.variables[refId]) {
+            this.variables[refId] = {
+                variablesReference: refId,
+                name: 'Locals',
+                value: '',
+                type: '$$Locals',
+                frameId: frameId,
+                isScope: true,
+                childVariables: []
+            };
+        }
+        return this.variables[refId];
     }
 
     protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {
@@ -2337,6 +2360,22 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             let completions = new Map<string, DebugProtocol.CompletionItem>();
 
             let parentVariablePath = closestCompletionDetails.parentVariablePath;
+            // When set, the user is typing a string key (ex: `m["fo`) and completions should insert the
+            // key wrapped to close the access (ex: `firstName"]`) rather than appending a bare label. The
+            // value is the closing text to append (empty when a closing bracket is already present).
+            const stringKeyClosing = closestCompletionDetails.stringKeyClosing;
+
+            // The span of input each completion replaces. The client requests completions once (at the first
+            // character) and then filters the list as the user keeps typing, so without an explicit range that
+            // incremental filtering is anchored incorrectly.
+            const replaceRange = this.getCompletionReplaceRange(args);
+            // Whether the character immediately before the replaced span is a `.` (ie. the user is doing dot
+            // member access). A key that can't be dot-accessed (ex: `my key`) is rewritten as bracket access,
+            // which has to consume that `.` so `m.` becomes `m["my key"]` rather than `m.["my key"]`.
+            const lines = args.text.split('\n');
+            const targetLine = lines[this.toDebuggerLine(args.line, 0)] ?? '';
+            const precededByDot = targetLine[replaceRange.start - 1] === '.';
+
             // Get the completions if the variable path was valid
             if (parentVariablePath) {
 
@@ -2345,25 +2384,23 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     supplyLocalScopeCompletions = true;
                 }
 
-                // Look up the parent variable
-                let parentVariable = this.findVariableByPath(Object.values(this.variables), parentVariablePath, args.frameId);
-
-                if (!parentVariable || parentVariable.childVariables.length === 0) {
-                    // We did not find the parent variable, so try to look it up from the device
-                    try {
-                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: parentVariablePath.join('.'), frameId: args.frameId }, parentVariablePath);
-                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, args.frameId);
-                        parentVariable = await this.getVariableFromResult(result, args.frameId);
-                    } catch (error) {
-                        this.logger.error('Error looking up parent completions', error, { parentVariablePath });
-                    }
-                }
+                // Look up the parent variable (in-memory first, then the device), scoped to the current frame.
+                let parentVariable = await this.resolveCompletionParentVariable(parentVariablePath, args.frameId);
 
                 // provide completions for the parent variable if one was found
                 if (parentVariable) {
-                    let possibleFieldsAndMethods: AugmentedVariable[] = [];
-                    // Filter out virtual variables
-                    possibleFieldsAndMethods = parentVariable.childVariables.filter((v) => v.presentationHint?.kind !== 'virtual');
+                    // arrays and lists are integer-indexed; their `[N]` elements aren't valid `.` or `["..."]`
+                    // completions (you can't write `arr.[0]` or `arr["0"]`), so don't offer them as members.
+                    // Only the interface methods below (Count, Push, ...) apply to these containers.
+                    const isIntegerIndexed = parentVariable.type === VariableType.Array ||
+                        parentVariable.type === VariableType.List ||
+                        parentVariable.type === 'roXMLList' ||
+                        parentVariable.type === 'roByteArray';
+
+                    const possibleFieldsAndMethods = isIntegerIndexed
+                        ? []
+                        // Filter out virtual variables and the empty-named placeholder used for empty scopes
+                        : parentVariable.childVariables.filter((child) => child.name && child.presentationHint?.kind !== 'virtual');
 
                     for (let v of possibleFieldsAndMethods) {
                         // Default completion type should be variable
@@ -2384,40 +2421,50 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                             }
                         }
 
-                        let label = v.name;
-                        if (parentVariable.type === VariableType.Array ||
-                            parentVariable.type === VariableType.List ||
-                            parentVariable.type === 'roXMLList' ||
-                            parentVariable.type === 'roByteArray'
-                        ) {
-                            label = `[${v.name}]`;
-                        }
-                        completions.set(`${completionType}-${v.name}`, {
-                            label: label,
+                        const completionItem: DebugProtocol.CompletionItem = {
+                            label: v.name,
                             type: completionType,
-                            sortText: '000000'
-                        });
+                            //rank a variable's own members/locals above everything else
+                            sortText: `${CompletionSortTier.Member}${v.name}`
+                        };
+                        if (stringKeyClosing !== undefined) {
+                            // Insert the key and close the access, ex: `firstName"]` (the replacement range is applied
+                            // below). A `"` inside the key is escaped as `""` so the inserted string literal stays valid
+                            // (ex: a key of `a"b` is inserted as `a""b`).
+                            completionItem.text = `${v.name.replace(/"/g, '""')}${stringKeyClosing}`;
+                        } else if (!supplyLocalScopeCompletions && precededByDot && !/^[a-z_][a-z0-9_]*$/i.test(v.name)) {
+                            // The key can't be dot-accessed (ex: it has a space or a quote), so rewrite the access as
+                            // bracket notation and consume the `.` before the cursor: `m.` -> `m["my key"]`. A `"` in
+                            // the key is escaped as `""` so the inserted string literal stays valid.
+                            completionItem.text = `["${v.name.replace(/"/g, '""')}"]`;
+                            completionItem.start = replaceRange.start - 1;
+                            completionItem.length = replaceRange.length + 1;
+                        }
+                        completions.set(`${completionType}-${v.name}`, completionItem);
                     }
 
-                    let parentComponentType = this.debuggerVarTypeToRoType(parentVariable.type).toLowerCase();
-                    //assemble a list of all methods on the parent component
-                    const methods = [
-                        //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
-                        ...interfaces[parentComponentType as 'ifappinfo']?.methods ?? [],
-                        //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
-                        ...components[parentComponentType as 'roappinfo']?.interfaces.map((i) => interfaces[i.name.toLowerCase() as 'ifappinfo']?.methods) ?? [],
-                        // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
-                        ...events[parentComponentType as 'roappmemorymonitorevent']?.methods ?? []
-                    ].flat();
+                    // Interface methods aren't valid string keys, so skip them when completing a string key
+                    if (stringKeyClosing === undefined) {
+                        let parentComponentType = this.debuggerVarTypeToRoType(parentVariable.type).toLowerCase();
+                        //assemble a list of all methods on the parent component
+                        const methods = [
+                            //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
+                            ...interfaces[parentComponentType as 'ifappinfo']?.methods ?? [],
+                            //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
+                            ...components[parentComponentType as 'roappinfo']?.interfaces.map((i) => interfaces[i.name.toLowerCase() as 'ifappinfo']?.methods) ?? [],
+                            // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
+                            ...events[parentComponentType as 'roappmemorymonitorevent']?.methods ?? []
+                        ].flat();
 
-                    // Based on the results of interface, component, and event looks up, add all the methods to the completions
-                    for (const method of methods) {
-                        completions.set(`method-${method.name}`, {
-                            label: method.name,
-                            type: 'method',
-                            detail: method.description ?? '',
-                            sortText: '000000'
-                        });
+                        // Based on the results of interface, component, and event looks up, add all the methods to the completions
+                        for (const method of methods) {
+                            completions.set(`method-${method.name}`, {
+                                label: method.name,
+                                type: 'method',
+                                detail: method.description ?? '',
+                                sortText: `${CompletionSortTier.Method}${method.name}`
+                            });
+                        }
                     }
 
                     // Add the global functions to the completions results
@@ -2427,7 +2474,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                                 label: globalCallable.name,
                                 type: 'function',
                                 detail: globalCallable.shortDescription ?? globalCallable.documentation ?? '',
-                                sortText: '000000'
+                                sortText: `${CompletionSortTier.Global}${globalCallable.name}`
                             });
                         }
 
@@ -2440,7 +2487,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                                     completions.set(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`, {
                                         label: scopeFunction.name,
                                         type: scopeFunction.completionItemKind,
-                                        sortText: '000000'
+                                        sortText: `${CompletionSortTier.ScopeFunction}${scopeFunction.name}`
                                     });
                                 }
                             }
@@ -2451,8 +2498,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 }
             }
 
-            // this.sendEvent(new LogOutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}`));
-            // this.sendEvent(new OutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}\n`, 'stderr'));
+            // Apply the default replacement span to every completion that didn't already set its own (bracket
+            // rewrites above use an extended range that also consumes the preceding `.`).
+            for (const target of completions.values()) {
+                if (target.start === undefined) {
+                    target.start = replaceRange.start;
+                    target.length = replaceRange.length;
+                }
+            }
 
             response.body = {
                 targets: [...completions.values()]
@@ -2468,40 +2521,84 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     /**
      * Gets the closest completion details the incoming completion request.
      */
-    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[] } {
+    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[]; stringKeyClosing?: string } {
         const incomingText = args.text;
         const lines = incomingText.split('\n');
         let lineNumber = this.toDebuggerLine(args.line, 0);
         let column = this.toDebuggerColumn(args.column);
 
-        const targetLine = lines[lineNumber];
-        let variablePathString = '';
+        const targetLine = lines[lineNumber] ?? '';
 
-        let i = column - 1;
+        const cursorIndex = column - 1;
         const variableChars = /[a-z0-9_\.]/i;
 
-        // If the character at immediate to the right of the cursor is a variable character, then we are not at the end of the variable path.
-        if (targetLine.length - 1 > i && variableChars.test(targetLine[i + 1])) {
+        // If the character immediately to the right of the cursor is a variable character, then we are
+        // in the middle of a token and should not supply completions yet.
+        if (cursorIndex + 1 < targetLine.length && variableChars.test(targetLine[cursorIndex + 1])) {
             return undefined;
         }
 
-        // Find the start of the variable path by looking for the first non-alphanumeric or non_underscore character before the cursor
-        while (i >= 0 && (variableChars.test(targetLine[i]))) {
-            i--;
+        // Determine where the expression we want to complete ends, and whether we are completing the
+        // members of that expression. A trailing `.` or being inside an unclosed string-key bracket
+        // (ex: `m["fo`) are both treated as member access on the parent expression.
+        let endColumn = column;
+        let isMemberAccess = false;
+        //when set (including ''), the user is completing a string key; the value is the text to append to
+        //close the access (ex: `"]`), empty when a closing bracket is already present
+        let stringKeyClosing: string;
+
+        const openBracket = this.findUnclosedOpener(targetLine, column);
+        if (openBracket?.char === '[') {
+            // find the opening quote (skipping any whitespace after the `[`)
+            let quoteIndex = openBracket.index + 1;
+            while (targetLine[quoteIndex] === ' ' || targetLine[quoteIndex] === '\t') {
+                quoteIndex++;
+            }
+            const quote = targetLine[quoteIndex];
+            if (quote === '"' || quote === `'`) {
+                // The user is typing a string key, so complete the keys of the expression before the `[`
+                endColumn = openBracket.index;
+                isMemberAccess = true;
+                // close the string and bracket only when there is nothing meaningful after the cursor
+                stringKeyClosing = targetLine.slice(column).trim() === '' ? `${quote}]` : '';
+            }
         }
 
-        // Pull the variable path string from the line
-        variablePathString = targetLine.slice(i + 1, column);
+        // Walk backwards from `endColumn` to find the start of the variable path, stepping over balanced
+        // `[...]` index access so paths like `arr[0].name` are captured as a whole.
+        let startIndex = endColumn - 1;
+        let bracketDepth = 0;
+        while (startIndex >= 0) {
+            const char = targetLine[startIndex];
+            if (char === ']') {
+                bracketDepth++;
+            } else if (char === '[') {
+                if (bracketDepth === 0) {
+                    // An unbalanced `[` means we hit the start of an index/key being typed; stop here.
+                    break;
+                }
+                bracketDepth--;
+            } else if (bracketDepth === 0 && (char === undefined || !variableChars.test(char))) {
+                break;
+            }
+            startIndex--;
+        }
 
-        // Attempted dot access something unexpected
-        // Example: `getPerson().name` where `getPerson()` is not a valid variable
-        // and results in `.name` being the variable path string
+        const variablePathString = targetLine.slice(startIndex + 1, endColumn);
+
+        // Attempted dot access on something unexpected.
+        // Example: `getPerson().name` where `getPerson()` is not a valid variable path,
+        // which leaves `.name` as the variable path string.
         if (variablePathString.startsWith('.')) {
             return undefined;
         }
 
+        if (variablePathString.endsWith('.')) {
+            isMemberAccess = true;
+        }
+
         // Get the variable path from the text
-        let variablePath: string[] = [];
+        let variablePath: string[];
         if (!variablePathString.trim()) {
             // The text was empty so assume via '' that we are looking up the local scope variables and global functions
             variablePath = [''];
@@ -2517,29 +2614,179 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             return undefined;
         }
 
-        let parentVariablePath: string[];
-        // If the last character is a period, then pull completions for the parent variable before the period
-        if (variablePathString.endsWith('.')) {
-            parentVariablePath = variablePath;
-        } else {
-            // Otherwise, pull completions for the parent variable
-            parentVariablePath = variablePath.slice(0, variablePath.length - 1);
-        }
+        // For member access we complete the members of the full expression. Otherwise we complete the
+        // siblings of the final (partial) segment, so drop it to get the parent.
+        let parentVariablePath = isMemberAccess ? variablePath : variablePath.slice(0, variablePath.length - 1);
 
-        // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
+        // An empty parent path means we are looking up the local scope variables and global functions
         if (parentVariablePath.length === 0) {
             parentVariablePath = [''];
         }
 
-        return { parentVariablePath: parentVariablePath };
+        const result: { parentVariablePath: string[]; stringKeyClosing?: string } = { parentVariablePath: parentVariablePath };
+        // Only attach the string-key context when we actually resolved a parent object to complete keys on
+        if (stringKeyClosing !== undefined && !(parentVariablePath.length === 1 && parentVariablePath[0] === '')) {
+            result.stringKeyClosing = stringKeyClosing;
+        }
+        return result;
+    }
+
+    /**
+     * Compute the span of input text that a completion replaces: the run of identifier characters
+     * immediately before the cursor. This lets the client filter the list correctly as the user keeps
+     * typing past the first character.
+     *
+     * `start` is a 0-based offset into the line, NOT a client column. Per the Debug Adapter Protocol,
+     * `CompletionItem.start` is measured in UTF-16 code units and the client maps it to a position
+     * itself, so it must not be run through `toClientColumn` (unlike stack-frame, breakpoint, and scope
+     * positions). Our debugger column base is already 0-based, so the internal offset is sent as-is.
+     */
+    private getCompletionReplaceRange(args: DebugProtocol.CompletionsArguments): { start: number; length: number } {
+        const lines = args.text.split('\n');
+        const lineNumber = this.toDebuggerLine(args.line, 0);
+        const cursorOffset = this.toDebuggerColumn(args.column);
+        const targetLine = lines[lineNumber] ?? '';
+
+        const identifierChars = /[a-z0-9_]/i;
+        let wordStart = cursorOffset;
+        while (wordStart > 0 && identifierChars.test(targetLine[wordStart - 1])) {
+            wordStart--;
+        }
+        return {
+            start: wordStart,
+            length: cursorOffset - wordStart
+        };
+    }
+
+    /**
+     * Scan backwards from `column` to find the nearest opening bracket (`(`, `[`, or `{`) that has not
+     * been closed before the cursor. Returns the opener's index and character, or undefined if none.
+     */
+    private findUnclosedOpener(line: string, column: number): { index: number; char: string } {
+        let depth = 0;
+        for (let i = column - 1; i >= 0; i--) {
+            const char = line[i];
+            if (char === ')' || char === ']' || char === '}') {
+                depth++;
+            } else if (char === '(' || char === '[' || char === '{') {
+                if (depth === 0) {
+                    return { index: i, char: char };
+                }
+                depth--;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Resolve the parent variable for a completion request. Prefers the in-memory locals for the frame,
+     * then falls back to a device lookup. Device lookups are cached for the duration of the paused state
+     * (cleared by `clearState`) so repeated completion requests on the same path don't hammer the device.
+     */
+    private async resolveCompletionParentVariable(parentVariablePath: string[], frameId: number): Promise<AugmentedVariable> {
+        // For local-scope completions, make sure the frame's locals are fetched on demand. Otherwise they
+        // would only appear once the user expands the Variables panel (which is what triggers the fetch).
+        const isLocalScope = parentVariablePath.length === 1 && parentVariablePath[0] === '';
+        if (isLocalScope) {
+            const localsScope = this.getOrCreateLocalsScope(frameId);
+            if (!localsScope.isResolved) {
+                try {
+                    await this.populateScopeVariables(localsScope, { variablesReference: localsScope.variablesReference } as DebugProtocol.VariablesArguments);
+                } catch (error) {
+                    this.logger.debug('Could not populate locals for completions', error, { frameId });
+                }
+            }
+        }
+
+        const inMemory = this.findFrameVariableByPath(parentVariablePath, frameId);
+        if (inMemory && inMemory.childVariables.length > 0) {
+            return inMemory;
+        }
+
+        // Rebuild a valid accessor expression for the device lookup. Joining with `.` is wrong for indexed
+        // segments (ex: `m.services[0]` would become the invalid `m.services.0` and the index gets dropped).
+        const expression = this.buildVariableExpression(parentVariablePath);
+
+        const cacheKey = `${frameId}:${expression}`;
+        if (this.completionParentVariableCache.has(cacheKey)) {
+            return this.completionParentVariableCache.get(cacheKey);
+        }
+
+        let parentVariable: AugmentedVariable;
+        try {
+            let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: expression, frameId: frameId }, parentVariablePath);
+            let result = await this.rokuAdapter.getVariable(evalArgs.expression, frameId);
+            parentVariable = await this.getVariableFromResult(result, frameId);
+        } catch (error) {
+            // A failed lookup is expected while the user is still typing an incomplete expression, so keep it quiet.
+            this.logger.debug('Could not resolve parent variable for completions', error, { parentVariablePath });
+            parentVariable = undefined;
+        }
+
+        this.completionParentVariableCache.set(cacheKey, parentVariable);
+        return parentVariable;
+    }
+
+    /**
+     * Rebuild a valid BrightScript accessor expression from a resolved variable path. String-literal keys
+     * arrive already quoted from `getVariablePath` and are emitted as `["key"]` so they stay case-sensitive
+     * on the device (Roku AAs can be set case-sensitive); numeric segments use `[index]`, and identifiers
+     * use dot access. This keeps array indices and string keys correct through the device lookup.
+     */
+    private buildVariableExpression(segments: string[]): string {
+        return segments.reduce((expression, segment, index) => {
+            if (index === 0) {
+                return segment;
+            }
+            //already-quoted string key (preserve the quotes so the device matches it case-sensitively).
+            //A lone `"` is not a quoted literal (the shortest is `""`), so require at least 2 chars.
+            if (segment.length >= 2 && segment.startsWith('"') && segment.endsWith('"')) {
+                return `${expression}[${segment}]`;
+            }
+            if (/^[0-9]+$/.test(segment)) {
+                return `${expression}[${segment}]`;
+            }
+            if (/^[a-z_][a-z0-9_]*$/i.test(segment)) {
+                return `${expression}.${segment}`;
+            }
+            return `${expression}["${segment.replace(/"/g, '""')}"]`;
+        }, '');
+    }
+
+    /**
+     * Normalize a variable path segment or variable name for matching: drop surrounding string-key quotes
+     * and lower-case it. BrightScript variables and dotted access are case-insensitive, and the device
+     * reports names lower-cased, so this lets the in-memory lookup find the parent regardless of the casing
+     * the user typed (ex: `topRef` matching the cached `topref`).
+     */
+    private normalizeVariableName(name: string): string {
+        let value = name ?? '';
+        if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+            value = value.slice(1, -1).replace(/""/g, '"');
+        }
+        return value.toLowerCase();
+    }
+
+    /**
+     * Resolve a variable path against the current frame's local scope. The first path segment is matched
+     * against the frame's locals (not the global pool of every materialized variable), then we walk down
+     * the child variables. The empty path (`['']`) resolves to the locals scope container itself.
+     */
+    private findFrameVariableByPath(path: string[], frameId: number): AugmentedVariable {
+        const localsContainer = this.variables[this.getEvaluateRefId('$$locals', frameId)];
+        if (path.length === 1 && path[0] === '') {
+            return localsContainer;
+        }
+        return this.findVariableByPath(localsContainer?.childVariables ?? [], path, frameId);
     }
 
     private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {
         let current: AugmentedVariable = null;
         for (const name of path) {
-            // Find the object matching the current name in the data
+            const normalizedName = this.normalizeVariableName(name);
+            // Find the object matching the current name in the data (case-insensitive, per BrightScript)
             current = (Array.isArray(variables) ? variables : current?.childVariables)?.find(obj => {
-                return obj.name === name && obj.frameId === frameId;
+                return this.normalizeVariableName(obj.name) === normalizedName && obj.frameId === frameId;
             });
 
             // If no match is found, return null
@@ -2960,6 +3207,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private clearState() {
         //erase all cached variables
         this.variables = {};
+        this.completionParentVariableCache.clear();
     }
 
     /**

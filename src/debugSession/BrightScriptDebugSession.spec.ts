@@ -2086,309 +2086,580 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('completionsRequest', () => {
+        //build an in-memory variable node. Pass `children` to make it a container (AA/array); otherwise
+        //it is a leaf. Only the fields the lookup/completion code reads (name, type, frameId, childVariables)
+        //carry meaning; the rest are harmless defaults.
+        function makeVariable(name: string, options: { type?: VariableType | string; frameId?: number; variablesReference?: number; children?: AugmentedVariable[] } = {}): AugmentedVariable {
+            const children = options.children ?? [];
+            return {
+                name: name,
+                value: '',
+                variablesReference: options.variablesReference ?? (children.length > 0 ? 10 : 0),
+                frameId: options.frameId ?? 0,
+                type: options.type ?? VariableType.String,
+                childVariables: children
+            } as AugmentedVariable;
+        }
+
         describe('getClosestCompletionDetails', () => {
-            it('handles empty string columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: '',
-                    column: 0,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
+            //the cursor position is marked inline with `|` (stripped before evaluating). Every case is
+            //asserted under both client column/line bases, since the resolved path must not depend on
+            //whether the client numbers columns/lines from 0 or from 1.
+            function expectClosest(textWithCursor: string, expected: { parentVariablePath: string[]; stringKeyClosing?: string } | undefined) {
+                const cursorIndex = textWithCursor.indexOf('|');
+                const text = textWithCursor.replace('|', '');
+                const textBeforeCursor = textWithCursor.slice(0, cursorIndex);
+                const cursorLine = (textBeforeCursor.match(/\n/g) ?? []).length;
+                const cursorColumn = textBeforeCursor.length - (textBeforeCursor.lastIndexOf('\n') + 1);
+
+                for (const startAt1 of [false, true]) {
+                    session['_clientColumnsStartAt1'] = startAt1;
+                    session['_clientLinesStartAt1'] = startAt1;
+                    const column = startAt1 ? cursorColumn + 1 : cursorColumn;
+                    //a cursor on the first line is sent without an explicit line (matches the real client)
+                    let line: number;
+                    if (cursorLine > 0) {
+                        line = startAt1 ? cursorLine + 1 : cursorLine;
+                    }
+                    expect(
+                        session['getClosestCompletionDetails']({ text: text, column: column, line: line, frameId: 0 }),
+                        `columnsStartAt1=${startAt1}`
+                    ).to.eql(expected);
+                }
+            }
+
+            it('treats an empty line as a local-scope expression', () => {
+                expectClosest('|', { parentVariablePath: [''] });
             });
 
-            it('handles empty string columnsStartAt1 true', () => {
+            it('returns undefined for an invalid variable path', () => {
+                expectClosest('1bad.path|', undefined);
+            });
+
+            it('completes the siblings of a partial trailing segment', () => {
+                expectClosest('person.name|', { parentVariablePath: ['person'] });
+            });
+
+            it('completes the members of a path with a trailing period', () => {
+                expectClosest('person.name.|', { parentVariablePath: ['person', 'name'] });
+            });
+
+            it('returns undefined when the cursor is mid-token', () => {
+                expectClosest('person.na|me', undefined);
+            });
+
+            it('returns undefined after a function-call result, but resolves indexed access', () => {
+                //a call result is not a resolvable variable path
+                expectClosest('getPerson().name|', undefined);
+                //indexed access, however, is a resolvable variable path
+                expectClosest('getPerson[0].name|', { parentVariablePath: ['getPerson', '0'] });
+            });
+
+            it('resolves a path typed inside an open bracket', () => {
+                expectClosest('getValue(person.name|', { parentVariablePath: ['person'] });
+                expectClosest('getValue[person.name|', { parentVariablePath: ['person'] });
+            });
+
+            it('resolves a path inside a call with a trailing close paren', () => {
+                expectClosest('getValue(person.name|)', { parentVariablePath: ['person'] });
+            });
+
+            it('treats the position after a comma as a fresh local-scope expression', () => {
+                expectClosest('getValue(person.name, test|)', { parentVariablePath: [''] });
+                expectClosest('getValue[person.name, test|]', { parentVariablePath: [''] });
+            });
+
+            it('resolves the path on the line the cursor is on (multiline input)', () => {
+                //cursor on the first line, mid-expression
+                expectClosest('getValue(person.name|, {\ntemp: test\n})', { parentVariablePath: ['person'] });
+                //cursor on the second line, a fresh local-scope expression
+                expectClosest('getValue(person.name, {\ntemp: test|\n})', { parentVariablePath: [''] });
+            });
+
+            it('handles the print shorthand (?) before member access', () => {
+                expectClosest('?m.|', { parentVariablePath: ['m'] });
+            });
+
+            it('handles the print keyword before member access', () => {
+                expectClosest('print m.|', { parentVariablePath: ['m'] });
+            });
+
+            it('handles a deeply nested dotted path', () => {
+                expectClosest('a.b.c.|', { parentVariablePath: ['a', 'b', 'c'] });
+            });
+
+            it('treats a trailing space as a fresh (local scope) expression position', () => {
+                expectClosest('m.top |', { parentVariablePath: [''] });
+            });
+
+            it('treats an open curly brace as a fresh (local scope) expression position', () => {
+                expectClosest('getValue({|', { parentVariablePath: [''] });
+            });
+
+            it('does not crash when the cursor column is past the end of the line', () => {
+                //the client can report a column well past the end of the text; we must not throw
                 session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
-                    text: '',
-                    column: 1,
+                    text: 'm',
+                    column: 50,
                     line: undefined,
                     frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
+                })).to.eql({ parentVariablePath: [''] });
             });
 
-            it('handles bad variable path columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: '1bad.path',
-                    column: 9,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('resolves indexed (numeric) access followed by a dot', () => {
+                //resolves to the indexed parent so we can complete the members of `arr[0]`
+                expectClosest('arr[0].|', { parentVariablePath: ['arr', '0'] });
             });
 
-            it('handles bad variable path columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: '1bad.path',
-                    column: 10,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            //a partial string-key access resolves to the parent object (so we can complete its keys) rather
+            //than collapsing to the local scope and dumping every global. `stringKeyClosing` is the text to
+            //append when accepting a key, so completions can close the access.
+            it('resolves partial string-key access to the parent object', () => {
+                expectClosest('m["fo|', { parentVariablePath: ['m'], stringKeyClosing: '"]' });
             });
 
-            it('handles simple input of just variable path columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 11,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
+            it('does not auto-close a string key that already has a closing bracket', () => {
+                //cursor is right after `fo`, with `"]` already present
+                expectClosest('m["fo|"]', { parentVariablePath: ['m'], stringKeyClosing: '' });
             });
 
-            it('handles simple input of just variable path columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 12,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
+            it('resolves member access on a completed string-key access (key stays quoted)', () => {
+                //the string key keeps its quotes so it stays case-sensitive when sent to the device
+                expectClosest('m.global["spoof"].|', { parentVariablePath: ['m', 'global', '"spoof"'] });
             });
 
-            it('handles simple input of just variable path with training period columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name.',
-                    column: 12,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person', 'name']
-                });
+            it('resolves member access on a completed string key that contains an escaped quote', () => {
+                //the escaped `""` is preserved in the path segment so the device lookup stays valid
+                expectClosest('m["a""b"].|', { parentVariablePath: ['m', '"a""b"'] });
+            });
+        });
+
+        describe('findVariableByPath', () => {
+            it('walks childVariables down a multi-segment path', () => {
+                const variables = [
+                    makeVariable('a', { children: [
+                        makeVariable('b', { children: [
+                            makeVariable('c')
+                        ] })
+                    ] })
+                ];
+                expect(session['findVariableByPath'](variables, ['a', 'b', 'c'], 0)?.name).to.eql('c');
             });
 
-            it('handles simple input of just variable path with training period columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name.',
-                    column: 13,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person', 'name']
-                });
+            it('returns null when the frameId does not match', () => {
+                const variables = [makeVariable('a')];
+                expect(session['findVariableByPath'](variables, ['a'], 1)).to.be.null;
             });
 
-            it('handles simple input of just variable path columnsStartAt1 false but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 9,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            //NOTE: this characterizes the current scope-blind behavior. The first segment is matched
+            //against whatever entry appears first in the list, with no notion of which one is the
+            //frame's actual local. See the matching GAP test in `completionsRequest (full flow)`.
+            it('returns the first matching entry by name (scope-blind)', () => {
+                const variables = [
+                    makeVariable('person', { children: [makeVariable('first')] }),
+                    makeVariable('person', { children: [makeVariable('second')] })
+                ];
+                expect(session['findVariableByPath'](variables, ['person'], 0)?.childVariables[0].name).to.eql('first');
             });
 
-            it('handles simple input of just variable path columnsStartAt1 true but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 10,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('matches names case-insensitively and tolerates quoted string keys', () => {
+                //device reports names lower-cased
+                const variables = [makeVariable('topref', { children: [makeVariable('spoof')] })];
+                //user typed `topRef` (different case) and a quoted string key
+                expect(session['findVariableByPath'](variables, ['topRef'], 0)?.name).to.eql('topref');
+                expect(session['findVariableByPath'](variables, ['topRef', '"spoof"'], 0)?.name).to.eql('spoof');
             });
 
-            it('returns undefined following closing brackets columnsStartAt1 false but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson().name',
-                    column: 16,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson[0].name',
-                    column: 17,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('matches a string key that contains a literal quote (escaped in the typed path)', () => {
+                //device reports the raw key `a"b`; the user typed it escaped as `["a""b"]`
+                const variables = [makeVariable('m', { children: [makeVariable('a"b')] })];
+                expect(session['findVariableByPath'](variables, ['m', '"a""b"'], 0)?.name).to.eql('a"b');
             });
+        });
 
-            it('returns undefined following closing brackets columnsStartAt1 true but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson().name',
-                    column: 17,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+        describe('completionsRequest (full flow)', () => {
+            let response: DebugProtocol.CompletionsResponse;
 
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson[0].name',
-                    column: 18,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
-            });
-
-
-            it('input after a open bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name)',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name)',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, test)',
-                    column: 26,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name, test]',
-                    column: 26,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, test)',
-                    column: 27,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name, test]',
-                    column: 27,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('handles multiline inout columnsStartAt1 false linesStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                session['_clientLinesStartAt1'] = false;
-
-                // cursor is on the first line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 20,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                // cursor is on the second line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 10,
-                    line: 1,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('handles multiline inout columnsStartAt1 true linesStartAt1 true', () => {
+            beforeEach(() => {
                 session['_clientColumnsStartAt1'] = true;
                 session['_clientLinesStartAt1'] = true;
+                session['variables'] = {};
+                response = {
+                    request_seq: 0,
+                    success: true,
+                    command: 'completions',
+                    seq: 0,
+                    type: 'response',
+                    body: { targets: [] }
+                } as DebugProtocol.CompletionsResponse;
+            });
 
-                // cursor is on the first line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 21,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
+            //run a completion request with the cursor at the end of `text` (the beforeEach reports 1-based columns)
+            async function requestCompletions(text: string, frameId = 0) {
+                await session['completionsRequest'](
+                    response,
+                    { text: text, column: text.length + 1, frameId: frameId } as DebugProtocol.CompletionsArguments
+                );
+            }
+
+            function targetLabels() {
+                return (response.body.targets ?? []).map(target => target.label);
+            }
+
+            function findTarget(label: string) {
+                return response.body.targets.find(target => target.label === label);
+            }
+
+            //seed the frame's local scope container the same way scopesRequest/populateScopeVariables would
+            function seedLocals(children: AugmentedVariable[], frameId = 0) {
+                const refId = session['getEvaluateRefId']('$$locals', frameId);
+                session['variables'][refId] = {
+                    name: 'Local',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: frameId,
+                    isScope: true,
+                    variablesReference: refId,
+                    childVariables: children
+                } as AugmentedVariable;
+            }
+
+            //the EvaluateContainer the device adapter returns for an associative array with the given string keys
+            function deviceAssociativeArray(name: string, keys: string[]): EvaluateContainer {
+                return {
+                    name: name,
+                    evaluateName: name,
+                    type: VariableType.AssociativeArray,
+                    keyType: 'String',
+                    value: 'roAssociativeArray',
+                    children: keys.map(key => ({
+                        name: key,
+                        evaluateName: `${name}.${key}`,
+                        type: VariableType.String,
+                        value: '',
+                        keyType: null,
+                        children: []
+                    })),
+                    indexedVariables: 0,
+                    namedVariables: keys.length
+                } as unknown as EvaluateContainer;
+            }
+
+            it('returns object members (fields + interface methods) for dot access, without globals', async () => {
+                seedLocals([
+                    makeVariable('person', { type: VariableType.AssociativeArray, children: [
+                        makeVariable('firstName'),
+                        makeVariable('lastName')
+                    ] })
+                ]);
+
+                await requestCompletions('person.');
+
+                //child fields
+                expect(targetLabels()).to.include.members(['firstName', 'lastName']);
+                //ifAssociativeArray interface methods
+                expect(targetLabels()).to.include.members(['Count', 'Delete']);
+                //should NOT leak globals on member access
+                expect(targetLabels()).to.not.include('Abs');
+
+                //the child fields should be typed as `field`
+                const firstName = findTarget('firstName');
+                expect(firstName?.type).to.eql('field');
+                //after a trailing `.` the completion inserts at the cursor (nothing to replace yet).
+                //`start` is a 0-based offset into the line ("person." -> offset 7)
+                expect(firstName?.start).to.eql(7);
+                expect(firstName?.length).to.eql(0);
+            });
+
+            it('returns locals + globals + scope functions for an empty (local scope) expression', async () => {
+                seedLocals([makeVariable('localA')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([
+                    { name: 'MyScopeFunc', completionItemKind: 'function' }
+                ]);
+
+                await requestCompletions('');
+
+                expect(targetLabels()).to.include('localA'); //a local
+                expect(targetLabels()).to.include('Abs'); //a global
+                expect(targetLabels()).to.include('MyScopeFunc'); //a scope function
+            });
+
+            it('returns no completions when the parent variable cannot be resolved', async () => {
+                sinon.stub(rokuAdapter, 'getVariable').rejects(new Error('not found'));
+
+                await requestCompletions('doesNotExist.');
+
+                expect(response.body.targets).to.eql([]);
+            });
+
+            it('ranks local variables above globals', async () => {
+                seedLocals([makeVariable('localA')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                await requestCompletions('');
+
+                const local = findTarget('localA');
+                const global = findTarget('Abs');
+                expect(local?.sortText < global?.sortText, 'local variable should sort before global').to.be.true;
+            });
+
+            it('resolves the first segment against the frame locals, not a same-named nested field', async () => {
+                //the real local `person`
+                seedLocals([
+                    makeVariable('person', { type: VariableType.AssociativeArray, children: [makeVariable('firstName')] })
+                ]);
+                //a nested `person` field that lingers in the flat `variables` map; it must NOT shadow the real local
+                session['variables'][9999] = makeVariable('person', {
+                    type: VariableType.AssociativeArray,
+                    variablesReference: 9999,
+                    children: [makeVariable('wrongField')]
                 });
 
-                // cursor is on the second line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 11,
-                    line: 2,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
+                await requestCompletions('person.');
 
+                expect(targetLabels()).to.include('firstName');
+                expect(targetLabels()).to.not.include('wrongField');
+            });
+
+            it('completes string keys with a text-edit that closes the access and omits interface methods', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [
+                        makeVariable('firstName'),
+                        makeVariable('lastName')
+                    ] })
+                ]);
+
+                await requestCompletions('m["fo');
+
+                //the AA keys are offered
+                expect(targetLabels()).to.include.members(['firstName', 'lastName']);
+                //ifAssociativeArray methods are NOT valid string keys, so they are suppressed
+                expect(targetLabels()).to.not.include('Count');
+
+                const firstName = findTarget('firstName');
+                //accepting inserts the key and closes the access, replacing the typed `fo`
+                //(`start` is the 0-based offset of `f` in `m["fo`)
+                expect(firstName.text).to.eql('firstName"]');
+                expect(firstName.start).to.eql(3);
+                expect(firstName.length).to.eql(2);
+            });
+
+            it('escapes embedded double-quotes when inserting a string-key completion', async () => {
+                //a key whose name contains a literal `"` (BrightScript escapes a `"` inside a string as `""`)
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('a"b')] })
+                ]);
+
+                await requestCompletions('m["');
+
+                const key = findTarget('a"b');
+                //the label stays human-readable, but the inserted text escapes the `"` so the access is
+                //valid: `m["` + `a""b"]` -> `m["a""b"]`
+                expect(key.text).to.eql('a""b"]');
+            });
+
+            it('escapes a quote-only key so the completed access is the literal-quote form', async () => {
+                //the key is a single `"`; the valid source form is `m[""""]` (four quotes = the string `"`)
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('"')] })
+                ]);
+
+                await requestCompletions('m["');
+
+                const key = findTarget('"');
+                //`m["` + `"""]` -> `m[""""]`
+                expect(key.text).to.eql('"""]');
+            });
+
+            it('rewrites a non-identifier member as bracket access, consuming the dot', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [
+                        makeVariable('countrycode'),
+                        makeVariable('contry code') //a space -> not dot-accessible
+                    ] })
+                ]);
+
+                await requestCompletions('m.');
+
+                //a normal identifier key keeps dot access (no text override; the label is inserted after the `.`)
+                const normal = findTarget('countrycode');
+                expect(normal.text).to.be.undefined;
+
+                //a key with a space can't be dot-accessed, so it is rewritten as bracket access and the `.` is
+                //consumed: `m.` -> `m["contry code"]`
+                const spaced = findTarget('contry code');
+                expect(spaced.text).to.eql('["contry code"]');
+                expect(spaced.start).to.eql(1);
+                expect(spaced.length).to.eql(1);
+            });
+
+            it('escapes embedded quotes when rewriting a dot member as bracket access', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('a"b')] })
+                ]);
+
+                await requestCompletions('m.');
+
+                const key = findTarget('a"b');
+                //`m.` -> `m["a""b"]`
+                expect(key.text).to.eql('["a""b"]');
+                expect(key.start).to.eql(1);
+                expect(key.length).to.eql(1);
+            });
+
+            it('consumes the partial word and the dot when rewriting a dot member as bracket access', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('my-key')] })
+                ]);
+
+                await requestCompletions('m.my');
+
+                const key = findTarget('my-key');
+                //`m.my` -> `m["my-key"]` (the `.my` span is replaced)
+                expect(key.text).to.eql('["my-key"]');
+                expect(key.start).to.eql(1);
+                expect(key.length).to.eql(3);
+            });
+
+            function seedArray() {
+                seedLocals([
+                    makeVariable('arr', { type: VariableType.Array, children: [
+                        makeVariable('0'),
+                        makeVariable('1')
+                    ] })
+                ]);
+            }
+
+            it('offers array methods (not index entries) for member access on an array', async () => {
+                seedArray();
+
+                await requestCompletions('arr.');
+
+                //ifArray methods are offered
+                expect(targetLabels()).to.include.members(['Count', 'Push']);
+                //the integer indexes are NOT offered (`arr.0` / `arr.[0]` aren't valid)
+                expect(targetLabels()).to.not.include('0');
+                expect(targetLabels()).to.not.include('[0]');
+            });
+
+            it('offers no completions for a string-key access on an array', async () => {
+                seedArray();
+
+                //a string-key access on an array is invalid (arrays are integer-indexed)
+                await requestCompletions('arr["');
+
+                expect(response.body.targets).to.eql([]);
+            });
+
+            it('falls back to a device lookup and caches the result for the paused state', async () => {
+                //note: no locals are seeded, so the parent must be resolved from the device
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('person', ['firstName'])
+                );
+
+                await requestCompletions('person.');
+                expect(targetLabels()).to.include('firstName');
+                expect(getVariableStub.callCount).to.eql(1);
+
+                //a second identical request should be served from the cache without another device round-trip
+                await requestCompletions('person.');
+                expect(targetLabels()).to.include('firstName');
+                expect(getVariableStub.callCount).to.eql(1);
+
+                //resuming/stepping clears the cache, so the next lookup hits the device again
+                session['clearState']();
+                await requestCompletions('person.');
+                expect(getVariableStub.callCount).to.eql(2);
+            });
+
+            it('populates the frame locals on demand for local-scope completions', async () => {
+                //the locals scope exists but has not been populated yet (Variables panel not expanded)
+                const refId = session['getEvaluateRefId']('$$locals', 0);
+                session['variables'][refId] = {
+                    name: 'Locals',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: 0,
+                    isScope: true,
+                    variablesReference: refId,
+                    childVariables: []
+                } as AugmentedVariable;
+                //the device returns the frame's locals when asked
+                (rokuAdapter as any).getLocalVariables = (() => Promise.resolve(
+                    deviceAssociativeArray('$$locals', ['environment'])
+                )) as any;
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                await requestCompletions('');
+
+                //the local was fetched on demand (without the Variables panel being expanded)
+                expect(targetLabels()).to.include('environment');
+                //globals are still present
+                expect(targetLabels()).to.include('Abs');
+            });
+
+            it('anchors completions to the partial word so the client can filter as the user types', async () => {
+                seedLocals([makeVariable('spoofDetails')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                //the response must describe the span being replaced (`spo`, a 0-based offset of 0 spanning
+                //3 characters) so the client filters the list correctly as the user keeps typing
+                await requestCompletions('spo');
+
+                const local = findTarget('spoofDetails');
+                expect(local, 'local should be present in the response').to.exist;
+                expect(local.start).to.eql(0);
+                expect(local.length).to.eql(3);
+                //globals carry the same replacement range so the whole list filters consistently
+                const global = findTarget('Abs');
+                expect(global.start).to.eql(0);
+                expect(global.length).to.eql(3);
+            });
+
+            it('rebuilds an indexed path with bracket notation for the device lookup', async () => {
+                //no locals seeded, so resolution falls to the device
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('services[0]', ['id'])
+                );
+
+                await requestCompletions('services[0].');
+
+                //the index must be preserved as `[0]`, not flattened to the invalid `services.0`
+                expect(getVariableStub.calledWith('services[0]', 0)).to.be.true;
+                expect(targetLabels()).to.include('id');
+            });
+
+            it('resolves member access on a string-key result (m.global["spoof"].)', async () => {
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('m.global.spoof', ['countrycode', 'postalcode'])
+                );
+
+                await requestCompletions('m.global["spoof"].');
+
+                //the string key keeps its quotes so the device lookup stays `m.global["spoof"]` (case-sensitive)
+                expect(getVariableStub.calledWith('m.global["spoof"]', 0)).to.be.true;
+                expect(targetLabels()).to.include.members(['countrycode', 'postalcode']);
+                expect(targetLabels()).to.not.include('Abs');
+            });
+        });
+
+        describe('buildVariableExpression', () => {
+            it('uses dot access for identifiers and brackets for indexes and string keys', () => {
+                expect(session['buildVariableExpression'](['m', 'top'])).to.eql('m.top');
+                expect(session['buildVariableExpression'](['m', 'applicationServices', '0'])).to.eql('m.applicationServices[0]');
+                expect(session['buildVariableExpression'](['arr', '0', 'name'])).to.eql('arr[0].name');
+                //already-quoted string keys keep their quotes (stay case-sensitive on the device)
+                expect(session['buildVariableExpression'](['m', 'global', '"spoof"'])).to.eql('m.global["spoof"]');
+                expect(session['buildVariableExpression'](['m', 'my-key'])).to.eql('m["my-key"]');
+                //a `"` inside a key is escaped as `""` so the expression stays valid
+                expect(session['buildVariableExpression'](['m', 'a"b'])).to.eql('m["a""b"]');
+                expect(session['buildVariableExpression'](['m', '"'])).to.eql('m[""""]');
+                expect(session['buildVariableExpression']([''])).to.eql('');
             });
         });
     });
