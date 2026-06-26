@@ -455,10 +455,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         try {
             const packageEnd = this.logger.timeStart('log', 'Packaging');
             this.sendLaunchProgress('start', 'Packaging');
-            //build the main project and all component libraries at the same time
+            //stage the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
-                this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+                this.prepareComponentLibraries(this.launchConfiguration.componentLibraries)
+            ]);
+
+            //now that EVERY project is staged and postfixed, rewrite cross-project `Library` references to point
+            //at the postfixed file names. This must happen after all staging but before any project is zipped.
+            await this.projectManager.applyLibraryReferencePostfixes();
+
+            //finally, zip the main project and zip+upload+host the component libraries (all references are now fixed)
+            await Promise.all([
+                this.zipMainProject(),
+                this.hostAndUploadComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
             packageEnd();
 
@@ -1072,7 +1082,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
         }
+    }
 
+    /**
+     * Package the main project into its zip (or run the configured packageTask). This must run AFTER
+     * `applyLibraryReferencePostfixes` so the `Library` statement rewrites are included in the zip.
+     */
+    public async zipMainProject() {
         if (this.launchConfiguration.packageTask) {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
             await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
@@ -1139,12 +1155,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Stores the path to the staging folder for each component library
      */
-    protected async prepareAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
+    /**
+     * The output folder where component library zips are written and hosted from.
+     */
+    private get componentLibrariesOutDir() {
+        return s`${this.launchConfiguration.outDir}/component-libraries`;
+    }
+
+    /**
+     * Create and stage every component library project (copy files to staging, write breakpoints, and postfix
+     * each library's own files). This does NOT rewrite cross-project `Library` references, zip, or upload -
+     * those happen later so they can run after EVERY project (main + all libraries) has finished staging.
+     */
+    protected async prepareComponentLibraries(componentLibraries: ComponentLibraryConfiguration[]) {
         if (componentLibraries && componentLibraries.length > 0) {
-            let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
             //make sure this folder exists (and is empty)
-            await fsExtra.ensureDir(componentLibrariesOutDir);
-            await fsExtra.emptyDir(componentLibrariesOutDir);
+            await fsExtra.ensureDir(this.componentLibrariesOutDir);
+            await fsExtra.emptyDir(this.componentLibrariesOutDir);
 
             //create a ComponentLibraryProject for each component library
             for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
@@ -1154,7 +1181,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     new ComponentLibraryProject({
                         rootDir: componentLibrary.rootDir,
                         files: componentLibrary.files,
-                        outDir: componentLibrariesOutDir,
+                        outDir: this.componentLibrariesOutDir,
                         outFile: componentLibrary.outFile,
                         sourceDirs: componentLibrary.sourceDirs,
                         bsConst: componentLibrary.bsConst,
@@ -1167,27 +1194,32 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 );
             }
 
-            //prepare all of the libraries in parallel
-            let compLibPromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+            //stage+postfix all of the libraries in parallel
+            await Promise.all(
+                this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+                    await compLibProject.stage();
 
-                await compLibProject.stage();
+                    // Add breakpoint lines to the staging files and before publishing
+                    util.log('Adding stop statements for active breakpoints in Component Libraries');
 
-                // Add breakpoint lines to the staging files and before publishing
-                util.log('Adding stop statements for active breakpoints in Component Libraries');
+                    //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
+                    if (!this.enableDebugProtocol) {
+                        await this.breakpointManager.writeBreakpointsForProject(compLibProject);
+                    }
 
-                //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-                if (!this.enableDebugProtocol) {
-                    await this.breakpointManager.writeBreakpointsForProject(compLibProject);
-                }
+                    await compLibProject.postfixFiles();
+                })
+            );
+        }
+    }
 
-                await compLibProject.postfixFiles();
-
-                await compLibProject.zipPackage({ retainStagingFolder: true });
-            });
-
-            let needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
-
-            if (needToDeleteComplibs) {
+    /**
+     * Zip and upload every installable component library (in order), then start static file hosting. This must
+     * run AFTER `applyLibraryReferencePostfixes` so each library's zip contains the rewritten `Library` statements.
+     */
+    protected async hostAndUploadComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
+        if (componentLibraries && componentLibraries.length > 0) {
+            if (this.projectManager.componentLibraryProjects.some(x => x.install)) {
                 await rokuDeploy.deleteAllComponentLibraries({
                     host: this.launchConfiguration.host,
                     password: this.launchConfiguration.password,
@@ -1199,11 +1231,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 const compLibProject = this.projectManager.componentLibraryProjects[i];
 
                 if (compLibProject.install === true) {
-                    //wait for this complib to finish being staged and zipped
-                    await compLibPromises[i];
-
-                    await compLibProject.fixMainProjectLibraryDependency(this.projectManager.mainProject.stagingDir);
-                    await this.projectManager.mainProject.zipPackage({ retainStagingFolder: true });
+                    //zip this complib now that its `Library` references have been fixed
+                    await compLibProject.zipPackage({ retainStagingFolder: true });
 
                     if (componentLibraries[i].packageTask) {
                         await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
@@ -1234,17 +1263,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             }
 
-            let hostingPromise: Promise<any>;
-            // prepare static file hosting
-            hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
+            // start static file hosting
+            await this.componentLibraryServer.startStaticFileHosting(this.componentLibrariesOutDir, port, (message: string) => {
                 util.log(message);
             });
-
-            //wait for all component libaries to finish building, and the file hosting to start up (if enabled)
-            await Promise.all([
-                ...compLibPromises,
-                hostingPromise
-            ]);
         }
     }
 

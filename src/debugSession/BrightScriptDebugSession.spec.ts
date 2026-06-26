@@ -1601,20 +1601,29 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
-    describe('prepareAndHostComponentLibraries', () => {
+    describe('prepareComponentLibraries / hostAndUploadComponentLibraries', () => {
         function stubDefaults() {
             sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
-            sinon.stub(ComponentLibraryProject.prototype, 'fixMainProjectLibraryDependency').resolves();
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
             session['launchConfiguration'].host = '192.168.1.100';
             session['launchConfiguration'].password = 'test123';
             session.projectManager.mainProject = <any>{
                 stagingDir: s`${tempDir}/main-staging`,
                 zipPackage: sinon.stub().resolves()
             };
+        }
+
+        /**
+         * Run the two component-library phases in the same order launchRequest does: stage+postfix everything,
+         * then zip+upload+host. (The cross-project `Library` rewrite that sits between them is stubbed out here.)
+         */
+        async function prepareAndHost(libs: any[], port: number) {
+            await session['prepareComponentLibraries'](libs);
+            await session['hostAndUploadComponentLibraries'](libs, port);
         }
 
         it('installs libraries sequentially when marked install=true', async () => {
@@ -1626,7 +1635,7 @@ describe('BrightScriptDebugSession', () => {
                 return { message: 'success', results: [] };
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await prepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1644,7 +1653,7 @@ describe('BrightScriptDebugSession', () => {
                 return { message: 'success', results: [] };
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await prepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: undefined },
@@ -1660,7 +1669,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             const publishStub = sinon.stub(rokuDeploy, 'publish').resolves({ message: 'success', results: [] });
 
-            await session['prepareAndHostComponentLibraries']([
+            await prepareAndHost([
                 { rootDir: complib1Dir, outFile: 'testLib.zip', install: true }
             ] as any, 8080);
 
@@ -1677,7 +1686,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             sinon.stub(rokuDeploy, 'publish').rejects(new Error('Network error'));
 
-            await session['prepareAndHostComponentLibraries']([
+            await prepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
             ] as any, 8080);
 
@@ -1688,7 +1697,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
-            sinon.stub(ComponentLibraryProject.prototype, 'fixMainProjectLibraryDependency').resolves();
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
             session['launchConfiguration'].host = '192.168.1.100';
             session['launchConfiguration'].password = 'test123';
             session.projectManager.mainProject = <any>{
@@ -1712,7 +1721,7 @@ describe('BrightScriptDebugSession', () => {
                 return Promise.resolve({ message: 'success', results: [] });
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await prepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1734,7 +1743,7 @@ describe('BrightScriptDebugSession', () => {
 
             let errorThrown = false;
             try {
-                await session['prepareAndHostComponentLibraries']([
+                await prepareAndHost([
                     { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
                 ] as any, 8080);
             } catch (e) {
@@ -1751,7 +1760,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
 
-            await session['prepareAndHostComponentLibraries']([
+            await prepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: undefined }
             ] as any, 8080);
@@ -1762,7 +1771,7 @@ describe('BrightScriptDebugSession', () => {
         it('does not start server when no component libraries present', async () => {
             const serverStub = sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
 
-            await session['prepareAndHostComponentLibraries']([], 8080);
+            await prepareAndHost([], 8080);
 
             expect(serverStub.called).to.be.false;
         });
@@ -1771,7 +1780,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
-            await session['prepareAndHostComponentLibraries']([
+            await prepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true, packageTask: 'build:lib1' },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true, packageTask: 'build:lib2' },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: true }
@@ -1803,7 +1812,7 @@ describe('BrightScriptDebugSession', () => {
                 }
             };
 
-            await session['prepareAndHostComponentLibraries']([
+            await prepareAndHost([
                 {
                     rootDir: complib1Dir,
                     outFile: 'lib1.zip',
@@ -2334,7 +2343,10 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
             sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
             sinon.stub(session, 'prepareMainProject').resolves();
-            sinon.stub(session as any, 'prepareAndHostComponentLibraries').resolves();
+            sinon.stub(session as any, 'prepareComponentLibraries').resolves();
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
+            sinon.stub(session, 'zipMainProject').resolves();
+            sinon.stub(session as any, 'hostAndUploadComponentLibraries').resolves();
             sinon.stub(session, 'initRendezvousTracking').resolves();
             // Prevent createRokuAdapter from replacing the mock rokuAdapter with a real adapter
             sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
@@ -2416,6 +2428,64 @@ describe('BrightScriptDebugSession', () => {
                 await session.launchRequest({} as any, launchConfiguration);
 
                 expect(getProgressEvents()).to.be.empty;
+            });
+        });
+
+        describe('library reference postfixing lifecycle', () => {
+            /**
+             * Stub the staging, rewriting, and zipping/uploading phases so each records a marker when it runs,
+             * then run launchRequest and return the recorded order. The staging phases resolve asynchronously so
+             * the test proves the `Library` rewrite truly waits for BOTH staging branches to finish.
+             */
+            async function recordPhaseOrder() {
+                const order: string[] = [];
+                sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+                sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
+                sinon.stub(session, 'initRendezvousTracking').resolves();
+                sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
+                sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
+                sinon.stub(session as any, 'publish').resolves();
+                rokuAdapter.connected = true;
+
+                //staging phases: resolve on a later tick so a missing barrier would let the rewrite sneak in early
+                sinon.stub(session, 'prepareMainProject').callsFake(async () => {
+                    await util.sleep(20);
+                    order.push('stage:main');
+                });
+                sinon.stub(session as any, 'prepareComponentLibraries').callsFake(async () => {
+                    await util.sleep(10);
+                    order.push('stage:complibs');
+                });
+                //the cross-project `Library` rewrite - must run AFTER all staging, BEFORE any zipping
+                sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').callsFake(() => {
+                    order.push('rewrite');
+                    return Promise.resolve();
+                });
+                //zip/upload phases - must run AFTER the rewrite
+                sinon.stub(session as any, 'zipMainProject').callsFake(() => {
+                    order.push('zip:main');
+                    return Promise.resolve();
+                });
+                sinon.stub(session as any, 'hostAndUploadComponentLibraries').callsFake(() => {
+                    order.push('upload:complibs');
+                    return Promise.resolve();
+                });
+
+                await session.launchRequest({} as any, launchConfiguration);
+                return order;
+            }
+
+            it('rewrites `Library` references only after ALL projects are staged, and before any zipping', async function() {
+                this.timeout(5000);
+                const order = await recordPhaseOrder();
+
+                const rewriteIndex = order.indexOf('rewrite');
+                //both staging phases complete before the rewrite starts
+                expect(order.indexOf('stage:main')).to.be.lessThan(rewriteIndex);
+                expect(order.indexOf('stage:complibs')).to.be.lessThan(rewriteIndex);
+                //all zipping/uploading happens after the rewrite
+                expect(order.indexOf('zip:main')).to.be.greaterThan(rewriteIndex);
+                expect(order.indexOf('upload:complibs')).to.be.greaterThan(rewriteIndex);
             });
         });
     });
