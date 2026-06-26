@@ -473,8 +473,11 @@ export class DebugProtocolClient {
                 getChildKeys: true,
                 getVirtualKeys: this.capabilities?.supportsVirtualVariables,
                 variablePathEntries: variablePathEntries.map(x => ({
-                    //remove leading and trailing quotes
-                    name: x.replace(/^"/, '').replace(/"$/, ''),
+                    //strip the surrounding quotes from a string key and un-escape doubled quotes (`""` -> `"`).
+                    //BrightScript escapes a `"` inside a string as `""`, so the key `"` arrives as the token `""""`.
+                    name: x.length >= 2 && x.startsWith('"') && x.endsWith('"')
+                        ? x.slice(1, -1).replace(/""/g, '"')
+                        : x.replace(/^"/, '').replace(/"$/, ''),
                     forceCaseInsensitive: !x.startsWith('"') && !x.endsWith('"'),
                     //vars that start with `'$'` are virtual (AA keys will wrapped in quotes so would start with `"$`
                     isVirtual: x.startsWith('$') // || x.startsWith('"$')

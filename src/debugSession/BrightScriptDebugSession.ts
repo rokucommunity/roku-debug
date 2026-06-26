@@ -2363,6 +2363,18 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             // key wrapped to close the access (ex: `firstName"]`) rather than appending a bare label. The
             // value is the closing text to append (empty when a closing bracket is already present).
             const stringKeyClosing = closestCompletionDetails.stringKeyClosing;
+
+            // The span of input each completion replaces. The client requests completions once (at the first
+            // character) and then filters the list as the user keeps typing, so without an explicit range that
+            // incremental filtering is anchored incorrectly.
+            const replaceRange = this.getCompletionReplaceRange(args);
+            // Whether the character immediately before the replaced span is a `.` (ie. the user is doing dot
+            // member access). A key that can't be dot-accessed (ex: `my key`) is rewritten as bracket access,
+            // which has to consume that `.` so `m.` becomes `m["my key"]` rather than `m.["my key"]`.
+            const lines = args.text.split('\n');
+            const targetLine = lines[this.toDebuggerLine(args.line, 0)] ?? '';
+            const precededByDot = targetLine[replaceRange.start - 1] === '.';
+
             // Get the completions if the variable path was valid
             if (parentVariablePath) {
 
@@ -2415,8 +2427,17 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                             sortText: `${CompletionSortTier.Member}${v.name}`
                         };
                         if (stringKeyClosing !== undefined) {
-                            // Insert the key and close the access, ex: `firstName"]` (the replacement range is applied below)
-                            completionItem.text = `${v.name}${stringKeyClosing}`;
+                            // Insert the key and close the access, ex: `firstName"]` (the replacement range is applied
+                            // below). A `"` inside the key is escaped as `""` so the inserted string literal stays valid
+                            // (ex: a key of `a"b` is inserted as `a""b`).
+                            completionItem.text = `${v.name.replace(/"/g, '""')}${stringKeyClosing}`;
+                        } else if (!supplyLocalScopeCompletions && precededByDot && !/^[a-z_][a-z0-9_]*$/i.test(v.name)) {
+                            // The key can't be dot-accessed (ex: it has a space or a quote), so rewrite the access as
+                            // bracket notation and consume the `.` before the cursor: `m.` -> `m["my key"]`. A `"` in
+                            // the key is escaped as `""` so the inserted string literal stays valid.
+                            completionItem.text = `["${v.name.replace(/"/g, '""')}"]`;
+                            completionItem.start = replaceRange.start - 1;
+                            completionItem.length = replaceRange.length + 1;
                         }
                         completions.set(`${completionType}-${v.name}`, completionItem);
                     }
@@ -2476,13 +2497,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 }
             }
 
-            // Tell the client which span of input each completion replaces. The client only requests
-            // completions once (at the first character) and then filters the list as the user keeps typing,
-            // so without an explicit range that incremental filtering is anchored incorrectly.
-            const replaceRange = this.getCompletionReplaceRange(args);
+            // Apply the default replacement span to every completion that didn't already set its own (bracket
+            // rewrites above use an extended range that also consumes the preceding `.`).
             for (const target of completions.values()) {
-                target.start = replaceRange.start;
-                target.length = replaceRange.length;
+                if (target.start === undefined) {
+                    target.start = replaceRange.start;
+                    target.length = replaceRange.length;
+                }
             }
 
             response.body = {
@@ -2716,8 +2737,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             if (index === 0) {
                 return segment;
             }
-            //already-quoted string key (preserve the quotes so the device matches it case-sensitively)
-            if (segment.startsWith('"') && segment.endsWith('"')) {
+            //already-quoted string key (preserve the quotes so the device matches it case-sensitively).
+            //A lone `"` is not a quoted literal (the shortest is `""`), so require at least 2 chars.
+            if (segment.length >= 2 && segment.startsWith('"') && segment.endsWith('"')) {
                 return `${expression}[${segment}]`;
             }
             if (/^[0-9]+$/.test(segment)) {

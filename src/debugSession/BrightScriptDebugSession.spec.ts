@@ -2228,6 +2228,11 @@ describe('BrightScriptDebugSession', () => {
                 //the string key keeps its quotes so it stays case-sensitive when sent to the device
                 expectClosest('m.global["spoof"].|', { parentVariablePath: ['m', 'global', '"spoof"'] });
             });
+
+            it('resolves member access on a completed string key that contains an escaped quote', () => {
+                //the escaped `""` is preserved in the path segment so the device lookup stays valid
+                expectClosest('m["a""b"].|', { parentVariablePath: ['m', '"a""b"'] });
+            });
         });
 
         describe('findVariableByPath', () => {
@@ -2264,6 +2269,12 @@ describe('BrightScriptDebugSession', () => {
                 //user typed `topRef` (different case) and a quoted string key
                 expect(session['findVariableByPath'](variables, ['topRef'], 0)?.name).to.eql('topref');
                 expect(session['findVariableByPath'](variables, ['topRef', '"spoof"'], 0)?.name).to.eql('spoof');
+            });
+
+            it('matches a string key that contains a literal quote (escaped in the typed path)', () => {
+                //device reports the raw key `a"b`; the user typed it escaped as `["a""b"]`
+                const variables = [makeVariable('m', { children: [makeVariable('a"b')] })];
+                expect(session['findVariableByPath'](variables, ['m', '"a""b"'], 0)?.name).to.eql('a"b');
             });
         });
 
@@ -2436,6 +2447,83 @@ describe('BrightScriptDebugSession', () => {
                 expect(firstName.length).to.eql(2);
             });
 
+            it('escapes embedded double-quotes when inserting a string-key completion', async () => {
+                //a key whose name contains a literal `"` (BrightScript escapes a `"` inside a string as `""`)
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('a"b')] })
+                ]);
+
+                await requestCompletions('m["');
+
+                const key = findTarget('a"b');
+                //the label stays human-readable, but the inserted text escapes the `"` so the access is
+                //valid: `m["` + `a""b"]` -> `m["a""b"]`
+                expect(key.text).to.eql('a""b"]');
+            });
+
+            it('escapes a quote-only key so the completed access is the literal-quote form', async () => {
+                //the key is a single `"`; the valid source form is `m[""""]` (four quotes = the string `"`)
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('"')] })
+                ]);
+
+                await requestCompletions('m["');
+
+                const key = findTarget('"');
+                //`m["` + `"""]` -> `m[""""]`
+                expect(key.text).to.eql('"""]');
+            });
+
+            it('rewrites a non-identifier member as bracket access, consuming the dot', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [
+                        makeVariable('countrycode'),
+                        makeVariable('contry code') //a space -> not dot-accessible
+                    ] })
+                ]);
+
+                await requestCompletions('m.');
+
+                //a normal identifier key keeps dot access (no text override; the label is inserted after the `.`)
+                const normal = findTarget('countrycode');
+                expect(normal.text).to.be.undefined;
+
+                //a key with a space can't be dot-accessed, so it is rewritten as bracket access and the `.` is
+                //consumed: `m.` -> `m["contry code"]`
+                const spaced = findTarget('contry code');
+                expect(spaced.text).to.eql('["contry code"]');
+                expect(spaced.start).to.eql(1);
+                expect(spaced.length).to.eql(1);
+            });
+
+            it('escapes embedded quotes when rewriting a dot member as bracket access', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('a"b')] })
+                ]);
+
+                await requestCompletions('m.');
+
+                const key = findTarget('a"b');
+                //`m.` -> `m["a""b"]`
+                expect(key.text).to.eql('["a""b"]');
+                expect(key.start).to.eql(1);
+                expect(key.length).to.eql(1);
+            });
+
+            it('consumes the partial word and the dot when rewriting a dot member as bracket access', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('my-key')] })
+                ]);
+
+                await requestCompletions('m.my');
+
+                const key = findTarget('my-key');
+                //`m.my` -> `m["my-key"]` (the `.my` span is replaced)
+                expect(key.text).to.eql('["my-key"]');
+                expect(key.start).to.eql(1);
+                expect(key.length).to.eql(3);
+            });
+
             function seedArray() {
                 seedLocals([
                     makeVariable('arr', { type: VariableType.Array, children: [
@@ -2568,6 +2656,9 @@ describe('BrightScriptDebugSession', () => {
                 //already-quoted string keys keep their quotes (stay case-sensitive on the device)
                 expect(session['buildVariableExpression'](['m', 'global', '"spoof"'])).to.eql('m.global["spoof"]');
                 expect(session['buildVariableExpression'](['m', 'my-key'])).to.eql('m["my-key"]');
+                //a `"` inside a key is escaped as `""` so the expression stays valid
+                expect(session['buildVariableExpression'](['m', 'a"b'])).to.eql('m["a""b"]');
+                expect(session['buildVariableExpression'](['m', '"'])).to.eql('m[""""]');
                 expect(session['buildVariableExpression']([''])).to.eql('');
             });
         });

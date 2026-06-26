@@ -1150,6 +1150,24 @@ describe('DebugProtocolClient', () => {
                 }]
             } as VariablesRequest['data']);
         });
+
+        it('strips surrounding quotes and un-escapes doubled quotes in string-key path entries', async () => {
+            await connect();
+
+            plugin.pushResponse(VariablesResponse.fromJson({
+                requestId: 1,
+                variables: []
+            }));
+
+            //getVariablePath yields the raw token text for string keys: `"spoof"`, `"a""b"`, and `""""`.
+            //In BrightScript a `"` inside a string is escaped as `""`, so the device must receive the
+            //un-escaped key (ex: `""""` is the single character `"`).
+            await client.getVariables(['m', '"spoof"', '"a""b"', '""""']);
+
+            expect(
+                plugin.getRequest<VariablesRequest>(-1).data.variablePathEntries.map(x => x.name)
+            ).to.eql(['m', 'spoof', 'a"b', '"']);
+        });
     });
 
     describe('sendRequest', () => {
