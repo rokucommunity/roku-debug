@@ -1487,13 +1487,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         const needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
         if (needToDeleteComplibs) {
-            await rokuDeploy.deleteAllComponentLibraries({
-                host: this.launchConfiguration.host,
-                password: this.launchConfiguration.password,
-                username: this.launchConfiguration.username || 'rokudev'
-            });
+            await this.deleteAllComponentLibraries();
         }
 
+        //install component libraries strictly in their declared order (which must be dependency order:
+        //a library may only depend on libraries declared before it). Each install is fully awaited before the
+        //next begins, and a failure aborts the launch — installing out of order, or continuing past a failed
+        //install, leaves the device with dangling `Library` references that fail to compile.
         for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
             const compLibProject = this.projectManager.componentLibraryProjects[i];
 
@@ -1522,10 +1522,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     options.outFile = path.basename(componentLibraries[i].packagePath);
                 }
 
+                util.log(`Installing component library ${i} (${compLibProject.outFile})`);
                 try {
                     await rokuDeploy.publish(options);
+                    util.log(`Installed component library ${i} (${compLibProject.outFile})`);
                 } catch (error) {
-                    this.logger.error(`Error installing component library ${i}`, error);
+                    //do NOT continue installing further libraries (or publishing the main app) - a failed install
+                    //here means later libraries and the main app would reference a library that isn't on the device
+                    this.logger.error(`Error installing component library ${i} (${compLibProject.outFile})`, error);
+                    throw error;
                 }
             }
         }
@@ -1539,6 +1544,101 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             ...packagePromises,
             hostingPromise
         ]);
+    }
+
+    /**
+     * Delete every component library installed on the device.
+     *
+     * A complib can only depend on complibs the user declared BEFORE it, so the user's configured order is already
+     * dependency order. Deleting in the REVERSE of that order therefore deletes each complib before the ones it
+     * depends on, avoiding compile errors entirely. We use that reverse order as the delete priority.
+     *
+     * Anything still installed that the user did NOT configure (e.g. leftovers from a previous session) has no known
+     * order, so we fall back to compile-error tolerance for those: deleting a complib while another still references
+     * it fails with a compile error, which we ignore and retry later (after its dependent is gone). We finish when
+     * every complib is gone, and fail if the only complibs left are ones that can never be deleted.
+     */
+    private async deleteAllComponentLibraries() {
+        const deviceOptions = {
+            host: this.launchConfiguration.host,
+            password: this.launchConfiguration.password,
+            username: this.launchConfiguration.username || 'rokudev'
+        };
+
+        const getInstalledComplibs = async () => {
+            // eslint-disable-next-line @typescript-eslint/dot-notation
+            const packages = (await rokuDeploy['getInstalledPackages'](deviceOptions)) as Array<{ appType: 'channel' | 'dcl'; archiveFileName: string }>;
+            return packages.filter(x => x.appType === 'dcl');
+        };
+
+        //The user's configured complibs, in REVERSE declaration order (dependents before their dependencies). A
+        //complib's position here is its delete priority; complibs the user didn't configure aren't in this list.
+        const deletePriority = this.projectManager.componentLibraryProjects
+            .map(complib => complib.outFile)
+            .reverse();
+        //sort key for a complib: its index in `deletePriority`, or Infinity (delete last) if it wasn't configured
+        const priorityOf = (fileName: string) => {
+            const index = deletePriority.indexOf(fileName);
+            return index === -1 ? Infinity : index;
+        };
+
+        const maxAttempts = 5;
+        //how many times we've tried to delete each complib, and the ones we've given up on after maxAttempts
+        const attempts = new Map<string, number>();
+        const failed = new Set<string>();
+
+        while (true) {
+            //re-fetch the installed complibs after each iteration: deleting one complib can cascade-delete others, so never delete a stale entry
+            const installed = await getInstalledComplibs();
+
+            const attemptCount = (complib: { archiveFileName: string }) => attempts.get(complib.archiveFileName) ?? 0;
+
+            //of the complibs we haven't given up on, pick the next to delete: fewest attempts first (spreads retries
+            //evenly so a dependent gets deleted before we circle back to a complib that previously failed), and among
+            //equal attempts, follow the reverse-configured delete priority (dependents before dependencies).
+            const candidates = installed.filter(complib => !failed.has(complib.archiveFileName));
+            const next = candidates.sort((a, b) =>
+                attemptCount(a) - attemptCount(b) ||
+                priorityOf(a.archiveFileName) - priorityOf(b.archiveFileName)
+            )[0];
+
+            //nothing left to try — done if the device is clear, otherwise hard-fail with whatever remains
+            if (!next) {
+                if (installed.length > 0) {
+                    throw new Error(`Failed to delete existing component libraries on device; ${installed.length} still installed: ${installed.map(x => x.archiveFileName).join(', ')}`);
+                }
+                return;
+            }
+
+            const fileName = next.archiveFileName;
+            attempts.set(fileName, (attempts.get(fileName) ?? 0) + 1);
+            try {
+                await rokuDeploy.deleteComponentLibrary({ ...deviceOptions, fileName: fileName });
+            } catch (error) {
+                //re-throw anything that isn't a dependency compile error (auth, network, etc.)
+                if (!this.isComponentLibraryDependencyCompileError(error)) {
+                    throw error;
+                }
+                //another not-yet-deleted complib still depends on this one. Give up on it once it's out of attempts;
+                //otherwise leave it pending so we retry after its dependents are gone.
+                if (attempts.get(fileName) >= maxAttempts) {
+                    failed.add(fileName);
+                }
+                this.logger.log(`Deferring delete of '${fileName}'; another component library still depends on it`);
+            }
+
+            //the Roku doesn't appreciate back-to-back deletes; give it a moment between requests
+            await util.sleep(10);
+        }
+    }
+
+    /**
+     * Is this error the device reporting a compile failure (which, during complib deletion, means another
+     * installed complib still references the one we tried to delete)?
+     */
+    private isComponentLibraryDependencyCompileError(error: any): boolean {
+        const message = `${error?.message ?? ''}`;
+        return /compile error|compilation failed/i.test(message);
     }
 
     protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments) {
