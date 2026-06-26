@@ -260,25 +260,50 @@ export class ProjectManager {
      * @return a full path to the file in the staging directory
      */
     public async getStagingFileInfo(debuggerPath: string) {
-        let project: Project;
-
         let componentLibraryIndex = fileUtils.getComponentLibraryIndexFromFileName(debuggerPath, componentLibraryPostfix);
-        //component libraries
+
+        //the path carries a `__lib<index>` postfix, so we know exactly which component library it belongs to
         if (componentLibraryIndex !== undefined) {
             let lib = this.componentLibraryProjects.find(x => x.libraryIndex === componentLibraryIndex);
-            if (lib) {
-                project = lib;
-            } else {
+            if (!lib) {
                 throw new Error(`There is no component library with index ${componentLibraryIndex}`);
             }
-            //standard project files
-        } else {
-            project = this.mainProject;
+            return this.buildStagingFileInfo(debuggerPath, lib);
         }
 
+        //No `__lib<index>` postfix on the path. It's either a main-project file, or a file from a
+        //component library that has postfixing disabled (those report device paths that look identical
+        //to the main project's). Try the main project first.
+        let stagingFileInfo = await this.buildStagingFileInfo(debuggerPath, this.mainProject);
+
+        //if the file actually exists in the main project, use it
+        if (stagingFileInfo && await fsExtra.pathExists(stagingFileInfo.absolutePath)) {
+            return stagingFileInfo;
+        }
+
+        //otherwise, fall back to any component library that has postfixing disabled, since those are the
+        //only other source of un-postfixed device paths. Use the first one that has the file on disk.
+        for (const lib of this.componentLibraryProjects) {
+            if (lib.enablePostfix === false) {
+                const libStagingFileInfo = await this.buildStagingFileInfo(debuggerPath, lib);
+                if (libStagingFileInfo && await fsExtra.pathExists(libStagingFileInfo.absolutePath)) {
+                    return libStagingFileInfo;
+                }
+            }
+        }
+
+        //nothing matched on disk; preserve prior behavior by returning the main-project result (if any)
+        return stagingFileInfo;
+    }
+
+    /**
+     * Resolve a debugger-reported path to a staging file within a specific project. Returns undefined if the
+     * path could not be mapped into that project's staging directory.
+     */
+    private async buildStagingFileInfo(debuggerPath: string, project: Project) {
         let relativePath: string;
 
-        //if the path starts with a scheme (i.e. pkg:/ or complib:/, we have an exact match.
+        //if the path starts with a scheme (i.e. pkg:/ or complib:/), we have an exact match.
         if (util.getFileScheme(debuggerPath)) {
             relativePath = util.removeFileScheme(debuggerPath);
         } else {
@@ -286,8 +311,7 @@ export class ProjectManager {
         }
         if (relativePath) {
             relativePath = fileUtils.removeLeadingSlash(
-                fileUtils.standardizePath(relativePath
-                )
+                fileUtils.standardizePath(relativePath)
             );
             return {
                 relativePath: relativePath,
@@ -971,6 +995,7 @@ export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
     install?: boolean;
+    enablePostfix?: boolean;
 }
 
 export class ComponentLibraryProject extends Project {
@@ -979,10 +1004,18 @@ export class ComponentLibraryProject extends Project {
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
         this.install = params.install ?? false;
+        this.enablePostfix = params.enablePostfix ?? true;
     }
     public outFile: string;
     public libraryIndex: number;
     public install: boolean;
+    /**
+     * Should this component library's `.brs` files be renamed with a `__lib<index>` postfix during staging?
+     * Postfixing is how the debugger maps a device-reported file path back to the component library it came
+     * from. When disabled, file names are left untouched (useful when a library loads files by a fixed name
+     * at runtime), at the cost of degraded source mapping for this library's files while debugging.
+     */
+    public enablePostfix: boolean;
     /**
      * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
      */
@@ -1057,10 +1090,16 @@ export class ComponentLibraryProject extends Project {
      * back to their original component library whenever the debugger truncates the file path.
      */
     public get postfix() {
-        return `${componentLibraryPostfix}${this.libraryIndex}`;
+        //when postfixing is disabled, return an empty postfix so all postfix-aware logic (file renaming,
+        //breakpoint path matching, source-location resolution) becomes a no-op for this library
+        return this.enablePostfix ? `${componentLibraryPostfix}${this.libraryIndex}` : '';
     }
 
     public async postfixFiles() {
+        //postfixing disabled for this library; leave file names and `uri=` references untouched
+        if (!this.enablePostfix) {
+            return;
+        }
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(

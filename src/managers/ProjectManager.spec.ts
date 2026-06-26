@@ -272,6 +272,176 @@ describe('ProjectManager', () => {
 
             expect(stub.called).to.be.true;
         });
+
+        it('falls back to a postfix-disabled component library when the file is not in the main project', async () => {
+            const disabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            //the file exists only in the disabled library's staging dir (not the main project)
+            fsExtra.outputFileSync(s`${disabledLib.stagingDir}/source/main.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/main.brs');
+            expect(info).to.include({
+                absolutePath: s`${disabledLib.stagingDir}/source/main.brs`,
+                relativePath: s`source/main.brs`
+            });
+            expect(info.project).to.equal(disabledLib);
+        });
+
+        it('prefers the main project over a postfix-disabled component library when both have the file', async () => {
+            const disabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${stagingDir}/source/main.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${disabledLib.stagingDir}/source/main.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/main.brs');
+            expect(info.absolutePath).to.equal(s`${stagingDir}/source/main.brs`);
+            expect(info.project).to.equal(manager.mainProject);
+        });
+
+        it('does not fall back to a component library that still has postfixing enabled', async () => {
+            const enabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [enabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            //even though an un-postfixed file is present in the enabled library, it must not be used as a fallback
+            fsExtra.outputFileSync(s`${enabledLib.stagingDir}/source/main.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/main.brs');
+            //resolves to the main project (prior behavior preserved), not the postfix-enabled library
+            expect(info.project).to.equal(manager.mainProject);
+            expect(info.absolutePath).to.equal(s`${stagingDir}/source/main.brs`);
+        });
+
+        it('when two postfix-disabled component libraries contain the same file, uses component library order', async () => {
+            const disabledLib0 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            const disabledLib1 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib1, disabledLib0];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${disabledLib0.stagingDir}/source/shared.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${disabledLib1.stagingDir}/source/shared.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/shared.brs');
+            expect(info.project).to.equal(disabledLib1);
+            expect(info.absolutePath).to.equal(s`${disabledLib1.stagingDir}/source/shared.brs`);
+        });
+
+        it('when two postfixed component libraries contain the same source file, resolves each postfix to the matching library', async () => {
+            const enabledLib0 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enhanceREPLCompletions: false
+            });
+            const enabledLib1 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [enabledLib1, enabledLib0];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${enabledLib0.stagingDir}/source/shared__lib0.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${enabledLib1.stagingDir}/source/shared__lib1.brs`, 'sub main()\nend sub');
+
+            const lib0Info = await manager.getStagingFileInfo('pkg:/source/shared__lib0.brs');
+            expect(lib0Info.project).to.equal(enabledLib0);
+            expect(lib0Info.absolutePath).to.equal(s`${enabledLib0.stagingDir}/source/shared__lib0.brs`);
+
+            const lib1Info = await manager.getStagingFileInfo('pkg:/source/shared__lib1.brs');
+            expect(lib1Info.project).to.equal(enabledLib1);
+            expect(lib1Info.absolutePath).to.equal(s`${enabledLib1.stagingDir}/source/shared__lib1.brs`);
+        });
+
+        it('resolves both mixed postfixed and non-postfixed duplicate filenames', async () => {
+            const disabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            const enabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib, enabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${disabledLib.stagingDir}/source/mixed.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${enabledLib.stagingDir}/source/mixed__lib1.brs`, 'sub main()\nend sub');
+
+            const nonPostfixedInfo = await manager.getStagingFileInfo('pkg:/source/mixed.brs');
+            expect(nonPostfixedInfo.project).to.equal(disabledLib);
+            expect(nonPostfixedInfo.absolutePath).to.equal(s`${disabledLib.stagingDir}/source/mixed.brs`);
+
+            const postfixedInfo = await manager.getStagingFileInfo('pkg:/source/mixed__lib1.brs');
+            expect(postfixedInfo.project).to.equal(enabledLib);
+            expect(postfixedInfo.absolutePath).to.equal(s`${enabledLib.stagingDir}/source/mixed__lib1.brs`);
+        });
     });
 
     describe('getSourceLocation', () => {
@@ -1835,6 +2005,42 @@ describe('ComponentLibraryProject', () => {
             expect(project.outFile).to.equal('PrettyComponent.zip');
             (project as any).computeOutFileName();
             expect(project.outFile).to.equal('PrettyComponent.zip');
+        });
+    });
+
+    describe('postfix', () => {
+        it('defaults enablePostfix to true and includes the library index in the postfix', () => {
+            params.libraryIndex = 2;
+            let project = new ComponentLibraryProject(params);
+            expect(project.enablePostfix).to.be.true;
+            expect(project.postfix).to.equal('__lib2');
+        });
+
+        it('returns an empty postfix when postfixing is disabled', () => {
+            params.libraryIndex = 2;
+            params.enablePostfix = false;
+            let project = new ComponentLibraryProject(params);
+            expect(project.enablePostfix).to.be.false;
+            expect(project.postfix).to.equal('');
+        });
+
+        it('leaves files untouched when postfixing is disabled', async () => {
+            params.enablePostfix = false;
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, '');
+            fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="CustomComponent.brs"/>
+                </component>
+            `);
+            await project.postfixFiles();
+            //the file was not renamed
+            expect(fsExtra.pathExistsSync(`${params.stagingDir}/source/main.brs`)).to.be.true;
+            //the uri reference was not rewritten
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/components/Component1.xml`).toString()
+            ).to.include('uri="CustomComponent.brs"');
         });
     });
 

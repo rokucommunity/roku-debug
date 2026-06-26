@@ -1395,6 +1395,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     sourceDirs: componentLibrary.sourceDirs,
                     bsConst: componentLibrary.bsConst,
                     install: componentLibrary.install,
+                    enablePostfix: componentLibrary.enablePostfix,
                     injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
                     raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
                     libraryIndex: libraryIndex,
