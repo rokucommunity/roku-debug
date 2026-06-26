@@ -341,6 +341,107 @@ describe('ProjectManager', () => {
             expect(info.project).to.equal(manager.mainProject);
             expect(info.absolutePath).to.equal(s`${stagingDir}/source/main.brs`);
         });
+
+        it('when two postfix-disabled component libraries contain the same file, uses component library order', async () => {
+            const disabledLib0 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            const disabledLib1 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib1, disabledLib0];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${disabledLib0.stagingDir}/source/shared.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${disabledLib1.stagingDir}/source/shared.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/shared.brs');
+            expect(info.project).to.equal(disabledLib1);
+            expect(info.absolutePath).to.equal(s`${disabledLib1.stagingDir}/source/shared.brs`);
+        });
+
+        it('when two postfixed component libraries contain the same source file, resolves each postfix to the matching library', async () => {
+            const enabledLib0 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enhanceREPLCompletions: false
+            });
+            const enabledLib1 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [enabledLib1, enabledLib0];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${enabledLib0.stagingDir}/source/shared__lib0.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${enabledLib1.stagingDir}/source/shared__lib1.brs`, 'sub main()\nend sub');
+
+            const lib0Info = await manager.getStagingFileInfo('pkg:/source/shared__lib0.brs');
+            expect(lib0Info.project).to.equal(enabledLib0);
+            expect(lib0Info.absolutePath).to.equal(s`${enabledLib0.stagingDir}/source/shared__lib0.brs`);
+
+            const lib1Info = await manager.getStagingFileInfo('pkg:/source/shared__lib1.brs');
+            expect(lib1Info.project).to.equal(enabledLib1);
+            expect(lib1Info.absolutePath).to.equal(s`${enabledLib1.stagingDir}/source/shared__lib1.brs`);
+        });
+
+        it('resolves both mixed postfixed and non-postfixed duplicate filenames', async () => {
+            const disabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            const enabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib, enabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${disabledLib.stagingDir}/source/mixed.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${enabledLib.stagingDir}/source/mixed__lib1.brs`, 'sub main()\nend sub');
+
+            const nonPostfixedInfo = await manager.getStagingFileInfo('pkg:/source/mixed.brs');
+            expect(nonPostfixedInfo.project).to.equal(disabledLib);
+            expect(nonPostfixedInfo.absolutePath).to.equal(s`${disabledLib.stagingDir}/source/mixed.brs`);
+
+            const postfixedInfo = await manager.getStagingFileInfo('pkg:/source/mixed__lib1.brs');
+            expect(postfixedInfo.project).to.equal(enabledLib);
+            expect(postfixedInfo.absolutePath).to.equal(s`${enabledLib.stagingDir}/source/mixed__lib1.brs`);
+        });
     });
 
     describe('getSourceLocation', () => {
