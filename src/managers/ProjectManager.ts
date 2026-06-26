@@ -756,6 +756,8 @@ export class ComponentLibraryProject extends Project {
                 path.join(this.stagingDir, '**/*.xml'),
                 path.join(this.stagingDir, '**/*.brs')
             ],
+            //do not throw an error whenever we match zero files with the given glob (e.g. if there are no brs files or no xml files in the library)
+            allowEmptyPaths: true,
             from: /uri\s*=\s*"(.+)\.brs"/gi,
             to: (match: string) => {
                 // only alter file ending if it is a) pkg:/ url or b) relative url

@@ -762,6 +762,40 @@ describe('ComponentLibraryProject', () => {
                 </component>
             `);
         });
+
+        it('does not crash when the library has no .brs files (only .xml)', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            //only an xml file exists in staging - the `**/*.brs` glob will match zero files
+            fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="CustomComponent.brs"/>
+                </component>
+            `);
+            //should not throw "No files match the pattern"
+            await project.postfixFiles();
+            //the xml reference should still get postfixed
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/components/Component1.xml`).toString()
+            ).to.eql(`
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="CustomComponent__lib0.brs"/>
+                </component>
+            `);
+        });
+
+        it('does not crash when the library has no .xml files (only .brs)', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            //only a brs file exists in staging - the `**/*.xml` glob will match zero files
+            fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, `sub main()\nend sub`);
+            //should not throw "No files match the pattern"
+            await project.postfixFiles();
+            //the brs file should be untouched (no uri references to rewrite)
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/source/main.brs`).toString()
+            ).to.eql(`sub main()\nend sub`);
+        });
     });
 
     describe('stage', () => {
