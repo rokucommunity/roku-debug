@@ -91,6 +91,65 @@ export class ProjectManager {
     }
 
     /**
+     * Rewrite `Library "file.brs"` statements across every project (the main project and every component library)
+     * so that a reference to a file exported by a component library points at that library's postfixed file name.
+     *
+     * The rewrite is intentionally targeted to avoid mistaken replacements: a statement is only rewritten when
+     *  1. the consuming project declares it requires that library (via `bs_libs_required`), AND
+     *  2. that required library actually exports a file with the referenced name (from its `libsource`).
+     * If a required library name isn't provided by any loaded library, it's silently skipped. This must run AFTER
+     * every component library has been staged and postfixed (so each library's name and exports are known).
+     */
+    public async applyLibraryReferencePostfixes() {
+        //map each component library's provided name to the library that provides it
+        const libraryByName = new Map<string, ComponentLibraryProject>();
+        for (const compLibProject of this.componentLibraryProjects) {
+            if (compLibProject.name) {
+                libraryByName.set(compLibProject.name, compLibProject);
+            }
+        }
+
+        for (const consumer of this.getAllProjects()) {
+            //build the set of files this consumer is allowed to rewrite, mapped to the library that exports them.
+            //only files from libraries this consumer actually requires are eligible.
+            const providerByFileName = new Map<string, ComponentLibraryProject>();
+            for (const requiredName of consumer.requiredLibraryNames ?? []) {
+                const providingLibrary = libraryByName.get(requiredName);
+                //silently skip a required library that no loaded library provides
+                if (!providingLibrary) {
+                    continue;
+                }
+                for (const fileName of providingLibrary.getExportedLibraryFileNames()) {
+                    providerByFileName.set(fileName, providingLibrary);
+                }
+            }
+
+            //nothing this consumer requires is available, so there's nothing to rewrite
+            if (providerByFileName.size === 0) {
+                continue;
+            }
+
+            await replaceInFile({
+                files: [
+                    path.join(consumer.stagingDir, '**/*.brs')
+                ],
+                //don't throw when a project has no brs files
+                allowEmptyPaths: true,
+                from: /(Library\s+")([^"]+)(")/gi,
+                to: (match: string, prefix: string, referencedFileName: string, suffix: string) => {
+                    const providingLibrary = providerByFileName.get(referencedFileName);
+                    //leave the statement untouched if it doesn't reference a file from a required library
+                    if (!providingLibrary) {
+                        return match;
+                    }
+                    const postfixedFileName = referencedFileName.replace(/\.brs$/i, `${providingLibrary.postfix}.brs`);
+                    return `${prefix}${postfixedFileName}${suffix}`;
+                }
+            });
+        }
+    }
+
+    /**
      * Get staging-dir info for every project. The main project is always first; component libraries
      * follow in order. This main-first ordering is a contract that clients rely on, so it is covered
      * by unit tests to guard against regressions.
@@ -388,6 +447,11 @@ export class Project {
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
     public enhanceREPLCompletions: boolean;
+    /**
+     * The names of the component libraries this project imports (declared via `bs_libs_required` in its manifest).
+     * Populated during `stage()`. Used to know which libraries' files a `Library` statement is allowed to reference.
+     */
+    public requiredLibraryNames: string[] = [];
 
     /**
      * A BrighterScript project for the stagingDir
@@ -441,9 +505,25 @@ export class Project {
 
         await this.transformManifestWithBsConst();
 
+        await this.loadRequiredLibraryNames();
+
         await this.copyAndTransformRaleTrackerTask();
 
         await this.copyAndTransformRDB();
+    }
+
+    /**
+     * Read the staged manifest's `bs_libs_required` value and store the (comma-delimited) library names this
+     * project imports. These names are later matched against the libraries that actually provide them so that
+     * only `Library` statements referencing files from a required library get postfixed.
+     */
+    private async loadRequiredLibraryNames() {
+        const manifestPath = s`${this.stagingDir}/manifest`;
+        const manifestValues = await util.convertManifestToObject(manifestPath);
+        const required = manifestValues?.bs_libs_required;
+        this.requiredLibraryNames = required
+            ? required.split(',').map(name => name.trim()).filter(name => name.length > 0)
+            : [];
     }
 
     /**
@@ -1120,6 +1200,8 @@ export class ComponentLibraryProject extends Project {
                 path.join(this.stagingDir, '**/*.xml'),
                 path.join(this.stagingDir, '**/*.brs')
             ],
+            //do not throw an error whenever we match zero files with the given glob (e.g. if there are no brs files or no xml files in the library)
+            allowEmptyPaths: true,
             from: /uri\s*=\s*"(.+)\.brs"/gi,
             to: (match: string) => {
                 // only alter file ending if it is a) pkg:/ url or b) relative url
@@ -1132,5 +1214,20 @@ export class ComponentLibraryProject extends Project {
                 }
             }
         });
+    }
+
+    /**
+     * The set of `.brs` file names (basename only, e.g. `LibAlpha.brs`) that this component library exports
+     * from its `libsource` folder. These are the only files a consuming project may reference in a `Library`
+     * statement, so only files under `libsource` are eligible - any other staged `.brs` (components, source, etc.)
+     * is NOT a library export and must never be rewritten. Computed from `fileMappings`, which retain the
+     * original (pre-postfix) file names.
+     */
+    public getExportedLibraryFileNames(): string[] {
+        return (this.fileMappings ?? [])
+            //only files inside a `libsource` folder are library exports
+            .filter(fileMapping => /(^|[\\/])libsource[\\/]/i.test(fileMapping.dest))
+            .map(fileMapping => path.basename(fileMapping.dest))
+            .filter(fileName => /\.brs$/i.test(fileName));
     }
 }
