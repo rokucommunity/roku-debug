@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
-import { DebugSession, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
+import { DebugSession, InitializedEvent, Logger as DapLogger, logger as dapLogger, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
@@ -19,11 +19,14 @@ import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } from './Events';
+import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
-import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { PerfettoManager } from '../PerfettoManager';
+
+//DebugSession.shutdown() calls process.exit() after a sleep, so we need to prevent that during tests. This should not be a mock, it needs to be permanent for this flow
+DebugSession.prototype.shutdown = () => { };
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -59,9 +62,13 @@ describe('BrightScriptDebugSession', () => {
 
         try {
             session = new BrightScriptDebugSession();
+            session['publishTimeout'] = 1_000;
         } catch (e) {
             console.log(e);
         }
+        //always resolve the stagingDefered promise right away since most tests don't care about staging and this prevents a lot of unnecessary waiting
+        session['stagingDefered'].resolve();
+
         errorSpy = sinon.spy(session.logger, 'error');
         //override the error response function and throw an exception so we can fail any tests
         (session as any).sendErrorResponse = (...args: string[]) => {
@@ -188,6 +195,7 @@ describe('BrightScriptDebugSession', () => {
             developerEnabled: true
         }));
         sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+        sinon.stub(session, 'setupProcessErrorHandlers');
 
         let sendEvent = session.sendEvent.bind(session);
         sinon.stub(session, 'sendEvent').callsFake((event) => {
@@ -237,6 +245,9 @@ describe('BrightScriptDebugSession', () => {
                 }
             }
         } as Partial<LaunchConfiguration> as LaunchConfiguration);
+
+        //publish now runs inside configurationDoneRequest, so invoke it to complete the launch flow
+        await (session as any).configurationDoneRequest({} as any, {} as any);
 
         expect(publishStub.getCall(0).args[0].packageUploadOverrides).to.eql({
             route: '1234',
@@ -462,6 +473,198 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('start', () => {
+        let setupStub: sinonActual.SinonStub;
+
+        beforeEach(() => {
+            setupStub = sinon.stub(dapLogger, 'setup');
+            // stub the base class start() so we don't need real streams
+            sinon.stub(DebugSession.prototype, 'start').returns(undefined);
+            // stub so process error handlers aren't registered for real during tests
+            // (those are covered by logging.spec.ts)
+            sinon.stub(session, 'setupProcessErrorHandlers');
+        });
+
+        it('does not configure DAP logging when ROKU_DAP_LOG_FILE is not set', () => {
+            delete process.env.ROKU_DAP_LOG_FILE;
+            session.start(null as any, null as any);
+            expect(setupStub.called).to.be.false;
+        });
+
+        it('calls dapLogger.setup with the env var path when ROKU_DAP_LOG_FILE is set', () => {
+            process.env.ROKU_DAP_LOG_FILE = '/tmp/test-dap.log';
+            try {
+                session.start(null as any, null as any);
+                expect(setupStub.calledOnce).to.be.true;
+                expect(setupStub.firstCall.args[0]).to.equal(DapLogger.LogLevel.Error);
+                expect(setupStub.firstCall.args[1]).to.equal('/tmp/test-dap.log');
+            } finally {
+                delete process.env.ROKU_DAP_LOG_FILE;
+            }
+        });
+    });
+
+    describe('setupProcessErrorHandlers', () => {
+        let sendEventStub: sinonActual.SinonStub;
+        let shutdownStub: sinonActual.SinonStub;
+
+        beforeEach(() => {
+            sendEventStub = sinon.stub(session, 'sendEvent');
+            shutdownStub = sinon.stub(session, 'shutdown').resolves();
+            session['processErrorHandlersRegistered'] = false;
+        });
+
+        afterEach(() => {
+            session.teardownProcessErrorHandlers();
+        });
+
+        it('registers handlers only once even when called multiple times', () => {
+            const onSpy = sinon.spy(process, 'on');
+            session.setupProcessErrorHandlers();
+            session.setupProcessErrorHandlers();
+            expect(onSpy.withArgs('uncaughtException').callCount).to.equal(1);
+        });
+
+        it('sends ProcessCrashEvent for uncaughtException', () => {
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('test crash'));
+            expect(sendEventStub.calledOnce).to.be.true;
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.type).to.equal('uncaughtException');
+            expect(event.body.message).to.equal('test crash');
+        });
+
+        it('sends ProcessCrashEvent for unhandledRejection', () => {
+            session.setupProcessErrorHandlers();
+            session['_unhandledRejectionHandler'](new Error('rejected'));
+            expect(sendEventStub.calledOnce).to.be.true;
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.type).to.equal('unhandledRejection');
+            expect(event.body.message).to.equal('rejected');
+        });
+
+        it('includes error stack in ProcessCrashEvent', () => {
+            const error = new Error('test crash');
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const event = sendEventStub.firstCall.args[0];
+            expect(event.body.stack).to.equal(error.stack);
+        });
+
+        it('sets isCrashed to true', () => {
+            expect(session['isCrashed']).to.be.false;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            expect(session['isCrashed']).to.be.true;
+        });
+
+        it('handles non-Error thrown values', () => {
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler']('string error' as any);
+            const event = sendEventStub.firstCall.args[0];
+            expect(event.body.message).to.equal('string error');
+            expect(event.body.stack).to.be.undefined;
+        });
+
+        it('calls sendLogOutput with formatted crash output', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            expect(sendLogOutputStub.calledOnce).to.be.true;
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('BRIGHTSCRIPT DEBUGGER INTERNAL ERROR');
+            expect(output).to.include('uncaughtException');
+            expect(output).to.include('boom');
+            expect(output).to.include('https://github.com/RokuCommunity/roku-debug/issues/new');
+        });
+
+        it('includes client name from initRequestArgs in output', () => {
+            session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('**Client Name:** "VS Code"');
+        });
+
+        it('uses "unknown" for client name when initRequestArgs is not set', () => {
+            session['initRequestArgs'] = undefined;
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('**Client Name:** "unknown"');
+        });
+
+        it('includes additionalInfo fields in ProcessCrashEvent body', () => {
+            session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.additionalInfo).to.exist;
+            expect(event.body.additionalInfo.clientName).to.equal('VS Code');
+            expect(event.body.additionalInfo.rokuDebugVersion).to.be.a('string');
+        });
+
+        it('uses "(no stack trace)" in output when error has no stack', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler']('not an error' as any);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('(no stack trace)');
+        });
+
+        it('truncates a very long stack trace in the issue URL', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const longStack = 'x'.repeat(3000);
+            const error = new Error('boom');
+            error.stack = longStack;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('...(truncated)');
+        });
+
+        it('falls back to JSON output when readJsonSync throws', () => {
+            sinon.stub(fsExtra, 'readJsonSync').throws(new Error('file not found'));
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            // fallback is JSON-stringified error from catch block
+            expect(output).to.include('file not found');
+        });
+
+        it('schedules shutdown() after 5 seconds on uncaughtException', () => {
+            const clock = sinon.useFakeTimers();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            expect(shutdownStub.called).to.be.false;
+            clock.tick(5000);
+            expect(shutdownStub.calledOnce).to.be.true;
+            clock.restore();
+        });
+
+        it('schedules shutdown() after 5 seconds on unhandledRejection', () => {
+            const clock = sinon.useFakeTimers();
+            session.setupProcessErrorHandlers();
+            session['_unhandledRejectionHandler'](new Error('rejected'));
+            expect(shutdownStub.called).to.be.false;
+            clock.tick(5000);
+            expect(shutdownStub.calledOnce).to.be.true;
+            clock.restore();
+        });
+    });
+
     describe('initializeRequest', () => {
         it('does not throw', () => {
             assert.doesNotThrow(() => {
@@ -485,6 +688,9 @@ describe('BrightScriptDebugSession', () => {
                 filters: undefined,
                 filterOptions: undefined
             };
+            //the request now waits on `rokuAdapterDeferred` directly (instead of `getRokuAdapter`),
+            //so resolve it up front for these tests
+            session['rokuAdapterDeferred'].resolve(rokuAdapter as any);
         });
 
         it('both caught and uncaught filters', async () => {
@@ -922,15 +1128,18 @@ describe('BrightScriptDebugSession', () => {
                 verified: false
             });
 
-            //simulate "launch"
+            //simulate "launch" — stage in launchRequest, then write breakpoints + zip in configurationDoneRequest
             await session.prepareMainProject();
+            await session['writeMainProjectBreakpoints']();
+            await session['zipMainProject']();
 
             //remove the breakpoint
             args.breakpoints = [];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //add breakpoint during live debug session. one was there before, the other is new. Neither will be verified right now
+            //add breakpoint during live debug session. one was there before, the other is new.
+            //line 1 was already staged so it comes back verified; line 2 is new so it is not.
             args.breakpoints = [{ line: 1 }, { line: 2 }];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(
@@ -984,6 +1193,16 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('resetSessionState', () => {
+        it('resets the breakpoint manager so a restart does not reuse stale staged data', () => {
+            const reset = sinon.stub(session.breakpointManager, 'reset');
+
+            (session as any).resetSessionState();
+
+            expect(reset.calledOnce, 'breakpointManager.reset() should be called').to.be.true;
+        });
+    });
+
     describe('shutdown', () => {
         it('erases all staging folders when configured to do so', async () => {
             let stub = sinon.stub(fsExtra, 'removeSync').returns(null);
@@ -1033,6 +1252,42 @@ describe('BrightScriptDebugSession', () => {
             await session.shutdown();
 
             expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
+        });
+    });
+
+    describe('disconnectRequest', () => {
+        //Regression tests for DAP crashes from unhandled pressHomeButton rejections at disconnect time:
+        //  - https://github.com/rokucommunity/vscode-brightscript-language/issues/807 (EHOSTDOWN)
+        //  - https://github.com/rokucommunity/roku-debug/issues/332 (ECONNREFUSED)
+        //@vscode/debugadapter dispatches disconnectRequest without awaiting the returned Promise
+        //(debugSession.js:391), so any rejection from `await this.rokuDeploy.pressHomeButton(...)`
+        //becomes an unhandled rejection that crashes the DAP process. When the device is powered
+        //off / unreachable at disconnect time, the ECP connect attempt fails — the specific Node
+        //error code depends on the OS-level reason (host unresponsive vs. connection refused).
+        function makeTelnetDisconnectSession(rejection: Error) {
+            (session as any).launchConfiguration = {
+                ...launchConfiguration,
+                enableDebugProtocol: false,
+                host: '192.168.1.17',
+                remotePort: 8060
+            };
+            session.rokuDeploy.pressHomeButton = () => Promise.reject(rejection);
+            //stub shutdown so the test doesn't tear down the whole session machinery
+            sinon.stub(session, 'shutdown').resolves();
+        }
+
+        it('does not reject when pressHomeButton fails with EHOSTDOWN (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect EHOSTDOWN 192.168.1.17:8060 - Local (192.168.1.18:51783)'), { code: 'EHOSTDOWN' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
+        });
+
+        it('does not reject when pressHomeButton fails with ECONNREFUSED (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect ECONNREFUSED 192.168.1.17:8060'), { code: 'ECONNREFUSED' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
         });
     });
 
@@ -1601,7 +1856,16 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
-    describe('prepareComponentLibraries / hostAndUploadComponentLibraries', () => {
+    describe('prepareComponentLibraries / packageAndHostComponentLibraries', () => {
+        //runs the full complib flow in the same order launchRequest does: stage, then write+postfix,
+        //then the cross-project `Library` rewrite, then zip+install+host.
+        async function runPrepareAndHost(componentLibraries: any[], port: number) {
+            await session['prepareComponentLibraries'](componentLibraries);
+            await session['writeAndPostfixComponentLibraries'](componentLibraries);
+            await session.projectManager.applyLibraryReferencePostfixes();
+            await session['zipAndHostComponentLibraries'](componentLibraries, port);
+        }
+
         function stubDefaults() {
             sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
@@ -1617,15 +1881,6 @@ describe('BrightScriptDebugSession', () => {
             };
         }
 
-        /**
-         * Run the two component-library phases in the same order launchRequest does: stage+postfix everything,
-         * then zip+upload+host. (The cross-project `Library` rewrite that sits between them is stubbed out here.)
-         */
-        async function prepareAndHost(libs: any[], port: number) {
-            await session['prepareComponentLibraries'](libs);
-            await session['hostAndUploadComponentLibraries'](libs, port);
-        }
-
         it('installs libraries sequentially when marked install=true', async () => {
             stubDefaults();
             const installOrder = [];
@@ -1635,7 +1890,7 @@ describe('BrightScriptDebugSession', () => {
                 return { message: 'success', results: [] };
             });
 
-            await prepareAndHost([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1653,7 +1908,7 @@ describe('BrightScriptDebugSession', () => {
                 return { message: 'success', results: [] };
             });
 
-            await prepareAndHost([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: undefined },
@@ -1669,7 +1924,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             const publishStub = sinon.stub(rokuDeploy, 'publish').resolves({ message: 'success', results: [] });
 
-            await prepareAndHost([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'testLib.zip', install: true }
             ] as any, 8080);
 
@@ -1686,7 +1941,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             sinon.stub(rokuDeploy, 'publish').rejects(new Error('Network error'));
 
-            await prepareAndHost([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
             ] as any, 8080);
 
@@ -1721,7 +1976,7 @@ describe('BrightScriptDebugSession', () => {
                 return Promise.resolve({ message: 'success', results: [] });
             });
 
-            await prepareAndHost([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1743,7 +1998,7 @@ describe('BrightScriptDebugSession', () => {
 
             let errorThrown = false;
             try {
-                await prepareAndHost([
+                await runPrepareAndHost([
                     { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
                 ] as any, 8080);
             } catch (e) {
@@ -1760,7 +2015,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
 
-            await prepareAndHost([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: undefined }
             ] as any, 8080);
@@ -1771,7 +2026,7 @@ describe('BrightScriptDebugSession', () => {
         it('does not start server when no component libraries present', async () => {
             const serverStub = sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
 
-            await prepareAndHost([], 8080);
+            await runPrepareAndHost([], 8080);
 
             expect(serverStub.called).to.be.false;
         });
@@ -1780,7 +2035,7 @@ describe('BrightScriptDebugSession', () => {
             stubDefaults();
             const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
-            await prepareAndHost([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true, packageTask: 'build:lib1' },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true, packageTask: 'build:lib2' },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: true }
@@ -1812,7 +2067,7 @@ describe('BrightScriptDebugSession', () => {
                 }
             };
 
-            await prepareAndHost([
+            await runPrepareAndHost([
                 {
                     rootDir: complib1Dir,
                     outFile: 'lib1.zip',
@@ -1844,309 +2099,580 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('completionsRequest', () => {
+        //build an in-memory variable node. Pass `children` to make it a container (AA/array); otherwise
+        //it is a leaf. Only the fields the lookup/completion code reads (name, type, frameId, childVariables)
+        //carry meaning; the rest are harmless defaults.
+        function makeVariable(name: string, options: { type?: VariableType | string; frameId?: number; variablesReference?: number; children?: AugmentedVariable[] } = {}): AugmentedVariable {
+            const children = options.children ?? [];
+            return {
+                name: name,
+                value: '',
+                variablesReference: options.variablesReference ?? (children.length > 0 ? 10 : 0),
+                frameId: options.frameId ?? 0,
+                type: options.type ?? VariableType.String,
+                childVariables: children
+            } as AugmentedVariable;
+        }
+
         describe('getClosestCompletionDetails', () => {
-            it('handles empty string columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: '',
-                    column: 0,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
+            //the cursor position is marked inline with `|` (stripped before evaluating). Every case is
+            //asserted under both client column/line bases, since the resolved path must not depend on
+            //whether the client numbers columns/lines from 0 or from 1.
+            function expectClosest(textWithCursor: string, expected: { parentVariablePath: string[]; stringKeyClosing?: string } | undefined) {
+                const cursorIndex = textWithCursor.indexOf('|');
+                const text = textWithCursor.replace('|', '');
+                const textBeforeCursor = textWithCursor.slice(0, cursorIndex);
+                const cursorLine = (textBeforeCursor.match(/\n/g) ?? []).length;
+                const cursorColumn = textBeforeCursor.length - (textBeforeCursor.lastIndexOf('\n') + 1);
+
+                for (const startAt1 of [false, true]) {
+                    session['_clientColumnsStartAt1'] = startAt1;
+                    session['_clientLinesStartAt1'] = startAt1;
+                    const column = startAt1 ? cursorColumn + 1 : cursorColumn;
+                    //a cursor on the first line is sent without an explicit line (matches the real client)
+                    let line: number;
+                    if (cursorLine > 0) {
+                        line = startAt1 ? cursorLine + 1 : cursorLine;
+                    }
+                    expect(
+                        session['getClosestCompletionDetails']({ text: text, column: column, line: line, frameId: 0 }),
+                        `columnsStartAt1=${startAt1}`
+                    ).to.eql(expected);
+                }
+            }
+
+            it('treats an empty line as a local-scope expression', () => {
+                expectClosest('|', { parentVariablePath: [''] });
             });
 
-            it('handles empty string columnsStartAt1 true', () => {
+            it('returns undefined for an invalid variable path', () => {
+                expectClosest('1bad.path|', undefined);
+            });
+
+            it('completes the siblings of a partial trailing segment', () => {
+                expectClosest('person.name|', { parentVariablePath: ['person'] });
+            });
+
+            it('completes the members of a path with a trailing period', () => {
+                expectClosest('person.name.|', { parentVariablePath: ['person', 'name'] });
+            });
+
+            it('returns undefined when the cursor is mid-token', () => {
+                expectClosest('person.na|me', undefined);
+            });
+
+            it('returns undefined after a function-call result, but resolves indexed access', () => {
+                //a call result is not a resolvable variable path
+                expectClosest('getPerson().name|', undefined);
+                //indexed access, however, is a resolvable variable path
+                expectClosest('getPerson[0].name|', { parentVariablePath: ['getPerson', '0'] });
+            });
+
+            it('resolves a path typed inside an open bracket', () => {
+                expectClosest('getValue(person.name|', { parentVariablePath: ['person'] });
+                expectClosest('getValue[person.name|', { parentVariablePath: ['person'] });
+            });
+
+            it('resolves a path inside a call with a trailing close paren', () => {
+                expectClosest('getValue(person.name|)', { parentVariablePath: ['person'] });
+            });
+
+            it('treats the position after a comma as a fresh local-scope expression', () => {
+                expectClosest('getValue(person.name, test|)', { parentVariablePath: [''] });
+                expectClosest('getValue[person.name, test|]', { parentVariablePath: [''] });
+            });
+
+            it('resolves the path on the line the cursor is on (multiline input)', () => {
+                //cursor on the first line, mid-expression
+                expectClosest('getValue(person.name|, {\ntemp: test\n})', { parentVariablePath: ['person'] });
+                //cursor on the second line, a fresh local-scope expression
+                expectClosest('getValue(person.name, {\ntemp: test|\n})', { parentVariablePath: [''] });
+            });
+
+            it('handles the print shorthand (?) before member access', () => {
+                expectClosest('?m.|', { parentVariablePath: ['m'] });
+            });
+
+            it('handles the print keyword before member access', () => {
+                expectClosest('print m.|', { parentVariablePath: ['m'] });
+            });
+
+            it('handles a deeply nested dotted path', () => {
+                expectClosest('a.b.c.|', { parentVariablePath: ['a', 'b', 'c'] });
+            });
+
+            it('treats a trailing space as a fresh (local scope) expression position', () => {
+                expectClosest('m.top |', { parentVariablePath: [''] });
+            });
+
+            it('treats an open curly brace as a fresh (local scope) expression position', () => {
+                expectClosest('getValue({|', { parentVariablePath: [''] });
+            });
+
+            it('does not crash when the cursor column is past the end of the line', () => {
+                //the client can report a column well past the end of the text; we must not throw
                 session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
-                    text: '',
-                    column: 1,
+                    text: 'm',
+                    column: 50,
                     line: undefined,
                     frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
+                })).to.eql({ parentVariablePath: [''] });
             });
 
-            it('handles bad variable path columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: '1bad.path',
-                    column: 9,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('resolves indexed (numeric) access followed by a dot', () => {
+                //resolves to the indexed parent so we can complete the members of `arr[0]`
+                expectClosest('arr[0].|', { parentVariablePath: ['arr', '0'] });
             });
 
-            it('handles bad variable path columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: '1bad.path',
-                    column: 10,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            //a partial string-key access resolves to the parent object (so we can complete its keys) rather
+            //than collapsing to the local scope and dumping every global. `stringKeyClosing` is the text to
+            //append when accepting a key, so completions can close the access.
+            it('resolves partial string-key access to the parent object', () => {
+                expectClosest('m["fo|', { parentVariablePath: ['m'], stringKeyClosing: '"]' });
             });
 
-            it('handles simple input of just variable path columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 11,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
+            it('does not auto-close a string key that already has a closing bracket', () => {
+                //cursor is right after `fo`, with `"]` already present
+                expectClosest('m["fo|"]', { parentVariablePath: ['m'], stringKeyClosing: '' });
             });
 
-            it('handles simple input of just variable path columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 12,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
+            it('resolves member access on a completed string-key access (key stays quoted)', () => {
+                //the string key keeps its quotes so it stays case-sensitive when sent to the device
+                expectClosest('m.global["spoof"].|', { parentVariablePath: ['m', 'global', '"spoof"'] });
             });
 
-            it('handles simple input of just variable path with training period columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name.',
-                    column: 12,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person', 'name']
-                });
+            it('resolves member access on a completed string key that contains an escaped quote', () => {
+                //the escaped `""` is preserved in the path segment so the device lookup stays valid
+                expectClosest('m["a""b"].|', { parentVariablePath: ['m', '"a""b"'] });
+            });
+        });
+
+        describe('findVariableByPath', () => {
+            it('walks childVariables down a multi-segment path', () => {
+                const variables = [
+                    makeVariable('a', { children: [
+                        makeVariable('b', { children: [
+                            makeVariable('c')
+                        ] })
+                    ] })
+                ];
+                expect(session['findVariableByPath'](variables, ['a', 'b', 'c'], 0)?.name).to.eql('c');
             });
 
-            it('handles simple input of just variable path with training period columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name.',
-                    column: 13,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person', 'name']
-                });
+            it('returns null when the frameId does not match', () => {
+                const variables = [makeVariable('a')];
+                expect(session['findVariableByPath'](variables, ['a'], 1)).to.be.null;
             });
 
-            it('handles simple input of just variable path columnsStartAt1 false but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 9,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            //NOTE: this characterizes the current scope-blind behavior. The first segment is matched
+            //against whatever entry appears first in the list, with no notion of which one is the
+            //frame's actual local. See the matching GAP test in `completionsRequest (full flow)`.
+            it('returns the first matching entry by name (scope-blind)', () => {
+                const variables = [
+                    makeVariable('person', { children: [makeVariable('first')] }),
+                    makeVariable('person', { children: [makeVariable('second')] })
+                ];
+                expect(session['findVariableByPath'](variables, ['person'], 0)?.childVariables[0].name).to.eql('first');
             });
 
-            it('handles simple input of just variable path columnsStartAt1 true but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 10,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('matches names case-insensitively and tolerates quoted string keys', () => {
+                //device reports names lower-cased
+                const variables = [makeVariable('topref', { children: [makeVariable('spoof')] })];
+                //user typed `topRef` (different case) and a quoted string key
+                expect(session['findVariableByPath'](variables, ['topRef'], 0)?.name).to.eql('topref');
+                expect(session['findVariableByPath'](variables, ['topRef', '"spoof"'], 0)?.name).to.eql('spoof');
             });
 
-            it('returns undefined following closing brackets columnsStartAt1 false but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson().name',
-                    column: 16,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson[0].name',
-                    column: 17,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('matches a string key that contains a literal quote (escaped in the typed path)', () => {
+                //device reports the raw key `a"b`; the user typed it escaped as `["a""b"]`
+                const variables = [makeVariable('m', { children: [makeVariable('a"b')] })];
+                expect(session['findVariableByPath'](variables, ['m', '"a""b"'], 0)?.name).to.eql('a"b');
             });
+        });
 
-            it('returns undefined following closing brackets columnsStartAt1 true but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson().name',
-                    column: 17,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+        describe('completionsRequest (full flow)', () => {
+            let response: DebugProtocol.CompletionsResponse;
 
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson[0].name',
-                    column: 18,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
-            });
-
-
-            it('input after a open bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name)',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name)',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, test)',
-                    column: 26,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name, test]',
-                    column: 26,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, test)',
-                    column: 27,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name, test]',
-                    column: 27,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('handles multiline inout columnsStartAt1 false linesStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                session['_clientLinesStartAt1'] = false;
-
-                // cursor is on the first line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 20,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                // cursor is on the second line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 10,
-                    line: 1,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('handles multiline inout columnsStartAt1 true linesStartAt1 true', () => {
+            beforeEach(() => {
                 session['_clientColumnsStartAt1'] = true;
                 session['_clientLinesStartAt1'] = true;
+                session['variables'] = {};
+                response = {
+                    request_seq: 0,
+                    success: true,
+                    command: 'completions',
+                    seq: 0,
+                    type: 'response',
+                    body: { targets: [] }
+                } as DebugProtocol.CompletionsResponse;
+            });
 
-                // cursor is on the first line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 21,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
+            //run a completion request with the cursor at the end of `text` (the beforeEach reports 1-based columns)
+            async function requestCompletions(text: string, frameId = 0) {
+                await session['completionsRequest'](
+                    response,
+                    { text: text, column: text.length + 1, frameId: frameId } as DebugProtocol.CompletionsArguments
+                );
+            }
+
+            function targetLabels() {
+                return (response.body.targets ?? []).map(target => target.label);
+            }
+
+            function findTarget(label: string) {
+                return response.body.targets.find(target => target.label === label);
+            }
+
+            //seed the frame's local scope container the same way scopesRequest/populateScopeVariables would
+            function seedLocals(children: AugmentedVariable[], frameId = 0) {
+                const refId = session['getEvaluateRefId']('$$locals', frameId);
+                session['variables'][refId] = {
+                    name: 'Local',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: frameId,
+                    isScope: true,
+                    variablesReference: refId,
+                    childVariables: children
+                } as AugmentedVariable;
+            }
+
+            //the EvaluateContainer the device adapter returns for an associative array with the given string keys
+            function deviceAssociativeArray(name: string, keys: string[]): EvaluateContainer {
+                return {
+                    name: name,
+                    evaluateName: name,
+                    type: VariableType.AssociativeArray,
+                    keyType: 'String',
+                    value: 'roAssociativeArray',
+                    children: keys.map(key => ({
+                        name: key,
+                        evaluateName: `${name}.${key}`,
+                        type: VariableType.String,
+                        value: '',
+                        keyType: null,
+                        children: []
+                    })),
+                    indexedVariables: 0,
+                    namedVariables: keys.length
+                } as unknown as EvaluateContainer;
+            }
+
+            it('returns object members (fields + interface methods) for dot access, without globals', async () => {
+                seedLocals([
+                    makeVariable('person', { type: VariableType.AssociativeArray, children: [
+                        makeVariable('firstName'),
+                        makeVariable('lastName')
+                    ] })
+                ]);
+
+                await requestCompletions('person.');
+
+                //child fields
+                expect(targetLabels()).to.include.members(['firstName', 'lastName']);
+                //ifAssociativeArray interface methods
+                expect(targetLabels()).to.include.members(['Count', 'Delete']);
+                //should NOT leak globals on member access
+                expect(targetLabels()).to.not.include('Abs');
+
+                //the child fields should be typed as `field`
+                const firstName = findTarget('firstName');
+                expect(firstName?.type).to.eql('field');
+                //after a trailing `.` the completion inserts at the cursor (nothing to replace yet).
+                //`start` is a 0-based offset into the line ("person." -> offset 7)
+                expect(firstName?.start).to.eql(7);
+                expect(firstName?.length).to.eql(0);
+            });
+
+            it('returns locals + globals + scope functions for an empty (local scope) expression', async () => {
+                seedLocals([makeVariable('localA')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([
+                    { name: 'MyScopeFunc', completionItemKind: 'function' }
+                ]);
+
+                await requestCompletions('');
+
+                expect(targetLabels()).to.include('localA'); //a local
+                expect(targetLabels()).to.include('Abs'); //a global
+                expect(targetLabels()).to.include('MyScopeFunc'); //a scope function
+            });
+
+            it('returns no completions when the parent variable cannot be resolved', async () => {
+                sinon.stub(rokuAdapter, 'getVariable').rejects(new Error('not found'));
+
+                await requestCompletions('doesNotExist.');
+
+                expect(response.body.targets).to.eql([]);
+            });
+
+            it('ranks local variables above globals', async () => {
+                seedLocals([makeVariable('localA')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                await requestCompletions('');
+
+                const local = findTarget('localA');
+                const global = findTarget('Abs');
+                expect(local?.sortText < global?.sortText, 'local variable should sort before global').to.be.true;
+            });
+
+            it('resolves the first segment against the frame locals, not a same-named nested field', async () => {
+                //the real local `person`
+                seedLocals([
+                    makeVariable('person', { type: VariableType.AssociativeArray, children: [makeVariable('firstName')] })
+                ]);
+                //a nested `person` field that lingers in the flat `variables` map; it must NOT shadow the real local
+                session['variables'][9999] = makeVariable('person', {
+                    type: VariableType.AssociativeArray,
+                    variablesReference: 9999,
+                    children: [makeVariable('wrongField')]
                 });
 
-                // cursor is on the second line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 11,
-                    line: 2,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
+                await requestCompletions('person.');
 
+                expect(targetLabels()).to.include('firstName');
+                expect(targetLabels()).to.not.include('wrongField');
+            });
+
+            it('completes string keys with a text-edit that closes the access and omits interface methods', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [
+                        makeVariable('firstName'),
+                        makeVariable('lastName')
+                    ] })
+                ]);
+
+                await requestCompletions('m["fo');
+
+                //the AA keys are offered
+                expect(targetLabels()).to.include.members(['firstName', 'lastName']);
+                //ifAssociativeArray methods are NOT valid string keys, so they are suppressed
+                expect(targetLabels()).to.not.include('Count');
+
+                const firstName = findTarget('firstName');
+                //accepting inserts the key and closes the access, replacing the typed `fo`
+                //(`start` is the 0-based offset of `f` in `m["fo`)
+                expect(firstName.text).to.eql('firstName"]');
+                expect(firstName.start).to.eql(3);
+                expect(firstName.length).to.eql(2);
+            });
+
+            it('escapes embedded double-quotes when inserting a string-key completion', async () => {
+                //a key whose name contains a literal `"` (BrightScript escapes a `"` inside a string as `""`)
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('a"b')] })
+                ]);
+
+                await requestCompletions('m["');
+
+                const key = findTarget('a"b');
+                //the label stays human-readable, but the inserted text escapes the `"` so the access is
+                //valid: `m["` + `a""b"]` -> `m["a""b"]`
+                expect(key.text).to.eql('a""b"]');
+            });
+
+            it('escapes a quote-only key so the completed access is the literal-quote form', async () => {
+                //the key is a single `"`; the valid source form is `m[""""]` (four quotes = the string `"`)
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('"')] })
+                ]);
+
+                await requestCompletions('m["');
+
+                const key = findTarget('"');
+                //`m["` + `"""]` -> `m[""""]`
+                expect(key.text).to.eql('"""]');
+            });
+
+            it('rewrites a non-identifier member as bracket access, consuming the dot', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [
+                        makeVariable('countrycode'),
+                        makeVariable('contry code') //a space -> not dot-accessible
+                    ] })
+                ]);
+
+                await requestCompletions('m.');
+
+                //a normal identifier key keeps dot access (no text override; the label is inserted after the `.`)
+                const normal = findTarget('countrycode');
+                expect(normal.text).to.be.undefined;
+
+                //a key with a space can't be dot-accessed, so it is rewritten as bracket access and the `.` is
+                //consumed: `m.` -> `m["contry code"]`
+                const spaced = findTarget('contry code');
+                expect(spaced.text).to.eql('["contry code"]');
+                expect(spaced.start).to.eql(1);
+                expect(spaced.length).to.eql(1);
+            });
+
+            it('escapes embedded quotes when rewriting a dot member as bracket access', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('a"b')] })
+                ]);
+
+                await requestCompletions('m.');
+
+                const key = findTarget('a"b');
+                //`m.` -> `m["a""b"]`
+                expect(key.text).to.eql('["a""b"]');
+                expect(key.start).to.eql(1);
+                expect(key.length).to.eql(1);
+            });
+
+            it('consumes the partial word and the dot when rewriting a dot member as bracket access', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('my-key')] })
+                ]);
+
+                await requestCompletions('m.my');
+
+                const key = findTarget('my-key');
+                //`m.my` -> `m["my-key"]` (the `.my` span is replaced)
+                expect(key.text).to.eql('["my-key"]');
+                expect(key.start).to.eql(1);
+                expect(key.length).to.eql(3);
+            });
+
+            function seedArray() {
+                seedLocals([
+                    makeVariable('arr', { type: VariableType.Array, children: [
+                        makeVariable('0'),
+                        makeVariable('1')
+                    ] })
+                ]);
+            }
+
+            it('offers array methods (not index entries) for member access on an array', async () => {
+                seedArray();
+
+                await requestCompletions('arr.');
+
+                //ifArray methods are offered
+                expect(targetLabels()).to.include.members(['Count', 'Push']);
+                //the integer indexes are NOT offered (`arr.0` / `arr.[0]` aren't valid)
+                expect(targetLabels()).to.not.include('0');
+                expect(targetLabels()).to.not.include('[0]');
+            });
+
+            it('offers no completions for a string-key access on an array', async () => {
+                seedArray();
+
+                //a string-key access on an array is invalid (arrays are integer-indexed)
+                await requestCompletions('arr["');
+
+                expect(response.body.targets).to.eql([]);
+            });
+
+            it('falls back to a device lookup and caches the result for the paused state', async () => {
+                //note: no locals are seeded, so the parent must be resolved from the device
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('person', ['firstName'])
+                );
+
+                await requestCompletions('person.');
+                expect(targetLabels()).to.include('firstName');
+                expect(getVariableStub.callCount).to.eql(1);
+
+                //a second identical request should be served from the cache without another device round-trip
+                await requestCompletions('person.');
+                expect(targetLabels()).to.include('firstName');
+                expect(getVariableStub.callCount).to.eql(1);
+
+                //resuming/stepping clears the cache, so the next lookup hits the device again
+                session['clearState']();
+                await requestCompletions('person.');
+                expect(getVariableStub.callCount).to.eql(2);
+            });
+
+            it('populates the frame locals on demand for local-scope completions', async () => {
+                //the locals scope exists but has not been populated yet (Variables panel not expanded)
+                const refId = session['getEvaluateRefId']('$$locals', 0);
+                session['variables'][refId] = {
+                    name: 'Locals',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: 0,
+                    isScope: true,
+                    variablesReference: refId,
+                    childVariables: []
+                } as AugmentedVariable;
+                //the device returns the frame's locals when asked
+                (rokuAdapter as any).getLocalVariables = (() => Promise.resolve(
+                    deviceAssociativeArray('$$locals', ['environment'])
+                )) as any;
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                await requestCompletions('');
+
+                //the local was fetched on demand (without the Variables panel being expanded)
+                expect(targetLabels()).to.include('environment');
+                //globals are still present
+                expect(targetLabels()).to.include('Abs');
+            });
+
+            it('anchors completions to the partial word so the client can filter as the user types', async () => {
+                seedLocals([makeVariable('spoofDetails')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                //the response must describe the span being replaced (`spo`, a 0-based offset of 0 spanning
+                //3 characters) so the client filters the list correctly as the user keeps typing
+                await requestCompletions('spo');
+
+                const local = findTarget('spoofDetails');
+                expect(local, 'local should be present in the response').to.exist;
+                expect(local.start).to.eql(0);
+                expect(local.length).to.eql(3);
+                //globals carry the same replacement range so the whole list filters consistently
+                const global = findTarget('Abs');
+                expect(global.start).to.eql(0);
+                expect(global.length).to.eql(3);
+            });
+
+            it('rebuilds an indexed path with bracket notation for the device lookup', async () => {
+                //no locals seeded, so resolution falls to the device
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('services[0]', ['id'])
+                );
+
+                await requestCompletions('services[0].');
+
+                //the index must be preserved as `[0]`, not flattened to the invalid `services.0`
+                expect(getVariableStub.calledWith('services[0]', 0)).to.be.true;
+                expect(targetLabels()).to.include('id');
+            });
+
+            it('resolves member access on a string-key result (m.global["spoof"].)', async () => {
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('m.global.spoof', ['countrycode', 'postalcode'])
+                );
+
+                await requestCompletions('m.global["spoof"].');
+
+                //the string key keeps its quotes so the device lookup stays `m.global["spoof"]` (case-sensitive)
+                expect(getVariableStub.calledWith('m.global["spoof"]', 0)).to.be.true;
+                expect(targetLabels()).to.include.members(['countrycode', 'postalcode']);
+                expect(targetLabels()).to.not.include('Abs');
+            });
+        });
+
+        describe('buildVariableExpression', () => {
+            it('uses dot access for identifiers and brackets for indexes and string keys', () => {
+                expect(session['buildVariableExpression'](['m', 'top'])).to.eql('m.top');
+                expect(session['buildVariableExpression'](['m', 'applicationServices', '0'])).to.eql('m.applicationServices[0]');
+                expect(session['buildVariableExpression'](['arr', '0', 'name'])).to.eql('arr[0].name');
+                //already-quoted string keys keep their quotes (stay case-sensitive on the device)
+                expect(session['buildVariableExpression'](['m', 'global', '"spoof"'])).to.eql('m.global["spoof"]');
+                expect(session['buildVariableExpression'](['m', 'my-key'])).to.eql('m["my-key"]');
+                //a `"` inside a key is escaped as `""` so the expression stays valid
+                expect(session['buildVariableExpression'](['m', 'a"b'])).to.eql('m["a""b"]');
+                expect(session['buildVariableExpression'](['m', '"'])).to.eql('m[""""]');
+                expect(session['buildVariableExpression']([''])).to.eql('');
             });
         });
     });
@@ -2222,6 +2748,22 @@ describe('BrightScriptDebugSession', () => {
             expect(enableTracingStub.callCount).to.equal(0);
         });
 
+        it('logs a warning and shows a popup when enable is true but device firmware is too old', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+            const warnSpy = sinon.spy(session.logger, 'warn');
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+            expect(warnSpy.callCount).to.be.greaterThan(0);
+            expect(warnSpy.getCall(0).args[0]).to.include('14.0.0');
+            expect(warnSpy.getCall(0).args[0]).to.include('15.2');
+            expect(sendCustomRequestStub.callCount).to.equal(1);
+            expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
+        });
+
         it('catches and logs error when enableTracing throws (enable=true)', async () => {
             launchConfiguration.profiling = { tracing: { enable: true } } as any;
             enableTracingStub.rejects(new Error('connection failed'));
@@ -2238,6 +2780,70 @@ describe('BrightScriptDebugSession', () => {
             await session['initializeProfiling']();
 
             expect(enableTracingStub.callCount).to.equal(0);
+        });
+    });
+
+    describe('tryProfilingConnectOnStart', () => {
+        let startTracingStub: SinonStub;
+
+        beforeEach(() => {
+            //set device info to support perfetto tracing (OS >= 15.2)
+            session['deviceInfo'] = { softwareVersion: '15.2.0' } as any;
+
+            //stub PerfettoManager prototype methods so no real connections are made
+            startTracingStub = sinon.stub(PerfettoManager.prototype, 'startTracing').resolves();
+            sinon.stub(PerfettoManager.prototype, 'on').returns(() => { });
+            session['perfettoManager'] = new PerfettoManager({ host: 'localhost' });
+        });
+
+        it('calls startTracing when connectOnStart is true and device supports perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(1);
+        });
+
+        it('does not call startTracing when connectOnStart is false', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: false } } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call startTracing when connectOnStart is undefined', async () => {
+            launchConfiguration.profiling = { tracing: {} } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+        });
+
+        it('logs a warning and shows a popup when connectOnStart is true but device firmware is too old', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+            const warnSpy = sinon.spy(session.logger, 'warn');
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+            expect(warnSpy.callCount).to.be.greaterThan(0);
+            expect(warnSpy.getCall(0).args[0]).to.include('14.0.0');
+            expect(warnSpy.getCall(0).args[0]).to.include('15.2');
+            expect(sendCustomRequestStub.callCount).to.equal(1);
+            expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
+        });
+
+        it('catches and logs error when startTracing throws', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            startTracingStub.rejects(new Error('connection failed'));
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(errorSpy.callCount).to.be.greaterThan(0);
+            expect(errorSpy.getCall(0).args[0]).to.include('Failed to start perfetto tracing on start');
         });
     });
 
@@ -2344,14 +2950,17 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
             sinon.stub(session, 'prepareMainProject').resolves();
             sinon.stub(session as any, 'prepareComponentLibraries').resolves();
+            sinon.stub(session as any, 'writeMainProjectBreakpoints').resolves();
+            sinon.stub(session as any, 'writeAndPostfixComponentLibraries').resolves();
             sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
-            sinon.stub(session, 'zipMainProject').resolves();
-            sinon.stub(session as any, 'hostAndUploadComponentLibraries').resolves();
+            sinon.stub(session as any, 'zipMainProject').resolves();
+            sinon.stub(session as any, 'zipAndHostComponentLibraries').resolves();
             sinon.stub(session, 'initRendezvousTracking').resolves();
             // Prevent createRokuAdapter from replacing the mock rokuAdapter with a real adapter
             sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
             sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
             sinon.stub(session as any, 'publish').resolves();
+            sinon.stub(session, 'setupProcessErrorHandlers');
             rokuAdapter.connected = true;
         }
 
@@ -2377,15 +2986,22 @@ describe('BrightScriptDebugSession', () => {
                 session['initRequestArgs'].supportsProgressReporting = true;
 
                 await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
 
                 const progressEvents = getProgressEvents();
-                expect(progressEvents).to.have.lengthOf(3);
+                expect(progressEvents).to.have.lengthOf(6);
                 expect(progressEvents[0]).to.be.instanceOf(ProgressStartEvent);
-                expect((progressEvents[0].body as any).message).to.equal('Packaging...');
+                expect((progressEvents[0].body as any).message).to.equal('Finding device on network...');
                 expect(progressEvents[1]).to.be.instanceOf(ProgressUpdateEvent);
-                expect((progressEvents[1].body as any).message).to.equal('Uploading to Roku...');
+                expect((progressEvents[1].body as any).message).to.equal('Packaging Project...');
                 expect(progressEvents[2]).to.be.instanceOf(ProgressUpdateEvent);
-                expect((progressEvents[2].body as any).message).to.equal('Waiting on application...');
+                expect((progressEvents[2].body as any).message).to.equal('Connecting to debug server...');
+                expect(progressEvents[3]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[3].body as any).message).to.equal('Configuring breakpoints...');
+                expect(progressEvents[4]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[4].body as any).message).to.equal('Uploading to Roku...');
+                expect(progressEvents[5]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[5].body as any).message).to.equal('Waiting on application...');
             });
 
             it('all progress events share the same progressId', async function() {
@@ -2413,6 +3029,7 @@ describe('BrightScriptDebugSession', () => {
                 session['initRequestArgs'].supportsProgressReporting = true;
 
                 await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
 
                 const progressUpdateEvents = events.filter(e => e instanceof ProgressUpdateEvent);
                 const abortEvent = progressUpdateEvents.find(e => (e.body as any).message === 'Aborted (compile error)');
@@ -2433,9 +3050,10 @@ describe('BrightScriptDebugSession', () => {
 
         describe('library reference postfixing lifecycle', () => {
             /**
-             * Stub the staging, rewriting, and zipping/uploading phases so each records a marker when it runs,
-             * then run launchRequest and return the recorded order. The staging phases resolve asynchronously so
-             * the test proves the `Library` rewrite truly waits for BOTH staging branches to finish.
+             * Stub the postfixing and zipping phases so each records a marker when it runs, then run the launch
+             * flow (launchRequest stages; the package phase runs in configurationDoneRequest) and return the
+             * recorded order. The write/postfix phases resolve on a later tick so the test proves the `Library`
+             * rewrite truly waits for BOTH write/postfix branches to finish.
              */
             async function recordPhaseOrder() {
                 const order: string[] = [];
@@ -2444,19 +3062,25 @@ describe('BrightScriptDebugSession', () => {
                 sinon.stub(session, 'initRendezvousTracking').resolves();
                 sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
                 sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
+                sinon.stub(session as any, 'tryProfilingConnectOnStart').resolves();
+                sinon.stub(session.rokuDeploy, 'pressHomeButton').resolves();
                 sinon.stub(session as any, 'publish').resolves();
+                sinon.stub(session, 'setupProcessErrorHandlers');
+                //staging is a no-op for this test; we care about the write/postfix -> rewrite -> zip ordering
+                sinon.stub(session, 'prepareMainProject').resolves();
+                sinon.stub(session as any, 'prepareComponentLibraries').resolves();
                 rokuAdapter.connected = true;
 
-                //staging phases: resolve on a later tick so a missing barrier would let the rewrite sneak in early
-                sinon.stub(session, 'prepareMainProject').callsFake(async () => {
+                //write+postfix phases: resolve on a later tick so a missing barrier would let the rewrite sneak in early
+                sinon.stub(session as any, 'writeMainProjectBreakpoints').callsFake(async () => {
                     await util.sleep(20);
-                    order.push('stage:main');
+                    order.push('postfix:main');
                 });
-                sinon.stub(session as any, 'prepareComponentLibraries').callsFake(async () => {
+                sinon.stub(session as any, 'writeAndPostfixComponentLibraries').callsFake(async () => {
                     await util.sleep(10);
-                    order.push('stage:complibs');
+                    order.push('postfix:complibs');
                 });
-                //the cross-project `Library` rewrite - must run AFTER all staging, BEFORE any zipping
+                //the cross-project `Library` rewrite - must run AFTER all postfixing, BEFORE any zipping
                 sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').callsFake(() => {
                     order.push('rewrite');
                     return Promise.resolve();
@@ -2466,27 +3090,431 @@ describe('BrightScriptDebugSession', () => {
                     order.push('zip:main');
                     return Promise.resolve();
                 });
-                sinon.stub(session as any, 'hostAndUploadComponentLibraries').callsFake(() => {
-                    order.push('upload:complibs');
+                sinon.stub(session as any, 'zipAndHostComponentLibraries').callsFake(() => {
+                    order.push('zip:complibs');
                     return Promise.resolve();
                 });
 
+                //launchRequest stages the projects; configurationDoneRequest runs the package phase
+                //(write/postfix -> rewrite -> zip) that this test asserts the ordering of
                 await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
                 return order;
             }
 
-            it('rewrites `Library` references only after ALL projects are staged, and before any zipping', async function() {
+            it('rewrites `Library` references only after ALL projects are postfixed, and before any zipping', async function() {
                 this.timeout(5000);
                 const order = await recordPhaseOrder();
 
                 const rewriteIndex = order.indexOf('rewrite');
-                //both staging phases complete before the rewrite starts
-                expect(order.indexOf('stage:main')).to.be.lessThan(rewriteIndex);
-                expect(order.indexOf('stage:complibs')).to.be.lessThan(rewriteIndex);
+                //both write/postfix phases complete before the rewrite starts
+                expect(order.indexOf('postfix:main')).to.be.lessThan(rewriteIndex);
+                expect(order.indexOf('postfix:complibs')).to.be.lessThan(rewriteIndex);
                 //all zipping/uploading happens after the rewrite
                 expect(order.indexOf('zip:main')).to.be.greaterThan(rewriteIndex);
-                expect(order.indexOf('upload:complibs')).to.be.greaterThan(rewriteIndex);
+                expect(order.indexOf('zip:complibs')).to.be.greaterThan(rewriteIndex);
             });
+        });
+
+        it('runs initializeProfiling after InitializedEvent so the extension does not clear profiling context keys on session start', async function() {
+            this.timeout(5000);
+            setupLaunchStubs();
+
+            const calls: string[] = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => {
+                calls.push(`sendEvent:${event.constructor.name}`);
+            });
+            sinon.stub(session as any, 'initializeProfiling').callsFake(() => {
+                calls.push('initializeProfiling');
+                return Promise.resolve();
+            });
+
+            await session.launchRequest({} as any, launchConfiguration);
+
+            const initializedIdx = calls.indexOf('sendEvent:InitializedEvent');
+            const profilingIdx = calls.indexOf('initializeProfiling');
+            expect(initializedIdx, 'InitializedEvent was not sent').to.be.greaterThan(-1);
+            expect(profilingIdx, 'initializeProfiling was not called').to.be.greaterThan(-1);
+            expect(profilingIdx, 'initializeProfiling must run after InitializedEvent').to.be.greaterThan(initializedIdx);
+        });
+    });
+
+    describe('publish', () => {
+        it('waits 60 seconds before aborting when the app never becomes ready', async () => {
+            session['publishTimeout'] = 60_000;
+
+            const clock = sinon.useFakeTimers();
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
+            rokuAdapter.connected = false;
+            sinon.stub(session.rokuDeploy, 'publish').resolves();
+
+            const publishPromise = (session as any).publish();
+
+            await clock.tickAsync(59_999);
+            expect(shutdownStub.called).to.be.false;
+
+            await clock.tickAsync(1);
+            await publishPromise;
+
+            expect(shutdownStub.calledOnceWithExactly('Debug session cancelled: failed to connect to debug protocol control port.')).to.be.true;
+            clock.restore();
+        });
+    });
+
+    describe('threadsRequest', () => {
+        beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+        });
+
+        async function getThreadsResponse() {
+            const response = { body: undefined } as DebugProtocol.ThreadsResponse;
+            await session['threadsRequest'](response);
+            return response;
+        }
+
+        it('returns empty thread list when not at debugger prompt', async () => {
+            rokuAdapter.isAtDebuggerPrompt = false;
+            const response = await getThreadsResponse();
+            expect(response.body.threads).to.eql([]);
+        });
+
+        it('names normal threads without a suffix', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: false, lineNumber: 1, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+
+        it('appends [detached] to the name of detached threads', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: false, lineNumber: 1, filePath: '', functionName: '', lineContents: '' },
+                { threadId: 1, isSelected: false, isDetached: true, lineNumber: 2, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+            expect(response.body.threads[1].name).to.equal('Thread 1 [detached]');
+        });
+
+        it('handles undefined isDetached as not detached', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: undefined, lineNumber: 1, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+    });
+
+    describe('getThreadName', () => {
+        //small helper to build a Thread with only the fields getThreadName cares about, plus required filler fields
+        function buildThread(overrides: Partial<AdapterThread>): AdapterThread {
+            return {
+                threadId: 0,
+                isSelected: false,
+                lineNumber: 1,
+                filePath: '',
+                functionName: '',
+                lineContents: '',
+                ...overrides
+            };
+        }
+
+        function getThreadName(overrides: Partial<AdapterThread>) {
+            return session['getThreadName'](buildThread(overrides));
+        }
+
+        //
+        // "Thread {threadId}" branch: none of type/name/osThreadId present
+        //
+        describe('falls back to "Thread {threadId}" when type, name, and osThreadId are all missing', () => {
+            it('uses the threadId', () => {
+                expect(getThreadName({ threadId: 0 })).to.equal('Thread 0');
+            });
+
+            it('uses a nonzero threadId', () => {
+                expect(getThreadName({ threadId: 7 })).to.equal('Thread 7');
+            });
+
+            it('treats explicit undefined fields as missing', () => {
+                expect(getThreadName({ threadId: 3, type: undefined, name: undefined, osThreadId: undefined })).to.equal('Thread 3');
+            });
+
+            it('treats empty-string fields as missing (falsy)', () => {
+                expect(getThreadName({ threadId: 4, type: '', name: '', osThreadId: '' })).to.equal('Thread 4');
+            });
+
+            it('appends [detached] when detached', () => {
+                expect(getThreadName({ threadId: 2, isDetached: true })).to.equal('Thread 2 [detached]');
+            });
+
+            it('does not append [detached] when isDetached is false', () => {
+                expect(getThreadName({ threadId: 2, isDetached: false })).to.equal('Thread 2');
+            });
+
+            it('does not append [detached] when isDetached is undefined', () => {
+                expect(getThreadName({ threadId: 2, isDetached: undefined })).to.equal('Thread 2');
+            });
+        });
+
+        //
+        // "[type] name osThreadId" branch: at least one of type/name/osThreadId present.
+        // Only the fields that are present are included; missing fields are omitted entirely
+        // (no "undefined" tokens leak into the name).
+        //
+        describe('builds "[type] name osThreadId" from only the present fields', () => {
+            it('all three present', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234' })).to.equal('[render] MainThread 1234');
+            });
+
+            it('only type present', () => {
+                expect(getThreadName({ type: 'render' })).to.equal('[render]');
+            });
+
+            it('only name present', () => {
+                expect(getThreadName({ name: 'MainThread' })).to.equal('MainThread');
+            });
+
+            it('only osThreadId present', () => {
+                expect(getThreadName({ osThreadId: '1234' })).to.equal('1234');
+            });
+
+            it('type and name present, osThreadId missing', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread' })).to.equal('[render] MainThread');
+            });
+
+            it('type and osThreadId present, name missing', () => {
+                expect(getThreadName({ type: 'render', osThreadId: '1234' })).to.equal('[render] 1234');
+            });
+
+            it('name and osThreadId present, type missing', () => {
+                expect(getThreadName({ name: 'MainThread', osThreadId: '1234' })).to.equal('MainThread 1234');
+            });
+
+            it('appends [detached] when detached', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234', isDetached: true })).to.equal('[render] MainThread 1234 [detached]');
+            });
+
+            it('appends [detached] even when only one field is present', () => {
+                expect(getThreadName({ type: 'render', isDetached: true })).to.equal('[render] [detached]');
+            });
+
+            it('does not append [detached] when isDetached is false', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234', isDetached: false })).to.equal('[render] MainThread 1234');
+            });
+        });
+
+        //
+        // whitespace normalization
+        //
+        describe('whitespace handling', () => {
+            it('collapses internal whitespace within field values', () => {
+                expect(getThreadName({ type: 'render', name: 'Main   Thread', osThreadId: '1234' })).to.equal('[render] Main Thread 1234');
+            });
+
+            it('collapses tabs and newlines in field values to single spaces', () => {
+                expect(getThreadName({ type: 'render', name: 'Main\t\nThread', osThreadId: '1234' })).to.equal('[render] Main Thread 1234');
+            });
+
+            it('trims leading/trailing whitespace produced by field values', () => {
+                //leading space inside type and trailing space in osThreadId get collapsed/trimmed
+                expect(getThreadName({ type: ' render', name: 'MainThread', osThreadId: '1234 ' })).to.equal('[ render] MainThread 1234');
+            });
+        });
+    });
+
+    describe('setupSuspendedState', () => {
+        beforeEach(() => {
+            session.projectManager.mainProject = new Project({
+                rootDir: rootDir,
+                outDir: stagingDir
+            } as Partial<AddProjectParams> as any);
+            session.projectManager.mainProject.fileMappings = [];
+            sinon.stub(rokuAdapter, 'syncBreakpoints').resolves();
+        });
+
+        it('does not crash when thread has corrupted filePath and failedDeletions is non-empty', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'Main',
+                lineNumber: 1295673717,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves({
+                filePath: s`${rootDir}/components/Component.brs`,
+                lineNumber: 33,
+                columnIndex: 0
+            });
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            // should not throw
+            await session['setupSuspendedState']();
+        });
+
+        it('corrects thread.filePath from stack trace when lineNumber mismatch is detected', async () => {
+            const getSourceLocationStub = sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'Main',
+                lineNumber: 1295673717,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            await session['setupSuspendedState']();
+
+            // getSourceLocation should have been called with the corrected pkg path, not 'Main'
+            expect(getSourceLocationStub.args[0][0]).to.equal('pkg:/components/Component.brs');
+        });
+
+        it('does not crash when getSourceLocation returns undefined', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            // should not throw even when getSourceLocation returns undefined
+            await session['setupSuspendedState']();
+        });
+
+        it('does not crash when getStackTrace returns empty and failedDeletions is non-empty', async () => {
+            // Thread has a valid filePath from getThreads() but getStackTrace returns empty.
+            // The original filePath must be preserved (not clobbered with undefined) so the
+            // failedDeletions loop can safely call getSourceLocation.
+            const getSourceLocationStub = sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: false,
+                isDetached: false,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 10,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/source/main.brs`,
+                line: 10
+            } as any);
+
+            // should not throw — filePath from getThreads() is preserved even when stack trace is empty
+            await session['setupSuspendedState']();
+
+            // getSourceLocation is called with the original filePath, not undefined
+            expect(getSourceLocationStub.args[0][0]).to.equal('pkg:/source/main.brs');
+        });
+
+        it('calls getStackTrace for all threads including those already flagged isDetached by the device', async () => {
+            // Even threads pre-flagged isDetached must go through getStackTrace so the adapter cache
+            // is populated — otherwise stackTraceRequest would make a second round-trip and might
+            // not show the [detached] label if the device returns something unexpected.
+            const getStackTraceStub = sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([
+                { isSelected: true, isDetached: true, filePath: 'pkg:/source/main.brs', lineNumber: 1, lineContents: '', threadId: 0 },
+                { isSelected: false, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 2, lineContents: '', threadId: 1 }
+            ]);
+
+            await session['setupSuspendedState']();
+
+            expect(getStackTraceStub.callCount).to.equal(2);
+        });
+
+        it('returns all threads including detached ones so VS Code can display them', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([
+                { isSelected: true, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 1, lineContents: '', threadId: 0 },
+                { isSelected: false, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 2, lineContents: '', threadId: 1 }
+            ]);
+            sinon.stub(rokuAdapter, 'getStackTrace')
+                .onFirstCall().resolves([{ filePath: 'pkg:/source/main.brs', lineNumber: 1, functionIdentifier: 'main', frameId: 0 }])
+                .onSecondCall().resolves([]);
+
+            const threads = await session['setupSuspendedState']();
+
+            expect(threads).to.have.length(2);
+        });
+
+        it('does not clobber thread.filePath when line correction stack trace returns no frames', async () => {
+            const threads = [{
+                isSelected: true,
+                isDetached: false,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 10,
+                lineContents: '',
+                threadId: 0
+            }];
+            sinon.stub(rokuAdapter, 'getThreads').resolves(threads);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            await session['setupSuspendedState']();
+
+            // original filePath must be preserved — never overwritten with undefined
+            expect(threads[0].filePath).to.equal('pkg:/source/main.brs');
+        });
+    });
+
+    describe('stackTraceRequest', () => {
+        beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+            rokuAdapter.isAtDebuggerPrompt = true;
+        });
+
+        async function getStackTraceResponse(threadId: number) {
+            const response = { body: undefined } as DebugProtocol.StackTraceResponse;
+            await session['stackTraceRequest'](response, { threadId: threadId, startFrame: 0, levels: 20 });
+            return response;
+        }
+
+        it('returns a label frame when getStackTrace returns empty (detached thread)', async () => {
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            const response = await getStackTraceResponse(0);
+
+            expect(response.body.stackFrames).to.have.length(1);
+            expect(response.body.stackFrames[0].presentationHint).to.equal('label');
+            expect(response.body.stackFrames[0].name).to.equal('[unavailable]');
+        });
+
+        it('label frame for detached thread has no source', async () => {
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            const response = await getStackTraceResponse(0);
+
+            expect(response.body.stackFrames[0].source).to.be.undefined;
         });
     });
 });

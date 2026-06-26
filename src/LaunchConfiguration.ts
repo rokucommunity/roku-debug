@@ -396,6 +396,25 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * @default true
      */
     emitChannelPublishedEvent?: boolean;
+
+    /**
+     * Optional capabilities advertised by the client (such as the VSCode extension) so the debug adapter
+     * can enable optional features the client supports. This is populated by the client itself, not by the user.
+     */
+    clientCapabilities?: ClientCapabilities;
+}
+
+/**
+ * Optional features the client advertises support for via `LaunchConfiguration.clientCapabilities`.
+ * The debug adapter only enables the matching behavior when the client opts in here.
+ */
+export interface ClientCapabilities {
+    /**
+     * The client supports the `processStagingDir` reverse request. When true, the debug adapter sends that
+     * request after all projects are staged and before they are packaged, giving the client a chance to
+     * inspect or modify each project's staging directory.
+     */
+    supportsProcessStagingDir?: boolean;
 }
 
 export interface ComponentLibraryConfiguration {
@@ -407,6 +426,13 @@ export interface ComponentLibraryConfiguration {
      * Install component library on device if true
      */
     install: boolean;
+    /**
+     * Should this component library's `.brs` files be renamed with a `__lib<index>` postfix during staging?
+     * Postfixing lets the debugger map device-reported file paths back to the component library they came from.
+     * Set to `false` to leave file names untouched (for example, when the library loads files by a fixed name at
+     * runtime); source mapping for this library's files will be degraded while debugging. Defaults to `true`.
+     */
+    enablePostfix?: boolean;
     /**
      * Task to run instead of roku-deploy to produce the .zip file that will be uploaded to the Roku.
      */

@@ -74,6 +74,11 @@ export class TelnetAdapter {
 
     public supportsExceptionBreakpoints = false;
 
+    //BreakpointManager rewrites `stop` statements as `if <cond> then : STOP : end if` and
+    //`if hits >= N then STOP`, so both forms work in telnet mode regardless of firmware.
+    public supportsConditionalBreakpoints = true;
+    public supportsHitConditionalBreakpoints = true;
+
     public once(eventName: 'app-ready'): Promise<void>;
     public once(eventName: 'connected'): Promise<boolean>;
     public once(eventName: string) {
@@ -274,9 +279,12 @@ export class TelnetAdapter {
                 this.emit('close');
             });
 
-            //if the connection fails, reject the connect promise
+            //if the connection fails, reject the connect promise.
+            //Use tryReject (not reject) because this handler persists for the socket's lifetime.
+            //After a successful connection the deferred is already resolved, so a post-connection
+            //socket error (e.g. ETIMEDOUT on device disconnect) must not crash the process.
             telnetSocket.on('error', (err) => {
-                deferred.reject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
+                deferred.tryReject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
             const settlePromise = this.settleTelnetConnection(telnetSocket);
@@ -1033,6 +1041,9 @@ export class TelnetAdapter {
      */
     private resolve<T>(key: string, factory: () => T | Thenable<T>): Promise<T> {
         try {
+            if (this.isDestroyed || !this.cache) {
+                return Promise.reject(new Error(`Cannot resolve "${key}": adapter is destroyed`));
+            }
             if (this.cache[key]) {
                 this.logger.debug(`resolve cache "${key}": already exists`);
                 return this.cache[key];
@@ -1179,6 +1190,7 @@ export interface Thread {
      * Is this thread selected
      */
     isSelected: boolean;
+    isDetached?: boolean;
     /**
      * The 1-based line number
      */
@@ -1195,6 +1207,9 @@ export interface Thread {
      * The id of this thread
      */
     threadId: number;
+    osThreadId?: string;
+    name?: string;
+    type?: string;
 }
 
 export enum PrimativeType {

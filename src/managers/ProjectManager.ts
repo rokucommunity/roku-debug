@@ -1,11 +1,8 @@
-import * as assert from 'assert';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import { rokuDeploy, RokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
-import * as glob from 'glob';
-import { promisify } from 'util';
-const globAsync = promisify(glob);
+import * as fastGlob from 'fast-glob';
 import type { BreakpointManager } from './BreakpointManager';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { LocationManager, SourceLocation } from './LocationManager';
@@ -15,11 +12,27 @@ import { Cache } from 'brighterscript/dist/Cache';
 import { BscProjectThreaded } from '../bsc/BscProjectThreaded';
 import type { ScopeFunction } from '../bsc/BscProject';
 import type { Position } from 'brighterscript';
+import type { SourceMapPayload } from 'module';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 const replaceInFile = require('replace-in-file');
 
 export const componentLibraryPostfix = '__lib';
+
+/**
+ * Staging info for a single project, used when describing all projects to a client.
+ */
+export interface ProjectStagingInfo {
+    /**
+     * The kind of project. `main` is the application project (always exactly one); `componentLibrary`
+     * is a component library project.
+     */
+    type: 'main' | 'componentLibrary';
+    /**
+     * Absolute path to the project's staging directory.
+     */
+    stagingDir: string;
+}
 
 /**
  * Manages the collection of brightscript projects being used in a debug session.
@@ -134,6 +147,18 @@ export class ProjectManager {
                 }
             });
         }
+    }
+
+    /**
+     * Get staging-dir info for every project. The main project is always first; component libraries
+     * follow in order. This main-first ordering is a contract that clients rely on, so it is covered
+     * by unit tests to guard against regressions.
+     */
+    public getProjectStagingInfo(): ProjectStagingInfo[] {
+        return this.getAllProjects().map((project) => ({
+            type: project instanceof ComponentLibraryProject ? 'componentLibrary' : 'main',
+            stagingDir: project.stagingDir
+        }));
     }
 
     /**
@@ -294,25 +319,50 @@ export class ProjectManager {
      * @return a full path to the file in the staging directory
      */
     public async getStagingFileInfo(debuggerPath: string) {
-        let project: Project;
-
         let componentLibraryIndex = fileUtils.getComponentLibraryIndexFromFileName(debuggerPath, componentLibraryPostfix);
-        //component libraries
+
+        //the path carries a `__lib<index>` postfix, so we know exactly which component library it belongs to
         if (componentLibraryIndex !== undefined) {
             let lib = this.componentLibraryProjects.find(x => x.libraryIndex === componentLibraryIndex);
-            if (lib) {
-                project = lib;
-            } else {
+            if (!lib) {
                 throw new Error(`There is no component library with index ${componentLibraryIndex}`);
             }
-            //standard project files
-        } else {
-            project = this.mainProject;
+            return this.buildStagingFileInfo(debuggerPath, lib);
         }
 
+        //No `__lib<index>` postfix on the path. It's either a main-project file, or a file from a
+        //component library that has postfixing disabled (those report device paths that look identical
+        //to the main project's). Try the main project first.
+        let stagingFileInfo = await this.buildStagingFileInfo(debuggerPath, this.mainProject);
+
+        //if the file actually exists in the main project, use it
+        if (stagingFileInfo && await fsExtra.pathExists(stagingFileInfo.absolutePath)) {
+            return stagingFileInfo;
+        }
+
+        //otherwise, fall back to any component library that has postfixing disabled, since those are the
+        //only other source of un-postfixed device paths. Use the first one that has the file on disk.
+        for (const lib of this.componentLibraryProjects) {
+            if (lib.enablePostfix === false) {
+                const libStagingFileInfo = await this.buildStagingFileInfo(debuggerPath, lib);
+                if (libStagingFileInfo && await fsExtra.pathExists(libStagingFileInfo.absolutePath)) {
+                    return libStagingFileInfo;
+                }
+            }
+        }
+
+        //nothing matched on disk; preserve prior behavior by returning the main-project result (if any)
+        return stagingFileInfo;
+    }
+
+    /**
+     * Resolve a debugger-reported path to a staging file within a specific project. Returns undefined if the
+     * path could not be mapped into that project's staging directory.
+     */
+    private async buildStagingFileInfo(debuggerPath: string, project: Project) {
         let relativePath: string;
 
-        //if the path starts with a scheme (i.e. pkg:/ or complib:/, we have an exact match.
+        //if the path starts with a scheme (i.e. pkg:/ or complib:/), we have an exact match.
         if (util.getFileScheme(debuggerPath)) {
             relativePath = util.removeFileScheme(debuggerPath);
         } else {
@@ -320,8 +370,7 @@ export class ProjectManager {
         }
         if (relativePath) {
             relativePath = fileUtils.removeLeadingSlash(
-                fileUtils.standardizePath(relativePath
-                )
+                fileUtils.standardizePath(relativePath)
             );
             return {
                 relativePath: relativePath,
@@ -355,10 +404,14 @@ export interface AddProjectParams {
 
 export class Project {
     constructor(params: AddProjectParams) {
-        assert(params?.rootDir, 'rootDir is required');
+        if (!params?.rootDir) {
+            throw new Error('rootDir is required');
+        }
         this.rootDir = fileUtils.standardizePath(params.rootDir);
 
-        assert(params?.outDir, 'outDir is required');
+        if (!params?.outDir) {
+            throw new Error('outDir is required');
+        }
         this.outDir = fileUtils.standardizePath(params.outDir);
         this.stagingDir = params.stagingDir ?? rokuDeploy.getOptions(this).stagingDir;
         this.bsConst = params.bsConst;
@@ -380,6 +433,14 @@ export class Project {
     public files: Array<FileEntry>;
     public stagingDir: string;
     public fileMappings: Array<{ src: string; dest: string }>;
+
+    /**
+     * Absolute staging paths of every file referenced by a `<script uri="...">` tag in any staged XML
+     * component. Roku loads these as BrightScript regardless of file extension, so they are valid
+     * breakpoint targets even when they don't end in `.brs`. Populated during `stage()` (the single
+     * staging-file walk in `preprocessStagingFiles`) so consumers don't have to re-scan the staging dir.
+     */
+    public scriptReferencedFiles = new Set<string>();
     public bsConst: Record<string, boolean>;
     public injectRaleTrackerTask: boolean;
     public raleTrackerTaskFileLocation: string;
@@ -405,30 +466,21 @@ export class Project {
     private logger = logger.createLogger(`[${ProjectManager.name}]`);
 
     public async stage() {
-        let rd = new RokuDeploy();
         if (!this.fileMappings) {
             this.fileMappings = await this.getFileMappings();
         }
 
-        //override the getFilePaths function so rokuDeploy doesn't run it again during prepublishToStaging
-        (rd as any).getFilePaths = () => {
-            let relativeFileMappings = [];
-            for (let fileMapping of this.fileMappings) {
-                relativeFileMappings.push({
-                    src: fileMapping.src,
-                    dest: fileUtils.replaceCaseInsensitive(fileMapping.dest, this.stagingDir, '')
-                });
-            }
-            return Promise.resolve(relativeFileMappings);
-        };
-
         //copy all project files to the staging folder
-        await rd.prepublishToStaging({
+        await rokuDeploy.prepublishToStaging({
             rootDir: this.rootDir,
             stagingDir: this.stagingDir,
-            files: this.files,
-            outDir: this.outDir
+            files: this.fileMappings,
+            outDir: this.outDir,
+            //we already fetched the file mappings ourselves, so roku-deploy doesn't need to glob the files again
+            resolveFilesArray: false
         });
+
+        await this.preprocessStagingFiles();
 
         if (this.enhanceREPLCompletions) {
             //activate our background brighterscript ProgramBuilder now that the staging directory contains the final production project
@@ -516,6 +568,305 @@ export class Project {
     }
 
     /**
+     * Walk every staged file once and apply all necessary rewrites for files that were moved
+     * from a different source location:
+     *  - .map files: rewrite `sources` paths to be relative to the new staging location
+     *  - .brs/.xml files: rewrite the sourceMappingURL comment path to point to the staged map
+     */
+    private async preprocessStagingFiles() {
+        const srcToDestMap = new Map<string, string>();
+        const destToSrcMap = new Map<string, string>();
+        for (const mapping of this.fileMappings) {
+            srcToDestMap.set(mapping.src, mapping.dest);
+            destToSrcMap.set(mapping.dest, mapping.src);
+        }
+
+        //reset before re-scanning
+        this.scriptReferencedFiles.clear();
+
+        //walk over every file
+        const stagedFiles: string[] = (await fastGlob('**/*', { cwd: this.stagingDir, absolute: true, onlyFiles: true }))
+            .map((f: string) => fileUtils.standardizePath(f));
+
+        await Promise.all(stagedFiles.map(async (stagingFilePath: string) => {
+            const ext = path.extname(stagingFilePath).toLowerCase();
+            const originalSrcPath = destToSrcMap.get(stagingFilePath);
+
+            //.map files are handled separately (they get their own JSON read), and never need the
+            //text-content path below. Skip maps that aren't in fileMappings (generated after staging).
+            if (ext === '.map') {
+                if (originalSrcPath) {
+                    await this.fixSourceMapSources({
+                        stagingMapPath: stagingFilePath,
+                        originalMapPath: originalSrcPath
+                    });
+                }
+                return;
+            }
+
+            //read each text file at most once and share the contents between the two consumers below:
+            // - collectScriptReferencedFiles: runs for ALL staged xml (a component may be generated during
+            //   staging, so it isn't necessarily in fileMappings)
+            // - fixSourceMapComment: runs only for files that were moved from a source dir (in fileMappings)
+            //binary files need neither, so we never read them.
+            const isXml = ext === '.xml';
+            const needsCommentFix = !!originalSrcPath;
+            if (Project.binaryExtensions.has(ext) || (!isXml && !needsCommentFix)) {
+                return;
+            }
+
+            let contents: string;
+            try {
+                contents = await fsExtra.readFile(stagingFilePath, 'utf8');
+            } catch (e) {
+                this.logger.debug('Error reading staged file during preprocess', { stagingFilePath, error: e });
+                return;
+            }
+
+            if (isXml) {
+                this.collectScriptReferencedFiles(stagingFilePath, contents);
+            }
+            if (needsCommentFix) {
+                await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap, contents);
+            }
+        }));
+    }
+
+    /**
+     * Parse a staged XML file's contents for `<script uri="...">` tags and add each referenced file's
+     * absolute staging path to {@link scriptReferencedFiles}. `pkg:/`/`libpkg:/` uris resolve from the
+     * staging root; bare relative uris resolve from the XML file's own directory. Roku loads these as
+     * BrightScript regardless of extension, so they are valid breakpoint targets.
+     * @param contents the already-loaded file contents (read once by the staging walk)
+     */
+    private collectScriptReferencedFiles(xmlStagingPath: string, contents: string) {
+        const scriptUriRegex = /<script\b[^>]*\buri\s*=\s*"([^"]*)"[^>]*\/?>/gi;
+        let match: RegExpExecArray;
+        while ((match = scriptUriRegex.exec(contents)) !== null) {
+            const uri = match[1];
+            const protocolIndex = uri.indexOf(':/');
+            let absolutePath: string;
+            if (protocolIndex >= 0) {
+                //pkg:/ or libpkg:/ — resolve from staging root
+                const relativePath = uri.substring(protocolIndex + 2).replace(/^\//, '');
+                absolutePath = s`${this.stagingDir}/${relativePath}`;
+            } else {
+                //relative path — resolve from the XML file's directory
+                absolutePath = s`${path.resolve(path.dirname(xmlStagingPath), uri)}`;
+            }
+            this.scriptReferencedFiles.add(absolutePath);
+        }
+    }
+
+    /**
+     * Per-path write locks. Async file ops interleave (e.g. `preprocessStagingFiles` fans out
+     * tasks that can target the same staging `.map`), so we queue all writes to a given path
+     * through a single promise chain. Entries clean themselves up once their chain is idle.
+     */
+    private writeLocks = new Map<string, Promise<unknown>>();
+
+    private serializeWrite<T>(filePath: string, work: () => Promise<T>): Promise<T> {
+        const key = fileUtils.standardizePath(filePath).toLowerCase();
+        const prev = this.writeLocks.get(key) ?? Promise.resolve();
+        //run work whether the prior op resolved or rejected — failures upstream shouldn't poison the chain
+        const next = prev.then(work, work);
+        this.writeLocks.set(key, next);
+        //drop the entry once nothing else has chained onto it
+        void next.catch(() => { /* swallow — caller's await sees the real error */ }).then(() => {
+            if (this.writeLocks.get(key) === next) {
+                this.writeLocks.delete(key);
+            }
+        });
+        return next;
+    }
+
+    /**
+     * Serialized wrapper around `fsExtra.writeFile`. Use in place of `fsExtra.writeFile` anywhere
+     * a path might also be written by another concurrent task in this Project.
+     */
+    private writeFile(filePath: string, data: Parameters<typeof fsExtra.writeFile>[1], options?: Parameters<typeof fsExtra.writeFile>[2]) {
+        return this.serializeWrite(filePath, () => fsExtra.writeFile(filePath, data, options));
+    }
+
+    /**
+     * Serialized wrapper around `fsExtra.copyFile`. The dest path is the one we serialize on,
+     * since that's what gets written.
+     */
+    private copyFile(srcPath: string, destPath: string) {
+        return this.serializeWrite(destPath, () => fsExtra.copyFile(srcPath, destPath));
+    }
+
+    /**
+     * Rewrite the `sources` paths in a staged .map file so they are relative to the map's
+     * new staging location rather than the original source directory.
+     */
+    private async fixSourceMapSources(params: { stagingMapPath: string; originalMapPath: string }) {
+        const { stagingMapPath, originalMapPath } = params;
+
+        try {
+            const sourceMap = await fsExtra.readJsonSync(stagingMapPath) as SourceMapPayload;
+            if (!Array.isArray(sourceMap.sources) || sourceMap.sources.length === 0) {
+                return;
+            }
+            // Resolve sources relative to original map's base dir (honoring sourceRoot if present)
+            const originalBaseDir = path.resolve(
+                //sourceRoot should resolve relative to originalMapDir, or keep as-is when absolute path
+                path.dirname(originalMapPath),
+                sourceMap.sourceRoot ?? ''
+            );
+
+            const stagingMapDir = path.dirname(stagingMapPath);
+
+            sourceMap.sources = sourceMap.sources.map((source) => {
+                const absoluteSourcePath = path.resolve(originalBaseDir, source);
+                return fileUtils.standardizePath(path.relative(stagingMapDir, absoluteSourcePath));
+            });
+
+            // Clear sourceRoot since sources are now relative to the map file's new location
+            delete sourceMap.sourceRoot;
+
+            await this.writeFile(stagingMapPath, JSON.stringify(sourceMap));
+        } catch (e) {
+            this.logger.error(`Error updating source map sources for '${stagingMapPath}'`, e);
+        }
+    }
+
+
+    public static readonly binaryExtensions = new Set([
+        // images
+        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.ico', '.svg',
+        '.heic', '.heif', '.avif', '.raw', '.cr2', '.nef', '.arw', '.dng',
+        // video
+        '.mp4', '.mkv', '.mov', '.avi', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg',
+        '.m2v', '.ts', '.mts', '.m2ts', '.vob', '.ogv', '.3gp', '.3g2',
+        // audio
+        '.mp3', '.wav', '.aac', '.ogg', '.flac', '.m4a', '.wma', '.opus', '.aiff', '.aif',
+        // fonts
+        '.ttf', '.otf', '.woff', '.woff2', '.eot',
+        // archives / binary containers
+        '.zip', '.gz', '.tar', '.bz2', '.xz', '.7z', '.rar', '.pkg', '.exe', '.dll', '.so',
+        // documents / other binary formats
+        '.pdf', '.psd', '.ai', '.eps', '.indd',
+        // roku-specific
+        '.roku', '.rdb', '.squashfs'
+    ]);
+
+    /**
+     * Extracts the sourceMappingURL comment from the given file contents.
+     *
+     * `match[3]` is the path (which may be relative or absolute)
+     * @param contents
+     * @returns
+     */
+    public static getSourceMapComment(contents: string) {
+
+        //https://regex101.com/r/FMRJNy/2
+        const commentMatch = [
+            ...contents.matchAll(/^([ \t]*(?:'|<!--)?[ \t]*)((?:\/\/)?[ \t]*[#@][ \t]*sourceMappingURL=(.+\b))(?:|-->)?/gm)
+        ].pop();
+        if (commentMatch) {
+            return {
+                /**
+                 * The entire matched comment, including any leading whitespace and comment characters (e.g. `'` or `<!--`), which should be preserved when rewriting the comment
+                 */
+                fullMatch: commentMatch?.[0],
+                /**
+                 * The leading whitespace and comment characters (e.g. `'` or `<!--`) before the actual `sourceMappingURL` text, which should be preserved when rewriting the comment
+                 */
+                leadingInfo: commentMatch?.[1],
+                /**
+                 * The entire comment text without the leadingInfo (e.g. `//# sourceMappingURL=someFile.map`)
+                 */
+                wholeComment: commentMatch?.[2],
+                /**
+                 * The path to the source map file (e.g. `someFile.map`)
+                 */
+                mapPath: commentMatch?.[3]
+            };
+        } else {
+            return undefined;
+        }
+    }
+
+    /**
+     * Rewrite the sourceMappingURL comment in a staged .brs or .xml file so the path points
+     * to the map file's new staging location.
+     *
+     * Recognised comment forms (# and legacy @ are both accepted; // is optional for brs/xml):
+     *   BRS:   ' [//] [#|@] sourceMappingURL=<path>
+     *   XML:   <!-- [//] [#|@] sourceMappingURL=<path> -->
+     *   other: // \s* [#|@] sourceMappingURL=<path>
+     *
+     * When rewriting, the canonical modern form is always written:
+     *   BRS:   '//# sourceMappingURL=<path>
+     *   XML:   <!--//# sourceMappingURL=<path> -->
+     *   other: //# sourceMappingURL=<path>
+     */
+    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>, contents: string) {
+        try {
+            const commentMatch = Project.getSourceMapComment(contents);
+
+            let absoluteMapPath: string;
+
+            if (commentMatch) {
+                absoluteMapPath = fileUtils.standardizePath(
+                    path.isAbsolute(commentMatch.mapPath)
+                        ? commentMatch.mapPath
+                        : path.resolve(path.dirname(originalSrcPath), commentMatch.mapPath)
+                );
+
+                //copy the sourcemap right next to our file in staging
+                absoluteMapPath = await this.colocateSourceMap({
+                    absoluteMapPath: absoluteMapPath,
+                    stagingFilePath: stagingFilePath
+                });
+
+            } else {
+                // No comment — check if a colocated map exists next to the original source file
+                absoluteMapPath = fileUtils.standardizePath(originalSrcPath + '.map');
+
+                //there is no colocated map next to the original source file
+                if (!await fsExtra.pathExists(absoluteMapPath)) {
+                    return;
+                }
+
+                //copy the sourcemap right next to our file in staging — the debugger will find it automatically
+                await this.colocateSourceMap({
+                    absoluteMapPath: absoluteMapPath,
+                    stagingFilePath: stagingFilePath
+                });
+                return;
+            }
+
+            // If the map was also staged, point at its new location; otherwise point back at the original
+            const mapTarget = srcToDestMap.get(absoluteMapPath) ?? absoluteMapPath;
+            const newRelativePath = fileUtils.standardizePath(
+                path.relative(path.dirname(stagingFilePath), mapTarget)
+            );
+
+            const newComment = `${commentMatch.leadingInfo.trimEnd()}//# sourceMappingURL=${newRelativePath}`;
+            contents = contents.replace(commentMatch.fullMatch, newComment);
+            await this.writeFile(stagingFilePath, contents, 'utf8');
+        } catch (e) {
+            this.logger.error(`Error updating sourceMappingURL comment in '${stagingFilePath}'`, e);
+        }
+    }
+
+    private async colocateSourceMap(options: { stagingFilePath: string; absoluteMapPath: string }) {
+        //copy the sourcemap right next to our file (skip if it's already there)
+        const stagingMapPath = `${options.stagingFilePath}.map`;
+        if (fileUtils.standardizePath(options.absoluteMapPath) !== fileUtils.standardizePath(stagingMapPath)) {
+            await this.copyFile(options.absoluteMapPath, stagingMapPath);
+        }
+        await this.fixSourceMapSources({
+            stagingMapPath: stagingMapPath,
+            originalMapPath: options.absoluteMapPath
+        });
+        return stagingMapPath;
+    }
+
+
+    /**
      * Apply the bsConst transformations to the manifest file for this project
      */
     public async transformManifestWithBsConst() {
@@ -525,7 +876,7 @@ export class Project {
                 // Update the bs_const values in the manifest in the staging folder before side loading the channel
                 let fileContents = (await fsExtra.readFile(manifestPath)).toString();
                 fileContents = this.updateManifestBsConsts(this.bsConst, fileContents);
-                await fsExtra.writeFile(manifestPath, fileContents);
+                await this.writeFile(manifestPath, fileContents);
             }
         }
     }
@@ -621,11 +972,16 @@ export class Project {
             return;
         }
         try {
-            let files = await globAsync(`${this.rdbFilesBasePath}/**/*`, {
-                cwd: './',
-                absolute: false,
-                follow: true
-            });
+
+            let files: string[] = await fastGlob(
+                //fast-glob requires forward slashes, so convert any backslashes in the provided path to forward slashes before globbing
+                `${this.rdbFilesBasePath}/**/*`.replace(/[\\/]+/g, '/'),
+                {
+                    cwd: './',
+                    absolute: false,
+                    followSymbolicLinks: true
+                }
+            );
             for (let filePathAbsolute of files) {
                 const promises = [];
                 //only include files (i.e. skip directories)
@@ -706,14 +1062,7 @@ export class Project {
      * (`dest` paths are relative in later versions of roku-deploy)
      */
     protected async getFileMappings() {
-        let fileMappings = await rokuDeploy.getFilePaths(this.files, this.rootDir);
-        for (let mapping of fileMappings) {
-            //if the dest path is relative, make it absolute (relative to the staging dir)
-            mapping.dest = path.resolve(this.stagingDir, mapping.dest);
-            //standardize the paths once here, and don't need to do it again anywhere else in this project
-            mapping.src = fileUtils.standardizePath(mapping.src);
-            mapping.dest = fileUtils.standardizePath(mapping.dest);
-        }
+        let fileMappings = await rokuDeploy.getFilePaths(this.files, this.rootDir, true, this.stagingDir);
         return fileMappings;
     }
 
@@ -726,6 +1075,7 @@ export interface ComponentLibraryConstructorParams extends AddProjectParams {
     outFile: string;
     libraryIndex: number;
     install?: boolean;
+    enablePostfix?: boolean;
 }
 
 export class ComponentLibraryProject extends Project {
@@ -734,10 +1084,18 @@ export class ComponentLibraryProject extends Project {
         this.outFile = params.outFile;
         this.libraryIndex = params.libraryIndex;
         this.install = params.install ?? false;
+        this.enablePostfix = params.enablePostfix ?? true;
     }
     public outFile: string;
     public libraryIndex: number;
     public install: boolean;
+    /**
+     * Should this component library's `.brs` files be renamed with a `__lib<index>` postfix during staging?
+     * Postfixing is how the debugger maps a device-reported file path back to the component library it came
+     * from. When disabled, file names are left untouched (useful when a library loads files by a fixed name
+     * at runtime), at the cost of degraded source mapping for this library's files while debugging.
+     */
+    public enablePostfix: boolean;
     /**
      * The name of the component library that this project represents. This is loaded during `this.computeOutFileName`
      */
@@ -812,10 +1170,16 @@ export class ComponentLibraryProject extends Project {
      * back to their original component library whenever the debugger truncates the file path.
      */
     public get postfix() {
-        return `${componentLibraryPostfix}${this.libraryIndex}`;
+        //when postfixing is disabled, return an empty postfix so all postfix-aware logic (file renaming,
+        //breakpoint path matching, source-location resolution) becomes a no-op for this library
+        return this.enablePostfix ? `${componentLibraryPostfix}${this.libraryIndex}` : '';
     }
 
     public async postfixFiles() {
+        //postfixing disabled for this library; leave file names and `uri=` references untouched
+        if (!this.enablePostfix) {
+            return;
+        }
         let pathDetails = {};
         await Promise.all(this.fileMappings.map(async (fileMapping) => {
             let relativePath = fileUtils.removeLeadingSlash(

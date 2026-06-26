@@ -35,6 +35,10 @@ describe('Profiling/Tracing Integration Tests', () => {
         mockSocket.close = sinon.stub().callsFake(() => {
             process.nextTick(() => mockSocket.emit('close'));
         });
+        mockSocket.terminate = sinon.stub().callsFake(() => {
+            mockSocket.readyState = WebSocket.CLOSED;
+            process.nextTick(() => mockSocket.emit('close'));
+        });
         mockSocket.ping = sinon.stub();
         mockSocket.pause = sinon.stub();
         mockSocket.resume = sinon.stub();

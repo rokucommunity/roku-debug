@@ -137,7 +137,7 @@ export class RendezvousTracker {
      * Determine if rendezvous tracking is enabled via the 8080 telnet command
      */
     public async getIsTelnetRendezvousTrackingEnabled() {
-        return (await this.runSGLogrendezvousCommand('status'))?.trim()?.toLowerCase() === 'on';
+        return (await this.runSGLogrendezvousCommand('status'))?.trim()?.toLowerCase()?.endsWith('on') ?? false;
     }
 
     /**

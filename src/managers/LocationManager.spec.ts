@@ -4,6 +4,7 @@ import { SourceMapConsumer, SourceNode } from 'source-map';
 import { standardizePath as s } from '../FileUtils';
 import { LocationManager } from './LocationManager';
 import { SourceMapManager } from './SourceMapManager';
+import { forceDeleteDir } from '../testHelpers.spec';
 
 let tempDir = s`${process.cwd()}/.tmp`;
 const rootDir = s`${tempDir}/rootDir`;
@@ -17,18 +18,18 @@ const sourceDirs = [
 describe('LocationManager', () => {
     let locationManager: LocationManager;
     let sourceMapManager: SourceMapManager;
-    beforeEach(() => {
+    beforeEach(async () => {
         sourceMapManager = new SourceMapManager();
         locationManager = new LocationManager(sourceMapManager);
-        fsExtra.removeSync(tempDir);
+        await forceDeleteDir(tempDir);
         fsExtra.ensureDirSync(`${rootDir}/source`);
         fsExtra.ensureDirSync(`${stagingDir}/source`);
         for (let sourceDir of sourceDirs) {
             fsExtra.ensureDirSync(`${sourceDir}/source`);
         }
     });
-    afterEach(() => {
-        fsExtra.removeSync(tempDir);
+    afterEach(async () => {
+        await forceDeleteDir(tempDir);
     });
     describe('getSourceLocation', () => {
 

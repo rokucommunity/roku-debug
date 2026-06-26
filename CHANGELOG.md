@@ -6,6 +6,164 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.13](https://github.com/rokucommunity/roku-debug/compare/0.23.12...v0.23.13) - 2026-06-12
+### Added
+ - Add processStagingDir reverse request support ([#366](https://github.com/rokucommunity/roku-debug/pull/366))
+
+
+
+## [0.23.12](https://github.com/rokucommunity/roku-debug/compare/0.23.11...v0.23.12) - 2026-06-10
+### Changed
+ - Enhanced thread names ([#303](https://github.com/rokucommunity/roku-debug/pull/303))
+ - Log Perfetto availability and notify user when device firmware is below the minimum requirement ([#354](https://github.com/rokucommunity/roku-debug/pull/354))
+ - upgrade to [@rokucommunity/logger@0.3.13](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#0313---2026-06-08). Notable changes since 0.3.12:
+     - chore: Security updates ([#15](https://github.com/rokucommunity/logger/pull/15), [#14](https://github.com/rokucommunity/logger/pull/14), [#27](https://github.com/rokucommunity/logger/pull/27), [#26](https://github.com/rokucommunity/logger/pull/26), [#24](https://github.com/rokucommunity/logger/pull/24), [#21](https://github.com/rokucommunity/logger/pull/21), [#19](https://github.com/rokucommunity/logger/pull/19))
+ - upgrade to [brighterscript@0.72.5](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0725---2026-06-10). Notable changes since 0.72.4:
+
+
+
+## [0.23.11](https://github.com/rokucommunity/roku-debug/compare/0.23.10...v0.23.11) - 2026-06-04
+### Changed
+ - Validate breakpoint file types; add (disabled) AST line validation ([#317](https://github.com/rokucommunity/roku-debug/pull/317))
+ - upgrade to [brighterscript@0.72.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0724---2026-05-29). Notable changes since 0.72.3:
+ - upgrade to [roku-deploy@3.17.6](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3176---2026-06-04). Notable changes since 3.17.4:
+     - Fix case-insensitive matching for absolute `files.src` glob patterns on case-insensitive file systems ([#279](https://github.com/rokucommunity/roku-deploy/pull/279))
+     - Preserve `!` glob-negation prefix in standardizePath ([#277](https://github.com/rokucommunity/roku-deploy/pull/277))
+
+
+
+## [0.23.10](https://github.com/rokucommunity/roku-debug/compare/0.23.9...v0.23.10) - 2026-05-28
+### Changed
+ - Defer initializeProfiling until after InitializedEvent for backwards compatability with DAP clients ([#362](https://github.com/rokucommunity/roku-debug/pull/362))
+
+
+
+## [0.23.9](https://github.com/rokucommunity/roku-debug/compare/0.23.8...v0.23.9) - 2026-05-27
+### Changed
+ - upgrade to [brighterscript@0.72.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0723---2026-05-27).
+### Fixed
+ - stale suspend/runtime-error events when debugger is no longer paused ([#356](https://github.com/rokucommunity/roku-debug/pull/356))
+ - crash related to missing client when trying to sync breakpoints with device ([#357](https://github.com/rokucommunity/roku-debug/pull/357))
+ - pressHomeButton crash in disconnectRequest ([#358](https://github.com/rokucommunity/roku-debug/pull/358))
+
+
+
+## [0.23.8](https://github.com/rokucommunity/roku-debug/compare/0.23.7...v0.23.8) - 2026-05-19
+### Changed
+ - Inject breakpoint STOPs _after_ `InitializedEvent` ([#340](https://github.com/rokucommunity/roku-debug/pull/340))
+ - Defer DAP capabilities and InitializedEvent until after adapter connects ([#328](https://github.com/rokucommunity/roku-debug/pull/328))
+ - upgrade to [@rokucommunity/logger@0.3.12](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#0312---2026-05-19). Notable changes since 0.3.11:
+     - Security enhancements ([#17](https://github.com/rokucommunity/logger/pull/17))
+ - upgrade to [brighterscript@0.72.2](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0722---2026-05-19). Notable changes since 0.72.1:
+     - Security enhancements ([#1714](https://github.com/rokucommunity/brighterscript/pull/1714))
+ - upgrade to [roku-deploy@3.17.4](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3174---2026-05-19). Notable changes since 3.17.2:
+     - Security enhancements ([#263](https://github.com/rokucommunity/roku-deploy/pull/263))
+     - Add `autoLaunch` option to control `dev_autolaunch` on sideload ([#261](https://github.com/rokucommunity/roku-deploy/pull/261))
+### Fixed
+ - security enhancements ([#350](https://github.com/rokucommunity/roku-debug/pull/350))
+ - TelnetAdapter crash when methods are called after destroy ([#349](https://github.com/rokucommunity/roku-debug/pull/349))
+ - deferred capability handling for exception breakpoints ([#342](https://github.com/rokucommunity/roku-debug/pull/342))
+ - bug on windows with rdb file copying ([#343](https://github.com/rokucommunity/roku-debug/pull/343))
+ - sourcemap race in preprocessStagingFiles ([#339](https://github.com/rokucommunity/roku-debug/pull/339))
+
+
+
+## [0.23.7](https://github.com/rokucommunity/roku-debug/compare/0.23.6...v0.23.7) - 2026-05-11
+### Changed
+ - upgrade to [brighterscript@0.72.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0721---2026-05-11). Notable changes since 0.72.0:
+     - feat: allow line continuation in .brs files when minFirmwareVersion >= 15.3 ([#1693](https://github.com/rokucommunity/brighterscript/pull/1693))
+ - upgrade to [roku-deploy@3.17.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3172---2026-05-05). Notable changes since 3.17.1:
+     - Expanded the default files array to include the locale folder ([#237](https://github.com/rokucommunity/roku-deploy/pull/237))
+
+
+
+## [0.23.6](https://github.com/rokucommunity/roku-debug/compare/0.23.5...v0.23.6) - 2026-04-30
+### Changed
+ - Increase `app-ready` timeout to 60 seconds for slow Roku launches ([#334](https://github.com/rokucommunity/roku-debug/pull/334))
+ - upgrade to [brighterscript@0.72.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0720---2026-04-30). Notable changes since 0.71.1:
+     - perf: Share per-file namespace data via lazy ScopeNamespaceLookup view ([#1684](https://github.com/rokucommunity/brighterscript/pull/1684))
+     - perf: Lazy-allocate NamespaceContainer's optional fields ([#1683](https://github.com/rokucommunity/brighterscript/pull/1683))
+     - perf: Share BscSymbol references in SymbolTable.mergeSymbolTable ([#1682](https://github.com/rokucommunity/brighterscript/pull/1682))
+     - change: Chain prebuild sourcemaps through BrighterScript transpile ([#1676](https://github.com/rokucommunity/brighterscript/pull/1676))
+     - add: Support line continuation ([#1667](https://github.com/rokucommunity/brighterscript/pull/1667))
+ - upgrade to [roku-deploy@3.17.1](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3171---2026-04-27). Notable changes since 3.16.5:
+     - Fix crash when loading roku-deploy on node < 18 ([#256](https://github.com/rokucommunity/roku-deploy/pull/256))
+     - feat: add RokuDeploy.validateDeveloperPassword ([#252](https://github.com/rokucommunity/roku-deploy/pull/252))
+     - fix: correct DeviceInfoRaw serial-number property name ([#251](https://github.com/rokucommunity/roku-deploy/pull/251))
+### Fixed
+ - Fix breakpoint injection breaking sourcemap chain for .bs files ([#333](https://github.com/rokucommunity/roku-debug/pull/333))
+
+
+
+## [0.23.5](https://github.com/rokucommunity/roku-debug/compare/0.23.4...v0.23.5) - 2026-04-14
+### Changed
+ - Avoid monkey-patching roku-deploy's getFiles function ([#329](https://github.com/rokucommunity/roku-debug/pull/329))
+ - upgrade to [brighterscript@0.71.1](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0711---2026-04-14). Notable changes since 0.71.0:
+ - upgrade to [roku-deploy@3.16.5](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3165---2026-04-13). Notable changes since 3.16.4:
+     - Resolve files array staging option ([#249](https://github.com/rokucommunity/roku-deploy/pull/249))
+### Fixed
+ - Fix sourcemap comments ([#327](https://github.com/rokucommunity/roku-debug/pull/327))
+
+
+
+## [0.23.4](https://github.com/rokucommunity/roku-debug/compare/0.23.3...v0.23.4) - 2026-04-07
+### Added
+ - Resolve relative source maps and honor sourceRoot ([#307](https://github.com/rokucommunity/roku-debug/pull/307))
+### Fixed
+ - upgrade to [roku-deploy@3.16.4](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3164---2026-04-07). Notable changes since 3.16.3:
+     - Fix `zipFolder` bug that wasn't properly handling absolute stagingDir path ([#245](https://github.com/rokucommunity/roku-deploy/pull/245))
+ - Handle THREAD_DETACHED gracefully and show [unavailable] for inaccessible threads ([#324](https://github.com/rokucommunity/roku-debug/pull/324))
+ - Sourcemap staging bugs when maps are from different depth than staging dir ([#308](https://github.com/rokucommunity/roku-debug/pull/308))
+
+
+
+## [0.23.3](https://github.com/rokucommunity/roku-debug/compare/0.23.2...v0.23.3) - 2026-04-01
+### Fixed
+ - Respect client line and col numbers for stack frames and compile errors ([#309](https://github.com/rokucommunity/roku-debug/pull/309))
+ - Fix crash when socket errors after a successful connection is established ([#321](https://github.com/rokucommunity/roku-debug/pull/321))
+
+
+
+## [0.23.2](https://github.com/rokucommunity/roku-debug/compare/0.23.1...v0.23.2) - 2026-04-01
+### Added
+ - additionalInfo to ProcessCrashEvent ([#319](https://github.com/rokucommunity/roku-debug/pull/319))
+ - thread detached visulization ([#306](https://github.com/rokucommunity/roku-debug/pull/306))
+### Fixed
+ - prevent crash in _syncBreakpoints when client is undefined ([#316](https://github.com/rokucommunity/roku-debug/pull/316))
+
+
+
+## [0.23.1](https://github.com/rokucommunity/roku-debug/compare/0.23.0...v0.23.1) - 2026-03-27
+### Changed
+ - Bump brace-expansion from 1.1.12 to 1.1.13 ([#312](https://github.com/rokucommunity/roku-debug/pull/312))
+ - upgrade to [brighterscript@0.71.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0710---2026-03-27). Notable changes since 0.70.4:
+     - bugfix/small perf improvements ([#1663](https://github.com/rokucommunity/brighterscript/pull/1663))
+### Fixed
+ - Fix crash when breakpoint deletion fails while device is running ([#313](https://github.com/rokucommunity/roku-debug/pull/313))
+
+
+
+## [0.23.0](https://github.com/rokucommunity/roku-debug/compare/0.22.7...v0.23.0) - 2026-03-27
+### Added
+ - Experimental DAP level communication logging ([#310](https://github.com/rokucommunity/roku-debug/pull/310))
+ - Logs and custom events for crashes that would silently exit the process ([#310](https://github.com/rokucommunity/roku-debug/pull/310))
+
+### Changed
+ - Bump picomatch from 2.3.1 to 2.3.2 ([#305](https://github.com/rokucommunity/roku-debug/pull/305))
+
+
+
+## [0.22.7](https://github.com/rokucommunity/roku-debug/compare/0.22.6...v0.22.7) - 2026-03-24
+### Added
+ - Support for ProgressStart ProgressUpdate and ProgressEnd DAP events ([#300](https://github.com/rokucommunity/roku-debug/pull/300))
+### Changed
+ - Support `bs_libs_provided` when computing complib out file name ([#298](https://github.com/rokucommunity/roku-debug/pull/298))
+ - upgrade to [brighterscript@0.70.4](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0704---2026-03-24). Notable changes since 0.70.3:
+### Fixed
+ - default profiling enablement flow ([#302](https://github.com/rokucommunity/roku-debug/pull/302))
+
+
+
 ## [0.22.6](https://github.com/rokucommunity/roku-debug/compare/0.22.5...v0.22.6) - 2026-03-09
 ### Added
  - Perfetto tracing ([#286](https://github.com/rokucommunity/roku-debug/pull/286))

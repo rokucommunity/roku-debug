@@ -5,6 +5,11 @@ import { HighLevelType } from '../interfaces';
 import { RendezvousTracker } from '../RendezvousTracker';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { EvaluateContainer } from './DebugProtocolAdapter';
+import { createSandbox } from 'sinon';
+import { Socket } from 'net';
+import { rokuDeploy } from 'roku-deploy';
+
+const sinon = createSandbox();
 
 describe('TelnetAdapter ', () => {
     let adapter: TelnetAdapter;
@@ -24,6 +29,10 @@ describe('TelnetAdapter ', () => {
             },
             rendezvousTracker
         );
+    });
+
+    afterEach(() => {
+        sinon.restore();
     });
 
     describe('getHighLevelTypeDetails', () => {
@@ -184,6 +193,109 @@ describe('TelnetAdapter ', () => {
                 children: [],
                 highLevelType: 'object'
             }]);
+        });
+    });
+
+    describe('after destroy()', () => {
+        //Regression tests for https://github.com/rokucommunity/roku-debug/issues/348
+        //destroy() nulls out this.cache, so any subsequent call routed through resolve()
+        //would crash with `Cannot read properties of undefined (reading '<key>')`.
+
+        beforeEach(() => {
+            //force the "debugger is paused" guard to pass so we reach resolve()
+            adapter['isAtDebuggerPrompt'] = true;
+        });
+
+        it('getThreads() does not throw "Cannot read properties of undefined"', async () => {
+            await adapter.destroy();
+
+            let error: Error | undefined;
+            try {
+                await adapter.getThreads();
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error?.message ?? '').not.to.match(/Cannot read properties of undefined/);
+        });
+
+        it('getStackTrace() does not throw "Cannot read properties of undefined"', async () => {
+            await adapter.destroy();
+
+            let error: Error | undefined;
+            try {
+                await adapter.getStackTrace();
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error?.message ?? '').not.to.match(/Cannot read properties of undefined/);
+        });
+
+        it('getScopeVariables() does not throw "Cannot read properties of undefined"', async () => {
+            await adapter.destroy();
+
+            let error: Error | undefined;
+            try {
+                await adapter.getScopeVariables();
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error?.message ?? '').not.to.match(/Cannot read properties of undefined/);
+        });
+
+        it('getVariableType() does not throw "Cannot read properties of undefined"', async () => {
+            await adapter.destroy();
+
+            let error: Error | undefined;
+            try {
+                await adapter.getVariableType('foo');
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error?.message ?? '').not.to.match(/Cannot read properties of undefined/);
+        });
+    });
+
+    describe('connect', () => {
+        it('does not crash and triggers shutdown when the socket errors after the connection is established', async () => {
+            // Stub pressHomeButton so we don't need a real device
+            sinon.stub(rokuDeploy, 'pressHomeButton').resolves();
+            // Stub Socket.prototype.connect so it doesn't attempt a real connection.
+            // The callback is invoked synchronously to simulate a successful connection.
+            sinon.stub(Socket.prototype, 'connect').callsFake(function(this: Socket, ...args: any[]) {
+                const cb = args.find(a => typeof a === 'function');
+                if (cb) {
+                    cb();
+                }
+                return this;
+            });
+            // Stub the settle method so connect() completes immediately
+            sinon.stub(adapter as any, 'settleTelnetConnection').resolves('');
+
+            await adapter.connect();
+
+            // Wire up a promise that resolves when the adapter emits 'close'. This must be
+            // set up before the error is emitted, since Node.js auto-fires 'close' after
+            // 'error'. TelnetAdapter.emit() defers via setTimeout(0), so we await the
+            // promise rather than doing a fixed sleep.
+            const closePromise = new Promise<void>(resolve => {
+                adapter.on('close', resolve);
+            });
+
+            // The deferred is now resolved. Emitting an error on the still-live socket
+            // (simulating ETIMEDOUT on device disconnect) must not throw.
+            expect(() => {
+                adapter['requestPipeline'].client.emit('error', new Error('read ETIMEDOUT'));
+            }).not.to.throw();
+
+            // On a real connected socket Node.js automatically fires 'close' after 'error'.
+            // Our test socket is never truly connected (connect is stubbed), so emit it manually
+            // to replicate that behaviour.
+            adapter['requestPipeline'].client.emit('close');
+
+            // TelnetAdapter.emit() wraps every event in setTimeout(0). Awaiting closePromise
+            // yields back to the event loop so that deferred callback can run, confirming
+            // the full error → close → session-teardown chain fired correctly.
+            await closePromise;
         });
     });
 });

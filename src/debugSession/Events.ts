@@ -4,6 +4,7 @@ import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { ChanperfData } from '../ChanperfTracker';
 import type { RendezvousHistory } from '../RendezvousTracker';
+import type { ProjectStagingInfo } from '../managers/ProjectManager';
 
 export class CustomEvent<T> {
     public constructor(body: T) {
@@ -241,6 +242,43 @@ export function isExecuteTaskCustomRequest(event: any): event is CustomRequestEv
 
 export function isShowPopupMessageCustomRequest(event: any): event is CustomRequestEvent<{ message: string; severity: 'error' | 'warn' | 'info'; modal: boolean; actions: string[] }> {
     return !!event && event.event === CustomRequestEvent.name && event.body.name === 'showPopupMessage';
+}
+
+export function isProcessStagingDirCustomRequest(event: any): event is CustomRequestEvent<{ projects: ProjectStagingInfo[] }> {
+    return !!event && event.event === CustomRequestEvent.name && event.body.name === 'processStagingDir';
+}
+
+export interface ProcessCrashEventData {
+    type: 'uncaughtException' | 'unhandledRejection';
+    message: string;
+    stack?: string;
+    /**
+     * Optional extra diagnostic data provided by the debugger. Keys are human-readable labels;
+     * values are serialized as JSON when displayed to the user.
+     */
+    additionalInfo?: {
+        clientName?: string;
+        rokuDebugVersion?: string;
+        ecpMode?: string;
+        developerMode?: boolean;
+        firmware?: string;
+        protocolVersion?: string;
+        protocolEnabled?: boolean;
+    };
+}
+
+/**
+ * Emitted when the debug adapter process encounters an uncaught exception or unhandled rejection.
+ * The client should display an error to the user and terminate the debug session.
+ */
+export class ProcessCrashEvent extends CustomEvent<ProcessCrashEventData> {
+    constructor(data: ProcessCrashEventData) {
+        super(data);
+    }
+}
+
+export function isProcessCrashEvent(event: any): event is ProcessCrashEvent {
+    return !!event && event.event === ProcessCrashEvent.name;
 }
 
 export enum ClientToServerCustomEventName {
