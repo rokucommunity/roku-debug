@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.14](https://github.com/rokucommunity/roku-debug/compare/0.23.13...v0.23.14) - 2026-06-29
+### Added
+ - Add per-component-library option to disable file postfixing ([#378](https://github.com/rokucommunity/roku-debug/pull/378))
+### Changed
+ - Improve debug console completions ([#376](https://github.com/rokucommunity/roku-debug/pull/376))
+ - Report empty Perfetto trace files on stop ([#377](https://github.com/rokucommunity/roku-debug/pull/377))
+ - upgrade to [@rokucommunity/logger@0.4.0](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#040---2026-06-29).
+ - upgrade to [brighterscript@0.73.0](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0730---2026-06-29). Notable changes since 0.72.5:
+     - Validate eval/rsg_version against firmware lifecycle ([#1698](https://github.com/rokucommunity/brighterscript/pull/1698))
+     - Reduced unessisary unnecessary production dependencies ([#1735](https://github.com/rokucommunity/brighterscript/pull/1735)) ([#1736](https://github.com/rokucommunity/brighterscript/pull/1736)) ([#1737](https://github.com/rokucommunity/brighterscript/pull/1737))
+### Fixed
+ - Fix telnet rendezvous status detection for fallback activation ([#371](https://github.com/rokucommunity/roku-debug/pull/371))
+ - Fix ~30s delay when stopping a Perfetto recording ([#373](https://github.com/rokucommunity/roku-debug/pull/373))
+
+
+
 ## [0.23.13](https://github.com/rokucommunity/roku-debug/compare/0.23.12...v0.23.13) - 2026-06-12
 ### Added
  - Add processStagingDir reverse request support ([#366](https://github.com/rokucommunity/roku-debug/pull/366))

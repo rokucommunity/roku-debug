@@ -1,7 +1,5 @@
-import { default as defaultLogger } from '@rokucommunity/logger';
+import { default as defaultLogger, QueuedTransport, FileTransport } from '@rokucommunity/logger';
 import type { Logger } from '@rokucommunity/logger';
-import { QueuedTransport } from '@rokucommunity/logger/dist/transports/QueuedTransport';
-import { FileTransport } from '@rokucommunity/logger/dist/transports/FileTransport';
 import type { LaunchConfiguration } from './LaunchConfiguration';
 import * as path from 'path';
 import { util } from './util';
