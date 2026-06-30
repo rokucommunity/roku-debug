@@ -591,7 +591,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             // fetches the device info and parses the xml data to JSON object
             try {
-                this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                if (this.launchConfiguration.deviceInfo) {
+                    // device info was supplied in the launch config; enhance it locally instead of requesting it from the device over the network
+                    this.deviceInfo = rokuDeploy.normalizeDeviceInfo(this.launchConfiguration.deviceInfo);
+                } else {
+                    this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                }
                 if (this.deviceInfo.ecpSettingMode === 'limited') {
                     return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
                 }

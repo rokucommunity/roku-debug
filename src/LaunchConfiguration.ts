@@ -1,4 +1,4 @@
-import type { FileEntry } from 'roku-deploy';
+import type { DeviceInfoRaw, FileEntry } from 'roku-deploy';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { LogLevel } from './logging';
 
@@ -14,6 +14,13 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      * The host or ip address for the target Roku
      */
     host: string;
+
+    /**
+     * The raw `device-info` for the target Roku. When supplied, the debug session uses this instead of
+     * requesting `device-info` from the device over the network. The client (i.e. the vscode extension)
+     * can populate this from device info it already gathered to avoid a redundant network round-trip.
+     */
+    deviceInfo?: DeviceInfoRaw;
 
     /**
      * The password for the developer page on the target Roku

@@ -2948,6 +2948,44 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.connected = true;
         }
 
+        describe('device info', () => {
+            it('uses device info supplied in the launch config instead of requesting it from the device', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
+
+                launchConfiguration.host = '1.2.3.4';
+                launchConfiguration.deviceInfo = {
+                    'developer-enabled': 'true',
+                    'software-version': '11.5.0',
+                    'software-build': '4170'
+                };
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                //should not have requested device info from the device over the network
+                expect(getDeviceInfoStub.called).to.be.false;
+                //device info should be the normalized (enhanced) form of the supplied raw data
+                expect(session.deviceInfo).to.include({
+                    developerEnabled: true,
+                    softwareVersion: '11.5.0',
+                    softwareBuild: 4170
+                });
+            });
+
+            it('requests device info from the device when none is supplied in the launch config', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
+
+                launchConfiguration.host = '1.2.3.4';
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                expect(getDeviceInfoStub.called).to.be.true;
+            });
+        });
+
         describe('progress events', () => {
             let events: any[];
 
