@@ -382,12 +382,12 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
          * The route to use for uploading to the Roku device. Defaults to 'plugin_install'
          * @default 'plugin_install'
          */
-        route: string;
+        route?: string;
 
         /**
          * A dictionary of form fields to be included in the package upload request. Set a value to null to delete from the form
          */
-        formData: Record<string, any>;
+        formData?: Record<string, any>;
     };
 
     /**
@@ -449,11 +449,11 @@ export interface ComponentLibraryConfiguration {
          * The route to use for uploading to the Roku device. Defaults to 'plugin_install'
          * @default 'plugin_install'
          */
-        route: string;
+        route?: string;
         /**
          * A dictionary of form fields to be included in the package upload request. Set a value to null to delete from the form
          */
-        formData: Record<string, any>;
+        formData?: Record<string, any>;
     };
     /**
      * The filename for the package.
