@@ -593,7 +593,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             try {
                 if (this.launchConfiguration.deviceInfo) {
                     // device info was supplied in the launch config; enhance it locally instead of requesting it from the device over the network
-                    this.deviceInfo = rokuDeploy.normalizeDeviceInfo(this.launchConfiguration.deviceInfo);
+                    this.deviceInfo = rokuDeploy.enhanceDeviceInfo(this.launchConfiguration.deviceInfo);
                 } else {
                     this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
                 }
