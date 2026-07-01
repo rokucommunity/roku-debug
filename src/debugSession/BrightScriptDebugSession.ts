@@ -589,9 +589,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
             }
 
-            // fetches the device info and parses the xml data to JSON object
+            // fetche device info if not supplied via launch config
             try {
-                this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                if (this.launchConfiguration.deviceInfo) {
+                    this.deviceInfo = rokuDeploy.enhanceDeviceInfo(this.launchConfiguration.deviceInfo);
+                } else {
+                    this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                }
                 if (this.deviceInfo.ecpSettingMode === 'limited') {
                     return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
                 }
