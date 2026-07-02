@@ -589,7 +589,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
             }
 
-            // fetche device info if not supplied via launch config
+            // fetch device info if not supplied via launch config
             try {
                 if (this.launchConfiguration.deviceInfo) {
                     this.deviceInfo = rokuDeploy.enhanceDeviceInfo(this.launchConfiguration.deviceInfo);
