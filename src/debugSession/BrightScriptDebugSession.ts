@@ -115,7 +115,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         //When the client's pipe goes away (e.g. VS Code closed), stop forwarding output. Otherwise the
         //still-running Roku app keeps streaming output, every write to the dead pipe fails, and each
-        //failure re-triggers shutdown() in a tight loop that pegs the CPU and orphans this process (#486).
+        //failure re-triggers shutdown() in a tight loop that pegs the CPU and orphans this process.
         const markClientGone = () => {
             this.clientDisconnected = true;
         };
@@ -141,7 +141,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
     /**
      * Once the client has disconnected, drop outgoing events instead of writing to the dead stream.
-     * Writing to a broken pipe re-triggers the base 'error' -> shutdown() handler in a tight loop (#486).
+     * Writing to a broken pipe re-triggers the base 'error' -> shutdown() handler in a tight loop.
      */
     public sendEvent(event: DebugProtocol.Event): void {
         if (this.clientDisconnected) {
@@ -177,7 +177,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
     /**
      * Tear down the process error handlers and forcibly exit, so we never leave an orphaned adapter
-     * spinning in the background after the client is gone or a graceful shutdown has hung. (#486)
+     * spinning in the background after the client is gone or a graceful shutdown has hung.
      */
     private forceExit(code = 0): void {
         this.teardownProcessErrorHandlers();
@@ -187,14 +187,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private handleProcessError(type: 'uncaughtException' | 'unhandledRejection', error: unknown) {
         //a broken client pipe (EPIPE) means the client (e.g. VS Code) is gone. Trying to report it over
         //the now-dead stream just produces more EPIPEs, which re-enter this handler in a tight loop and
-        //peg the CPU (#486). Exit instead.
+        //peg the CPU. Exit instead.
         if (this.isClientGoneError(error)) {
             this.clientDisconnected = true;
             this.forceExit();
             return;
         }
         //only handle the first error; re-entering here (e.g. from a failed write while reporting) would
-        //spin the CPU and flood the logs (#486)
+        //spin the CPU and flood the logs
         if (this.handlingProcessError) {
             return;
         }
@@ -342,9 +342,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
     private processErrorHandlersRegistered = false;
     private isCrashed = false;
-    /** Set once the client (e.g. VS Code) disconnects, so we stop writing to a now-dead stream (#486) */
+    /** Set once the client (e.g. VS Code) disconnects, so we stop writing to a now-dead stream */
     private clientDisconnected = false;
-    /** How long to wait for a graceful shutdown before forcibly exiting the process (#486) */
+    /** How long to wait for a graceful shutdown before forcibly exiting the process */
     private shutdownForceExitTimeout = 10_000;
     private _uncaughtExceptionHandler: ((error: Error) => void) | undefined;
     private _unhandledRejectionHandler: ((reason: unknown) => void) | undefined;
@@ -3383,7 +3383,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
             //Backstop: if the graceful shutdown hangs (e.g. pressHomeButton against an unreachable
-            //device), force-exit anyway so we never leave an orphaned adapter running forever (#486)
+            //device), force-exit anyway so we never leave an orphaned adapter running forever
             const forceExitTimer = setTimeout(() => {
                 this.logger.error('[shutdown] graceful shutdown timed out; forcing exit');
                 this.forceExit();
