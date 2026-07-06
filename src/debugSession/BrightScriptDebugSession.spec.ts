@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
-import { DebugSession, InitializedEvent, Logger as DapLogger, logger as dapLogger, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
+import { DebugSession, InitializedEvent, Logger as DapLogger, logger as dapLogger, OutputEvent, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
@@ -59,6 +59,9 @@ describe('BrightScriptDebugSession', () => {
 
         //prevent calling DebugSession.shutdown() because that calls process.kill(), which would kill the test session
         sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
+
+        //prevent forceExit()/the shutdown backstop from actually killing the test runner (#486)
+        sinon.stub(process, 'exit').callsFake((() => undefined) as any);
 
         try {
             session = new BrightScriptDebugSession();
@@ -3431,6 +3434,73 @@ describe('BrightScriptDebugSession', () => {
             const response = await getStackTraceResponse(0);
 
             expect(response.body.stackFrames[0].source).to.be.undefined;
+        });
+    });
+
+    describe('client disconnect (#486)', () => {
+        /**
+         * Simulates the VS Code -> adapter pipe: the adapter keeps its stdio streams open, but once
+         * the client goes away every write to the output stream fails with EPIPE (broken pipe).
+         */
+        function createBrokenStreams() {
+            const inStream = new EventEmitter() as any;
+            inStream.resume = () => { };
+            const outStream = new EventEmitter() as any;
+            outStream.write = () => {
+                //a broken pipe emits an async 'error' on the stream for each write
+                outStream.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+                return false;
+            };
+            outStream.end = () => { };
+            return { inStream, outStream };
+        }
+
+        it('does not keep calling shutdown for every output line after the client pipe breaks', () => {
+            const { inStream, outStream } = createBrokenStreams();
+            session.start(inStream, outStream);
+
+            //don't run the real teardown; we only care how many times shutdown is triggered
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves();
+
+            //the Roku app is still running and streaming output after the client disconnected
+            for (let i = 0; i < 5; i++) {
+                session.sendEvent(new OutputEvent(`device log line ${i}\n`, 'stdout'));
+            }
+
+            //the disconnect should be handled once, not re-triggered by every subsequent write
+            //(before the fix: each broken write emits 'error' -> shutdown(), so callCount === 5)
+            expect(shutdownStub.callCount).to.be.at.most(1);
+        });
+
+        it('recognizes broken-pipe errors as the client going away', () => {
+            expect(session['isClientGoneError'](Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))).to.be.true;
+            expect(session['isClientGoneError'](new Error('write after end'))).to.be.true;
+            expect(session['isClientGoneError'](new Error('some other failure'))).to.be.false;
+        });
+
+        it('exits instead of reporting a crash when the client pipe is gone (EPIPE)', () => {
+            const sendEventStub = sinon.stub(session, 'sendEvent');
+
+            session['handleProcessError']('uncaughtException', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+
+            expect((process.exit as unknown as sinon.SinonStub).called).to.be.true;
+            expect(session['clientDisconnected']).to.be.true;
+            //must not try to report the crash over the (now-dead) stream, which would just loop
+            expect(sendEventStub.called).to.be.false;
+        });
+
+        it('processes only the first error to avoid a crash-report storm', () => {
+            sinon.stub(session as any, 'sendLogOutput').resolves();
+            const sendEventStub = sinon.stub(session, 'sendEvent');
+            sinon.stub(session, 'shutdown').resolves();
+
+            const error = new Error('boom');
+            session['handleProcessError']('uncaughtException', error);
+            session['handleProcessError']('uncaughtException', error);
+            session['handleProcessError']('uncaughtException', error);
+
+            //the crash report should be sent once, not once per re-entry
+            expect(sendEventStub.callCount).to.equal(1);
         });
     });
 });

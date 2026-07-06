@@ -112,6 +112,17 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
     public start(inStream: NodeJS.ReadableStream, outStream: NodeJS.WritableStream): void {
         super.start(inStream, outStream);
+
+        //When the client's pipe goes away (e.g. VS Code closed), stop forwarding output. Otherwise the
+        //still-running Roku app keeps streaming output, every write to the dead pipe fails, and each
+        //failure re-triggers shutdown() in a tight loop that pegs the CPU and orphans this process.
+        const markClientGone = () => {
+            this.clientDisconnected = true;
+        };
+        inStream?.on?.('close', markClientGone);
+        inStream?.on?.('end', markClientGone);
+        outStream?.on?.('error', markClientGone);
+
         // Set up DAP protocol logging as early as possible — immediately after start() so we capture
         // the initialize request and all early DAP traffic before launchRequest config is available.
         // The log file path is injected as ROKU_DAP_LOG_FILE by the extension's DebugAdapterDescriptorFactory,
@@ -128,112 +139,159 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         }
     }
 
+    /**
+     * Once the client has disconnected, drop outgoing events instead of writing to the dead stream.
+     * Writing to a broken pipe re-triggers the base 'error' -> shutdown() handler in a tight loop.
+     */
+    public sendEvent(event: DebugProtocol.Event): void {
+        if (this.clientDisconnected) {
+            return;
+        }
+        super.sendEvent(event);
+    }
+
     public setupProcessErrorHandlers() {
         if (this.processErrorHandlersRegistered) {
             return;
         }
         this.processErrorHandlersRegistered = true;
 
-        const handleError = (type: 'uncaughtException' | 'unhandledRejection', error: unknown) => {
-            const logger = this.logger.createLogger(`${type}`);
-            const message = error instanceof Error ? error.message : String(error);
-            const stack = error instanceof Error ? error.stack : undefined;
-            logger.error(message, stack);
-
-            let output: string;
-            let debuggerVersion: string;
-            let additionalInfo: ProcessCrashEventData['additionalInfo'];
-            try {
-                debuggerVersion = (fsExtra.readJsonSync(path.resolve(__dirname, '../../package.json')) as { version: string }).version;
-
-                const clientName = this.initRequestArgs?.clientName ?? 'unknown';
-
-                additionalInfo = {
-                    clientName: clientName,
-                    rokuDebugVersion: debuggerVersion,
-                    ecpMode: this.deviceInfo?.ecpSettingMode,
-                    developerMode: this.deviceInfo?.developerEnabled,
-                    firmware: this.deviceInfo ? `${this.deviceInfo?.softwareVersion}.${this.deviceInfo?.softwareBuild}` : undefined,
-                    protocolVersion: this.deviceInfo?.brightscriptDebuggerVersion,
-                    protocolEnabled: this.enableDebugProtocol
-                };
-
-                const lines = Object.entries(additionalInfo as Record<string, unknown>).map(([key, value]) => {
-                    // Insert a space before all uppercase letters preceded by a lowercase letter, then uppercase the first char
-                    const spacedString = key.replace(/([a-z])([A-Z])/g, '$1 $2');
-                    const formattedKey = spacedString.charAt(0).toUpperCase() + spacedString.slice(1);
-                    return `**${formattedKey}:** ${JSON.stringify(value)}`;
-                });
-
-                const issueBodyPrefix = [
-                    `**Error type:** ${type}`,
-                    `**Message:** ${message}`,
-                    ...lines,
-                    '',
-                    `**Steps to reproduce:**`,
-                    `<!-- Please describe what you were doing when this crash occurred -->`,
-                    '',
-                    '**Stack trace:**',
-                    '```',
-                    ''
-                ].join('\n');
-                const issueBodySuffix = '\n```';
-
-                const issueTitle = encodeURIComponent(`[crash] ${type}: ${message}`);
-                const baseUrl = 'https://github.com/RokuCommunity/roku-debug/issues/new';
-                const maxUrlLength = 2000;
-                const urlOverhead = `${baseUrl}?title=${issueTitle}&body=`.length;
-                const bodyBudget = maxUrlLength - urlOverhead;
-                const encodedPrefix = encodeURIComponent(issueBodyPrefix);
-                const encodedSuffix = encodeURIComponent(issueBodySuffix);
-                const stackBudget = bodyBudget - encodedPrefix.length - encodedSuffix.length;
-                let truncatedStack: string;
-                if (!stack) {
-                    truncatedStack = '(no stack trace)';
-                } else if (encodeURIComponent(stack).length <= stackBudget) {
-                    truncatedStack = stack;
-                } else {
-                    truncatedStack = decodeURIComponent(encodeURIComponent(stack).slice(0, stackBudget)) + '\n...(truncated)';
-                }
-                const issueUrl = `${baseUrl}?title=${issueTitle}&body=${encodedPrefix}${encodeURIComponent(truncatedStack)}${encodedSuffix}`;
-
-                output = [
-                    '',
-                    '================================================================',
-                    '\tBRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
-                    '\tThis is a crash in the debug adapter, not in your application.',
-                    '================================================================',
-                    `\tError type: ${type}`,
-                    `\tMessage: ${message}`,
-                    ...lines.map(l => `\t${l}`),
-                    '',
-                    '\tStack trace:',
-                    ...(stack ?? '(no stack trace)').split('\n').map(l => `\t${l}`),
-                    '',
-                    '\tPlease report this at:',
-                    `\t${issueUrl}`,
-                    '================================================================',
-                    ''
-                ].join('\n');
-            } catch (e) {
-                output = JSON.stringify({
-                    name: e.name,
-                    message: e.message,
-                    stack: e.stack
-                });
-            }
-
-            void this.sendLogOutput(output).catch(() => { /** best-effort */ });
-            this.isCrashed = true;
-            this.sendEvent(new ProcessCrashEvent({ type, message, stack, additionalInfo: additionalInfo ?? {} }));
-            setTimeout(() => void this.shutdown(), 5000);
-        };
-
-        this._uncaughtExceptionHandler = (error) => handleError('uncaughtException', error);
-        this._unhandledRejectionHandler = (reason) => handleError('unhandledRejection', reason);
+        this._uncaughtExceptionHandler = (error) => this.handleProcessError('uncaughtException', error);
+        this._unhandledRejectionHandler = (reason) => this.handleProcessError('unhandledRejection', reason);
 
         process.on('uncaughtException', this._uncaughtExceptionHandler);
         process.on('unhandledRejection', this._unhandledRejectionHandler);
+    }
+
+    private handlingProcessError = false;
+
+    /**
+     * True when an error indicates the client (e.g. VS Code) has gone away, such as a broken stdout pipe
+     * (EPIPE). Writing to a dead pipe just produces more EPIPEs, so we must not try to report over it.
+     */
+    private isClientGoneError(error: unknown): boolean {
+        const code = (error as NodeJS.ErrnoException)?.code;
+        const message = error instanceof Error ? error.message : String(error ?? '');
+        return code === 'EPIPE' || /\bEPIPE\b|write after end/i.test(message);
+    }
+
+    /**
+     * Tear down the process error handlers and forcibly exit, so we never leave an orphaned adapter
+     * spinning in the background after the client is gone or a graceful shutdown has hung.
+     */
+    private forceExit(code = 0): void {
+        this.teardownProcessErrorHandlers();
+        process.exit(code);
+    }
+
+    private handleProcessError(type: 'uncaughtException' | 'unhandledRejection', error: unknown) {
+        //a broken client pipe (EPIPE) means the client (e.g. VS Code) is gone. Trying to report it over
+        //the now-dead stream just produces more EPIPEs, which re-enter this handler in a tight loop and
+        //peg the CPU. Exit instead.
+        if (this.isClientGoneError(error)) {
+            this.clientDisconnected = true;
+            this.forceExit();
+            return;
+        }
+        //only handle the first error; re-entering here (e.g. from a failed write while reporting) would
+        //spin the CPU and flood the logs
+        if (this.handlingProcessError) {
+            return;
+        }
+        this.handlingProcessError = true;
+
+        const logger = this.logger.createLogger(`${type}`);
+        const message = error instanceof Error ? error.message : String(error);
+        const stack = error instanceof Error ? error.stack : undefined;
+        logger.error(message, stack);
+
+        let output: string;
+        let debuggerVersion: string;
+        let additionalInfo: ProcessCrashEventData['additionalInfo'];
+        try {
+            debuggerVersion = (fsExtra.readJsonSync(path.resolve(__dirname, '../../package.json')) as { version: string }).version;
+
+            const clientName = this.initRequestArgs?.clientName ?? 'unknown';
+
+            additionalInfo = {
+                clientName: clientName,
+                rokuDebugVersion: debuggerVersion,
+                ecpMode: this.deviceInfo?.ecpSettingMode,
+                developerMode: this.deviceInfo?.developerEnabled,
+                firmware: this.deviceInfo ? `${this.deviceInfo?.softwareVersion}.${this.deviceInfo?.softwareBuild}` : undefined,
+                protocolVersion: this.deviceInfo?.brightscriptDebuggerVersion,
+                protocolEnabled: this.enableDebugProtocol
+            };
+
+            const lines = Object.entries(additionalInfo as Record<string, unknown>).map(([key, value]) => {
+                // Insert a space before all uppercase letters preceded by a lowercase letter, then uppercase the first char
+                const spacedString = key.replace(/([a-z])([A-Z])/g, '$1 $2');
+                const formattedKey = spacedString.charAt(0).toUpperCase() + spacedString.slice(1);
+                return `**${formattedKey}:** ${JSON.stringify(value)}`;
+            });
+
+            const issueBodyPrefix = [
+                `**Error type:** ${type}`,
+                `**Message:** ${message}`,
+                ...lines,
+                '',
+                `**Steps to reproduce:**`,
+                `<!-- Please describe what you were doing when this crash occurred -->`,
+                '',
+                '**Stack trace:**',
+                '```',
+                ''
+            ].join('\n');
+            const issueBodySuffix = '\n```';
+
+            const issueTitle = encodeURIComponent(`[crash] ${type}: ${message}`);
+            const baseUrl = 'https://github.com/RokuCommunity/roku-debug/issues/new';
+            const maxUrlLength = 2000;
+            const urlOverhead = `${baseUrl}?title=${issueTitle}&body=`.length;
+            const bodyBudget = maxUrlLength - urlOverhead;
+            const encodedPrefix = encodeURIComponent(issueBodyPrefix);
+            const encodedSuffix = encodeURIComponent(issueBodySuffix);
+            const stackBudget = bodyBudget - encodedPrefix.length - encodedSuffix.length;
+            let truncatedStack: string;
+            if (!stack) {
+                truncatedStack = '(no stack trace)';
+            } else if (encodeURIComponent(stack).length <= stackBudget) {
+                truncatedStack = stack;
+            } else {
+                truncatedStack = decodeURIComponent(encodeURIComponent(stack).slice(0, stackBudget)) + '\n...(truncated)';
+            }
+            const issueUrl = `${baseUrl}?title=${issueTitle}&body=${encodedPrefix}${encodeURIComponent(truncatedStack)}${encodedSuffix}`;
+
+            output = [
+                '',
+                '================================================================',
+                '\tBRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
+                '\tThis is a crash in the debug adapter, not in your application.',
+                '================================================================',
+                `\tError type: ${type}`,
+                `\tMessage: ${message}`,
+                ...lines.map(l => `\t${l}`),
+                '',
+                '\tStack trace:',
+                ...(stack ?? '(no stack trace)').split('\n').map(l => `\t${l}`),
+                '',
+                '\tPlease report this at:',
+                `\t${issueUrl}`,
+                '================================================================',
+                ''
+            ].join('\n');
+        } catch (e) {
+            output = JSON.stringify({
+                name: e.name,
+                message: e.message,
+                stack: e.stack
+            });
+        }
+
+        void this.sendLogOutput(output).catch(() => { /** best-effort */ });
+        this.isCrashed = true;
+        this.sendEvent(new ProcessCrashEvent({ type, message, stack, additionalInfo: additionalInfo ?? {} }));
+        setTimeout(() => void this.shutdown(), 5000).unref();
     }
 
     public teardownProcessErrorHandlers() {
@@ -284,6 +342,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
     private processErrorHandlersRegistered = false;
     private isCrashed = false;
+    /** Set once the client (e.g. VS Code) disconnects, so we stop writing to a now-dead stream */
+    private clientDisconnected = false;
+    /** How long to wait for a graceful shutdown before forcibly exiting the process */
+    private shutdownForceExitTimeout = 10_000;
     private _uncaughtExceptionHandler: ((error: Error) => void) | undefined;
     private _unhandledRejectionHandler: ((reason: unknown) => void) | undefined;
 
@@ -3320,7 +3382,16 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public async shutdown(errorMessage?: string, modal = false): Promise<void> {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
-            this.shutdownPromise = this._shutdown(errorMessage, modal);
+            //Backstop: if the graceful shutdown hangs (e.g. pressHomeButton against an unreachable
+            //device), force-exit anyway so we never leave an orphaned adapter running forever
+            const forceExitTimer = setTimeout(() => {
+                this.logger.error('[shutdown] graceful shutdown timed out; forcing exit');
+                this.forceExit();
+            }, this.shutdownForceExitTimeout);
+            forceExitTimer.unref?.();
+            this.shutdownPromise = this._shutdown(errorMessage, modal).finally(() => {
+                clearTimeout(forceExitTimer);
+            });
         } else {
             this.logger.log('[shutdown] Tried to call `.shutdown()` again. Returning the same promise');
         }
