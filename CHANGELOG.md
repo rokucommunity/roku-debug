@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.23.16](https://github.com/rokucommunity/roku-debug/compare/0.23.15...v0.23.16) - 2026-07-07
+### Changed
+ - Improve ECP access mode error messages with step-by-step navigation ([#386](https://github.com/rokucommunity/roku-debug/pull/386))
+
+
+
 ## [0.23.15](https://github.com/rokucommunity/roku-debug/compare/0.23.14...v0.23.15) - 2026-07-06
 ### Changed
  - Accept device-info in the launch config to skip the device-info request ([#381](https://github.com/rokucommunity/roku-debug/pull/381))
