@@ -455,6 +455,28 @@ describe('BreakpointManager', () => {
             });
         });
 
+        it('walks the staging tree for .map files only once, regardless of breakpoint count', async () => {
+            //two files, multiple breakpoints each — the old code re-globbed the staging tree once per breakpoint
+            fsExtra.writeFileSync(`${rootDir}/source/main.brs`, `sub main()\n    print 1\n    print 2\n    print 3\nend sub`);
+            fsExtra.writeFileSync(`${rootDir}/source/lib.brs`, `sub lib()\n    print 1\n    print 2\n    print 3\nend sub`);
+            fsExtra.copyFileSync(`${rootDir}/source/main.brs`, `${stagingDir}/source/main.brs`);
+            fsExtra.copyFileSync(`${rootDir}/source/lib.brs`, `${stagingDir}/source/lib.brs`);
+
+            bpManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 2 }, { line: 3 }, { line: 4 }]);
+            bpManager.replaceBreakpoints(s`${rootDir}/source/lib.brs`, [{ line: 2 }, { line: 3 }, { line: 4 }]);
+
+            const getStagingMapPaths = sinon.spy(locationManager, 'getStagingMapPaths');
+
+            await injectBreakpointsForProject(new Project(<any>{
+                rootDir: rootDir,
+                outDir: outDir,
+                stagingDir: stagingDir
+            }));
+
+            //6 breakpoints across 2 files, but the staging tree is walked exactly once
+            expect(getStagingMapPaths.callCount).to.equal(1);
+        });
+
         it('works with sourceDir1', async () => {
             //create file
             fsExtra.writeFileSync(`${sourceDir1}/source/main.brs`, `sub main()\n    print 1\n    print 2\nend sub`);
