@@ -955,7 +955,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         if (this.launchConfiguration.profiling?.tracing?.enable && this.supportsPerfettoTracing) {
             this.logger.info('Enabling perfetto tracing because it is supported by the device and enabled in the launch configuration');
             try {
-                await this.perfettoManager.enableTracing();
+                await this.perfettoManager?.enableTracing?.();
             } catch (e) {
                 this.logger.error('Failed to enable perfetto tracing', e);
             }
@@ -984,7 +984,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private async tryProfilingConnectOnStart() {
         if (this.launchConfiguration.profiling?.tracing?.connectOnStart && this.supportsPerfettoTracing) {
             try {
-                await this.perfettoManager.startTracing();
+                await this.perfettoManager?.startTracing?.();
             } catch (e) {
                 this.logger.error('Failed to start perfetto tracing on start', e);
             }
@@ -1432,11 +1432,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             this.emit('popupMessageEventResponse', args);
 
         } else if (command === 'captureHeapSnapshot') {
-            this.perfettoManager.captureHeapSnapshot().catch((e) => this.logger.error('Failed to capture heap snapshot', e));
+            this.perfettoManager?.captureHeapSnapshot?.().catch((e) => this.logger.error('Failed to capture heap snapshot', e));
 
         } else if (command === 'startPerfettoTracing') {
             try {
-                await this.perfettoManager.startTracing();
+                await this.perfettoManager?.startTracing?.();
             } catch (e) {
                 response.success = false;
                 response.body = { message: e?.message || String(e) };
@@ -1444,7 +1444,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         } else if (command === 'stopPerfettoTracing') {
             try {
-                await this.perfettoManager.stopTracing();
+                await this.perfettoManager?.stopTracing?.();
             } catch (e) {
                 response.success = false;
                 response.body = { message: e?.message || String(e) };
@@ -3419,7 +3419,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         }
         // stop perfetto tracing if it's running
         try {
-            await this.perfettoManager.stopTracing();
+            await this.perfettoManager?.stopTracing?.();
         } catch (e) {
             this.logger.error('Error stopping perfetto tracing', e);
         }
