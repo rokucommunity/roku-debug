@@ -2108,6 +2108,34 @@ describe('ComponentLibraryProject', () => {
         });
     });
 
+    describe('postfixScriptUriReferences', () => {
+        const call = (contents: string) => ComponentLibraryProject.postfixScriptUriReferences(contents, '__lib0');
+
+        it('postfixes pkg:/, libpkg:/, and bare relative uris', () => {
+            expect(call('<script uri="pkg:/source/utils.brs"/>')).to.equal('<script uri="pkg:/source/utils__lib0.brs"/>');
+            expect(call('<script uri="libpkg:/components/component.brs"/>')).to.equal('<script uri="libpkg:/components/component__lib0.brs"/>');
+            expect(call('<script uri="CustomComponent.brs"/>')).to.equal('<script uri="CustomComponent__lib0.brs"/>');
+        });
+
+        it('leaves other-scheme uris untouched', () => {
+            expect(call('<script uri="common:/LibCore/v30/bslCore.brs"/>')).to.equal('<script uri="common:/LibCore/v30/bslCore.brs"/>');
+        });
+
+        it('handles spaces around the uri assignment', () => {
+            expect(call('<script uri = "pkg:/source/utils.brs"/>')).to.equal('<script uri = "pkg:/source/utils__lib0.brs"/>');
+        });
+
+        it('rewrites every reference in the contents', () => {
+            const input = `<script uri="pkg:/a.brs"/>\n<script uri="b.brs"/>`;
+            expect(call(input)).to.equal(`<script uri="pkg:/a__lib0.brs"/>\n<script uri="b__lib0.brs"/>`);
+        });
+
+        it('returns the contents unchanged when there are no brs uri references', () => {
+            const input = `<component name="Foo"></component>`;
+            expect(call(input)).to.equal(input);
+        });
+    });
+
     describe('stage', () => {
         it('computes stagingDir before calling getFileMappings', async () => {
             delete params.stagingDir;
