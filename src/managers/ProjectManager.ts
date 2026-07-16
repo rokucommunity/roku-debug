@@ -399,7 +399,7 @@ export class Project {
         return '';
     }
 
-    private logger = logger.createLogger(`[${ProjectManager.name}]`);
+    protected logger = logger.createLogger(`[${ProjectManager.name}]`);
 
     public async stage() {
         if (!this.fileMappings) {
@@ -1114,22 +1114,40 @@ export class ComponentLibraryProject extends Project {
             }
         }));
 
-        // Update all the file name references in the library to the new file names
-        await replaceInFile({
-            files: [
-                path.join(this.stagingDir, '**/*.xml'),
-                path.join(this.stagingDir, '**/*.brs')
-            ],
-            from: /uri\s*=\s*"(.+)\.brs"/gi,
-            to: (match: string) => {
-                // only alter file ending if it is a) pkg:/ url or b) relative url
-                let isPkgUrl = !!/^uri\s*=\s*"(pkg:|libpkg:)\//i.exec(match);
-                let isRelativeUrl = !/:\//i.exec(match);
-                if (isPkgUrl || isRelativeUrl) {
-                    return match.replace('.brs', this.postfix + '.brs');
-                } else {
-                    return match;
+        // Update all the file name references in the library to the new file names. Walk the staged
+        // xml/brs files once ourselves (reading and writing each at most once) instead of handing a glob
+        // to replace-in-file, which does its own separate tree walk.
+        const files: string[] = await fastGlob(['**/*.xml', '**/*.brs'], { cwd: this.stagingDir, absolute: true, onlyFiles: true });
+        await Promise.all(files.map(async (filePath) => {
+            try {
+                const contents = await fsExtra.readFile(filePath, 'utf8');
+                const updated = ComponentLibraryProject.postfixScriptUriReferences(contents, this.postfix);
+                //only write when something actually changed
+                if (updated !== contents) {
+                    await fsExtra.writeFile(filePath, updated);
                 }
+            } catch (e) {
+                this.logger.error(`Error postfixing uri references in '${filePath}'`, e);
+            }
+        }));
+    }
+
+    /**
+     * Rewrite every `uri="....brs"` reference in the given file contents to include this library's
+     * postfix (e.g. `uri="pkg:/source/main.brs"` -> `uri="pkg:/source/main__lib1.brs"`), but only for
+     * `pkg:/`/`libpkg:/` uris and bare relative uris — absolute/other-scheme uris are left untouched.
+     * This is the per-file half of the old replace-in-file tree walk, extracted so it can run inside a
+     * single explicit walk (and be unit-tested directly).
+     */
+    public static postfixScriptUriReferences(contents: string, postfix: string): string {
+        return contents.replace(/uri\s*=\s*"(.+)\.brs"/gi, (match: string) => {
+            // only alter file ending if it is a) pkg:/ url or b) relative url
+            let isPkgUrl = !!/^uri\s*=\s*"(pkg:|libpkg:)\//i.exec(match);
+            let isRelativeUrl = !/:\//i.exec(match);
+            if (isPkgUrl || isRelativeUrl) {
+                return match.replace('.brs', postfix + '.brs');
+            } else {
+                return match;
             }
         });
     }
