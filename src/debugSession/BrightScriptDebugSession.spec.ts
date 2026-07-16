@@ -7,7 +7,6 @@ import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
 import { DebugSession, InitializedEvent, Logger as DapLogger, logger as dapLogger, OutputEvent, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
-import { fileUtils } from '../FileUtils';
 import type { StackFrame } from '../adapters/TelnetAdapter';
 import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { defer, util } from '../util';
@@ -999,81 +998,6 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
-    describe('findMainFunction', () => {
-        let folder;
-        afterEach(() => {
-            fsExtra.emptyDirSync('./.tmp');
-            fsExtra.rmdirSync('./.tmp');
-        });
-
-        async function doTest(fileContents: string, lineContents: string, lineNumber: number) {
-            fsExtra.emptyDirSync('./.tmp');
-            folder = path.resolve('./.tmp/findMainFunctionTests/');
-            fsExtra.mkdirSync(folder);
-
-            let filePath = path.resolve(`${folder}/main.brs`);
-
-            //prevent actually talking to the file system...just hardcode the list to exactly our main file
-            (session.rokuDeploy as any).getFilePaths = () => {
-                return [{
-                    src: filePath,
-                    dest: filePath
-                }];
-            };
-
-            fsExtra.writeFileSync(filePath, fileContents);
-            (session as any).launchConfiguration = {
-                files: [
-                    folder + '/**/*'
-                ]
-            };
-            let entryPoint = await fileUtils.findEntryPoint(folder);
-            expect(entryPoint.pathAbsolute).to.equal(filePath);
-            expect(entryPoint.lineNumber).to.equal(lineNumber);
-            expect(entryPoint.contents).to.equal(lineContents);
-        }
-
-        it('works for RunUserInterface', async () => {
-            await doTest('\nsub RunUserInterface()\nend sub', 'sub RunUserInterface()', 2);
-            //works with args
-            await doTest('\n\nsub RunUserInterface(args as Dynamic)\nend sub', 'sub RunUserInterface(args as Dynamic)', 3);
-            //works with extra spacing
-            await doTest('\n\nsub   RunUserInterface()\nend sub', 'sub   RunUserInterface()', 3);
-            await doTest('\n\nsub RunUserInterface   ()\nend sub', 'sub RunUserInterface   ()', 3);
-        });
-
-        it('works for sub main', async () => {
-            await doTest('\nsub Main()\nend sub', 'sub Main()', 2);
-            //works with args
-            await doTest('sub Main(args as Dynamic)\nend sub', 'sub Main(args as Dynamic)', 1);
-            //works with extra spacing
-            await doTest('sub   Main()\nend sub', 'sub   Main()', 1);
-            await doTest('sub Main   ()\nend sub', 'sub Main   ()', 1);
-        });
-
-        it('works for function main', async () => {
-            await doTest('function Main()\nend function', 'function Main()', 1);
-            await doTest('function Main(args as Dynamic)\nend function', 'function Main(args as Dynamic)', 1);
-            //works with extra spacing
-            await doTest('function   Main()\nend function', 'function   Main()', 1);
-            await doTest('function Main   ()\nend function', 'function Main   ()', 1);
-        });
-
-        it('works for sub RunScreenSaver', async () => {
-            await doTest('sub RunScreenSaver()\nend sub', 'sub RunScreenSaver()', 1);
-            //works with extra spacing
-            await doTest('sub   RunScreenSaver()\nend sub', 'sub   RunScreenSaver()', 1);
-            await doTest('sub RunScreenSaver   ()\nend sub', 'sub RunScreenSaver   ()', 1);
-        });
-
-        it('works for function RunScreenSaver', async () => {
-            await doTest('function RunScreenSaver()\nend function', 'function RunScreenSaver()', 1);
-            //works with extra spacing
-            await doTest('function   RunScreenSaver()\nend function', 'function   RunScreenSaver()', 1);
-            await doTest('function RunScreenSaver   ()\nend function', 'function RunScreenSaver   ()', 1);
-        });
-    });
-
     describe('initRendezvousTracking', () => {
         it('clears history when disabled', async () => {
             const stub = sinon.stub(session, 'sendEvent');
@@ -1185,7 +1109,6 @@ describe('BrightScriptDebugSession', () => {
             let stub = sinon.stub(session.projectManager, 'registerEntryBreakpoint').returns(Promise.resolve());
             await session.handleEntryBreakpoint();
             expect(stub.called).to.be.true;
-            expect(stub.args[0][0]).to.equal(stagingDir);
         });
         it('does NOT register the entry breakpoint when stopOnEntry is enabled', async () => {
             (session as any).launchConfiguration = { stopOnEntry: false };

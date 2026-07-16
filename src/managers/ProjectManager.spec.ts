@@ -234,6 +234,48 @@ describe('ProjectManager', () => {
         });
     });
 
+    describe('registerEntryBreakpoint', () => {
+        it('throws when the main project has no discovered entry point', async () => {
+            manager.mainProject = <any>{ stagingDir: stagingDir, entryPoint: undefined };
+            let error: Error;
+            try {
+                await manager.registerEntryBreakpoint();
+            } catch (e) {
+                error = e as Error;
+            }
+            expect(error).to.exist;
+            expect(error.message).to.include('Unable to find an entry point');
+        });
+
+        it('registers a breakpoint on the line after the discovered entry point', async () => {
+            manager.mainProject = <any>{
+                stagingDir: stagingDir,
+                entryPoint: {
+                    relativePath: 'source/main.brs',
+                    pathAbsolute: s`${stagingDir}/source/main.brs`,
+                    contents: 'sub main()',
+                    lineNumber: 10
+                }
+            };
+            //stub the source-location resolution so we don't touch the file system
+            const getSourceLocation = sinon.stub(manager, 'getSourceLocation').returns(Promise.resolve(<any>{
+                filePath: s`${rootDir}/source/main.brs`,
+                lineNumber: 10,
+                columnIndex: 0
+            }));
+            const setBreakpoint = sinon.stub(manager['breakpointManager'], 'setBreakpoint');
+
+            await manager.registerEntryBreakpoint();
+
+            //it resolves the source location for the entry point's relative path + line
+            expect(getSourceLocation.calledWith('source/main.brs', 10)).to.be.true;
+            //it registers a breakpoint one line past the entry-point declaration (to land on the first line of the function)
+            expect(setBreakpoint.calledOnce).to.be.true;
+            expect(setBreakpoint.firstCall.args[0]).to.equal(s`${rootDir}/source/main.brs`);
+            expect(setBreakpoint.firstCall.args[1]).to.eql({ line: 11 });
+        });
+    });
+
     describe('getStagingFileInfo', () => {
         it('finds standard files in main project', async () => {
             expect(
@@ -1591,6 +1633,218 @@ describe('Project', () => {
             project.fileMappings = [];
             await project['preprocessStagingFiles']();
             expect(project.scriptReferencedFiles.size).to.equal(0);
+        });
+    });
+
+    describe('entry point detection', () => {
+        afterEach(async () => {
+            try {
+                await forceDeleteDir(tempPath);
+            } catch (e) { }
+        });
+
+        /**
+         * Stage a single `main.brs` file with the given contents, run the staging walk, and assert the
+         * discovered entry point matches the expected line contents and 1-based line number.
+         */
+        async function doTest(fileContents: string, lineContents: string, lineNumber: number) {
+            project.stagingDir = stagingDir;
+            const filePath = s`${stagingDir}/source/main.brs`;
+            fsExtra.outputFileSync(filePath, fileContents);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(project.entryPoint).to.exist;
+            expect(project.entryPoint.pathAbsolute).to.equal(filePath);
+            expect(project.entryPoint.relativePath).to.equal(s`source/main.brs`);
+            expect(project.entryPoint.lineNumber).to.equal(lineNumber);
+            expect(project.entryPoint.contents).to.equal(lineContents);
+        }
+
+        it('works for RunUserInterface', async () => {
+            await doTest('\nsub RunUserInterface()\nend sub', 'sub RunUserInterface()', 2);
+            //works with args
+            await doTest('\n\nsub RunUserInterface(args as Dynamic)\nend sub', 'sub RunUserInterface(args as Dynamic)', 3);
+            //works with extra spacing
+            await doTest('\n\nsub   RunUserInterface()\nend sub', 'sub   RunUserInterface()', 3);
+            await doTest('\n\nsub RunUserInterface   ()\nend sub', 'sub RunUserInterface   ()', 3);
+        });
+
+        it('works for sub main', async () => {
+            await doTest('\nsub Main()\nend sub', 'sub Main()', 2);
+            //works with args
+            await doTest('sub Main(args as Dynamic)\nend sub', 'sub Main(args as Dynamic)', 1);
+            //works with extra spacing
+            await doTest('sub   Main()\nend sub', 'sub   Main()', 1);
+            await doTest('sub Main   ()\nend sub', 'sub Main   ()', 1);
+        });
+
+        it('works for function main', async () => {
+            await doTest('function Main()\nend function', 'function Main()', 1);
+            await doTest('function Main(args as Dynamic)\nend function', 'function Main(args as Dynamic)', 1);
+            //works with extra spacing
+            await doTest('function   Main()\nend function', 'function   Main()', 1);
+            await doTest('function Main   ()\nend function', 'function Main   ()', 1);
+        });
+
+        it('works for sub RunScreenSaver', async () => {
+            await doTest('sub RunScreenSaver()\nend sub', 'sub RunScreenSaver()', 1);
+            //works with extra spacing
+            await doTest('sub   RunScreenSaver()\nend sub', 'sub   RunScreenSaver()', 1);
+            await doTest('sub RunScreenSaver   ()\nend sub', 'sub RunScreenSaver   ()', 1);
+        });
+
+        it('works for function RunScreenSaver', async () => {
+            await doTest('function RunScreenSaver()\nend function', 'function RunScreenSaver()', 1);
+            //works with extra spacing
+            await doTest('function   RunScreenSaver()\nend function', 'function   RunScreenSaver()', 1);
+            await doTest('function RunScreenSaver   ()\nend function', 'function RunScreenSaver   ()', 1);
+        });
+
+        it('leaves entryPoint undefined when no entry point is present', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/source/util.brs`, `sub doStuff()\nend sub`);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(project.entryPoint).to.be.undefined;
+        });
+
+        it('prefers RunScreenSaver over RunUserInterface over Main when several exist', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/source/main.brs`, `sub Main()\nend sub`);
+            fsExtra.outputFileSync(s`${stagingDir}/source/ui.brs`, `sub RunUserInterface()\nend sub`);
+            fsExtra.outputFileSync(s`${stagingDir}/source/screensaver.brs`, `sub RunScreenSaver()\nend sub`);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(project.entryPoint.pathAbsolute).to.equal(s`${stagingDir}/source/screensaver.brs`);
+        });
+
+        it('only scans .brs files (ignores entry-point-looking text in other extensions)', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/source/notbrs.txt`, `sub Main()\nend sub`);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(project.entryPoint).to.be.undefined;
+        });
+    });
+
+    describe('preprocessStagingFiles entry-comment injection', () => {
+        afterEach(async () => {
+            try {
+                await forceDeleteDir(tempPath);
+            } catch (e) { }
+        });
+
+        it('injects the RALE tracker task during the staging walk', async () => {
+            project.stagingDir = stagingDir;
+            project.injectRaleTrackerTask = true;
+            project.raleTrackerTaskFileLocation = 'z';
+            project.injectRdbOnDeviceComponent = false;
+            const filePath = s`${stagingDir}/source/main.brs`;
+            fsExtra.outputFileSync(filePath, `sub main()\n  ' ${Project.RALE_TRACKER_ENTRY}\nend sub`);
+            project.fileMappings = [];
+
+            await project['preprocessStagingFiles']();
+
+            const contents = fsExtra.readFileSync(filePath, 'utf8');
+            expect(contents).to.include(Project.RALE_TRACKER_TASK_CODE);
+            expect(contents).to.not.include(Project.RALE_TRACKER_ENTRY);
+        });
+
+        it('injects the RDB on-device-component during the staging walk', async () => {
+            project.stagingDir = stagingDir;
+            project.injectRaleTrackerTask = false;
+            project.injectRdbOnDeviceComponent = true;
+            project.rdbFilesBasePath = 'rdbSource';
+            const filePath = s`${stagingDir}/source/main.brs`;
+            fsExtra.outputFileSync(filePath, `sub main()\n  ' ${Project.RDB_ODC_ENTRY}\nend sub`);
+            project.fileMappings = [];
+
+            await project['preprocessStagingFiles']();
+
+            const contents = fsExtra.readFileSync(filePath, 'utf8');
+            expect(contents).to.include(Project.RDB_ODC_NODE_CODE);
+            expect(contents).to.not.include(Project.RDB_ODC_ENTRY);
+        });
+
+        it('does not inject when the inject flags are disabled', async () => {
+            project.stagingDir = stagingDir;
+            project.injectRaleTrackerTask = false;
+            project.injectRdbOnDeviceComponent = false;
+            const original = `sub main()\n  ' ${Project.RALE_TRACKER_ENTRY}\n  ' ${Project.RDB_ODC_ENTRY}\nend sub`;
+            const filePath = s`${stagingDir}/source/main.brs`;
+            fsExtra.outputFileSync(filePath, original);
+            project.fileMappings = [];
+
+            await project['preprocessStagingFiles']();
+
+            //file is untouched (still contains both entry markers)
+            expect(fsExtra.readFileSync(filePath, 'utf8')).to.equal(original);
+        });
+
+        it('applies BOTH the RALE injection AND the sourceMappingURL rewrite to the same file in a single pass', async () => {
+            //a moved source file (in fileMappings) that has BOTH a RALE entry comment and a
+            //sourceMappingURL comment — the two rewrites must combine into one write.
+            const originalDir = s`${tempPath}/src/source`;
+            const originalPath = s`${originalDir}/main.brs`;
+            const originalMapPath = s`${originalDir}/main.brs.map`;
+            const stagingPath = s`${stagingDir}/source/main.brs`;
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+            fsExtra.ensureDirSync(originalDir);
+            fsExtra.ensureDirSync(path.dirname(stagingPath));
+
+            //original file has code with a RALE entry marker AND a sourcemap comment pointing at the original map
+            const originalContents = [
+                `sub main()`,
+                `  screen.show  ' ${Project.RALE_TRACKER_ENTRY}`,
+                `end sub`,
+                `'//# sourceMappingURL=main.brs.map`
+            ].join('\n');
+            fsExtra.writeFileSync(originalPath, originalContents);
+            fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+            //stage both the file and its map
+            fsExtra.copySync(originalPath, stagingPath);
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.stagingDir = stagingDir;
+            project.injectRaleTrackerTask = true;
+            project.raleTrackerTaskFileLocation = 'z';
+            project.injectRdbOnDeviceComponent = false;
+            project.fileMappings = [
+                { src: originalPath, dest: stagingPath },
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const contents = fsExtra.readFileSync(stagingPath, 'utf8');
+            //the RALE injection landed (inline, so it uses the `: ` single-line syntax)
+            expect(contents).to.include(`: ${Project.RALE_TRACKER_TASK_CODE}`);
+            expect(contents).to.not.include(Project.RALE_TRACKER_ENTRY);
+            //AND the sourceMappingURL comment was rewritten to the canonical modern form (still present)
+            expect(contents).to.include('//# sourceMappingURL=main.brs.map');
+        });
+
+        it('resets the injection state on each walk so a warning fires on a re-stage with no entry comment', async () => {
+            project.stagingDir = stagingDir;
+            project.injectRaleTrackerTask = true;
+            project.raleTrackerTaskFileLocation = 'z';
+            project.injectRdbOnDeviceComponent = false;
+            //console.error is already stubbed in the describe's beforeEach; reuse that spy
+            const consoleError = console.error as sinonActual.SinonStub;
+            consoleError.resetHistory();
+
+            //first walk: entry comment present -> injected, no warning
+            const filePath = s`${stagingDir}/source/main.brs`;
+            fsExtra.outputFileSync(filePath, `sub main()\n  ' ${Project.RALE_TRACKER_ENTRY}\nend sub`);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(consoleError.calledWithMatch(/Unable to find an entry point for Tracker Task/)).to.be.false;
+
+            //second walk: entry comment gone -> the injected flag must have reset, so the warning fires
+            fsExtra.outputFileSync(filePath, `sub main()\nend sub`);
+            await project['preprocessStagingFiles']();
+            expect(consoleError.calledWithMatch(/Unable to find an entry point for Tracker Task/)).to.be.true;
         });
     });
 

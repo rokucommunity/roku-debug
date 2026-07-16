@@ -1,9 +1,7 @@
-import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
 import * as glob from 'glob';
 import * as path from 'path';
 import { promisify } from 'util';
-import { util as rokuDeployUtil } from 'roku-deploy';
 const globp = promisify(glob);
 
 export class FileUtils {
@@ -251,53 +249,6 @@ export class FileUtils {
             result = `file:///${fullPath}`;
         }
         return result;
-    }
-
-    /**
-     * Given a path to a folder, search all files until an entry point is found.
-     * (An entry point is a function that roku uses as the Main function to start the program).
-     * @param projectPath - a path to a Roku project
-     */
-    public async findEntryPoint(projectPath: string) {
-        let results = {
-            ...await findInFiles.find({ term: 'sub\\s+RunScreenSaver\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'function\\s+RunScreenSaver\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'sub\\s+RunUserInterface\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'function\\s+RunUserInterface\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'sub\\s+main\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/),
-            ...await findInFiles.find({ term: 'function\\s+main\\s*\\(', flags: 'ig' }, projectPath, /.*\.brs/)
-        };
-        let keys = Object.keys(results);
-        if (keys.length === 0) {
-            throw new Error('Unable to find an entry point. Please make sure that you have a RunUserInterface, RunScreenSaver, or Main sub/function declared in your BrightScript project');
-        }
-
-        let entryPath = keys[0];
-
-        let entryLineContents = results[entryPath].line[0];
-
-        let lineNumber: number;
-        //load the file contents
-        let contents = await fsExtra.readFile(entryPath);
-        let lines = contents.toString().split(/\r?\n/g);
-        //loop through the lines until we find the entry line
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-            if (line.includes(entryLineContents)) {
-                lineNumber = i + 1;
-                break;
-            }
-        }
-        let relativePath = fileUtils.removeLeadingSlash(
-            rokuDeployUtil.stringReplaceInsensitive(entryPath, projectPath, '')
-        );
-
-        return {
-            relativePath: relativePath,
-            pathAbsolute: entryPath,
-            contents: entryLineContents,
-            lineNumber: lineNumber
-        };
     }
 
     /**
