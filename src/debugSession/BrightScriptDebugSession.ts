@@ -3322,7 +3322,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         if (!this.enableDebugProtocol) {
             this.entryBreakpointWasHandled = true;
             if (this.launchConfiguration.stopOnEntry || this.launchConfiguration.deepLinkUrl) {
-                await this.projectManager.registerEntryBreakpoint(this.projectManager.mainProject.stagingDir);
+                await this.projectManager.registerEntryBreakpoint();
             }
         }
     }

@@ -35,6 +35,42 @@ export interface ProjectStagingInfo {
 }
 
 /**
+ * The location of a Roku entry-point function (Main, RunUserInterface, or RunScreenSaver) within a
+ * project's staging directory. Discovered during the staging-file walk.
+ */
+export interface EntryPoint {
+    /**
+     * The path to the entry-point file, relative to the staging dir (no leading slash).
+     */
+    relativePath: string;
+    /**
+     * The absolute path to the entry-point file in the staging dir.
+     */
+    pathAbsolute: string;
+    /**
+     * The full text of the line that declares the entry-point function.
+     */
+    contents: string;
+    /**
+     * The 1-based line number of the entry-point declaration within the file.
+     */
+    lineNumber: number;
+}
+
+/**
+ * The set of entry-point function names Roku may use to start a program, listed in priority order.
+ * The matcher prefers an earlier name over a later one when more than one is present in a project.
+ */
+const entryPointFunctionNames = ['RunScreenSaver', 'RunUserInterface', 'main'];
+
+/**
+ * Matches a Roku entry-point declaration (e.g. `sub Main(`, `function RunUserInterface (`).
+ * Capture group 1 is the function name. This single regex replaces the six sequential
+ * `find-in-files` searches the old `findEntryPoint` performed.
+ */
+const entryPointRegex = new RegExp(`\\b(?:sub|function)\\s+(${entryPointFunctionNames.join('|')})\\s*\\(`, 'i');
+
+/**
  * Manages the collection of brightscript projects being used in a debug session.
  * Will contain the main project (in rootDir), as well as component libraries.
  */
@@ -234,12 +270,14 @@ export class ProjectManager {
     }
 
     /**
-     *
-     * @param stagingDir - the path to
+     * Register the entry breakpoint for the main project, using the entry point that was discovered
+     * while walking the staging files during `stage()`.
      */
-    public async registerEntryBreakpoint(stagingDir: string) {
-        //find the main function from the staging flder
-        let entryPoint = await fileUtils.findEntryPoint(stagingDir);
+    public async registerEntryBreakpoint() {
+        let entryPoint = this.mainProject?.entryPoint;
+        if (!entryPoint) {
+            throw new Error('Unable to find an entry point. Please make sure that you have a RunUserInterface, RunScreenSaver, or Main sub/function declared in your BrightScript project');
+        }
 
         //convert entry point staging location to source location
         let sourceLocation = await this.getSourceLocation(entryPoint.relativePath, entryPoint.lineNumber);
@@ -382,6 +420,25 @@ export class Project {
      * staging-file walk in `preprocessStagingFiles`) so consumers don't have to re-scan the staging dir.
      */
     public scriptReferencedFiles = new Set<string>();
+
+    /**
+     * The entry point (Main/RunUserInterface/RunScreenSaver sub/function) discovered while walking the
+     * staging files in `preprocessStagingFiles`. This replaces the old standalone `findEntryPoint`
+     * file-tree search (which walked the entire `.brs` tree up to six times). Populated during `stage()`
+     * so `ProjectManager.registerEntryBreakpoint` can read it without re-scanning the staging dir.
+     * Remains `undefined` if no entry point was found.
+     */
+    public entryPoint: EntryPoint;
+
+    /**
+     * Whether the RALE tracker-task entry comment was found and replaced during the staging walk.
+     * Used to emit the "unable to find an entry point" warning (matching the old behavior).
+     */
+    private raleTrackerTaskInjected = false;
+    /**
+     * Whether the RDB on-device-component entry comment was found and replaced during the staging walk.
+     */
+    private rdbOnDeviceComponentInjected = false;
     public bsConst: Record<string, boolean>;
     public injectRaleTrackerTask: boolean;
     public raleTrackerTaskFileLocation: string;
@@ -416,6 +473,13 @@ export class Project {
             resolveFilesArray: false
         });
 
+        //copy the RALE/RDB support files into staging BEFORE the staging walk, so the walk can inject the
+        //entry comments into them (and every other staged file) in a single pass.
+        await this.copyRaleTrackerTask();
+        await this.copyRdbFiles();
+
+        //single walk over the staging dir: source-map fixes, script-uri collection, entry-point detection,
+        //and RALE/RDB entry-comment injection all happen here.
         await this.preprocessStagingFiles();
 
         if (this.enhanceREPLCompletions) {
@@ -440,10 +504,6 @@ export class Project {
         await this.resolveFileMappingsForSourceDirs();
 
         await this.transformManifestWithBsConst();
-
-        await this.copyAndTransformRaleTrackerTask();
-
-        await this.copyAndTransformRDB();
     }
 
     /**
@@ -488,10 +548,17 @@ export class Project {
     }
 
     /**
-     * Walk every staged file once and apply all necessary rewrites for files that were moved
-     * from a different source location:
+     * Walk every staged file exactly once and apply all per-file staging work in a single pass (rather
+     * than re-traversing the file tree for each concern):
      *  - .map files: rewrite `sources` paths to be relative to the new staging location
-     *  - .brs/.xml files: rewrite the sourceMappingURL comment path to point to the staged map
+     *  - .xml files: collect `<script uri="...">` references into {@link scriptReferencedFiles}
+     *  - .brs files: detect the program entry point into {@link entryPoint} (replaces the old
+     *    `findEntryPoint` six-pass search)
+     *  - .brs/.xml files: inject the RALE/RDB entry comments when enabled (replaces the old
+     *    `replace-in-file` tree walks)
+     *  - moved files: rewrite the sourceMappingURL comment path to point to the staged map
+     *
+     * All content rewrites for a given file are accumulated in memory and written at most once.
      */
     private async preprocessStagingFiles() {
         const srcToDestMap = new Map<string, string>();
@@ -503,6 +570,12 @@ export class Project {
 
         //reset before re-scanning
         this.scriptReferencedFiles.clear();
+        this.entryPoint = undefined;
+        this.raleTrackerTaskInjected = false;
+        this.rdbOnDeviceComponentInjected = false;
+        //the best entry-point match found so far (lower priority index wins). Tracked separately so we
+        //can deterministically pick the highest-priority match across the concurrent file reads below.
+        let bestEntryPointPriority = Number.POSITIVE_INFINITY;
 
         //walk over every file
         const stagedFiles: string[] = (await fastGlob('**/*', { cwd: this.stagingDir, absolute: true, onlyFiles: true }))
@@ -524,14 +597,17 @@ export class Project {
                 return;
             }
 
-            //read each text file at most once and share the contents between the two consumers below:
+            //read each text file at most once and share the contents between the consumers below:
             // - collectScriptReferencedFiles: runs for ALL staged xml (a component may be generated during
             //   staging, so it isn't necessarily in fileMappings)
             // - fixSourceMapComment: runs only for files that were moved from a source dir (in fileMappings)
-            //binary files need neither, so we never read them.
+            // - detectEntryPoint: runs for ALL staged .brs files, to find the Main/RunUserInterface/
+            //   RunScreenSaver declaration (replaces the old standalone six-pass findEntryPoint search)
+            //binary files need none of these, so we never read them.
             const isXml = ext === '.xml';
+            const isBrs = ext === '.brs';
             const needsCommentFix = !!originalSrcPath;
-            if (Project.binaryExtensions.has(ext) || (!isXml && !needsCommentFix)) {
+            if (Project.binaryExtensions.has(ext) || (!isXml && !isBrs && !needsCommentFix)) {
                 return;
             }
 
@@ -546,10 +622,49 @@ export class Project {
             if (isXml) {
                 this.collectScriptReferencedFiles(stagingFilePath, contents);
             }
+            if (isBrs) {
+                bestEntryPointPriority = this.detectEntryPoint(stagingFilePath, contents, bestEntryPointPriority);
+            }
+
+            //apply the RALE/RDB entry-comment injections to .brs/.xml files (replaces the old standalone
+            //replace-in-file tree walks). Accumulate edits in-memory so we write the file at most once.
+            const originalContents = contents;
+            if (isBrs || isXml) {
+                if (this.injectRaleTrackerTask && this.raleTrackerTaskFileLocation) {
+                    const result = Project.injectEntryComment(contents, Project.RALE_TRACKER_ENTRY, Project.RALE_TRACKER_TASK_CODE);
+                    contents = result.contents;
+                    if (result.changed) {
+                        this.raleTrackerTaskInjected = true;
+                    }
+                }
+                if (this.injectRdbOnDeviceComponent && this.rdbFilesBasePath) {
+                    const result = Project.injectEntryComment(contents, Project.RDB_ODC_ENTRY, Project.RDB_ODC_NODE_CODE);
+                    contents = result.contents;
+                    if (result.changed) {
+                        this.rdbOnDeviceComponentInjected = true;
+                    }
+                }
+            }
+
             if (needsCommentFix) {
-                await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap, contents);
+                //fixSourceMapComment returns the (possibly) rewritten contents without writing, so its
+                //edits combine with the injection edits above into the single write below.
+                contents = await this.fixSourceMapComment(stagingFilePath, originalSrcPath, srcToDestMap, contents);
+            }
+
+            //write the file once if any consumer above changed its contents
+            if (contents !== originalContents) {
+                await this.writeFile(stagingFilePath, contents, 'utf8');
             }
         }));
+
+        //warn (matching the old behavior) if injection was requested but no entry comment was found
+        if (this.injectRaleTrackerTask && this.raleTrackerTaskFileLocation && !this.raleTrackerTaskInjected) {
+            console.error(`WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RALE_TRACKER_ENTRY}"`);
+        }
+        if (this.injectRdbOnDeviceComponent && this.rdbFilesBasePath && !this.rdbOnDeviceComponentInjected) {
+            console.error(`WARNING: Unable to find an entry point for RDB.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RDB_ODC_ENTRY}"`);
+        }
     }
 
     /**
@@ -576,6 +691,55 @@ export class Project {
             }
             this.scriptReferencedFiles.add(absolutePath);
         }
+    }
+
+    /**
+     * Scan a single staged `.brs` file's contents for a Roku entry-point declaration
+     * (Main/RunUserInterface/RunScreenSaver sub or function) and, if it's a better match than what we've
+     * seen so far, record it in `this.entryPoint`. "Better" means a higher-priority function name (see
+     * {@link entryPointFunctionNames}); ties keep the first file encountered.
+     *
+     * This is the per-file half of what the old `findEntryPoint` did, folded into the single staging
+     * walk so we never re-traverse the file tree.
+     * @param contents the already-loaded file contents (read once by the staging walk)
+     * @param currentBestPriority the priority index of the best match found so far (lower is better)
+     * @returns the (possibly updated) best-match priority index
+     */
+    private detectEntryPoint(stagingFilePath: string, contents: string, currentBestPriority: number): number {
+        const match = entryPointRegex.exec(contents);
+        if (!match) {
+            return currentBestPriority;
+        }
+        //priority is the index of the matched function name in the priority list (case-insensitive)
+        const matchedName = match[1].toLowerCase();
+        const priority = entryPointFunctionNames.findIndex(name => name.toLowerCase() === matchedName);
+
+        //keep the existing match if it's the same or higher priority (lower index)
+        if (priority >= currentBestPriority) {
+            return currentBestPriority;
+        }
+
+        //find the full line (and its 1-based line number) that contains the matched declaration
+        const lines = contents.split(/\r?\n/g);
+        let lineNumber: number;
+        let lineContents: string;
+        for (let i = 0; i < lines.length; i++) {
+            if (entryPointRegex.test(lines[i])) {
+                lineNumber = i + 1;
+                lineContents = lines[i];
+                break;
+            }
+        }
+
+        this.entryPoint = {
+            relativePath: fileUtils.removeLeadingSlash(
+                fileUtils.getRelativePath(this.stagingDir, stagingFilePath)
+            ),
+            pathAbsolute: stagingFilePath,
+            contents: lineContents,
+            lineNumber: lineNumber
+        };
+        return priority;
     }
 
     /**
@@ -721,8 +885,12 @@ export class Project {
      *   BRS:   '//# sourceMappingURL=<path>
      *   XML:   <!--//# sourceMappingURL=<path> -->
      *   other: //# sourceMappingURL=<path>
+     *
+     * Returns the (possibly modified) contents. The caller is responsible for writing the file —
+     * this method only performs side-effect file copies (colocating the map) and computes the new
+     * contents, so the single staging walk can combine this with other content rewrites in one write.
      */
-    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>, contents: string) {
+    private async fixSourceMapComment(stagingFilePath: string, originalSrcPath: string, srcToDestMap: Map<string, string>, contents: string): Promise<string> {
         try {
             const commentMatch = Project.getSourceMapComment(contents);
 
@@ -747,7 +915,7 @@ export class Project {
 
                 //there is no colocated map next to the original source file
                 if (!await fsExtra.pathExists(absoluteMapPath)) {
-                    return;
+                    return contents;
                 }
 
                 //copy the sourcemap right next to our file in staging — the debugger will find it automatically
@@ -755,7 +923,7 @@ export class Project {
                     absoluteMapPath: absoluteMapPath,
                     stagingFilePath: stagingFilePath
                 });
-                return;
+                return contents;
             }
 
             // If the map was also staged, point at its new location; otherwise point back at the original
@@ -765,10 +933,10 @@ export class Project {
             );
 
             const newComment = `${commentMatch.leadingInfo.trimEnd()}//# sourceMappingURL=${newRelativePath}`;
-            contents = contents.replace(commentMatch.fullMatch, newComment);
-            await this.writeFile(stagingFilePath, contents, 'utf8');
+            return contents.replace(commentMatch.fullMatch, newComment);
         } catch (e) {
             this.logger.error(`Error updating sourceMappingURL comment in '${stagingFilePath}'`, e);
+            return contents;
         }
     }
 
@@ -843,56 +1011,67 @@ export class Project {
 
     public static RALE_TRACKER_TASK_CODE = `if true = CreateObject("roAppInfo").IsDev() then m.vscode_rale_tracker_task = createObject("roSGNode", "TrackerTask") ' Roku Advanced Layout Editor Support`;
     public static RALE_TRACKER_ENTRY = 'vscode_rale_tracker_entry';
-    /**
-     * Search the project files for the comment "' vscode_rale_tracker_entry" and replace it with the code needed to start the TrackerTask.
-     */
-    public async copyAndTransformRaleTrackerTask() {
-        // inject the tracker task into the staging files if we have everything we need
-        if (!this.injectRaleTrackerTask || !this.raleTrackerTaskFileLocation) {
-            return;
-        }
-        try {
-            await fsExtra.copy(this.raleTrackerTaskFileLocation, s`${this.stagingDir}/components/TrackerTask.xml`);
-            this.logger.log('Tracker task successfully injected');
-            // Search for the tracker task entry injection point
-            const trackerReplacementResult = await replaceInFile({
-                files: `${this.stagingDir}/**/*.+(xml|brs)`,
-                from: new RegExp(`^.*'\\s*${Project.RALE_TRACKER_ENTRY}.*$`, 'mig'),
-                to: (match: string) => {
-                    // Strip off the comment
-                    let startOfLine = match.substring(0, match.indexOf(`'`));
-                    if (/[\S]/.exec(startOfLine)) {
-                        // There was some form of code before the tracker entry
-                        // append and use single line syntax
-                        startOfLine += ': ';
-                    }
-                    return `${startOfLine}${Project.RALE_TRACKER_TASK_CODE}`;
-                }
-            });
-            const injectedFiles = trackerReplacementResult
-                .filter(result => result.hasChanged)
-                .map(result => result.file);
-
-            if (injectedFiles.length === 0) {
-                console.error(`WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RALE_TRACKER_ENTRY}"`);
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    }
 
     public static RDB_ODC_NODE_CODE = `if true = CreateObject("roAppInfo").IsDev() then m.vscode_rdb_odc_node = createObject("roSGNode", "RTA_OnDeviceComponent") ' RDB OnDeviceComponent`;
     public static RDB_ODC_ENTRY = 'vscode_rdb_on_device_component_entry';
+
     /**
-     * Search the project files for the RTA_ODC_ENTRY comment and replace it with the code needed to start RTA_OnDeviceComponent which is used by RDB.
+     * Replace any line containing the `' <entryMarker>` comment with `injectionCode`, preserving any
+     * code that appeared before the comment (switching to single-line `:` syntax when needed). This is
+     * the per-file half of the old RALE/RDB `replace-in-file` tree walks, factored out so it can run
+     * inside the single staging-file walk in {@link preprocessStagingFiles}.
+     *
+     * Matches `^.*'\s*<entryMarker>.*$` on each line (case-insensitive), mirroring the original
+     * `replace-in-file` behavior.
+     * @returns the (possibly modified) contents and whether anything was replaced
      */
-    public async copyAndTransformRDB() {
-        // inject the on device component into the staging files if we have everything we need
-        if (!this.injectRdbOnDeviceComponent || !this.rdbFilesBasePath) {
-            return;
+    public static injectEntryComment(contents: string, entryMarker: string, injectionCode: string): { contents: string; changed: boolean } {
+        let changed = false;
+        const regex = new RegExp(`^.*'\\s*${entryMarker}.*$`, 'mig');
+        const newContents = contents.replace(regex, (match) => {
+            changed = true;
+            // Strip off the comment
+            let startOfLine = match.substring(0, match.indexOf(`'`));
+            if (/[\S]/.exec(startOfLine)) {
+                // There was some form of code before the entry comment
+                // append and use single line syntax
+                startOfLine += ': ';
+            }
+            return `${startOfLine}${injectionCode}`;
+        });
+        return { contents: newContents, changed: changed };
+    }
+
+    /**
+     * Copy the RALE TrackerTask.xml file into the staging dir (if RALE injection is enabled). The
+     * actual `' vscode_rale_tracker_entry` comment replacement happens later, during the single staging
+     * walk in {@link preprocessStagingFiles}. Resolves to `true` if the copy happened.
+     */
+    public async copyRaleTrackerTask(): Promise<boolean> {
+        if (!this.injectRaleTrackerTask || !this.raleTrackerTaskFileLocation) {
+            return false;
         }
         try {
+            await fsExtra.copy(this.raleTrackerTaskFileLocation, s`${this.stagingDir}/components/TrackerTask.xml`);
+            this.logger.log('Tracker task successfully copied to staging');
+            return true;
+        } catch (err) {
+            console.error(err);
+            return false;
+        }
+    }
 
+    /**
+     * Copy the RDB OnDeviceComponent files into the staging dir (if RDB injection is enabled). The
+     * actual `' vscode_rdb_on_device_component_entry` comment replacement happens later, during the
+     * single staging walk in {@link preprocessStagingFiles}. Resolves to `true` if any copy happened.
+     */
+    public async copyRdbFiles(): Promise<boolean> {
+        if (!this.injectRdbOnDeviceComponent || !this.rdbFilesBasePath) {
+            return false;
+        }
+        let copied = false;
+        try {
             let files: string[] = await fastGlob(
                 //fast-glob requires forward slashes, so convert any backslashes in the provided path to forward slashes before globbing
                 `${this.rdbFilesBasePath}/**/*`.replace(/[\\/]+/g, '/'),
@@ -909,36 +1088,69 @@ export class Project {
                     const relativePath = s`${filePathAbsolute}`.replace(s`${this.rdbFilesBasePath}`, '');
                     const destinationPath = s`${this.stagingDir}/${relativePath}`;
                     promises.push(fsExtra.copy(filePathAbsolute, destinationPath));
+                    copied = true;
                 }
                 await Promise.all(promises);
-                this.logger.log('RDB OnDeviceComponent successfully injected');
-            }
-
-            // Search for the tracker task entry injection point
-            const replacementResult = await replaceInFile({
-                files: `${this.stagingDir}/**/*.+(xml|brs)`,
-                from: new RegExp(`^.*'\\s*${Project.RDB_ODC_ENTRY}.*$`, 'mig'),
-                to: (match: string) => {
-                    // Strip off the comment
-                    let startOfLine = match.substring(0, match.indexOf(`'`));
-                    if (/[\S]/.exec(startOfLine)) {
-                        // There was some form of code before the tracker entry
-                        // append and use single line syntax
-                        startOfLine += ': ';
-                    }
-                    return `${startOfLine}${Project.RDB_ODC_NODE_CODE}`;
-                }
-            });
-            const injectedFiles = replacementResult
-                .filter(result => result.hasChanged)
-                .map(result => result.file);
-
-            if (injectedFiles.length === 0) {
-                console.error(`WARNING: Unable to find an entry point for RDB.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RDB_ODC_ENTRY}"`);
+                this.logger.log('RDB OnDeviceComponent files successfully copied to staging');
             }
         } catch (err) {
             console.error(err);
         }
+        return copied;
+    }
+
+    /**
+     * Standalone wrapper that copies the RALE TrackerTask file and applies the entry-comment injection
+     * across the staging dir in one pass. Retained for direct/unit-test use; in `stage()` the copy and
+     * the injection are split so the injection can ride along inside the single staging walk.
+     */
+    public async copyAndTransformRaleTrackerTask() {
+        if (!await this.copyRaleTrackerTask()) {
+            return;
+        }
+        const injected = await this.injectEntryCommentAcrossStagingDir(Project.RALE_TRACKER_ENTRY, Project.RALE_TRACKER_TASK_CODE);
+        if (!injected) {
+            console.error(`WARNING: Unable to find an entry point for Tracker Task.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RALE_TRACKER_ENTRY}"`);
+        }
+    }
+
+    /**
+     * Standalone wrapper that copies the RDB files and applies the entry-comment injection across the
+     * staging dir in one pass. Retained for direct/unit-test use; in `stage()` the copy and the
+     * injection are split so the injection can ride along inside the single staging walk.
+     */
+    public async copyAndTransformRDB() {
+        if (!await this.copyRdbFiles()) {
+            return;
+        }
+        const injected = await this.injectEntryCommentAcrossStagingDir(Project.RDB_ODC_ENTRY, Project.RDB_ODC_NODE_CODE);
+        if (!injected) {
+            console.error(`WARNING: Unable to find an entry point for RDB.\nPlease make sure that you have the following comment in your BrightScript project: "\' ${Project.RDB_ODC_ENTRY}"`);
+        }
+    }
+
+    /**
+     * Walk the staged `.brs`/`.xml` files and apply {@link injectEntryComment} to each. Used by the
+     * standalone `copyAndTransform*` wrappers; the `stage()` path instead folds this injection into the
+     * single `preprocessStagingFiles` walk to avoid re-traversing the tree.
+     * @returns `true` if at least one file was modified
+     */
+    private async injectEntryCommentAcrossStagingDir(entryMarker: string, injectionCode: string): Promise<boolean> {
+        const files: string[] = await fastGlob('**/*.{xml,brs}', { cwd: this.stagingDir, absolute: true, onlyFiles: true });
+        let anyChanged = false;
+        await Promise.all(files.map(async (filePath) => {
+            try {
+                const contents = await fsExtra.readFile(filePath, 'utf8');
+                const result = Project.injectEntryComment(contents, entryMarker, injectionCode);
+                if (result.changed) {
+                    anyChanged = true;
+                    await this.writeFile(filePath, result.contents, 'utf8');
+                }
+            } catch (e) {
+                this.logger.error(`Error injecting '${entryMarker}' into '${filePath}'`, e);
+            }
+        }));
+        return anyChanged;
     }
 
     /**
