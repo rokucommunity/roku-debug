@@ -780,8 +780,9 @@ export class BreakpointManager {
             //map via applySourceMap. This collapses staging→rootDir→src into a single staging→src map,
             //so the debugger can always trace breakpoints back to the true source file in one hop.
             if (breakpoints[0].type === 'sourceMap') {
-                //follow any sourceMappingURL comment to find the existing map (read-only)
-                const existingMapPath = await this.sourceMapManager.getSourceMapPath(stagingFilePath);
+                //follow any sourceMappingURL comment to find the existing map (read-only). Reuse the
+                //fileContents we already loaded above instead of making getSourceMapPath re-read the file.
+                const existingMapPath = await this.sourceMapManager.getSourceMapPath(stagingFilePath, fileContents);
                 const existingMap = await this.sourceMapManager.getSourceMap(existingMapPath);
                 if (existingMap) {
                     await SourceMapConsumer.with(existingMap, null, (consumer) => {

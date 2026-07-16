@@ -94,18 +94,23 @@ export class SourceMapManager {
      *
      * Returns undefined if no source map is found.
      * @param stagingFilePath
+     * @param fileContents the already-loaded contents of `stagingFilePath`. Pass this when the caller
+     * already has the file in memory to avoid a redundant disk read; omit it to have this method read
+     * the file itself. Ignored once the result for this path is cached.
      * @returns
      */
-    public async getSourceMapPath(stagingFilePath: string) {
+    public async getSourceMapPath(stagingFilePath: string, fileContents?: string) {
         stagingFilePath = s`${stagingFilePath}`;
         let sourceMapPath = this.sourceMapPathCache.get(stagingFilePath);
         if (!sourceMapPath) {
-            //read the file on disk and find the sourceMapURL comment (if available)
-            let contents: string | undefined;
-            try {
-                contents = await fsExtra.readFile(stagingFilePath, 'utf8');
-            } catch {
-                // file doesn't exist — fall through to the colocated map assumption
+            //use the caller-provided contents when available; otherwise read the file on disk
+            let contents = fileContents;
+            if (contents === undefined) {
+                try {
+                    contents = await fsExtra.readFile(stagingFilePath, 'utf8');
+                } catch {
+                    // file doesn't exist — fall through to the colocated map assumption
+                }
             }
             const match = contents ? Project.getSourceMapComment(contents) : undefined;
             //if we have a comment, use it
