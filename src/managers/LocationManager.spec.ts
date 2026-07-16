@@ -1,10 +1,13 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
+import * as sinonActual from 'sinon';
 import { SourceMapConsumer, SourceNode } from 'source-map';
 import { standardizePath as s } from '../FileUtils';
 import { LocationManager } from './LocationManager';
 import { SourceMapManager } from './SourceMapManager';
 import { forceDeleteDir } from '../testHelpers.spec';
+
+const sinon = sinonActual.createSandbox();
 
 let tempDir = s`${process.cwd()}/.tmp`;
 const rootDir = s`${tempDir}/rootDir`;
@@ -29,8 +32,54 @@ describe('LocationManager', () => {
         }
     });
     afterEach(async () => {
+        sinon.restore();
         await forceDeleteDir(tempDir);
     });
+
+    describe('getStagingMapPaths', () => {
+        it('returns all .map files in the staging dir', () => {
+            fsExtra.writeFileSync(s`${stagingDir}/source/main.brs.map`, '{}');
+            fsExtra.writeFileSync(s`${stagingDir}/source/lib.brs.map`, '{}');
+            //non-map files should be ignored
+            fsExtra.writeFileSync(s`${stagingDir}/source/main.brs`, '');
+
+            const result = locationManager.getStagingMapPaths(stagingDir).map(x => s`${x}`);
+            expect(result.sort()).to.eql([
+                s`${stagingDir}/source/lib.brs.map`,
+                s`${stagingDir}/source/main.brs.map`
+            ].sort());
+        });
+    });
+
+    describe('getStagingLocations', () => {
+        it('uses the provided stagingMapPaths instead of walking the staging tree', async () => {
+            const getStagingMapPaths = sinon.spy(locationManager, 'getStagingMapPaths');
+            const getGeneratedLocations = sinon.stub(sourceMapManager, 'getGeneratedLocations').returns(Promise.resolve([]));
+
+            const providedMapPaths = [s`${stagingDir}/source/main.brs.map`];
+            await locationManager.getStagingLocations(
+                s`${rootDir}/source/main.brs`, 1, 0, [], stagingDir, [], providedMapPaths
+            );
+
+            //it did NOT re-walk the staging tree
+            expect(getStagingMapPaths.called).to.be.false;
+            //it forwarded the provided map paths to the sourcemap lookup
+            expect(getGeneratedLocations.calledOnce).to.be.true;
+            expect(getGeneratedLocations.firstCall.args[0]).to.equal(providedMapPaths);
+        });
+
+        it('falls back to walking the staging tree when no stagingMapPaths are provided', async () => {
+            const getStagingMapPaths = sinon.spy(locationManager, 'getStagingMapPaths');
+            sinon.stub(sourceMapManager, 'getGeneratedLocations').returns(Promise.resolve([]));
+
+            await locationManager.getStagingLocations(
+                s`${rootDir}/source/main.brs`, 1, 0, [], stagingDir, []
+            );
+
+            expect(getStagingMapPaths.calledOnce).to.be.true;
+        });
+    });
+
     describe('getSourceLocation', () => {
 
         it('prevents infinite loop with circular dependency', async () => {

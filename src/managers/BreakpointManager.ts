@@ -419,6 +419,10 @@ export class BreakpointManager {
     private async getBreakpointWork(project: Project, willInjectStop = false) {
         let result = {} as Record<string, Array<BreakpointWorkItem>>;
 
+        //walk the staging tree for `.map` files ONCE up front, then reuse the list for every breakpoint.
+        //getStagingLocations would otherwise re-glob the entire staging dir on every single breakpoint.
+        const stagingMapPaths = this.locationManager.getStagingMapPaths(project.stagingDir);
+
         //iterate over every file that contains breakpoints
         for (let [sourceFilePath, breakpoints] of this.breakpointsByFilePath) {
             for (let breakpoint of breakpoints) {
@@ -438,7 +442,8 @@ export class BreakpointManager {
                         project.rootDir
                     ],
                     project.stagingDir,
-                    project.fileMappings
+                    project.fileMappings,
+                    stagingMapPaths
                 );
 
                 for (let stagingLocation of stagingLocationsResult.locations) {

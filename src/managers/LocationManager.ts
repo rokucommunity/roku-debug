@@ -94,10 +94,25 @@ export class LocationManager {
     }
 
     /**
+     * Find every `.map` file in the staging folder. This walks the whole staging tree, so callers that
+     * resolve many source locations against the same staging dir (e.g. breakpoint validation) should
+     * call this once and pass the result into {@link getStagingLocations} rather than re-walking per call.
+     */
+    public getStagingMapPaths(stagingDir: string): string[] {
+        return glob.sync('**/*.map', {
+            cwd: s`${stagingDir}`,
+            absolute: true
+        });
+    }
+
+    /**
      * Given a source location, compute its locations in staging. You should call this for the main app (rootDir, rootDir+sourceDirs),
      * and also once for each component library.
      * There is a possibility of a single source location mapping to multiple staging locations (i.e. merging a function into two different files),
      * So this will return an array of locations.
+     * @param stagingMapPaths the list of `.map` file paths in the staging dir. Pass a pre-computed list
+     * (from {@link getStagingMapPaths}) when resolving many locations against the same staging dir to
+     * avoid re-walking the staging tree on every call. Falls back to walking the tree when omitted.
      */
     public async getStagingLocations(
         sourceFilePath: string,
@@ -105,7 +120,8 @@ export class LocationManager {
         sourceColumnIndex: number,
         sourceDirs: string[],
         stagingDir: string,
-        fileMappings: Array<{ src: string; dest: string }>
+        fileMappings: Array<{ src: string; dest: string }>,
+        stagingMapPaths?: string[]
     ): Promise<{ type: 'fileMap' | 'sourceDirs' | 'sourceMap'; locations: SourceLocation[] }> {
 
         sourceFilePath = s`${sourceFilePath}`;
@@ -114,10 +130,7 @@ export class LocationManager {
 
         //look through the sourcemaps in the staging folder for any instances of this source location
         let locations = await this.sourceMapManager.getGeneratedLocations(
-            glob.sync('**/*.map', {
-                cwd: stagingDir,
-                absolute: true
-            }),
+            stagingMapPaths ?? this.getStagingMapPaths(stagingDir),
             {
                 filePath: sourceFilePath,
                 lineNumber: sourceLineNumber,
