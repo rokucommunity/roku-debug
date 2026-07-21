@@ -1,10 +1,8 @@
+import * as fastGlob from 'fast-glob';
 import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
-import * as glob from 'glob';
 import * as path from 'path';
-import { promisify } from 'util';
 import { util as rokuDeployUtil } from 'roku-deploy';
-const globp = promisify(glob);
 
 export class FileUtils {
 
@@ -55,12 +53,9 @@ export class FileUtils {
             path.normalize(directoryPath)
         );
 
-        let paths = await globp(path.join(directoryPath, '**/*'));
-        for (let i = 0; i < paths.length; i++) {
-            //make the path relative (+1 for removing the slash)
-            paths[i] = paths[i].substring(directoryPath.length + 1);
-        }
-        return paths;
+        return fastGlob('**/*', {
+            cwd: directoryPath
+        });
     }
 
     /**
