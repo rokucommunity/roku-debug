@@ -659,11 +659,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
                 }
                 if (this.deviceInfo.ecpSettingMode === 'limited') {
-                    return await this.shutdown(`Please ensure 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive" on your Roku device to allow the debugger to communicate properly. Current mode: Limited (device: ${this.launchConfiguration.host})`);
+                    return await this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Limited (device: ${this.launchConfiguration.host})`);
                 }
             } catch (e) {
                 if (e instanceof EcpNetworkAccessModeDisabledError) {
-                    return this.shutdown(`Please ensure 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive" on your Roku device to allow the debugger to communicate properly. Current mode: Disabled (device: ${this.launchConfiguration.host})`);
+                    return this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Disabled (device: ${this.launchConfiguration.host})`);
                 }
                 return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
             }
