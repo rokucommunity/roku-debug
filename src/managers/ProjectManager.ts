@@ -354,7 +354,7 @@ export class Project {
             throw new Error('outDir is required');
         }
         this.outDir = fileUtils.standardizePath(params.outDir);
-        this.stagingDir = params.stagingDir ?? rokuDeploy.getOptions(this).stagingDir;
+        this.stagingDir = params.stagingDir ?? rokuDeploy.getStagingDir({ outDir: this.outDir });
         this.bsConst = params.bsConst;
         this.sourceDirs = (params.sourceDirs ?? [])
             //standardize every sourcedir
@@ -369,6 +369,11 @@ export class Project {
     }
     public rootDir: string;
     public outDir: string;
+    /**
+     * The filename of the zip package that gets created from the staging folder (relative to `outDir`).
+     * Component libraries override this with their computed out file name.
+     */
+    public outFile = RokuDeploy.defaults.outFile;
     public packagePath: string;
     public sourceDirs: string[];
     public files: Array<FileEntry>;
@@ -407,13 +412,10 @@ export class Project {
         }
 
         //copy all project files to the staging folder
-        await rokuDeploy.prepublishToStaging({
+        await rokuDeploy.stage({
             rootDir: this.rootDir,
-            stagingDir: this.stagingDir,
-            files: this.fileMappings,
-            outDir: this.outDir,
-            //we already fetched the file mappings ourselves, so roku-deploy doesn't need to glob the files again
-            resolveFilesArray: false
+            files: this.files,
+            out: this.stagingDir
         });
 
         await this.preprocessStagingFiles();
@@ -946,34 +948,33 @@ export class Project {
      * @param stagingPath
      */
     public async zipPackage(params: { retainStagingFolder: boolean }) {
-        const options = rokuDeploy.getOptions({
-            ...this,
-            ...params
-        });
-
         let packagePath = this.packagePath;
         if (!this.packagePath) {
             //make sure the output folder exists
-            await fsExtra.ensureDir(options.outDir);
+            await fsExtra.ensureDir(this.outDir);
 
-            packagePath = rokuDeploy.getOutputZipFilePath(options);
+            packagePath = rokuDeploy.getOutputZipPath({ outDir: this.outDir, outFile: this.outFile });
         }
 
         //ensure the manifest file exists in the staging folder
-        if (!await rokuDeployUtil.fileExistsCaseInsensitive(`${options.stagingDir}/manifest`)) {
-            throw new Error(`Cannot zip package: missing manifest file in "${options.stagingDir}"`);
+        if (!await rokuDeployUtil.fileExistsCaseInsensitive(`${this.stagingDir}/manifest`)) {
+            throw new Error(`Cannot zip package: missing manifest file in "${this.stagingDir}"`);
         }
 
         // create a zip of the staging folder
-        await rokuDeploy.zipFolder(options.stagingDir, packagePath, undefined, [
-            '**/*',
-            //exclude sourcemap files (they're large and can't be parsed on-device anyway...)
-            '!**/*.map'
-        ]);
+        await rokuDeploy.zip({
+            dir: this.stagingDir,
+            out: packagePath,
+            files: [
+                '**/*',
+                //exclude sourcemap files (they're large and can't be parsed on-device anyway...)
+                '!**/*.map'
+            ]
+        });
 
         //delete the staging folder unless told to retain it.
-        if (options.retainStagingDir !== true) {
-            await fsExtra.remove(options.stagingDir);
+        if (params.retainStagingFolder !== true) {
+            await fsExtra.remove(this.stagingDir);
         }
     }
 
@@ -982,7 +983,10 @@ export class Project {
      * (`dest` paths are relative in later versions of roku-deploy)
      */
     protected async getFileMappings() {
-        let fileMappings = await rokuDeploy.getFilePaths(this.files, this.rootDir, true, this.stagingDir);
+        let fileMappings = await rokuDeploy.getFilePaths({ files: this.files, rootDir: this.rootDir });
+        for (let fileMapping of fileMappings) {
+            fileMapping.dest = s`${this.stagingDir}/${fileMapping.dest}`;
+        }
         return fileMappings;
     }
 
@@ -1006,7 +1010,6 @@ export class ComponentLibraryProject extends Project {
         this.install = params.install ?? false;
         this.enablePostfix = params.enablePostfix ?? true;
     }
-    public outFile: string;
     public libraryIndex: number;
     public install: boolean;
     /**

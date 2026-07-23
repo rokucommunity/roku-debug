@@ -3,7 +3,7 @@ import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as semver from 'semver';
 import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError } from 'roku-deploy';
-import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
+import type { DeviceInfo, DeviceOption, RokuDeploy, SideloadOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     LoggingDebugSession,
@@ -61,7 +61,7 @@ import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { PerfettoManager } from '../PerfettoManager';
-import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
+import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
@@ -358,6 +358,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     //set imports as class properties so they can be spied upon during testing
     public rokuDeploy = rokuDeploy as unknown as RokuDeploy;
 
+    /**
+     * The roku-deploy `device` option for the target device. This is the single place where the launch
+     * configuration is converted into a device config, so future device addressing schemes (like the
+     * Roku Cloud Emulator) only need to be handled here.
+     */
+    private get device(): DeviceOption {
+        return { host: this.launchConfiguration.host };
+    }
+
     private componentLibraryServer = new ComponentLibraryServer();
 
     private rokuAdapterDeferred = defer<DebugProtocolAdapter | TelnetAdapter>();
@@ -599,7 +608,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private normalizeLaunchConfig(config: LaunchConfiguration) {
         config.cwd ??= process.cwd();
         config.outDir ??= s`${config.cwd}/out`;
-        config.stagingDir ??= s`${config.outDir}/.roku-deploy-staging`;
+        config.stagingDir ??= rokuDeploy.getStagingDir({ outDir: config.outDir, cwd: config.cwd });
         config.componentLibrariesPort ??= 8080;
         config.packagePort ??= 80;
         config.remotePort ??= 8060;
@@ -656,7 +665,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 if (this.launchConfiguration.deviceInfo) {
                     this.deviceInfo = rokuDeploy.enhanceDeviceInfo(this.launchConfiguration.deviceInfo);
                 } else {
-                    this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                    this.deviceInfo = await rokuDeploy.getDeviceInfo({ device: this.device, ecpPort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
                 }
                 if (this.deviceInfo.ecpSettingMode === 'limited') {
                     return await this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Limited (device: ${this.launchConfiguration.host})`);
@@ -775,7 +784,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
 
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
@@ -891,7 +900,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 //if we are at a breakpoint, continue
                 await this.rokuAdapter.continue();
                 //kill the app on the roku
-                // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                // await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
                 //convert a hostname to an ip address
                 const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
                 //send the deep link http request
@@ -1092,9 +1101,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //delete any currently installed dev channel (if enabled to do so)
         try {
             if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
-                await this.rokuDeploy.deleteInstalledChannel({
-                    ...this.launchConfiguration
-                } as any as RokuDeployOptions);
+                await this.rokuDeploy.deleteDevChannel({
+                    device: this.device,
+                    password: this.launchConfiguration.password,
+                    username: this.launchConfiguration.username,
+                    packagePort: this.launchConfiguration.packagePort
+                });
             }
         } catch (e) {
             const statusCode = e?.results?.response?.statusCode;
@@ -1107,27 +1119,30 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         }
 
         const isConnected = this.rokuAdapter.once('app-ready');
-        const options: RokuDeployOptions = {
-            ...this.launchConfiguration,
-            //typing fix
-            logLevel: LogLevelPriority[this.logger.logLevel],
+        const options: SideloadOptions = {
+            device: this.device,
+            password: this.launchConfiguration.password,
+            username: this.launchConfiguration.username,
+            packagePort: this.launchConfiguration.packagePort,
+            ecpPort: this.launchConfiguration.remotePort,
+            //sideload the zip that was already built from the staging folder (or supplied via packagePath)
+            zip: this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipPath({ outDir: this.launchConfiguration.outDir }),
             // enable the debug protocol if true
             remoteDebug: this.enableDebugProtocol,
             //necessary for capturing compile errors from the protocol (has no effect on telnet)
             remoteDebugConnectEarly: false,
             //we don't want to fail if there were compile errors...we'll let our compile error processor handle that
             failOnCompileError: true,
+            //deleting the dev channel (when enabled) was already handled at the start of this function
+            deleteDevChannel: false,
+            //the device was already sent to the home screen during configurationDone
+            close: false,
             //pass any upload form overrides the client may have configured
             packageUploadOverrides: this.launchConfiguration.packageUploadOverrides
         };
-        //if packagePath is specified, use that info instead of outDir and outFile
-        if (this.launchConfiguration.packagePath) {
-            options.outDir = path.dirname(this.launchConfiguration.packagePath);
-            options.outFile = path.basename(this.launchConfiguration.packagePath);
-        }
 
         //publish the package to the target Roku
-        const publishPromise = this.rokuDeploy.publish(options).then(() => {
+        const publishPromise = this.rokuDeploy.sideload(options).then(() => {
             packageIsPublished = true;
         }).catch(async (e) => {
             const statusCode = e?.results?.response?.statusCode;
@@ -1395,17 +1410,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
             await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
 
-            const options = {
-                ...this.launchConfiguration
-            } as any as RokuDeployOptions;
-            //if packagePath is specified, use that info instead of outDir and outFile
-            if (this.launchConfiguration.packagePath) {
-                options.outDir = path.dirname(this.launchConfiguration.packagePath);
-                options.outFile = path.basename(this.launchConfiguration.packagePath);
-            }
-            const packagePath = this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipFilePath(options);
+            const packagePath = this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipPath({ outDir: this.launchConfiguration.outDir });
 
-            if (!fsExtra.pathExistsSync(packagePath as string)) {
+            if (!fsExtra.pathExistsSync(packagePath)) {
                 return this.shutdown(`Cancelling debug session. Package does not exist at '${packagePath}'`);
             }
         } else {
@@ -1519,7 +1526,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         const needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
         if (needToDeleteComplibs) {
             await rokuDeploy.deleteAllComponentLibraries({
-                host: this.launchConfiguration.host,
+                device: this.device,
                 password: this.launchConfiguration.password,
                 username: this.launchConfiguration.username || 'rokudev'
             });
@@ -1536,25 +1543,23 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
                 }
 
-                const options: RokuDeployOptions = {
-                    host: this.launchConfiguration.host,
+                const options: SideloadOptions = {
+                    device: this.device,
                     password: this.launchConfiguration.password,
                     username: this.launchConfiguration.username || 'rokudev',
-                    logLevel: LogLevelPriority[this.logger.logLevel],
+                    packagePort: this.launchConfiguration.packagePort,
+                    ecpPort: this.launchConfiguration.remotePort,
+                    zip: componentLibraries[i].packagePath ?? rokuDeploy.getOutputZipPath({ outDir: compLibProject.outDir, outFile: compLibProject.outFile }),
                     failOnCompileError: true,
-                    outDir: compLibProject.outDir,
-                    outFile: compLibProject.outFile,
                     appType: 'dcl',
+                    //installing a component library should never close or delete the sideloaded channel
+                    close: false,
+                    deleteDevChannel: false,
                     packageUploadOverrides: componentLibraries[i].packageUploadOverrides || {}
                 };
 
-                if (componentLibraries[i].packagePath) {
-                    options.outDir = path.dirname(componentLibraries[i].packagePath);
-                    options.outFile = path.basename(componentLibraries[i].packagePath);
-                }
-
                 try {
-                    await rokuDeploy.publish(options);
+                    await rokuDeploy.sideload(options);
                 } catch (error) {
                     this.logger.error(`Error installing component library ${i}`, error);
                 }
@@ -2901,14 +2906,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      */
     protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
         //return to the home screen — best effort. The device may already be powered off or unreachable
-        //at disconnect time; without a guard pressHomeButton rejects (EHOSTDOWN / ECONNREFUSED / etc)
+        //at disconnect time; without a guard the home key press rejects (EHOSTDOWN / ECONNREFUSED / etc)
         //and because @vscode/debugadapter dispatches this method without awaiting the returned Promise,
         //that rejection escapes as an unhandledRejection and crashes the DAP process.
         //See https://github.com/rokucommunity/vscode-brightscript-language/issues/807
         //    https://github.com/rokucommunity/roku-debug/issues/332
         if (!this.enableDebugProtocol) {
             try {
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
             } catch (e) {
                 this.logger.warn('Failed to press home button during disconnect; device may be unreachable', e);
             }
@@ -3386,7 +3391,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public async shutdown(errorMessage?: string, modal = false): Promise<void> {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
-            //Backstop: if the graceful shutdown hangs (e.g. pressHomeButton against an unreachable
+            //Backstop: if the graceful shutdown hangs (e.g. a home key press against an unreachable
             //device), force-exit anyway so we never leave an orphaned adapter running forever
             const forceExitTimer = setTimeout(() => {
                 this.logger.error('[shutdown] graceful shutdown timed out; forcing exit');
@@ -3437,7 +3442,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             //press the home button to return to the home screen
             try {
                 this.logger.log('Press home button');
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
             } catch (e) {
                 this.logger.error(e);
             }

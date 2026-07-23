@@ -257,8 +257,8 @@ describe('TelnetAdapter ', () => {
 
     describe('connect', () => {
         it('does not crash and triggers shutdown when the socket errors after the connection is established', async () => {
-            // Stub pressHomeButton so we don't need a real device
-            sinon.stub(rokuDeploy, 'pressHomeButton').resolves();
+            // Stub keyPress so we don't need a real device
+            sinon.stub(rokuDeploy, 'keyPress').resolves();
             // Stub Socket.prototype.connect so it doesn't attempt a real connection.
             // The callback is invoked synchronously to simulate a successful connection.
             sinon.stub(Socket.prototype, 'connect').callsFake(function(this: Socket, ...args: any[]) {
