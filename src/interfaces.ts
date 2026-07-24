@@ -16,7 +16,12 @@ export interface RokuAdapterEvaluateResponse {
 }
 
 export interface AdapterOptions {
-    host: string;
+    /**
+     * The host or ip address of the target device. The telnet and debug-protocol adapters connect
+     * over the local network, so a session for a device without a host (like a Roku Cloud Emulator
+     * device) cannot connect an adapter yet.
+     */
+    host?: string;
     brightScriptConsolePort?: number;
     remotePort?: number;
     /**

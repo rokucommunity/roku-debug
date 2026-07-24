@@ -2,8 +2,8 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as semver from 'semver';
-import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError } from 'roku-deploy';
-import type { DeviceInfo, DeviceOption, RokuDeploy, SideloadOptions } from 'roku-deploy';
+import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError, isLocalDeviceConfig, isRceDeviceConfig, isRceByUrl, isRceById } from 'roku-deploy';
+import type { DeviceInfo, DeviceOption, LocalDeviceConfig, RokuDeploy, SideloadOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     LoggingDebugSession,
@@ -359,12 +359,39 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public rokuDeploy = rokuDeploy as unknown as RokuDeploy;
 
     /**
-     * The roku-deploy `device` option for the target device. This is the single place where the launch
-     * configuration is converted into a device config, so future device addressing schemes (like the
-     * Roku Cloud Emulator) only need to be handled here.
+     * The roku-deploy `device` option for the target device. This is the canonical way to address the
+     * device; the deprecated `launchConfiguration.host` field is only used as a fallback when the
+     * config has not been normalized yet (normalizeLaunchConfig always sets `device`).
      */
     private get device(): DeviceOption {
-        return { host: this.launchConfiguration.host };
+        return this.launchConfiguration.device ?? { host: this.launchConfiguration.host };
+    }
+
+    /**
+     * Is the target device addressed over the local network (by host/ip)? Only local devices get
+     * host-based treatment like DNS resolution.
+     */
+    private get isLocalDevice(): boolean {
+        const device = this.device;
+        return typeof device === 'object' && isLocalDeviceConfig(device);
+    }
+
+    /**
+     * A short human-readable identifier for the target device, safe for log and error messages
+     * (never includes credentials like the rceToken)
+     */
+    private get deviceLabel(): string {
+        const device = this.device;
+        if (typeof device === 'string') {
+            return device;
+        }
+        if (isRceDeviceConfig(device)) {
+            if (isRceByUrl(device)) {
+                return device.instanceUrl;
+            }
+            return isRceById(device) ? device.id : device.esn;
+        }
+        return device.host ?? this.launchConfiguration.host;
     }
 
     private componentLibraryServer = new ComponentLibraryServer();
@@ -606,6 +633,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      * @returns
      */
     private normalizeLaunchConfig(config: LaunchConfiguration) {
+        //`device` is the canonical way to address the target device; `host` is a deprecated alias.
+        //when a local device config is supplied, its host takes the place of the top-level `host` field
+        //(which every host-based connection like telnet and the debug protocol still reads).
+        //when no device is supplied, build one from the deprecated `host` field.
+        if (typeof config.device === 'object' && isLocalDeviceConfig(config.device) && config.device.host) {
+            config.host = config.device.host;
+        } else if (!config.device) {
+            config.device = { host: config.host };
+        }
         config.cwd ??= process.cwd();
         config.outDir ??= s`${config.cwd}/out`;
         config.stagingDir ??= rokuDeploy.getStagingDir({ outDir: config.outDir, cwd: config.cwd });
@@ -653,11 +689,17 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             this.sendLaunchProgress('start', 'Finding device on network');
 
-            //do a DNS lookup for the host to fix issues with roku rejecting ECP
-            try {
-                this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
-            } catch (e) {
-                return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
+            //do a DNS lookup for the host to fix issues with roku rejecting ECP.
+            //only applies to local devices; other device types (like the Roku Cloud Emulator) are not addressed by host
+            if (this.isLocalDevice) {
+                try {
+                    const resolvedHost = await util.dnsLookup(this.launchConfiguration.host);
+                    //keep the device config and the deprecated top-level host field in sync with the resolved host
+                    this.launchConfiguration.host = resolvedHost;
+                    (this.launchConfiguration.device as LocalDeviceConfig).host = resolvedHost;
+                } catch (e) {
+                    return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
+                }
             }
 
             // fetch device info if not supplied via launch config
@@ -668,17 +710,17 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     this.deviceInfo = await rokuDeploy.getDeviceInfo({ device: this.device, ecpPort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
                 }
                 if (this.deviceInfo.ecpSettingMode === 'limited') {
-                    return await this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Limited (device: ${this.launchConfiguration.host})`);
+                    return await this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Limited (device: ${this.deviceLabel})`);
                 }
             } catch (e) {
                 if (e instanceof EcpNetworkAccessModeDisabledError) {
-                    return this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Disabled (device: ${this.launchConfiguration.host})`);
+                    return this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Disabled (device: ${this.deviceLabel})`);
                 }
-                return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
+                return this.shutdown(`Unable to connect to roku at '${this.deviceLabel}'. Verify the device address is correct and that the device is powered on and reachable.`);
             }
 
             if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
-                return await this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
+                return await this.shutdown(`Developer mode is not enabled for device '${this.deviceLabel}'.`);
             }
 
             // everything is ready, send the response to the launch request so the UI can update and configuration can begin

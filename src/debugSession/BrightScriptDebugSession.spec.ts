@@ -3093,6 +3093,62 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('device option', () => {
+        it('builds a local device config from host when no device is provided', () => {
+            (session as any).launchConfiguration = { host: '1.2.3.4' };
+            expect(session['device']).to.eql({ host: '1.2.3.4' });
+            expect(session['isLocalDevice']).to.be.true;
+            expect(session['deviceLabel']).to.equal('1.2.3.4');
+        });
+
+        it('builds the device option from the deprecated host field during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ host: '1.2.3.4' } as any);
+            expect(config.device).to.eql({ host: '1.2.3.4' });
+        });
+
+        it('takes host from a local device config during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ device: { host: '5.6.7.8' }, host: '1.2.3.4' } as any);
+            expect(config.host).to.equal('5.6.7.8');
+            (session as any).launchConfiguration = config;
+            expect(session['device']).to.eql({ host: '5.6.7.8' });
+            expect(session['isLocalDevice']).to.be.true;
+        });
+
+        it('passes a cloud emulator device config through untouched and never leaks the token in the label', () => {
+            const device = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' };
+            (session as any).launchConfiguration = { device: device };
+            expect(session['device']).to.equal(device);
+            expect(session['isLocalDevice']).to.be.false;
+            expect(session['deviceLabel']).to.equal('https://device.rce.roku.com/instance/abc');
+            expect(session['deviceLabel']).not.to.include('secret');
+        });
+
+        it('labels id-addressed and esn-addressed cloud emulator devices by their identifier', () => {
+            (session as any).launchConfiguration = { device: { id: '83', rceToken: 'secret' } };
+            expect(session['deviceLabel']).to.equal('83');
+            (session as any).launchConfiguration = { device: { esn: 'XY020078HH5S', rceToken: 'secret' } };
+            expect(session['deviceLabel']).to.equal('XY020078HH5S');
+        });
+
+        it('sends the launch config device to sideload', async () => {
+            const device = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' };
+            (session as any).launchConfiguration = {
+                ...session['launchConfiguration'],
+                device: device,
+                outDir: tempDir
+            };
+            rokuAdapter.connected = true;
+            const sideloadStub = sinon.stub(session.rokuDeploy, 'sideload').callsFake(() => {
+                (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
+                return Promise.resolve({ message: 'success', results: [] });
+            });
+
+            await (session as any).publish();
+
+            expect(sideloadStub.getCall(0).args[0].device).to.equal(device);
+        });
+    });
+
     describe('publish', () => {
         it('waits 60 seconds before aborting when the app never becomes ready', async () => {
             session['publishTimeout'] = 60_000;

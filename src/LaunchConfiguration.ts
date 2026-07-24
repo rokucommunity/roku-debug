@@ -1,4 +1,4 @@
-import type { DeviceInfoRaw, FileEntry } from 'roku-deploy';
+import type { DeviceInfoRaw, DeviceOption, FileEntry } from 'roku-deploy';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { LogLevel } from './logging';
 
@@ -12,8 +12,18 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     cwd: string;
     /**
      * The host or ip address for the target Roku
+     * @deprecated Use `device` instead. When `device` is omitted, a local device config is built from this field.
      */
-    host: string;
+    host?: string;
+
+    /**
+     * The roku-deploy device option for the target device. This is the canonical way to address the device.
+     * Supports every roku-deploy addressing scheme: a local network device (`{ host }`) or a
+     * Roku Cloud Emulator device (`{ instanceUrl | id | esn, rceToken }`).
+     * When omitted, a local device config is built from the deprecated `host` field. When provided with a
+     * `host` property, it takes the place of the top-level `host` field.
+     */
+    device?: DeviceOption;
 
     /**
      * The raw `device-info` for the target Roku. When supplied, the debug session uses this instead of

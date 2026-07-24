@@ -1274,9 +1274,10 @@ export interface BreakpointSpec {
 
 export interface ConstructorOptions {
     /**
-     * The host/ip address of the Roku
+     * The host/ip address of the Roku. The debug protocol connects over the local network, so a
+     * session for a device without a host (like a Roku Cloud Emulator device) cannot connect yet.
      */
-    host: string;
+    host?: string;
     /**
      * The port number used to send all debugger commands. This is static/unchanging for Roku devices,
      * but is configurable here to support unit testing or alternate runtimes (i.e. https://www.npmjs.com/package/brs)
