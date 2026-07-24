@@ -2221,7 +2221,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             } else if (v.type === '$$Registry') {
                 // This is a special scope variable used to load registry data via an ECP call
                 // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
-                await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
+                await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, device: this.device, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
             }
         } catch (error) {
             logger.error(`Error getting variables for scope ${v.type}`, error);
@@ -3002,6 +3002,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 let appStateResult = await rokuECP.getAppState({
                     host: this.launchConfiguration.host,
                     remotePort: this.launchConfiguration.remotePort,
+                    device: this.device,
                     appId: 'dev',
                     requestOptions: { timeout: 300 }
                 });
@@ -3016,6 +3017,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     await rokuECP.exitApp({
                         host: this.launchConfiguration.host,
                         remotePort: this.launchConfiguration.remotePort,
+                        device: this.device,
                         appId: 'dev',
                         requestOptions: { timeout: 300 }
                     });

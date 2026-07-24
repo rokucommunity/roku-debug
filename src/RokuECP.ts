@@ -1,6 +1,8 @@
 import { util } from './util';
 import type * as requestType from 'request';
 import type { Response } from 'request';
+import { RceDevice, isRceDeviceConfig } from 'roku-deploy';
+import type { DeviceOption, EcpResponse } from 'roku-deploy';
 
 export class RokuECP {
     private async doRequest(route: string, options: BaseOptions, method: 'post' | 'get' = 'get'): Promise<Response> {
@@ -13,6 +15,27 @@ export class RokuECP {
     }
 
     /**
+     * Get the XML body for an ECP verb, routing through the target device's transport.
+     * When `options.device` is an RCE (Roku Cloud Emulator) device config, the request goes over the
+     * ECP2 websocket via `RceDevice`. Otherwise it falls back to the local HTTP ECP endpoint.
+     * The XML root elements and shapes are identical between the two transports, so callers can feed
+     * the returned body into the same parsing logic regardless of which transport was used.
+     * @param options the verb options, including the optional `device` used to pick the transport
+     * @param localRoute the local HTTP ECP route to use when the device is not an RCE device
+     * @param method the HTTP method to use for the local route
+     * @param rceCall invokes the matching `RceDevice` ECP2 method when the device is an RCE device
+     */
+    private async fetchEcpBody(options: BaseOptions, localRoute: string, method: 'get' | 'post', rceCall: (device: RceDevice) => Promise<EcpResponse>): Promise<string> {
+        const device = options.device;
+        if (typeof device === 'object' && isRceDeviceConfig(device)) {
+            const response = await rceCall(new RceDevice(device));
+            return response.content ?? '';
+        }
+        const response = await this.doRequest(localRoute, options, method);
+        return typeof response.body === 'string' ? response.body : '';
+    }
+
+    /**
      * Enables perfetto tracing for the specified channel
      * @param channelID
      * @returns
@@ -20,7 +43,7 @@ export class RokuECP {
     public async enablePerfettoTracing(options: BaseOptions & { channelId: string }) {
         const response = await this.doRequest(`/perfetto/enable/${options.channelId}`, options, 'post');
 
-        return this.parseResponse(response, 'perfetto-enable', (parsed: PerfettoEnableAsJson, status): EcpPerfettoEnableData => {
+        return this.parseResponse(response.body as string, 'perfetto-enable', (parsed: PerfettoEnableAsJson, status): EcpPerfettoEnableData => {
             return {
                 enabledChannels: parsed?.['enabled-channels']?.[0]?.channel ?? [],
                 timestamp: Number(parsed?.timestamp?.[0]),
@@ -37,7 +60,7 @@ export class RokuECP {
      */
     public async captureHeapSnapshot(options: BaseOptions & { channelId: string }) {
         const response = await this.doRequest(`/perfetto/heapgraph/trigger/${options.channelId}`, options, 'post');
-        return this.parseResponse(response, 'perfetto-heapgraph-trigger', (parsed: HeapSnapshotAsJson, status): EcpHeapSnapshotData => {
+        return this.parseResponse(response.body as string, 'perfetto-heapgraph-trigger', (parsed: HeapSnapshotAsJson, status): EcpHeapSnapshotData => {
             return {
                 timestamp: Number(parsed?.timestamp?.[0]),
                 timestampEnd: Number(parsed?.['timestamp-end']?.[0]),
@@ -50,14 +73,14 @@ export class RokuECP {
         return EcpStatus[response?.[rootKey]?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
     }
 
-    private async parseResponse<R>(response: Response, rootKey: string, callback: (parsed: any, status: EcpStatus) => R): Promise<R> {
-        if (typeof response.body === 'string') {
+    private async parseResponse<R>(body: string, rootKey: string, callback: (parsed: any, status: EcpStatus) => R): Promise<R> {
+        if (typeof body === 'string') {
             let parsed: ParsedEcpRoot;
             try {
-                parsed = await util.parseXml<ParsedEcpRoot>(response.body);
+                parsed = await util.parseXml<ParsedEcpRoot>(body);
             } catch {
                 //if the response is not xml, just return the body as-is
-                throw new Error(response.body ?? 'Unknown error');
+                throw new Error(body ?? 'Unknown error');
             }
 
             const status = this.getEcpStatus(parsed, rootKey);
@@ -70,12 +93,12 @@ export class RokuECP {
     }
 
     public async getRegistry(options: BaseOptions & { appId: string }) {
-        let result = await this.doRequest(`query/registry/${options.appId}`, options);
-        return this.processRegistry(result);
+        const body = await this.fetchEcpBody(options, `query/registry/${options.appId}`, 'get', (device) => device.queryRegistry(options.appId));
+        return this.processRegistry(body);
     }
 
-    private async processRegistry(response: Response) {
-        return this.parseResponse(response, 'plugin-registry', (parsed: RegistryAsJson, status): EcpRegistryData => {
+    private async processRegistry(body: string) {
+        return this.parseResponse(body, 'plugin-registry', (parsed: RegistryAsJson, status): EcpRegistryData => {
             const registry = parsed?.registry?.[0];
             let sections: EcpRegistryData['sections'] = {};
 
@@ -101,12 +124,12 @@ export class RokuECP {
     }
 
     public async getAppState(options: BaseOptions & { appId: string }) {
-        let result = await this.doRequest(`query/app-state/${options.appId}`, options);
-        return this.processAppState(result);
+        const body = await this.fetchEcpBody(options, `query/app-state/${options.appId}`, 'get', (device) => device.queryAppState(options.appId));
+        return this.processAppState(body);
     }
 
-    private async processAppState(response: Response) {
-        return this.parseResponse(response, 'app-state', (parsed: AppStateAsJson, status): EcpAppStateData => {
+    private async processAppState(body: string) {
+        return this.parseResponse(body, 'app-state', (parsed: AppStateAsJson, status): EcpAppStateData => {
             const state = AppState[parsed.state?.[0]?.toLowerCase()] ?? AppState.unknown;
             return {
                 appId: parsed['app-id']?.[0],
@@ -120,12 +143,12 @@ export class RokuECP {
     }
 
     public async exitApp(options: BaseOptions & { appId: string }): Promise<EcpExitAppData> {
-        let result = await this.doRequest(`exit-app/${options.appId}`, options, 'post');
-        return this.processExitApp(result);
+        const body = await this.fetchEcpBody(options, `exit-app/${options.appId}`, 'post', (device) => device.exitApp(options.appId));
+        return this.processExitApp(body);
     }
 
-    private async processExitApp(response: Response): Promise<EcpExitAppData> {
-        return this.parseResponse(response, 'exit-app', (parsed: ExitAppAsJson, status): EcpExitAppData => {
+    private async processExitApp(body: string): Promise<EcpExitAppData> {
+        return this.parseResponse(body, 'exit-app', (parsed: ExitAppAsJson, status): EcpExitAppData => {
             return { status: status };
         });
     }
@@ -136,9 +159,17 @@ export enum EcpStatus {
     failed = 'failed'
 }
 interface BaseOptions {
+    /**
+     * The host used when `device` is not an RCE (Roku Cloud Emulator) device config.
+     */
     host: string;
     remotePort?: number;
     requestOptions?: requestType.CoreOptions;
+    /**
+     * The roku-deploy device option for the target device. When this is an RCE device config, the
+     * request is routed over ECP2 via `RceDevice` instead of the local HTTP ECP endpoint.
+     */
+    device?: DeviceOption;
 }
 
 interface BaseEcpResponse {

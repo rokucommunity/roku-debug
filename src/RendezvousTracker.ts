@@ -7,6 +7,7 @@ import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandContro
 import * as xml2js from 'xml2js';
 import { util } from './util';
 import * as semver from 'semver';
+import { RceDevice, isRceDeviceConfig } from 'roku-deploy';
 import type { DeviceInfo } from 'roku-deploy';
 import type { LaunchConfiguration } from './LaunchConfiguration';
 
@@ -203,17 +204,26 @@ export class RendezvousTracker {
      * Get the response from an ECP sgrendezvous request from the Roku
      */
     public async getEcpRendezvous(): Promise<EcpRendezvousData> {
-        const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/sgrendezvous`;
-        this.logger.trace(`Sending ECP rendezvous request:`, url);
-        // Send rendezvous query to ECP
-        const rendezvousQuery = await util.httpGet(url);
-        let rendezvousQueryData = rendezvousQuery.body as string;
+        let device = typeof this.launchConfiguration.device === 'object' ? this.launchConfiguration.device : { host: this.launchConfiguration.host };
+        let rendezvousQueryData: string;
+        if (isRceDeviceConfig(device)) {
+            this.logger.trace('Sending ECP2 rendezvous request via RceDevice');
+            const rendezvousQuery = await new RceDevice(device).queryRendezvous();
+            rendezvousQueryData = rendezvousQuery.content ?? '';
+            this.logger.trace('Parsing rendezvous response', rendezvousQuery);
+        } else {
+            const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/sgrendezvous`;
+            this.logger.trace(`Sending ECP rendezvous request:`, url);
+            // Send rendezvous query to ECP
+            const rendezvousQuery = await util.httpGet(url);
+            rendezvousQueryData = rendezvousQuery.body as string;
+            this.logger.trace('Parsing rendezvous response', rendezvousQuery);
+        }
         let ecpData: EcpRendezvousData = {
             trackingEnabled: false,
             items: []
         };
 
-        this.logger.trace('Parsing rendezvous response', rendezvousQuery);
         // Parse rendezvous query data
         await new Promise<EcpRendezvousData>((resolve, reject) => {
             xml2js.parseString(rendezvousQueryData, (err, result) => {
@@ -244,8 +254,14 @@ export class RendezvousTracker {
      * @returns true if the request succeeded, false if there was an issue setting the value, and does _not_ indicate the final enabled/disabled state of the setting.
      */
     public async toggleEcpRendezvousTracking(toggle: 'track' | 'untrack'): Promise<boolean> {
+        let device = typeof this.launchConfiguration.device === 'object' ? this.launchConfiguration.device : { host: this.launchConfiguration.host };
         try {
             this.logger.log(`Sending ecp sgrendezvous request: ${toggle}`);
+            if (isRceDeviceConfig(device)) {
+                const response = await new RceDevice(device).setRendezvousTracking(toggle === 'track');
+                //this was successful if we got a 200 level status code (200-299)
+                return response.status >= 200 && response.status < 300;
+            }
             const response = await util.httpPost(
                 `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/sgrendezvous/${toggle}`,
                 //not sure if we need this, but it works...so probably better to just leave it here

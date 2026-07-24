@@ -6,6 +6,8 @@ import { RendezvousTracker } from './RendezvousTracker';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
 import type { LaunchConfiguration } from './LaunchConfiguration';
 import { util } from './util';
+import { RceDevice } from 'roku-deploy';
+import { undent } from 'undent';
 
 describe('BrightScriptFileUtils ', () => {
     let rendezvousTracker: RendezvousTracker;
@@ -390,6 +392,59 @@ describe('BrightScriptFileUtils ', () => {
         });
     });
 
+    describe('getEcpRendezvous', () => {
+        const rendezvousXml = undent`
+            <?xml version="1.0" encoding="UTF-8" ?>
+            <sgrendezvous>
+                <data>
+                    <tracking-enabled>true</tracking-enabled>
+                    <item>
+                        <id>1</id>
+                        <start-tm>100</start-tm>
+                        <end-tm>200</end-tm>
+                        <line-number>10</line-number>
+                        <file>pkg:/components/MyComponent.brs</file>
+                    </item>
+                </data>
+            </sgrendezvous>
+        `;
+        const expectedEcpData = {
+            trackingEnabled: 'true',
+            items: [{
+                id: '1',
+                startTime: '100',
+                endTime: '200',
+                lineNumber: '10',
+                file: 'pkg:/components/MyComponent.brs'
+            }]
+        };
+
+        it('parses the local HTTP ECP response when device is not an RCE config', async () => {
+            const httpGetStub = sinon.stub(util, 'httpGet').resolves({ body: rendezvousXml } as any);
+
+            const result = await rendezvousTracker.getEcpRendezvous();
+
+            expect(httpGetStub.getCall(0).args[0]).to.eql('http://192.168.1.5:8060/query/sgrendezvous');
+            expect(result).to.eql(expectedEcpData);
+        });
+
+        it('uses RceDevice.queryRendezvous and never makes an HTTP request when device is an RCE config', async () => {
+            rendezvousTracker['launchConfiguration'].device = { id: 'my-rce-device', rceToken: 'my-rce-token' };
+            const httpGetStub = sinon.stub(util, 'httpGet');
+            const queryRendezvousStub = sinon.stub(RceDevice.prototype, 'queryRendezvous').resolves({
+                response: 'query-sgrendezvous',
+                status: 200,
+                content: rendezvousXml
+            } as any);
+
+            const result = await rendezvousTracker.getEcpRendezvous();
+
+            expect(queryRendezvousStub.called).to.be.true;
+            expect(result).to.eql(expectedEcpData);
+            expect(httpGetStub.called).to.be.false;
+        });
+    });
+
     describe('toggleEcpRendezvousTracking', () => {
         async function doTest(statusCode: number, expectedValue: boolean) {
             const stub = sinon.stub(util, 'httpPost').returns(Promise.resolve({ statusCode: statusCode } as any));
@@ -416,6 +471,37 @@ describe('BrightScriptFileUtils ', () => {
             await doTest(401, false);
             await doTest(404, false);
             await doTest(500, false);
+        });
+
+        it('uses RceDevice.setRendezvousTracking and never makes an HTTP request when device is an RCE config', async () => {
+            rendezvousTracker['launchConfiguration'].device = { id: 'my-rce-device', rceToken: 'my-rce-token' };
+            const httpPostStub = sinon.stub(util, 'httpPost');
+            const setRendezvousTrackingStub = sinon.stub(RceDevice.prototype, 'setRendezvousTracking').resolves({
+                response: 'sgrendezvous',
+                status: 200,
+                content: undent`
+                    <?xml version="1.0" encoding="UTF-8" ?>
+                    <sgrendezvous>
+                        <tracking-enabled>true</tracking-enabled>
+                        <status>OK</status>
+                    </sgrendezvous>
+                `
+            } as any);
+
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('track')).to.be.true;
+            expect(setRendezvousTrackingStub.getCall(0).args[0]).to.equal(true);
+
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('untrack')).to.be.true;
+            expect(setRendezvousTrackingStub.getCall(1).args[0]).to.equal(false);
+
+            expect(httpPostStub.called).to.be.false;
+        });
+
+        it('returns false when RceDevice.setRendezvousTracking throws', async () => {
+            rendezvousTracker['launchConfiguration'].device = { id: 'my-rce-device', rceToken: 'my-rce-token' };
+            sinon.stub(RceDevice.prototype, 'setRendezvousTracking').rejects(new Error('boom'));
+
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('track')).to.be.false;
         });
     });
 
