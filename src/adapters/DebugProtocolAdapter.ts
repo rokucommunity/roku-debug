@@ -1,5 +1,6 @@
 import * as EventEmitter from 'events';
-import { Socket } from 'net';
+import { createTelnetSocket } from 'roku-deploy';
+import type { DeviceConfig, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
@@ -73,7 +74,7 @@ export class DebugProtocolAdapter {
      */
     public connected: boolean;
 
-    private compileClient: Socket;
+    private compileClient: TelnetSocket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
     private chanperfTracker: ChanperfTracker;
@@ -231,7 +232,7 @@ export class DebugProtocolAdapter {
      * @param client
      * @param maxWaitMilliseconds
      */
-    private settleCompileClient(client: Socket, maxWaitMilliseconds = 400) {
+    private settleCompileClient(client: TelnetSocket, maxWaitMilliseconds = 400) {
         return new Promise<string>((resolve) => {
             let timeoutStarted = false;
             let callCount = -1;
@@ -278,6 +279,14 @@ export class DebugProtocolAdapter {
      */
     public onReady() {
         return this.firstConnectDeferred.promise;
+    }
+
+    /**
+     * Create the transport used to reach the device's BrightScript console. Extracted to a
+     * protected method so tests can substitute a fake socket.
+     */
+    protected createTelnetSocket(options: TelnetSocketOptions): TelnetSocket {
+        return createTelnetSocket(options);
     }
 
     /**
@@ -463,7 +472,12 @@ export class DebugProtocolAdapter {
 
         let deferred = defer();
         try {
-            this.compileClient = new Socket({ allowHalfOpen: false });
+            //`device` is the canonical way to address the target; a string device is a registry name,
+            //which cannot be resolved here, so fall back to the deprecated `host` field (the debug
+            //session keeps `host` in sync with the resolved device config for exactly this reason).
+            const device: DeviceConfig = typeof this.options.device === 'object' ? this.options.device : { host: this.options.host };
+
+            this.compileClient = this.createTelnetSocket({ device: device, channel: 'brightscript-console', port: this.options.brightScriptConsolePort });
             util.registerSocketLogging(this.compileClient, this.logger, 'CompileClient');
 
             this.compileErrorProcessor.on('diagnostics', (errors) => {
@@ -483,7 +497,7 @@ export class DebugProtocolAdapter {
                 deferred.tryReject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
             this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
-            this.compileClient.connect(this.options.brightScriptConsolePort, this.options.host, () => {
+            this.compileClient.connect(() => {
                 this.logger.log(`CONNECTED via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
             });
 
@@ -500,7 +514,7 @@ export class DebugProtocolAdapter {
             }
 
             let lastPartialLine = '';
-            this.compileClient.on('data', (buffer) => {
+            this.compileClient.on('data', (buffer: Buffer) => {
                 let responseText = buffer.toString();
                 this.logger.info('CompileClient received data', { responseText });
 

@@ -28,8 +28,48 @@ import { RemoveBreakpointsRequest } from '../debugProtocol/events/requests/Remov
 import type { AfterSendRequestEvent } from '../debugProtocol/client/DebugProtocolClientPlugin';
 import { GenericV3Response } from '../debugProtocol/events/responses/GenericV3Response';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { Socket } from 'net';
+import { EventEmitter } from 'events';
 const sinon = createSandbox();
+
+/**
+ * Minimal fake standing in for roku-deploy's TelnetSocket. A real TelnetSocket is itself an
+ * EventEmitter ('connect'|'ready'|'data'|'close'|'error', ...), so extending Node's EventEmitter
+ * directly gives correct on/removeListener/emit semantics.
+ */
+class FakeTelnetSocket extends EventEmitter {
+    public writtenChunks: Array<string | Buffer> = [];
+
+    public destroyed = false;
+
+    /**
+     * Mirrors TelnetSocket#connect(): emits 'connect' then 'ready', then invokes the connect
+     * listener, exactly like net.Socket does.
+     */
+    public connect(connectListener?: () => void): this {
+        this.emit('connect');
+        this.emit('ready');
+        connectListener?.();
+        return this;
+    }
+
+    public write(data: string | Buffer): boolean {
+        this.writtenChunks.push(data);
+        return true;
+    }
+
+    public destroy(): this {
+        this.destroyed = true;
+        return this;
+    }
+
+    public end(): this {
+        return this;
+    }
+
+    public setTimeout(timeout: number, callback?: () => void): this {
+        return this;
+    }
+}
 
 let cwd = s`${process.cwd()}`;
 let tmpDir = s`${cwd}/.tmp`;
@@ -770,10 +810,9 @@ describe('DebugProtocolAdapter', function() {
         it('does not crash and triggers shutdown when the socket errors after the connection is established', async () => {
             // Stub the settle method so processTelnetOutput completes without a real connection
             sinon.stub(adapter as any, 'settleCompileClient').resolves('');
-            // Stub Socket.prototype.connect so it doesn't attempt a real connection
-            sinon.stub(Socket.prototype, 'connect').callsFake(function(this: Socket) {
-                return this;
-            });
+            // Inject a fake telnet socket instead of opening a real one
+            const fakeTelnetSocket = new FakeTelnetSocket();
+            sinon.stub(adapter as any, 'createTelnetSocket').returns(fakeTelnetSocket);
 
             await adapter.processTelnetOutput();
 
