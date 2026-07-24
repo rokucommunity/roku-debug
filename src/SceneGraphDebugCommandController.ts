@@ -1,11 +1,21 @@
+import { createTelnetSocket, isLocalDeviceConfig } from 'roku-deploy';
+import type { DeviceConfig, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
 import { logger } from './logging';
 // eslint-disable-next-line
 const Telnet = require('telnet-client');
 
 export class SceneGraphDebugCommandController {
-    constructor(public host: string, port?: number) {
+    constructor(hostOrDevice: string | DeviceConfig, port?: number) {
+        this.device = typeof hostOrDevice === 'string' ? { host: hostOrDevice } : hostOrDevice;
+        this.host = isLocalDeviceConfig(this.device) ? this.device.host : undefined;
         this.port = port ?? 8080;
     }
+
+    /**
+     * The device this controller talks to. Populated in the constructor from either a plain host
+     * string (kept for backward compatibility) or a fully resolved device config.
+     */
+    private device: DeviceConfig;
 
     private connection: typeof Telnet;
 
@@ -17,10 +27,39 @@ export class SceneGraphDebugCommandController {
     private maxBufferLength = 5242880;
     private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);
 
+    /**
+     * The host of the target device, when it is addressed locally. Undefined for a Roku Cloud
+     * Emulator device, since those are not addressed by host.
+     */
+    public host: string | undefined;
+
+    /**
+     * Create the transport used to reach the SceneGraph debug server. Extracted to a protected
+     * method so tests can substitute a fake socket.
+     */
+    protected createTelnetSocket(options: TelnetSocketOptions): TelnetSocket {
+        return createTelnetSocket(options);
+    }
+
     public async connect(options: { execTimeout?: number; timeout?: number } = {}) {
         this.removeConnection();
 
+        const timeoutMs = options.timeout ?? this.timeout;
+
+        let telnetSocket: TelnetSocket | undefined;
         try {
+            telnetSocket = this.createTelnetSocket({
+                device: this.device,
+                channel: 'debug-server',
+                port: this.port
+            });
+
+            await this.waitForSocketConnect(telnetSocket, timeoutMs);
+            //an injected sock skips telnet-client's own prompt wait entirely (see the comment on
+            //drainConnectGreeting below), so the greeting has to be flushed here first or it would
+            //otherwise sit in the socket's data stream and pollute the very first exec() response
+            await this.drainConnectGreeting(telnetSocket);
+
             // Make a new telnet connections object
             let connection = new Telnet();
 
@@ -35,14 +74,90 @@ export class SceneGraphDebugCommandController {
                 timeout: this.timeout,
                 execTimeout: this.execTimeout,
                 maxBufferLength: this.maxBufferLength,
-                ...options
+                ...options,
+                sock: telnetSocket
             };
             this.logger.debug('Establishing telnet connection', config);
             await connection.connect(config);
             this.connection = connection;
         } catch (e) {
+            //the socket was created but never became the live connection, so nothing else will ever
+            //destroy it. Leaving it dangling would leak an open socket or websocket.
+            telnetSocket?.destroy();
             throw new Error((e as Error).message);
         }
+    }
+
+    /**
+     * Waits for the transport-level connection to establish (the tcp handshake for a local device,
+     * or the websocket handshake for an RCE device), racing its 'connect' event against 'error' and
+     * a manual timeout. An injected sock bypasses telnet-client's own connect timeout entirely
+     * (telnet-client resolves immediately for an injected sock, before its timeout is even armed),
+     * so this is the only thing enforcing one here.
+     */
+    private waitForSocketConnect(telnetSocket: TelnetSocket, timeoutMs: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const cleanup = () => {
+                clearTimeout(timeoutHandle);
+                telnetSocket.removeListener('connect', onConnect);
+                telnetSocket.removeListener('error', onError);
+            };
+            const onConnect = () => {
+                cleanup();
+                resolve();
+            };
+            const onError = (error: Error) => {
+                cleanup();
+                reject(error);
+            };
+            const timeoutHandle = setTimeout(() => {
+                cleanup();
+                reject(new Error(`Timed out connecting to the SceneGraph debug server after ${timeoutMs}ms`));
+            }, timeoutMs);
+
+            telnetSocket.once('connect', onConnect);
+            telnetSocket.once('error', onError);
+            telnetSocket.connect();
+        });
+    }
+
+    /**
+     * Drains the connection's opening banner before handing the socket to telnet-client: telnet-client
+     * treats an injected sock as already `'ready'` and skips its own prompt wait entirely, so without
+     * this the banner would sit in the socket's data stream and pollute the very first exec()
+     * response instead. Resolves once the accumulated text contains the shell prompt, or the socket
+     * has gone quiet for `quietPeriodMs` (the Roku Cloud Emulator's debug-server proxy never
+     * delivers the un-terminated `>` prompt, so quiet is the only signal available there).
+     */
+    private drainConnectGreeting(telnetSocket: TelnetSocket, quietPeriodMs = 400): Promise<void> {
+        return new Promise<void>((resolve) => {
+            let accumulatedText = '';
+            let quietTimeoutHandle: ReturnType<typeof setTimeout>;
+
+            const finish = () => {
+                telnetSocket.removeListener('data', onData);
+                clearTimeout(quietTimeoutHandle);
+                resolve();
+            };
+            const armQuietTimer = () => {
+                clearTimeout(quietTimeoutHandle);
+                quietTimeoutHandle = setTimeout(finish, quietPeriodMs);
+            };
+            const onData = (chunk: Buffer) => {
+                accumulatedText += chunk.toString('utf8');
+                //a fresh non-global copy avoids a stateful lastIndex across repeated tests, since
+                //this.shellPrompt carries the 'g' flag
+                const nonGlobalShellPrompt = new RegExp(this.shellPrompt.source, this.shellPrompt.flags.replace('g', ''));
+                if (nonGlobalShellPrompt.test(accumulatedText)) {
+                    finish();
+                    return;
+                }
+                armQuietTimer();
+            };
+
+            telnetSocket.on('data', onData);
+            armQuietTimer();
+        });
     }
 
     private removeConnection() {

@@ -1,3 +1,5 @@
+import type { DeviceOption } from 'roku-deploy';
+
 export enum HighLevelType {
     primative = 'primative',
     array = 'array',
@@ -22,6 +24,11 @@ export interface AdapterOptions {
      * device) cannot connect an adapter yet.
      */
     host?: string;
+    /**
+     * The roku-deploy device config for the target device. This is the canonical way to address the
+     * device; when omitted, a local device config is built from the deprecated `host` field.
+     */
+    device?: DeviceOption;
     brightScriptConsolePort?: number;
     remotePort?: number;
     /**

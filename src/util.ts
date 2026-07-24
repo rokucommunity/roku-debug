@@ -16,6 +16,7 @@ import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
+import type { TelnetSocket } from 'roku-deploy';
 const request = r as typeof requestType;
 
 class Util {
@@ -544,11 +545,14 @@ class Util {
 
     /**
      * Register the socket events for logging
-     * @param socket - the socket to listen to for events
+     * @param socket - the socket to listen to for events. Accepts a real `net.Socket` as well as
+     * roku-deploy's `TelnetSocket` (an RCE device's telnet socket is not a real tcp socket, so its
+     * address-related fields are always undefined; the events below that never fire for it are
+     * harmless no-ops)
      * @param logger - the logger to use for logging
      * @param socketType - the type of socket (e.g. "client", "server")
      */
-    public registerSocketLogging(socket: net.Socket, logger: Logger, socketType: string) {
+    public registerSocketLogging(socket: net.Socket | TelnetSocket, logger: Logger, socketType: string) {
         // create a new child logger for the socket events
         let socketLogger = logger.createLogger(`[${socketType}]`);
 
@@ -601,7 +605,7 @@ class Util {
         });
     }
 
-    private getSocketAddressForLogs(socket: net.Socket, ip?: string, port?: number, family?: number): string {
+    private getSocketAddressForLogs(socket: net.Socket | TelnetSocket, ip?: string, port?: number, family?: number): string {
         let familyString: string;
         if (typeof family === 'number') {
             familyString = `IPv${family}`;

@@ -1,13 +1,13 @@
-import type { Socket } from 'net';
 import * as EventEmitter from 'eventemitter3';
 import { defer, util } from '../util';
 import type { Logger } from '../logging';
 import { createLogger } from '../logging';
 import { Deferred } from 'brighterscript';
+import type { TelnetSocket } from 'roku-deploy';
 
 export class TelnetRequestPipeline {
     public constructor(
-        public client: Socket
+        public client: TelnetSocket
     ) {
 
     }
@@ -50,7 +50,7 @@ export class TelnetRequestPipeline {
      * Start listening for future incoming data from the client
      */
     public connect() {
-        this.client.on('data', (data) => {
+        this.client.on('data', (data: Buffer) => {
             this.handleData(data.toString());
         });
     }

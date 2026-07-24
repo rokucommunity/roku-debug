@@ -1362,7 +1362,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
         if (commands) {
-            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.host, this.launchConfiguration.sceneGraphDebugCommandsPort);
+            let sceneGraphDevice = this.device;
+            let device = typeof sceneGraphDevice === 'object' ? sceneGraphDevice : { host: this.launchConfiguration.host };
+            let connection = new SceneGraphDebugCommandController(device, this.launchConfiguration.sceneGraphDebugCommandsPort);
 
             try {
                 await connection.connect();

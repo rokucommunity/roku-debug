@@ -1,5 +1,6 @@
 import * as sinon from 'sinon';
 import { expect } from 'chai';
+import * as stream from 'stream';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
 
 describe('SceneGraphDebugCommandController ', () => {
@@ -229,6 +230,161 @@ describe('SceneGraphDebugCommandController ', () => {
         it('super secrete command', async () => {
             await commandController.exec('super secrete command');
             expect(execStub.withArgs('super secrete command').calledOnce).to.be.true;
+        });
+    });
+});
+
+/**
+ * Minimal fake standing in for roku-deploy's TelnetSocket. Genuinely extends `stream.Duplex`
+ * (rather than just an EventEmitter) because the controller hands this straight to telnet-client as
+ * an injected `sock`, and telnet-client's `_checkSocket()` guard requires `pipe`, `_write`,
+ * `_writableState`, `_read`, and `_readableState`, all of which only a real Node stream provides.
+ */
+class FakeTelnetSocket extends stream.Duplex {
+    public writtenChunks: string[] = [];
+
+    /**
+     * Text pushed shortly after connect(), simulating the device's connection greeting. Defaults to
+     * a local device's shape: a leading blank line followed by a bare `>` prompt with no trailing
+     * newline. RCE-shaped scenarios would instead see a banner line with no prompt at all (the Roku
+     * Cloud Emulator's debug-server proxy holds the promptless `>` forever), which is why the
+     * controller has to drain this itself rather than relying on telnet-client's own prompt wait.
+     */
+    public initialGreeting = '\r\n>';
+
+    /**
+     * When set, connect() emits 'error' instead of 'connect', simulating a transport-level connect
+     * failure (the tcp handshake or websocket handshake itself failing).
+     */
+    public connectShouldFail: Error | undefined;
+
+    /**
+     * Canned response text to push, one per queued entry, the next time data is written to this
+     * socket. Each response is pushed on a later tick so it always arrives after the write that
+     * triggered it, the same way a real device's response arrives strictly after the command that
+     * produced it.
+     */
+    public queuedResponses: string[] = [];
+
+    public connect(connectListener?: () => void): this {
+        if (this.connectShouldFail) {
+            setTimeout(() => {
+                this.emit('error', this.connectShouldFail);
+            }, 0);
+            return this;
+        }
+        if (connectListener) {
+            this.once('connect', connectListener);
+        }
+        setTimeout(() => {
+            this.emit('connect');
+        }, 0);
+        setTimeout(() => {
+            this.push(Buffer.from(this.initialGreeting));
+        }, 10);
+        return this;
+    }
+
+    public _write(chunk: Buffer, encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+        this.writtenChunks.push(chunk.toString());
+        let response = this.queuedResponses.shift();
+        if (response !== undefined) {
+            setTimeout(() => {
+                this.push(Buffer.from(response));
+            }, 0);
+        }
+        callback();
+    }
+
+    public _read(size: number): void {
+        //data is pushed as it is scheduled above; nothing to pull on demand
+    }
+
+    /**
+     * telnet-client calls this unconditionally right after adopting an injected sock (regardless of
+     * whether a timeout was ever configured), so it has to exist even though telnet-client's
+     * `_checkSocket()` guard itself never checks for it. A missing implementation would throw
+     * synchronously inside telnet-client's connect() executor, silently skipping every listener it
+     * registers after that point ('data' included) even though the promise had already resolved.
+     */
+    public setTimeout(milliseconds: number, callback?: () => void): this {
+        return this;
+    }
+}
+
+describe('SceneGraphDebugCommandController transport', () => {
+    let controller: SceneGraphDebugCommandController;
+    let fakeTelnetSocket: FakeTelnetSocket;
+    let createTelnetSocketStub: sinon.SinonStub;
+
+    beforeEach(() => {
+        controller = new SceneGraphDebugCommandController('192.168.1.50');
+        fakeTelnetSocket = new FakeTelnetSocket();
+        createTelnetSocketStub = sinon.stub(controller as any, 'createTelnetSocket').returns(fakeTelnetSocket);
+    });
+
+    afterEach(() => {
+        sinon.restore();
+    });
+
+    describe('createTelnetSocket factory', () => {
+        it('passes a resolved local device config, channel debug-server, and the configured port when constructed with a host string', async () => {
+            await controller.connect();
+
+            expect(createTelnetSocketStub.calledOnce).to.be.true;
+            let options = createTelnetSocketStub.firstCall.args[0];
+            expect(options.device).to.eql({ host: '192.168.1.50' });
+            expect(options.channel).to.equal('debug-server');
+            expect(options.port).to.equal(8080);
+        });
+
+        it('passes an RCE device config through verbatim when constructed with one', async () => {
+            let rceDevice = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'token-value' };
+            let rceController = new SceneGraphDebugCommandController(rceDevice, 8080);
+            let rceFakeTelnetSocket = new FakeTelnetSocket();
+            let rceCreateTelnetSocketStub = sinon.stub(rceController as any, 'createTelnetSocket').returns(rceFakeTelnetSocket);
+
+            await rceController.connect();
+
+            expect(rceCreateTelnetSocketStub.calledOnce).to.be.true;
+            let options = rceCreateTelnetSocketStub.firstCall.args[0];
+            expect(options.device).to.equal(rceDevice);
+            expect(options.channel).to.equal('debug-server');
+            expect(options.port).to.equal(8080);
+        });
+    });
+
+    describe('connect', () => {
+        it('drains the connect greeting before handing the socket to telnet-client, so it does not pollute the first exec response', async () => {
+            await controller.connect();
+
+            expect(controller['connection']).to.exist;
+            expect(createTelnetSocketStub.calledOnce).to.be.true;
+
+            fakeTelnetSocket.queuedResponses.push('abc123\r\n>');
+            let response = await controller.exec('showkey');
+
+            //if the greeting had not been drained first, its bytes would still be sitting in front
+            //of the real response text here
+            expect(response.error).to.be.undefined;
+            expect(response.result.rawResponse).to.include('abc123');
+            expect(response.result.rawResponse.startsWith('>')).to.be.false;
+        });
+
+        it('destroys the socket when the transport connect fails', async () => {
+            fakeTelnetSocket.connectShouldFail = new Error('connect ECONNREFUSED 192.168.1.50:8080');
+
+            let thrownError: Error | undefined;
+            try {
+                await controller.connect();
+            } catch (e) {
+                thrownError = e as Error;
+            }
+
+            expect(thrownError).to.be.instanceOf(Error);
+            expect(thrownError.message).to.include('ECONNREFUSED');
+            expect(fakeTelnetSocket.destroyed).to.be.true;
+            expect(controller['connection']).to.be.null;
         });
     });
 });

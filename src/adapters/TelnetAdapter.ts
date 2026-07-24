@@ -1,7 +1,7 @@
 import { orderBy } from 'natural-orderby';
 import * as EventEmitter from 'eventemitter3';
-import { Socket } from 'net';
-import { rokuDeploy } from 'roku-deploy';
+import { rokuDeploy, createTelnetSocket } from 'roku-deploy';
+import type { DeviceConfig, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
@@ -194,7 +194,7 @@ export class TelnetAdapter {
      * @param client
      * @param maxWaitMilliseconds
      */
-    private settleTelnetConnection(client: Socket, maxWaitMilliseconds = 400) {
+    private settleTelnetConnection(client: TelnetSocket, maxWaitMilliseconds = 400) {
         const startTime = new Date();
         this.logger.log('Waiting for telnet client to settle');
         return new Promise<string>((resolve) => {
@@ -260,6 +260,14 @@ export class TelnetAdapter {
     }
 
     /**
+     * Create the transport used to reach the device's BrightScript console. Extracted to a
+     * protected method so tests can substitute a fake socket.
+     */
+    protected createTelnetSocket(options: TelnetSocketOptions): TelnetSocket {
+        return createTelnetSocket(options);
+    }
+
+    /**
      * Connect to the telnet session. This should be called before the channel is launched.
      */
     public async connect() {
@@ -268,10 +276,15 @@ export class TelnetAdapter {
         this.isInMicroDebugger = false;
         this.isNextBreakpointSkipped = false;
         try {
+            //`device` is the canonical way to address the target; a string device is a registry name,
+            //which cannot be resolved here, so fall back to the deprecated `host` field (the debug
+            //session keeps `host` in sync with the resolved device config for exactly this reason).
+            const device: DeviceConfig = typeof this.options.device === 'object' ? this.options.device : { host: this.options.host };
+
             this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
-            await rokuDeploy.keyPress({ device: { host: this.options.host }, key: 'home', ecpPort: this.options.remotePort });
-            let telnetSocket: Socket = new Socket({ allowHalfOpen: false });
+            await rokuDeploy.keyPress({ device: device, key: 'home', ecpPort: this.options.remotePort });
+            let telnetSocket = this.createTelnetSocket({ device: device, channel: 'brightscript-console', port: this.options.brightScriptConsolePort });
             util.registerSocketLogging(telnetSocket, this.logger, 'TelnetSocket');
 
             //listen for the close event
@@ -288,8 +301,9 @@ export class TelnetAdapter {
             });
 
             const settlePromise = this.settleTelnetConnection(telnetSocket);
-            telnetSocket.connect(this.options.brightScriptConsolePort, this.options.host, () => {
-                this.logger.log(`Telnet connection established to ${this.options.host}:${this.options.brightScriptConsolePort}`);
+            telnetSocket.connect(() => {
+                const target = 'host' in device ? `${device.host}:${this.options.brightScriptConsolePort}` : 'cloud device';
+                this.logger.log(`Telnet connection established to ${target}`);
                 this.connected = true;
                 this.connectionDeferred.resolve();
                 this.emit('connected', this.connected);
