@@ -6,7 +6,8 @@ import { AppState, EcpStatus, rokuECP } from './RokuECP';
 import { util } from './util';
 import { expectThrowsAsync } from './testHelpers.spec';
 import { undent } from 'undent';
-import { RceDevice } from 'roku-deploy';
+import { rokuDeploy } from 'roku-deploy';
+import type { RokuAppState, RokuRegistry } from 'roku-deploy';
 
 const sinon = createSandbox();
 
@@ -108,70 +109,28 @@ describe('RokuECP', () => {
     });
 
     describe('getRegistry', () => {
-        it('calls doRequest with correct route and options when device is absent', async () => {
+        const registryResult: RokuRegistry = {
+            devId: '12345',
+            plugins: ['dev'],
+            spaceAvailable: '32590',
+            sections: {}
+        };
+
+        it('calls rokuDeploy.queryRegistry with the bare host when device is absent', async () => {
             let options = {
                 host: '1.1.1.1',
                 remotePort: 8080,
                 appId: 'dev'
             };
 
-            let stub = sinon.stub(rokuECP as any, 'doRequest').resolves({
-                body: '',
-                statusCode: 200
-            });
-            sinon.stub(rokuECP as any, 'processRegistry').resolves({});
-
-            await rokuECP.getRegistry(options);
-            expect(stub.getCall(0).args).to.eql(['query/registry/dev', options, 'get']);
-        });
-
-        it('calls doRequest when device is a local device config', async () => {
-            let options = {
-                host: '1.1.1.1',
-                remotePort: 8080,
-                device: { host: '1.1.1.1' },
-                appId: 'dev'
-            };
-
-            let stub = sinon.stub(rokuECP as any, 'doRequest').resolves({
-                body: '',
-                statusCode: 200
-            });
-            sinon.stub(rokuECP as any, 'processRegistry').resolves({});
-
-            await rokuECP.getRegistry(options);
-            expect(stub.getCall(0).args).to.eql(['query/registry/dev', options, 'get']);
-        });
-
-        it('uses RceDevice.queryRegistry and never makes an HTTP request when device is an RCE config', async () => {
-            let options = {
-                host: '1.1.1.1',
-                device: { id: 'my-rce-device', rceToken: 'my-rce-token' },
-                appId: 'dev'
-            };
-
-            let httpGetStub = sinon.stub(util as any, 'httpGet');
-            let httpPostStub = sinon.stub(util as any, 'httpPost');
-            let queryRegistryStub = sinon.stub(RceDevice.prototype, 'queryRegistry').resolves({
-                response: 'query-registry',
-                status: 200,
-                content: undent`
-                    <?xml version="1.0" encoding="UTF-8" ?>
-                    <plugin-registry>
-                        <registry>
-                            <dev-id>12345</dev-id>
-                            <plugins>dev</plugins>
-                            <space-available>32590</space-available>
-                            <sections />
-                        </registry>
-                        <status>OK</status>
-                    </plugin-registry>
-                `
-            } as any);
+            let stub = sinon.stub(rokuDeploy, 'queryRegistry').resolves(registryResult);
 
             let result = await rokuECP.getRegistry(options);
-
-            expect(queryRegistryStub.getCall(0).args[0]).to.equal('dev');
+            expect(stub.getCall(0).args).to.eql([{
+                device: { host: '1.1.1.1' },
+                appId: 'dev',
+                ecpPort: 8080
+            }]);
             expect(result).to.eql({
                 devId: '12345',
                 plugins: ['dev'],
@@ -179,213 +138,125 @@ describe('RokuECP', () => {
                 spaceAvailable: '32590',
                 status: EcpStatus.ok
             } as EcpRegistryData);
-            expect(httpGetStub.called).to.be.false;
-            expect(httpPostStub.called).to.be.false;
         });
-    });
 
-    describe('parseRegistry', () => {
-        describe('non-error responses', () => {
-            it('handles ok response with no other properties', async () => {
-                let response = {
-                    body: `
-                        <plugin-registry>
-                        <status>OK</status>
-                        <error>Plugin dev not found</error>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                };
-                let result = await rokuECP['processRegistry'](response.body);
-                expect(result).to.eql({
-                    devId: undefined,
-                    plugins: undefined,
-                    spaceAvailable: undefined,
-                    sections: {},
-                    status: EcpStatus.ok
-                } as EcpRegistryData);
-            });
+        it('passes a local device config through to roku-deploy', async () => {
+            let options = {
+                host: '1.1.1.1',
+                remotePort: 8080,
+                device: { host: '1.1.1.1' },
+                appId: 'dev'
+            };
 
-            it('handles ok response with empty sections', async () => {
-                let response = {
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <plugin-registry>
-                            <registry>
-                                <dev-id>12345</dev-id>
-                                <plugins>12,34,dev</plugins>
-                                <space-available>28075</space-available>
-                                <sections />
-                            </registry>
-                            <status>OK</status>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                };
+            let stub = sinon.stub(rokuDeploy, 'queryRegistry').resolves(registryResult);
 
-                let result = await rokuECP['processRegistry'](response.body);
-                expect(result).to.eql({
-                    devId: '12345',
-                    plugins: ['12', '34', 'dev'],
-                    spaceAvailable: '28075',
-                    sections: {},
-                    status: EcpStatus.ok
-                } as EcpRegistryData);
-            });
+            await rokuECP.getRegistry(options);
+            expect(stub.getCall(0).args).to.eql([{
+                device: options.device,
+                appId: 'dev',
+                ecpPort: 8080
+            }]);
+            expect(stub.getCall(0).args[0].device).to.equal(options.device);
+        });
 
-            it('handles ok response with populated sections', async () => {
-                let response = {
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <plugin-registry>
-                            <registry>
-                                <dev-id>12345</dev-id>
-                                <plugins>dev</plugins>
-                                <space-available>32590</space-available>
-                                <sections>
-                                    <section>
-                                        <name>section One</name>
-                                        <items>
-                                            <item>
-                                                <key>first key in section one</key>
-                                                <value>value one section one</value>
-                                            </item>
-                                        </items>
-                                    </section>
-                                    <section>
-                                        <name>section Two</name>
-                                        <items>
-                                            <item>
-                                                <key>first key in section two</key>
-                                                <value>value one section two</value>
-                                            </item>
-                                            <item>
-                                                <key>second key in section two</key>
-                                                <value>value two section two</value>
-                                            </item>
-                                        </items>
-                                    </section>
-                                </sections>
-                            </registry>
-                            <status>OK</status>
-                        </plugin-registry>
-                    `
-                };
-                let result = await rokuECP['processRegistry'](response.body);
-                expect(result).to.eql({
-                    devId: '12345',
-                    plugins: ['dev'],
-                    sections: {
-                        'section One': {
-                            'first key in section one': 'value one section one'
-                        },
-                        'section Two': {
-                            'first key in section two': 'value one section two',
-                            'second key in section two': 'value two section two'
-                        }
+        it('passes an RCE device config through to roku-deploy', async () => {
+            let options = {
+                host: '1.1.1.1',
+                device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
+                appId: 'dev'
+            };
+
+            let stub = sinon.stub(rokuDeploy, 'queryRegistry').resolves(registryResult);
+
+            await rokuECP.getRegistry(options);
+            expect(stub.getCall(0).args).to.eql([{
+                device: options.device,
+                appId: 'dev',
+                ecpPort: undefined
+            }]);
+            expect(stub.getCall(0).args[0].device).to.equal(options.device);
+        });
+
+        it('maps a populated roku-deploy result onto EcpRegistryData', async () => {
+            sinon.stub(rokuDeploy, 'queryRegistry').resolves({
+                devId: '12345',
+                plugins: ['12', '34', 'dev'],
+                spaceAvailable: '28075',
+                sections: {
+                    'section One': {
+                        'first key in section one': 'value one section one'
                     },
-                    spaceAvailable: '32590',
-                    status: EcpStatus.ok
-                } as EcpRegistryData);
+                    'section Two': {
+                        'first key in section two': 'value one section two',
+                        'second key in section two': 'value two section two'
+                    }
+                }
             });
+
+            let result = await rokuECP.getRegistry({ host: '1.1.1.1', appId: 'dev' });
+            expect(result).to.eql({
+                devId: '12345',
+                plugins: ['12', '34', 'dev'],
+                spaceAvailable: '28075',
+                sections: {
+                    'section One': {
+                        'first key in section one': 'value one section one'
+                    },
+                    'section Two': {
+                        'first key in section two': 'value one section two',
+                        'second key in section two': 'value two section two'
+                    }
+                },
+                status: EcpStatus.ok
+            } as EcpRegistryData);
         });
 
-        describe('error responses', () => {
-            it('handles not in dev mode', async () => {
-                let response = {
-                    body: `
-                        <plugin-registry>
-                            <status>FAILED</status>
-                            <error>Plugin dev not found</error>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                };
-                await expectThrowsAsync(() => rokuECP['processRegistry'](response.body), 'Plugin dev not found');
+        it('maps a minimal roku-deploy result onto EcpRegistryData', async () => {
+            sinon.stub(rokuDeploy, 'queryRegistry').resolves({
+                sections: {}
             });
 
-            it('handles device not keyed', async () => {
-                let response = {
-                    body: `
-                        <plugin-registry>
-                            <status>FAILED</status>
-                            <error>Device not keyed</error>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                };
-                await expectThrowsAsync(() => rokuECP['processRegistry'](response.body), 'Device not keyed');
-            });
+            let result = await rokuECP.getRegistry({ host: '1.1.1.1', appId: 'dev' });
+            expect(result).to.eql({
+                devId: undefined,
+                plugins: undefined,
+                spaceAvailable: undefined,
+                sections: {},
+                status: EcpStatus.ok
+            } as EcpRegistryData);
+        });
 
-            it('handles failed status with missing error', async () => {
-                let response = {
-                    body: `
-                        <plugin-registry>
-                            <status>FAILED</status>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                };
-                await expectThrowsAsync(() => rokuECP['processRegistry'](response.body), 'Unknown error');
-            });
+        it('propagates errors from roku-deploy', async () => {
+            sinon.stub(rokuDeploy, 'queryRegistry').rejects(new Error('Could not retrieve registry: Device not keyed'));
 
-            it('handles error response without xml', async () => {
-                let response = {
-                    body: `ECP command not allowed in Limited mode.`,
-                    statusCode: 403
-                };
-                await expectThrowsAsync(() => rokuECP['processRegistry'](response.body), 'ECP command not allowed in Limited mode.');
-            });
+            await expectThrowsAsync(() => rokuECP.getRegistry({ host: '1.1.1.1', appId: 'dev' }), 'Could not retrieve registry: Device not keyed');
         });
     });
 
     describe('getAppState', () => {
-        it('calls doRequest with correct route and options when device is absent', async () => {
+        const appStateResult: RokuAppState = {
+            appId: 'dev',
+            appDevId: '12345',
+            appTitle: 'my app',
+            appVersion: '10.0.0',
+            state: 'active'
+        };
+
+        it('calls rokuDeploy.queryAppState with the bare host when device is absent', async () => {
             let options = {
                 host: '1.1.1.1',
                 remotePort: 8080,
                 appId: 'dev'
             };
 
-            let stub = sinon.stub(rokuECP as any, 'doRequest').resolves({
-                body: '',
-                statusCode: 200
-            });
-
-            sinon.stub(rokuECP as any, 'processAppState').resolves({});
-
-            await rokuECP.getAppState(options);
-            expect(stub.getCall(0).args).to.eql(['query/app-state/dev', options, 'get']);
-        });
-
-        it('uses RceDevice.queryAppState and never makes an HTTP request when device is an RCE config', async () => {
-            let options = {
-                host: '1.1.1.1',
-                device: { esn: 'my-rce-esn', rceToken: 'my-rce-token' },
-                appId: 'dev'
-            };
-
-            let httpGetStub = sinon.stub(util as any, 'httpGet');
-            let httpPostStub = sinon.stub(util as any, 'httpPost');
-            let queryAppStateStub = sinon.stub(RceDevice.prototype, 'queryAppState').resolves({
-                response: 'query-app-state',
-                status: 200,
-                content: undent`
-                    <?xml version="1.0" encoding="UTF-8" ?>
-                    <app-state>
-                        <app-id>dev</app-id>
-                        <app-title>my app</app-title>
-                        <app-version>10.0.0</app-version>
-                        <app-dev-id>12345</app-dev-id>
-                        <state>active</state>
-                        <status>OK</status>
-                    </app-state>
-                `
-            } as any);
+            let stub = sinon.stub(rokuDeploy, 'queryAppState').resolves(appStateResult);
 
             let result = await rokuECP.getAppState(options);
-
-            expect(queryAppStateStub.getCall(0).args[0]).to.equal('dev');
+            expect(stub.getCall(0).args).to.eql([{
+                device: { host: '1.1.1.1' },
+                appId: 'dev',
+                ecpPort: 8080
+            }]);
             expect(result).to.eql({
                 appId: 'dev',
                 appDevId: '12345',
@@ -394,174 +265,96 @@ describe('RokuECP', () => {
                 state: AppState.active,
                 status: EcpStatus.ok
             } as EcpAppStateData);
-            expect(httpGetStub.called).to.be.false;
-            expect(httpPostStub.called).to.be.false;
-        });
-    });
-
-    describe('processAppState', () => {
-        describe('non-error responses', () => {
-            it('handles ok response', async () => {
-                let response = {
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <app-state>
-                            <app-id>dev</app-id>
-                            <app-title>my app</app-title>
-                            <app-version>10.0.0</app-version>
-                            <app-dev-id>12345</app-dev-id>
-                            <state>active</state>
-                            <status>OK</status>
-                        </app-state>
-                    `,
-                    statusCode: 200
-                };
-                let result = await rokuECP['processAppState'](response.body);
-                expect(result).to.eql({
-                    appId: 'dev',
-                    appDevId: '12345',
-                    appTitle: 'my app',
-                    appVersion: '10.0.0',
-                    state: AppState.active,
-                    status: EcpStatus.ok
-                } as EcpAppStateData);
-            });
-
-            it('handles ok response with unknown state', async () => {
-                let response = {
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <app-state>
-                            <app-id>dev</app-id>
-                            <app-title>my app</app-title>
-                            <app-version>10.0.0</app-version>
-                            <app-dev-id>12345</app-dev-id>
-                            <state>bad</state>
-                            <status>OK</status>
-                        </app-state>
-                    `,
-                    statusCode: 200
-                };
-                let result = await rokuECP['processAppState'](response.body);
-                expect(result).to.eql({
-                    appId: 'dev',
-                    appDevId: '12345',
-                    appTitle: 'my app',
-                    appVersion: '10.0.0',
-                    state: AppState.unknown,
-                    status: EcpStatus.ok
-                } as EcpAppStateData);
-            });
-
-            it('handles ok response with uppercase state', async () => {
-                let response = {
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <app-state>
-                            <app-id>dev</app-id>
-                            <app-title>my app</app-title>
-                            <app-version>10.0.0</app-version>
-                            <app-dev-id>12345</app-dev-id>
-                            <state>ACTIVE</state>
-                            <status>OK</status>
-                        </app-state>
-                    `,
-                    statusCode: 200
-                };
-                let result = await rokuECP['processAppState'](response.body);
-                expect(result).to.eql({
-                    appId: 'dev',
-                    appDevId: '12345',
-                    appTitle: 'my app',
-                    appVersion: '10.0.0',
-                    state: AppState.active,
-                    status: EcpStatus.ok
-                } as EcpAppStateData);
-            });
         });
 
-        describe('error responses', () => {
-            it('handles failed status with missing error', async () => {
-                let response = {
-                    body: `
-                        <app-state>
-                            <status>FAILED</status>
-                        </app-state>
-                    `,
-                    statusCode: 200
-                };
-                await expectThrowsAsync(() => rokuECP['processAppState'](response.body), 'Unknown error');
-            });
-
-            it('handles failed status with populated error', async () => {
-                let response = {
-                    body: `
-                        <app-state>
-                            <status>FAILED</status>
-                            <error>App not found</error>
-                        </app-state>
-                    `,
-                    statusCode: 200
-                };
-                await expectThrowsAsync(() => rokuECP['processAppState'](response.body), 'App not found');
-            });
-
-            it('handles error response without xml', async () => {
-                let response = {
-                    body: `ECP command not allowed in Limited mode.`,
-                    statusCode: 403
-                };
-                await expectThrowsAsync(() => rokuECP['processAppState'](response.body), 'ECP command not allowed in Limited mode.');
-            });
-        });
-    });
-
-    describe('exitApp', () => {
-        it('calls doRequest with correct route and options when device is absent', async () => {
-            let options = {
-                host: '1.1.1.1',
-                remotePort: 8080,
-                appId: 'dev'
-            };
-
-            let stub = sinon.stub(rokuECP as any, 'doRequest').resolves({
-                body: '',
-                statusCode: 200
-            });
-            sinon.stub(rokuECP as any, 'processExitApp').resolves({});
-
-            await rokuECP.exitApp(options);
-            expect(stub.getCall(0).args).to.eql(['exit-app/dev', options, 'post']);
-        });
-
-        it('uses RceDevice.exitApp and never makes an HTTP request when device is an RCE config', async () => {
+        it('passes an RCE device config through to roku-deploy', async () => {
             let options = {
                 host: '1.1.1.1',
                 device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
                 appId: 'dev'
             };
 
-            let httpGetStub = sinon.stub(util as any, 'httpGet');
-            let httpPostStub = sinon.stub(util as any, 'httpPost');
-            let exitAppStub = sinon.stub(RceDevice.prototype, 'exitApp').resolves({
-                response: 'exit-app',
-                status: 200,
-                content: undent`
-                    <?xml version="1.0" encoding="UTF-8" ?>
-                    <exit-app>
-                        <status>OK</status>
-                    </exit-app>
-                `
-            } as any);
+            let stub = sinon.stub(rokuDeploy, 'queryAppState').resolves(appStateResult);
+
+            await rokuECP.getAppState(options);
+            expect(stub.getCall(0).args).to.eql([{
+                device: options.device,
+                appId: 'dev',
+                ecpPort: undefined
+            }]);
+            expect(stub.getCall(0).args[0].device).to.equal(options.device);
+        });
+
+        it('maps an unknown state onto AppState.unknown', async () => {
+            sinon.stub(rokuDeploy, 'queryAppState').resolves({
+                ...appStateResult,
+                state: 'unknown'
+            });
+
+            let result = await rokuECP.getAppState({ host: '1.1.1.1', appId: 'dev' });
+            expect(result).to.eql({
+                appId: 'dev',
+                appDevId: '12345',
+                appTitle: 'my app',
+                appVersion: '10.0.0',
+                state: AppState.unknown,
+                status: EcpStatus.ok
+            } as EcpAppStateData);
+        });
+
+        it('propagates errors from roku-deploy', async () => {
+            sinon.stub(rokuDeploy, 'queryAppState').rejects(new Error('Could not retrieve app state: App not found'));
+
+            await expectThrowsAsync(() => rokuECP.getAppState({ host: '1.1.1.1', appId: 'dev' }), 'Could not retrieve app state: App not found');
+        });
+    });
+
+    describe('exitApp', () => {
+        it('calls rokuDeploy.exitApp with the bare host when device is absent', async () => {
+            let options = {
+                host: '1.1.1.1',
+                remotePort: 8080,
+                appId: 'dev'
+            };
+
+            let stub = sinon.stub(rokuDeploy, 'exitApp').resolves();
 
             let result = await rokuECP.exitApp(options);
-
-            expect(exitAppStub.getCall(0).args[0]).to.equal('dev');
+            expect(stub.getCall(0).args).to.eql([{
+                device: { host: '1.1.1.1' },
+                appId: 'dev',
+                ecpPort: 8080
+            }]);
             expect(result).to.eql({
                 status: EcpStatus.ok
             });
-            expect(httpGetStub.called).to.be.false;
-            expect(httpPostStub.called).to.be.false;
+        });
+
+        it('passes an RCE device config through to roku-deploy', async () => {
+            let options = {
+                host: '1.1.1.1',
+                device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
+                appId: 'dev'
+            };
+
+            let stub = sinon.stub(rokuDeploy, 'exitApp').resolves();
+
+            let result = await rokuECP.exitApp(options);
+            expect(stub.getCall(0).args).to.eql([{
+                device: options.device,
+                appId: 'dev',
+                ecpPort: undefined
+            }]);
+            expect(stub.getCall(0).args[0].device).to.equal(options.device);
+            expect(result).to.eql({
+                status: EcpStatus.ok
+            });
+        });
+
+        it('propagates errors from roku-deploy', async () => {
+            sinon.stub(rokuDeploy, 'exitApp').rejects(new Error('Could not exit app: App not found'));
+
+            await expectThrowsAsync(() => rokuECP.exitApp({ host: '1.1.1.1', appId: 'dev' }), 'Could not exit app: App not found');
         });
     });
 
@@ -649,58 +442,4 @@ describe('RokuECP', () => {
         });
     });
 
-    describe('processExitApp', () => {
-        describe('non-error responses', () => {
-            it('handles ok response', async () => {
-                let response = {
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <exit-app>
-                            <status>OK</status>
-                        </exit-app>
-                    `,
-                    statusCode: 200
-                };
-                let result = await rokuECP['processExitApp'](response.body);
-                expect(result).to.eql({
-                    status: EcpStatus.ok
-                });
-            });
-        });
-
-        describe('error responses', () => {
-            it('handles failed status with missing error', async () => {
-                let response = {
-                    body: `
-                        <exit-app>
-                            <status>FAILED</status>
-                        </exit-app>
-                    `,
-                    statusCode: 200
-                };
-                await expectThrowsAsync(() => rokuECP['processExitApp'](response.body), 'Unknown error');
-            });
-
-            it('handles failed status with populated error', async () => {
-                let response = {
-                    body: `
-                        <exit-app>
-                            <status>FAILED</status>
-                            <error>App not found</error>
-                        </exit-app>
-                    `,
-                    statusCode: 200
-                };
-                await expectThrowsAsync(() => rokuECP['processExitApp'](response.body), 'App not found');
-            });
-
-            it('handles error response without xml', async () => {
-                let response = {
-                    body: `ECP command not allowed in Limited mode.`,
-                    statusCode: 403
-                };
-                await expectThrowsAsync(() => rokuECP['processExitApp'](response.body), 'ECP command not allowed in Limited mode.');
-            });
-        });
-    });
 });
