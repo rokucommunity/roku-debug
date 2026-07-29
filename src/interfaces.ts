@@ -19,9 +19,9 @@ export interface RokuAdapterEvaluateResponse {
 
 export interface AdapterOptions {
     /**
-     * The host or ip address of the target device. The telnet and debug-protocol adapters connect
-     * over the local network, so a session for a device without a host (like a Roku Cloud Emulator
-     * device) cannot connect an adapter yet.
+     * The host or ip address of the target device. Deprecated in favor of `device`, which also
+     * addresses devices that have no host (like a Roku Cloud Emulator device); when `device` is
+     * absent, a local device config is built from this field.
      */
     host?: string;
     /**

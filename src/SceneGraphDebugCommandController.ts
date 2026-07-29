@@ -50,7 +50,6 @@ export class SceneGraphDebugCommandController {
         try {
             telnetSocket = this.createTelnetSocket({
                 device: this.device,
-                channel: 'debug-server',
                 port: this.port
             });
 

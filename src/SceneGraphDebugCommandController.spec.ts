@@ -328,13 +328,12 @@ describe('SceneGraphDebugCommandController transport', () => {
     });
 
     describe('createTelnetSocket factory', () => {
-        it('passes a resolved local device config, channel debug-server, and the configured port when constructed with a host string', async () => {
+        it('passes a resolved local device config and the configured port when constructed with a host string', async () => {
             await controller.connect();
 
             expect(createTelnetSocketStub.calledOnce).to.be.true;
             let options = createTelnetSocketStub.firstCall.args[0];
             expect(options.device).to.eql({ host: '192.168.1.50' });
-            expect(options.channel).to.equal('debug-server');
             expect(options.port).to.equal(8080);
         });
 
@@ -349,7 +348,6 @@ describe('SceneGraphDebugCommandController transport', () => {
             expect(rceCreateTelnetSocketStub.calledOnce).to.be.true;
             let options = rceCreateTelnetSocketStub.firstCall.args[0];
             expect(options.device).to.equal(rceDevice);
-            expect(options.channel).to.equal('debug-server');
             expect(options.port).to.equal(8080);
         });
     });

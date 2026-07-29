@@ -1,4 +1,3 @@
-import * as Net from 'net';
 import * as debounce from 'debounce';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
@@ -48,6 +47,8 @@ import type { VerifiedBreakpoint } from '../events/updates/BreakpointVerifiedUpd
 import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUpdate';
 import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
 import { ExceptionBreakpointErrorUpdate } from '../events/updates/ExceptionBreakpointErrorUpdate';
+import { createTelnetSocket } from 'roku-deploy';
+import type { DeviceConfig, DeviceOption, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
 
 export class DebugProtocolClient {
 
@@ -113,7 +114,7 @@ export class DebugProtocolClient {
     /**
      * The primary socket for this session. It's used to communicate with the debugger by sending commands and receives responses or updates
      */
-    private controlSocket: Net.Socket;
+    private controlSocket: TelnetSocket;
     /**
      * Promise that is resolved when the control socket is closed
      */
@@ -121,7 +122,7 @@ export class DebugProtocolClient {
     /**
      * A socket where the debug server will send stdio
      */
-    private ioSocket: Net.Socket;
+    private ioSocket: TelnetSocket;
     /**
      * Resolves when the ioSocket has closed
      */
@@ -196,17 +197,37 @@ export class DebugProtocolClient {
     }
 
     /**
+     * The device config used to address the debug protocol sockets: the options' device config when
+     * one was provided, or a local device config built from the host for callers that only pass host.
+     * Registry names (strings) cannot be resolved here, so they also fall back to the host.
+     */
+    private get device(): DeviceConfig {
+        return typeof this.options.device === 'object' ? this.options.device : { host: this.options.host };
+    }
+
+    /**
+     * Create the transport used to reach one of the device's debug protocol ports (the control port
+     * or the io port): a raw tcp socket for a local device, or the RCE instance api's
+     * `/api/v0/ports/<port>` WebSocket for a cloud device. Extracted to a protected method so tests
+     * can substitute a fake socket.
+     */
+    protected createTelnetSocket(options: TelnetSocketOptions): TelnetSocket {
+        return createTelnetSocket(options);
+    }
+
+    /**
      * A collection of sockets created when trying to connect to the debug protocol's control socket. We keep these around for quicker tear-down
      * whenever there is an early-terminated debug session
      */
     private async establishControlConnection() {
-        const connection = await new Promise<Net.Socket>((resolve) => {
-            const socket = new Net.Socket({
-                allowHalfOpen: false
+        const connection = await new Promise<TelnetSocket>((resolve) => {
+            const socket = this.createTelnetSocket({
+                device: this.device,
+                port: this.options.controlPort
             });
             util.registerSocketLogging(socket, this.logger, 'ControlSocket');
 
-            socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
+            socket.connect(() => {
                 resolve(socket);
             });
         });
@@ -232,7 +253,7 @@ export class DebugProtocolClient {
         // If there is no error, the server has accepted the request and created a new dedicated control socket
         this.controlSocket = await this.establishControlConnection();
 
-        this.controlSocket.on('data', (data) => {
+        this.controlSocket.on('data', (data: Buffer) => {
             this.writeToBufferLog('server-to-client', data);
             this.emit('data', data);
             //queue up processing the new data, chunk by chunk
@@ -1079,27 +1100,25 @@ export class DebugProtocolClient {
      */
     private connectToIoPort(update: IOPortOpenedUpdate) {
         if (update.success) {
-            // Create a new TCP client.
-            this.ioSocket = new Net.Socket({
-                allowHalfOpen: false
+            // Create a new client socket to the io port the device just opened
+            this.ioSocket = this.createTelnetSocket({
+                device: this.device,
+                port: update.data.port
             });
             util.registerSocketLogging(this.ioSocket, this.logger, 'IoSocket');
 
             // Send a connection request to the server.
-            this.logger.log(`Connect to IO Port ${this.options.host}:${update.data.port}`);
+            this.logger.log(`Connect to IO Port ${update.data.port}`);
 
             //sometimes the server shuts down before we had a chance to connect, so recover more gracefully
             try {
-                this.ioSocket.connect({
-                    port: update.data.port,
-                    host: this.options.host
-                }, () => {
+                this.ioSocket.connect(() => {
                     // If there is no error, the server has accepted the request
                     this.logger.log('TCP connection established with the IO Port.');
                     this.connectedToIoPort = true;
 
                     let lastPartialLine = '';
-                    this.ioSocket.on('data', (buffer) => {
+                    this.ioSocket.on('data', (buffer: Buffer) => {
                         this.writeToBufferLog('io', buffer);
                         let logResult = util.handleLogFragments(lastPartialLine, buffer.toString());
 
@@ -1126,7 +1145,7 @@ export class DebugProtocolClient {
                 });
                 return true;
             } catch (e) {
-                this.logger.error(`Failed to connect to IO socket at ${this.options.host}:${update.data.port}`, e);
+                this.logger.error(`Failed to connect to IO socket at port ${update.data.port}`, e);
                 this.emit('app-exit');
             }
         }
@@ -1274,10 +1293,18 @@ export interface BreakpointSpec {
 
 export interface ConstructorOptions {
     /**
-     * The host/ip address of the Roku. The debug protocol connects over the local network, so a
-     * session for a device without a host (like a Roku Cloud Emulator device) cannot connect yet.
+     * The host/ip address of the Roku. Deprecated in favor of `device`, which addresses devices
+     * that have no host (like a Roku Cloud Emulator device); when `device` is absent, a local
+     * device config is built from this field.
      */
     host?: string;
+    /**
+     * The roku-deploy device config for the target device. This is the canonical way to address the
+     * device: a local device connects raw tcp sockets to its debug protocol ports, and a Roku Cloud
+     * Emulator device reaches the same ports through its instance api's `/api/v0/ports/<port>`
+     * WebSocket routes.
+     */
+    device?: DeviceOption;
     /**
      * The port number used to send all debugger commands. This is static/unchanging for Roku devices,
      * but is configurable here to support unit testing or alternate runtimes (i.e. https://www.npmjs.com/package/brs)

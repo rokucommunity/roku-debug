@@ -477,7 +477,7 @@ export class DebugProtocolAdapter {
             //session keeps `host` in sync with the resolved device config for exactly this reason).
             const device: DeviceConfig = typeof this.options.device === 'object' ? this.options.device : { host: this.options.host };
 
-            this.compileClient = this.createTelnetSocket({ device: device, channel: 'brightscript-console', port: this.options.brightScriptConsolePort });
+            this.compileClient = this.createTelnetSocket({ device: device, port: this.options.brightScriptConsolePort });
             util.registerSocketLogging(this.compileClient, this.logger, 'CompileClient');
 
             this.compileErrorProcessor.on('diagnostics', (errors) => {

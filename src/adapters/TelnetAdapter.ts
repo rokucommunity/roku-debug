@@ -284,7 +284,7 @@ export class TelnetAdapter {
             this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
             await rokuDeploy.keyPress({ device: device, key: 'Home', ecpPort: this.options.remotePort });
-            let telnetSocket = this.createTelnetSocket({ device: device, channel: 'brightscript-console', port: this.options.brightScriptConsolePort });
+            let telnetSocket = this.createTelnetSocket({ device: device, port: this.options.brightScriptConsolePort });
             util.registerSocketLogging(telnetSocket, this.logger, 'TelnetSocket');
 
             //listen for the close event

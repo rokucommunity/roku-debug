@@ -349,7 +349,6 @@ describe('TelnetAdapter ', () => {
             const options: TelnetSocketOptions = createTelnetSocketStub.firstCall.args[0];
             expect(options).to.eql({
                 device: rceDevice,
-                channel: 'brightscript-console',
                 port: 8085
             });
         });
@@ -366,7 +365,6 @@ describe('TelnetAdapter ', () => {
             const options: TelnetSocketOptions = createTelnetSocketStub.firstCall.args[0];
             expect(options).to.eql({
                 device: { host: '127.0.0.1' },
-                channel: 'brightscript-console',
                 port: 8085
             });
         });
