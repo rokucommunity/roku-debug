@@ -16,7 +16,8 @@ import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
-import type { TelnetSocket } from 'roku-deploy';
+import type { DeviceOption, TelnetSocket } from 'roku-deploy';
+import { isRceDeviceConfig } from 'roku-deploy';
 const request = r as typeof requestType;
 
 class Util {
@@ -541,6 +542,21 @@ class Util {
                 }
             });
         });
+    }
+
+    /**
+     * Hydrate the Cloud Emulator api token onto an RCE device option from the `ROKU_RCE_TOKEN`
+     * environment variable when the option does not already carry one. The VS Code extension
+     * injects that variable into the debug adapter process so the token does not have to travel
+     * through the launch config (where it would end up in DAP traffic and logs); a token supplied
+     * directly on the device option always wins. Anything that is not a tokenless RCE device
+     * config is returned unchanged.
+     */
+    public hydrateRceTokenFromEnv(device: DeviceOption): DeviceOption {
+        if (typeof device === 'object' && isRceDeviceConfig(device) && !device.rceToken && process.env.ROKU_RCE_TOKEN) {
+            return { ...device, rceToken: process.env.ROKU_RCE_TOKEN };
+        }
+        return device;
     }
 
     /**

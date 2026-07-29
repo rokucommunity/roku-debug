@@ -144,8 +144,7 @@ export class RendezvousTracker {
      * Run a SceneGraph logendezvous 8080 command and get the text output
      */
     private async runSGLogrendezvousCommand(command: 'status' | 'on' | 'off'): Promise<string> {
-        let device = typeof this.launchConfiguration.device === 'object' ? this.launchConfiguration.device : { host: this.launchConfiguration.host };
-        let sgDebugCommandController = new SceneGraphDebugCommandController(device, this.launchConfiguration.sceneGraphDebugCommandsPort);
+        let sgDebugCommandController = new SceneGraphDebugCommandController(this.getDeviceOption(), this.launchConfiguration.sceneGraphDebugCommandsPort);
         try {
             this.logger.info(`port 8080 command: logrendezvous ${command}`);
             return (await sgDebugCommandController.logrendezvous(command)).result.rawResponse;
@@ -233,10 +232,11 @@ export class RendezvousTracker {
     /**
      * The roku-deploy device option for this session: the launch config's device when present
      * (which is how Cloud Emulator devices route through their instance's ECP proxy), otherwise
-     * the bare host.
+     * the bare host. An RCE device option without an rceToken is hydrated from the
+     * `ROKU_RCE_TOKEN` environment variable, matching the debug session's own `device` getter.
      */
     private getDeviceOption(): DeviceOption {
-        return typeof this.launchConfiguration.device === 'object' ? this.launchConfiguration.device : { host: this.launchConfiguration.host };
+        return util.hydrateRceTokenFromEnv(typeof this.launchConfiguration.device === 'object' ? this.launchConfiguration.device : { host: this.launchConfiguration.host });
     }
 
     /**

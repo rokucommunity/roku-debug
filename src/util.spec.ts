@@ -18,6 +18,51 @@ beforeEach(() => {
 
 describe('Util', () => {
 
+    describe('hydrateRceTokenFromEnv', () => {
+        let originalEnvToken: string | undefined;
+
+        beforeEach(() => {
+            originalEnvToken = process.env.ROKU_RCE_TOKEN;
+        });
+
+        afterEach(() => {
+            if (originalEnvToken === undefined) {
+                delete process.env.ROKU_RCE_TOKEN;
+            } else {
+                process.env.ROKU_RCE_TOKEN = originalEnvToken;
+            }
+        });
+
+        it('hydrates the token onto a tokenless RCE device option', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            expect(util.hydrateRceTokenFromEnv({ instanceUrl: 'https://device.rce.roku.com/instance/abc' })).to.eql({
+                instanceUrl: 'https://device.rce.roku.com/instance/abc',
+                rceToken: 'env-token'
+            });
+        });
+
+        it('a token already on the device option wins over the env var', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            expect(util.hydrateRceTokenFromEnv({ id: 'device-id', rceToken: 'config-token' })).to.eql({
+                id: 'device-id',
+                rceToken: 'config-token'
+            });
+        });
+
+        it('returns a tokenless RCE device option unchanged when the env var is not set', () => {
+            delete process.env.ROKU_RCE_TOKEN;
+            const device = { esn: 'esn-value' };
+            expect(util.hydrateRceTokenFromEnv(device)).to.equal(device);
+        });
+
+        it('leaves local device options and registry names untouched', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            const localDevice = { host: '1.2.3.4' };
+            expect(util.hydrateRceTokenFromEnv(localDevice)).to.equal(localDevice);
+            expect(util.hydrateRceTokenFromEnv('my-registry-device')).to.equal('my-registry-device');
+        });
+    });
+
     describe('hasNonNullishProperty', () => {
         it('detects objects with only nullish props or no props at all', () => {
             expect(util.hasNonNullishProperty({})).to.be.false;

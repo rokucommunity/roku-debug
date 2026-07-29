@@ -361,10 +361,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     /**
      * The roku-deploy `device` option for the target device. This is the canonical way to address the
      * device; the deprecated `launchConfiguration.host` field is only used as a fallback when the
-     * config has not been normalized yet (normalizeLaunchConfig always sets `device`).
+     * config has not been normalized yet (normalizeLaunchConfig always sets `device`). An RCE device
+     * option without an rceToken is hydrated from the `ROKU_RCE_TOKEN` environment variable here
+     * (rather than onto the launch config itself) so the token never rides the launchConfiguration
+     * copies that get logged or echoed back to the client in custom events.
      */
     private get device(): DeviceOption {
-        return this.launchConfiguration.device ?? { host: this.launchConfiguration.host };
+        return util.hydrateRceTokenFromEnv(this.launchConfiguration.device ?? { host: this.launchConfiguration.host });
     }
 
     /**
