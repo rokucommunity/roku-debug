@@ -826,7 +826,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
-            await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
+            await this.rokuDeploy.keyPress({ device: this.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
 
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
@@ -942,7 +942,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 //if we are at a breakpoint, continue
                 await this.rokuAdapter.continue();
                 //kill the app on the roku
-                // await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
+                // await this.rokuDeploy.keyPress({ device: this.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
                 //convert a hostname to an ip address
                 const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
                 //send the deep link http request
@@ -2957,7 +2957,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //    https://github.com/rokucommunity/roku-debug/issues/332
         if (!this.enableDebugProtocol) {
             try {
-                await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
+                await this.rokuDeploy.keyPress({ device: this.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
             } catch (e) {
                 this.logger.warn('Failed to press home button during disconnect; device may be unreachable', e);
             }
@@ -3488,7 +3488,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             //press the home button to return to the home screen
             try {
                 this.logger.log('Press home button');
-                await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
+                await this.rokuDeploy.keyPress({ device: this.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
             } catch (e) {
                 this.logger.error(e);
             }
