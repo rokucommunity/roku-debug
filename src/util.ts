@@ -107,6 +107,18 @@ class Util {
     }
 
     /**
+     * Split a comma-delimited string into trimmed, non-empty entries. Returns an empty array when the
+     * value is missing or blank.
+     * @param value the raw string to split (may be undefined)
+     */
+    public splitAndTrim(value: string | undefined): string[] {
+        return (value ?? '')
+            .split(',')
+            .map(entry => entry.trim())
+            .filter(entry => entry.length > 0);
+    }
+
+    /**
      * Checks to see if the port is already in use
      * @param port target port to check
      */
