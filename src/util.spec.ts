@@ -55,11 +55,20 @@ describe('Util', () => {
             expect(util.hydrateRceTokenFromEnv(device)).to.equal(device);
         });
 
-        it('leaves local device options and registry names untouched', () => {
+        it('leaves local device configs untouched', () => {
             process.env.ROKU_RCE_TOKEN = 'env-token';
             const localDevice = { host: '1.2.3.4' };
             expect(util.hydrateRceTokenFromEnv(localDevice)).to.equal(localDevice);
-            expect(util.hydrateRceTokenFromEnv('my-registry-device')).to.equal('my-registry-device');
+        });
+    });
+
+    describe('deviceLabel', () => {
+        it('identifies each device addressing scheme without leaking credentials', () => {
+            expect(util.deviceLabel({ host: '1.2.3.4' })).to.equal('1.2.3.4');
+            expect(util.deviceLabel({ instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' })).to.equal('https://device.rce.roku.com/instance/abc');
+            expect(util.deviceLabel({ id: 'device-id', rceToken: 'secret' })).to.equal('device-id');
+            expect(util.deviceLabel({ esn: 'esn-value', rceToken: 'secret' })).to.equal('esn-value');
+            expect(util.deviceLabel(undefined)).to.equal(undefined);
         });
     });
 

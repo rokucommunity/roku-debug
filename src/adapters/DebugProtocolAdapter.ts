@@ -1,6 +1,6 @@
 import * as EventEmitter from 'events';
 import { createTelnetSocket } from 'roku-deploy';
-import type { DeviceConfig, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
+import type { TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
@@ -417,7 +417,7 @@ export class DebugProtocolAdapter {
 
             await this.client.connect();
 
-            this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
+            this.logger.log(`Connected to device`, { device: util.deviceLabel(this.options.device), connected: this.connected });
             this.connected = true;
             this.isAppRunning = true;
             this.handleStartupIfReady();
@@ -472,10 +472,9 @@ export class DebugProtocolAdapter {
 
         let deferred = defer();
         try {
-            //`device` is the canonical way to address the target; a string device is a registry name,
-            //which cannot be resolved here, so fall back to the deprecated `host` field (the debug
-            //session keeps `host` in sync with the resolved device config for exactly this reason).
-            const device: DeviceConfig = typeof this.options.device === 'object' ? this.options.device : { host: this.options.host };
+            //normalizeAdapterOptions guarantees `device` is a concrete device config
+            const device = this.options.device;
+            const deviceLabel = util.deviceLabel(device);
 
             this.compileClient = this.createTelnetSocket({ device: device, port: this.options.brightScriptConsolePort });
             util.registerSocketLogging(this.compileClient, this.logger, 'CompileClient');
@@ -494,11 +493,11 @@ export class DebugProtocolAdapter {
             //After a successful connection the deferred is already resolved, so a post-connection
             //socket error (e.g. ECONNRESET on device disconnect) must not crash the process.
             this.compileClient.on('error', (err) => {
-                deferred.tryReject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
+                deferred.tryReject(new Error(`Error with connection to: ${deviceLabel}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
-            this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
+            this.logger.info('Connecting via telnet to gather compile info', { device: deviceLabel, port: this.options.brightScriptConsolePort });
             this.compileClient.connect(() => {
-                this.logger.log(`CONNECTED via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
+                this.logger.log(`CONNECTED via telnet to gather compile info`, { device: deviceLabel, port: this.options.brightScriptConsolePort });
             });
 
             this.logger.debug('Waiting for the compile client to settle');
@@ -507,9 +506,9 @@ export class DebugProtocolAdapter {
             this.logger.trace('Settled logs:', settledLogs);
 
             if (settledLogs.trim().startsWith('Console connection is already in use.')) {
-                throw new SocketConnectionInUseError(`Telnet connection ${this.options.host}:${this.options.brightScriptConsolePort} already is use`, {
+                throw new SocketConnectionInUseError(`Telnet connection ${deviceLabel}:${this.options.brightScriptConsolePort} already is use`, {
                     port: this.options.brightScriptConsolePort,
-                    host: this.options.host
+                    host: deviceLabel
                 });
             }
 

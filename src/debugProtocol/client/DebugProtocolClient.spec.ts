@@ -66,9 +66,11 @@ describe('DebugProtocolClient', () => {
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
 
+        //`device` addresses the client's sockets; `host` remains only as the DebugProtocolServer bind address
         const options = {
             controlPort: undefined as number,
-            host: '127.0.0.1'
+            host: '127.0.0.1',
+            device: { host: '127.0.0.1' }
         };
 
         if (!options.controlPort) {

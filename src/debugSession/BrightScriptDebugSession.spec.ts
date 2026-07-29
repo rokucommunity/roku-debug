@@ -12,7 +12,7 @@ import type { StackFrame } from '../adapters/TelnetAdapter';
 import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { defer, util } from '../util';
 import { HighLevelType } from '../interfaces';
-import type { LaunchConfiguration } from '../LaunchConfiguration';
+import type { LaunchConfiguration, ResolvedLaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brighterscript';
 import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
@@ -47,7 +47,7 @@ describe('BrightScriptDebugSession', () => {
 
     let session: BrightScriptDebugSession;
 
-    let launchConfiguration: LaunchConfiguration;
+    let launchConfiguration: ResolvedLaunchConfiguration;
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
     let rokuAdapter: TelnetAdapter;
@@ -1870,7 +1870,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
         }
 
@@ -1946,7 +1946,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
 
             const events = [];
@@ -1980,7 +1980,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
 
             sinon.stub(ComponentLibraryProject.prototype, 'stage').rejects(new Error('Stage failed'));
@@ -2780,7 +2780,7 @@ describe('BrightScriptDebugSession', () => {
             //stub PerfettoManager prototype methods so no real connections are made
             startTracingStub = sinon.stub(PerfettoManager.prototype, 'startTracing').resolves();
             sinon.stub(PerfettoManager.prototype, 'on').returns(() => { });
-            session['perfettoManager'] = new PerfettoManager({ host: 'localhost' });
+            session['perfettoManager'] = new PerfettoManager({ device: { host: 'localhost' } });
         });
 
         it('calls startTracing when connectOnStart is true and device supports perfetto', async () => {
@@ -2954,7 +2954,8 @@ describe('BrightScriptDebugSession', () => {
                 setupLaunchStubs();
                 const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
 
-                launchConfiguration.host = '1.2.3.4';
+                //the deprecated dap-input path: launchRequest normalizes this into the device config
+                (launchConfiguration as LaunchConfiguration).host = '1.2.3.4';
                 launchConfiguration.deviceInfo = {
                     'developer-enabled': 'true',
                     'software-version': '11.5.0',
@@ -2978,7 +2979,8 @@ describe('BrightScriptDebugSession', () => {
                 setupLaunchStubs();
                 const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
 
-                launchConfiguration.host = '1.2.3.4';
+                //the deprecated dap-input path: launchRequest normalizes this into the device config
+                (launchConfiguration as LaunchConfiguration).host = '1.2.3.4';
 
                 await session.launchRequest({} as any, launchConfiguration);
 
@@ -3094,9 +3096,9 @@ describe('BrightScriptDebugSession', () => {
     });
 
     describe('device option', () => {
-        it('builds a local device config from host when no device is provided', () => {
-            (session as any).launchConfiguration = { host: '1.2.3.4' };
-            expect(session['device']).to.eql({ host: '1.2.3.4' });
+        it('reads the device config from the launch config', () => {
+            (session as any).launchConfiguration = { device: { host: '1.2.3.4' } };
+            expect(session['launchConfiguration'].device).to.eql({ host: '1.2.3.4' });
             expect(session['isLocalDevice']).to.be.true;
             expect(session['deviceLabel']).to.equal('1.2.3.4');
         });
@@ -3106,18 +3108,17 @@ describe('BrightScriptDebugSession', () => {
             expect(config.device).to.eql({ host: '1.2.3.4' });
         });
 
-        it('takes host from a local device config during normalize', () => {
+        it('prefers a supplied device config over the deprecated host field during normalize', () => {
             const config = session['normalizeLaunchConfig']({ device: { host: '5.6.7.8' }, host: '1.2.3.4' } as any);
-            expect(config.host).to.equal('5.6.7.8');
             (session as any).launchConfiguration = config;
-            expect(session['device']).to.eql({ host: '5.6.7.8' });
+            expect(session['launchConfiguration'].device).to.eql({ host: '5.6.7.8' });
             expect(session['isLocalDevice']).to.be.true;
         });
 
         it('passes a cloud emulator device config through untouched and never leaks the token in the label', () => {
             const device = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' };
             (session as any).launchConfiguration = { device: device };
-            expect(session['device']).to.equal(device);
+            expect(session['launchConfiguration'].device).to.equal(device);
             expect(session['isLocalDevice']).to.be.false;
             expect(session['deviceLabel']).to.equal('https://device.rce.roku.com/instance/abc');
             expect(session['deviceLabel']).not.to.include('secret');

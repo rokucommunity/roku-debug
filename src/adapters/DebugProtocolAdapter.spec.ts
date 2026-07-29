@@ -100,9 +100,11 @@ describe('DebugProtocolAdapter', function() {
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
+        //`device` addresses the adapter's client sockets; `host` remains only as the DebugProtocolServer bind address
         const options = {
             controlPort: undefined as number,
-            host: '127.0.0.1'
+            host: '127.0.0.1',
+            device: { host: '127.0.0.1' }
         };
         const sourcemapManager = new SourceMapManager();
         const locationManager = new LocationManager(sourcemapManager);

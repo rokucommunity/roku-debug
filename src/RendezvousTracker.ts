@@ -4,16 +4,15 @@ import * as replaceLast from 'replace-last';
 import type { SourceLocation } from './managers/LocationManager';
 import { logger } from './logging';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
-import { util } from './util';
 import * as semver from 'semver';
 import { rokuDeploy } from 'roku-deploy';
-import type { DeviceInfo, DeviceOption } from 'roku-deploy';
-import type { LaunchConfiguration } from './LaunchConfiguration';
+import type { DeviceInfo } from 'roku-deploy';
+import type { ResolvedLaunchConfiguration } from './LaunchConfiguration';
 
 export class RendezvousTracker {
     constructor(
         private deviceInfo: DeviceInfo,
-        private launchConfiguration: LaunchConfiguration
+        private launchConfiguration: ResolvedLaunchConfiguration
     ) {
         this.clientPathsMap = {};
         this.emitter = new EventEmitter();
@@ -144,7 +143,7 @@ export class RendezvousTracker {
      * Run a SceneGraph logendezvous 8080 command and get the text output
      */
     private async runSGLogrendezvousCommand(command: 'status' | 'on' | 'off'): Promise<string> {
-        let sgDebugCommandController = new SceneGraphDebugCommandController(this.getDeviceOption(), this.launchConfiguration.sceneGraphDebugCommandsPort);
+        let sgDebugCommandController = new SceneGraphDebugCommandController(this.launchConfiguration.device, this.launchConfiguration.sceneGraphDebugCommandsPort);
         try {
             this.logger.info(`port 8080 command: logrendezvous ${command}`);
             return (await sgDebugCommandController.logrendezvous(command)).result.rawResponse;
@@ -204,7 +203,7 @@ export class RendezvousTracker {
     public async getEcpRendezvous(): Promise<EcpRendezvousData> {
         this.logger.trace('Sending ECP rendezvous request');
         const rendezvous = await rokuDeploy.queryRendezvous({
-            device: this.getDeviceOption(),
+            device: this.launchConfiguration.device,
             ecpPort: this.launchConfiguration.remotePort
         });
         this.logger.trace('Parsed ECP rendezvous data:', rendezvous);
@@ -219,7 +218,7 @@ export class RendezvousTracker {
         try {
             this.logger.log(`Sending ecp sgrendezvous request: ${toggle}`);
             await rokuDeploy.setRendezvousTracking({
-                device: this.getDeviceOption(),
+                device: this.launchConfiguration.device,
                 enabled: toggle === 'track',
                 ecpPort: this.launchConfiguration.remotePort
             });
@@ -227,16 +226,6 @@ export class RendezvousTracker {
         } catch (e) {
             return false;
         }
-    }
-
-    /**
-     * The roku-deploy device option for this session: the launch config's device when present
-     * (which is how Cloud Emulator devices route through their instance's ECP proxy), otherwise
-     * the bare host. An RCE device option without an rceToken is hydrated from the
-     * `ROKU_RCE_TOKEN` environment variable, matching the debug session's own `device` getter.
-     */
-    private getDeviceOption(): DeviceOption {
-        return util.hydrateRceTokenFromEnv(typeof this.launchConfiguration.device === 'object' ? this.launchConfiguration.device : { host: this.launchConfiguration.host });
     }
 
     /**

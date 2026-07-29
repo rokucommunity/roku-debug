@@ -15,7 +15,7 @@ describe('BrightScriptFileUtils ', () => {
 
     beforeEach(() => {
         let launchConfig = {
-            'host': '192.168.1.5',
+            'device': { host: '192.168.1.5' },
             'remotePort': 8060
         };
         let deviceInfo = {

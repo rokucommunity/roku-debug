@@ -48,7 +48,7 @@ import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUp
 import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
 import { ExceptionBreakpointErrorUpdate } from '../events/updates/ExceptionBreakpointErrorUpdate';
 import { createTelnetSocket } from 'roku-deploy';
-import type { DeviceConfig, DeviceOption, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
+import type { DeviceConfig, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
 
 export class DebugProtocolClient {
 
@@ -62,10 +62,9 @@ export class DebugProtocolClient {
     ) {
         this.options = {
             controlPort: 8081,
-            host: undefined,
             //override the defaults with the options from parameters
             ...options ?? {}
-        };
+        } as ConstructorOptions;
 
         //add the internal plugin last, so it's the final plugin to handle the events
         this.addCorePlugin();
@@ -197,15 +196,6 @@ export class DebugProtocolClient {
     }
 
     /**
-     * The device config used to address the debug protocol sockets: the options' device config when
-     * one was provided, or a local device config built from the host for callers that only pass host.
-     * Registry names (strings) cannot be resolved here, so they also fall back to the host.
-     */
-    private get device(): DeviceConfig {
-        return typeof this.options.device === 'object' ? this.options.device : { host: this.options.host };
-    }
-
-    /**
      * Create the transport used to reach one of the device's debug protocol ports (the control port
      * or the io port): a raw tcp socket for a local device, or the RCE instance api's
      * `/api/v0/ports/<port>` WebSocket for a cloud device. Extracted to a protected method so tests
@@ -222,7 +212,7 @@ export class DebugProtocolClient {
     private async establishControlConnection() {
         const connection = await new Promise<TelnetSocket>((resolve) => {
             const socket = this.createTelnetSocket({
-                device: this.device,
+                device: this.options.device,
                 port: this.options.controlPort
             });
             util.registerSocketLogging(socket, this.logger, 'ControlSocket');
@@ -1102,7 +1092,7 @@ export class DebugProtocolClient {
         if (update.success) {
             // Create a new client socket to the io port the device just opened
             this.ioSocket = this.createTelnetSocket({
-                device: this.device,
+                device: this.options.device,
                 port: update.data.port
             });
             util.registerSocketLogging(this.ioSocket, this.logger, 'IoSocket');
@@ -1293,18 +1283,12 @@ export interface BreakpointSpec {
 
 export interface ConstructorOptions {
     /**
-     * The host/ip address of the Roku. Deprecated in favor of `device`, which addresses devices
-     * that have no host (like a Roku Cloud Emulator device); when `device` is absent, a local
-     * device config is built from this field.
+     * The roku-deploy device config for the target device. This is the only way this client
+     * addresses the device: a local device connects raw tcp sockets to its debug protocol ports,
+     * and a Roku Cloud Emulator device reaches the same ports through its instance api's
+     * `/api/v0/ports/<port>` WebSocket routes.
      */
-    host?: string;
-    /**
-     * The roku-deploy device config for the target device. This is the canonical way to address the
-     * device: a local device connects raw tcp sockets to its debug protocol ports, and a Roku Cloud
-     * Emulator device reaches the same ports through its instance api's `/api/v0/ports/<port>`
-     * WebSocket routes.
-     */
-    device?: DeviceOption;
+    device: DeviceConfig;
     /**
      * The port number used to send all debugger commands. This is static/unchanging for Roku devices,
      * but is configurable here to support unit testing or alternate runtimes (i.e. https://www.npmjs.com/package/brs)

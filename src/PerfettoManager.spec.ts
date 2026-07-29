@@ -18,7 +18,7 @@ describe('PerfettoManager', () => {
 
     beforeEach(() => {
         perfettoManager = new PerfettoManager({
-            host: '192.168.1.100',
+            device: { host: '192.168.1.100' },
             enabled: true,
             dir: s`${tempDir}/profiling`,
             filename: 'test_${timestamp}.perfetto-trace',
@@ -68,7 +68,7 @@ describe('PerfettoManager', () => {
     describe('constructor', () => {
         it('uses default values when not specified', () => {
             perfettoManager = new PerfettoManager({
-                host: '192.168.1.100',
+                device: { host: '192.168.1.100' },
                 enabled: true,
                 rootDir: rootDir
             });
@@ -81,15 +81,15 @@ describe('PerfettoManager', () => {
 
         it('uses provided values over defaults', () => {
             perfettoManager = new PerfettoManager({
-                host: '10.0.0.1',
+                device: { host: '10.0.0.1' },
                 enabled: true,
                 dir: '/custom/dir',
                 channelId: 'prod',
                 remotePort: 9090,
                 rootDir: rootDir
             });
+            expect((perfettoManager as any).config.device).to.eql({ host: '10.0.0.1' });
             expect((perfettoManager as any).config).to.include({
-                host: '10.0.0.1',
                 dir: '/custom/dir',
                 channelId: 'prod',
                 remotePort: 9090
@@ -128,7 +128,7 @@ describe('PerfettoManager', () => {
     describe('startTracing', () => {
         it('throws when no host is configured', async () => {
             perfettoManager = new PerfettoManager({
-                host: undefined as any,
+                device: undefined as any,
                 enabled: true,
                 rootDir: rootDir
             });
@@ -140,7 +140,7 @@ describe('PerfettoManager', () => {
                 await perfettoManager.startTracing();
                 expect.fail('Should have thrown an error');
             } catch (error) {
-                expect((error as Error).message).to.include('No host configured');
+                expect((error as Error).message).to.include('Perfetto tracing requires a device with a host');
             }
 
             // Should also emit error event
@@ -345,7 +345,7 @@ describe('PerfettoManager', () => {
             sinon.stub(rokuECP, 'enablePerfettoTracing').rejects(new Error('No host configured'));
 
             perfettoManager = new PerfettoManager({
-                host: undefined as any,
+                device: undefined as any,
                 enabled: true,
                 dir: '/tmp/traces'
             });
@@ -843,7 +843,7 @@ describe('PerfettoManager', () => {
             // Restore the stub to test actual createWebSocket
             sinon.restore();
             perfettoManager = new PerfettoManager({
-                host: '192.168.1.200',
+                device: { host: '192.168.1.200' },
                 remotePort: 8080,
                 enabled: true,
                 rootDir: rootDir

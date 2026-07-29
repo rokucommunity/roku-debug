@@ -1,4 +1,4 @@
-import type { DeviceInfoRaw, DeviceOption, FileEntry } from 'roku-deploy';
+import type { DeviceConfig, DeviceInfoRaw, FileEntry } from 'roku-deploy';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { LogLevel } from './logging';
 
@@ -17,13 +17,12 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
     host?: string;
 
     /**
-     * The roku-deploy device option for the target device. This is the canonical way to address the device.
-     * Supports every roku-deploy addressing scheme: a local network device (`{ host }`) or a
-     * Roku Cloud Emulator device (`{ instanceUrl | id | esn, rceToken }`).
-     * When omitted, a local device config is built from the deprecated `host` field. When provided with a
-     * `host` property, it takes the place of the top-level `host` field.
+     * The roku-deploy device config for the target device. This is the canonical way to address the
+     * device: a local network device (`{ host }`) or a Roku Cloud Emulator device
+     * (`{ instanceUrl | id | esn, rceToken }`). When omitted, a local device config is built from
+     * the deprecated `host` field.
      */
-    device?: DeviceOption;
+    device?: DeviceConfig;
 
     /**
      * The raw `device-info` for the target Roku. When supplied, the debug session uses this instead of
@@ -420,6 +419,17 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
      */
     clientCapabilities?: ClientCapabilities;
 }
+
+/**
+ * A launch configuration after the debug session has normalized it: the deprecated `host` field has
+ * been consumed (`normalizeLaunchConfig` converts it into `device`, the only time it is ever read)
+ * and `device` is a concrete roku-deploy device config. Everything inside the debugger works
+ * against this type; the raw `LaunchConfiguration` (with `host`) exists only at the DAP input
+ * boundary.
+ */
+export type ResolvedLaunchConfiguration = Omit<LaunchConfiguration, 'host'> & {
+    device: DeviceConfig;
+};
 
 /**
  * Optional features the client advertises support for via `LaunchConfiguration.clientCapabilities`.

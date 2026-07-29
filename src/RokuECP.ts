@@ -1,25 +1,19 @@
 import { util } from './util';
 import type * as requestType from 'request';
-import type { Response } from 'request';
 import { rokuDeploy } from 'roku-deploy';
-import type { DeviceOption } from 'roku-deploy';
+import type { DeviceConfig, EcpResult } from 'roku-deploy';
 
 export class RokuECP {
-    private async doRequest(route: string, options: BaseOptions, method: 'post' | 'get' = 'get'): Promise<Response> {
-        const url = `http://${options.host}:${options.remotePort ?? 8060}/${route.replace(/^\//, '')}`;
-        if (method === 'post') {
-            return util.httpPost(url, options.requestOptions);
-        } else {
-            return util.httpGet(url, options.requestOptions);
-        }
-    }
-
     /**
-     * The roku-deploy device option for a request: the configured device when present (which is how
-     * Cloud Emulator devices route through their instance's ECP proxy), otherwise the bare host.
+     * Send a raw ECP request through roku-deploy's `ecp()` transport, which routes a local device
+     * over plain HTTP and a Roku Cloud Emulator device through its instance's ECP proxy.
      */
-    private getDeviceOption(options: BaseOptions): DeviceOption {
-        return options.device ?? { host: options.host };
+    private async doRequest(route: string, options: BaseOptions, method: 'post' | 'get' = 'get'): Promise<EcpResult> {
+        return rokuDeploy.ecp(options.device, route, {
+            method: method === 'post' ? 'POST' : 'GET',
+            ecpPort: options.remotePort,
+            timeout: options.requestOptions?.timeout
+        });
     }
 
     /**
@@ -30,7 +24,7 @@ export class RokuECP {
     public async enablePerfettoTracing(options: BaseOptions & { channelId: string }) {
         const response = await this.doRequest(`/perfetto/enable/${options.channelId}`, options, 'post');
 
-        return this.parseResponse(response.body as string, 'perfetto-enable', (parsed: PerfettoEnableAsJson, status): EcpPerfettoEnableData => {
+        return this.parseResponse(response.body, 'perfetto-enable', (parsed: PerfettoEnableAsJson, status): EcpPerfettoEnableData => {
             return {
                 enabledChannels: parsed?.['enabled-channels']?.[0]?.channel ?? [],
                 timestamp: Number(parsed?.timestamp?.[0]),
@@ -47,7 +41,7 @@ export class RokuECP {
      */
     public async captureHeapSnapshot(options: BaseOptions & { channelId: string }) {
         const response = await this.doRequest(`/perfetto/heapgraph/trigger/${options.channelId}`, options, 'post');
-        return this.parseResponse(response.body as string, 'perfetto-heapgraph-trigger', (parsed: HeapSnapshotAsJson, status): EcpHeapSnapshotData => {
+        return this.parseResponse(response.body, 'perfetto-heapgraph-trigger', (parsed: HeapSnapshotAsJson, status): EcpHeapSnapshotData => {
             return {
                 timestamp: Number(parsed?.timestamp?.[0]),
                 timestampEnd: Number(parsed?.['timestamp-end']?.[0]),
@@ -81,7 +75,7 @@ export class RokuECP {
 
     public async getRegistry(options: BaseOptions & { appId: string }): Promise<EcpRegistryData> {
         const registry = await rokuDeploy.queryRegistry({
-            device: this.getDeviceOption(options),
+            device: options.device,
             appId: options.appId,
             ecpPort: options.remotePort
         });
@@ -96,7 +90,7 @@ export class RokuECP {
 
     public async getAppState(options: BaseOptions & { appId: string }): Promise<EcpAppStateData> {
         const appState = await rokuDeploy.queryAppState({
-            device: this.getDeviceOption(options),
+            device: options.device,
             appId: options.appId,
             ecpPort: options.remotePort
         });
@@ -112,7 +106,7 @@ export class RokuECP {
 
     public async exitApp(options: BaseOptions & { appId: string }): Promise<EcpExitAppData> {
         await rokuDeploy.exitApp({
-            device: this.getDeviceOption(options),
+            device: options.device,
             appId: options.appId,
             ecpPort: options.remotePort
         });
@@ -125,18 +119,14 @@ export enum EcpStatus {
     failed = 'failed'
 }
 interface BaseOptions {
-    /**
-     * The host used when `device` is not an RCE (Roku Cloud Emulator) device config.
-     */
-    host: string;
     remotePort?: number;
     requestOptions?: requestType.CoreOptions;
     /**
-     * The roku-deploy device option for the target device. When this is an RCE device config,
+     * The roku-deploy device config for the target device. When this is an RCE device config,
      * roku-deploy routes the request through the instance's ECP proxy instead of the local HTTP
      * ECP endpoint.
      */
-    device?: DeviceOption;
+    device: DeviceConfig;
 }
 
 interface BaseEcpResponse {

@@ -1,4 +1,4 @@
-import type { DeviceOption } from 'roku-deploy';
+import type { DeviceConfig } from 'roku-deploy';
 
 export enum HighLevelType {
     primative = 'primative',
@@ -19,16 +19,12 @@ export interface RokuAdapterEvaluateResponse {
 
 export interface AdapterOptions {
     /**
-     * The host or ip address of the target device. Deprecated in favor of `device`, which also
-     * addresses devices that have no host (like a Roku Cloud Emulator device); when `device` is
-     * absent, a local device config is built from this field.
+     * The roku-deploy device config for the target device. The debug session normalizes whatever
+     * addressing the launch config supplied (including the deprecated `host` field) into a concrete
+     * device config before constructing an adapter, so this is the only way adapters address the
+     * device.
      */
-    host?: string;
-    /**
-     * The roku-deploy device config for the target device. This is the canonical way to address the
-     * device; when omitted, a local device config is built from the deprecated `host` field.
-     */
-    device?: DeviceOption;
+    device: DeviceConfig;
     brightScriptConsolePort?: number;
     remotePort?: number;
     /**

@@ -3,7 +3,6 @@ import { createSandbox } from 'sinon';
 import { describe } from 'mocha';
 import type { EcpAppStateData, EcpHeapSnapshotData, EcpRegistryData } from './RokuECP';
 import { AppState, EcpStatus, rokuECP } from './RokuECP';
-import { util } from './util';
 import { expectThrowsAsync } from './testHelpers.spec';
 import { undent } from 'undent';
 import { rokuDeploy } from 'roku-deploy';
@@ -19,92 +18,47 @@ describe('RokuECP', () => {
     });
 
     describe('doRequest', () => {
-        it('correctly builds url without leading /', async () => {
+        it('routes the request through rokuDeploy.ecp as a GET by default', async () => {
             let options = {
-                host: '1.1.1.1',
+                device: { host: '1.1.1.1' },
                 remotePort: 8080
             };
 
-            let stub = sinon.stub(util as any, 'httpGet').resolves({
+            let stub = sinon.stub(rokuDeploy, 'ecp').resolves({
+                status: 200,
                 body: '',
-                statusCode: 200
+                json: undefined
             });
 
             await rokuECP['doRequest']('query/my-route', options);
-            expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8080/query/my-route`, undefined]);
+            expect(stub.getCall(0).args).to.eql([
+                { host: '1.1.1.1' },
+                'query/my-route',
+                { method: 'GET', ecpPort: 8080, timeout: undefined }
+            ]);
+            expect(stub.getCall(0).args[0]).to.equal(options.device);
         });
 
-        it('correctly builds url with leading /', async () => {
+        it('maps post to POST and passes the requestOptions timeout', async () => {
             let options = {
-                host: '1.1.1.1',
-                remotePort: 8080
-            };
-
-            let stub = sinon.stub(util as any, 'httpGet').resolves({
-                body: '',
-                statusCode: 200
-            });
-
-            await rokuECP['doRequest']('/query/my-route', options);
-            expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8080/query/my-route`, undefined]);
-        });
-
-        it('passes request options if populated', async () => {
-            let options = {
-                host: '1.1.1.1',
-                remotePort: 8080,
+                device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
                 requestOptions: {
                     timeout: 1000
                 }
             };
 
-            let stub = sinon.stub(util as any, 'httpGet').resolves({
+            let stub = sinon.stub(rokuDeploy, 'ecp').resolves({
+                status: 200,
                 body: '',
-                statusCode: 200
+                json: undefined
             });
-
-            await rokuECP['doRequest']('/query/my-route', options);
-            expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8080/query/my-route`, options.requestOptions]);
-        });
-
-        it('uses default port 8060 when missing in options', async () => {
-            let options = {
-                host: '1.1.1.1'
-            };
-
-            let stub = sinon.stub(util as any, 'httpGet').resolves({
-                body: '',
-                statusCode: 200
-            });
-
-            await rokuECP['doRequest']('/query/my-route', options);
-            expect(stub.getCall(0).args).to.eql([`http://1.1.1.1:8060/query/my-route`, undefined]);
-        });
-
-        it('supports get and post methods', async () => {
-            let options = {
-                host: '1.1.1.1'
-            };
-
-            const getStub = sinon.stub(util as any, 'httpGet').resolves({
-                body: '',
-                statusCode: 200
-            });
-            const postStub = sinon.stub(util as any, 'httpPost').resolves({
-                body: '',
-                statusCode: 200
-            });
-
-            await rokuECP['doRequest']('/query/my-route', options, 'get');
-            expect(getStub.getCall(0).args).to.eql([`http://1.1.1.1:8060/query/my-route`, undefined]);
-            expect(getStub.callCount).to.eql(1);
-            expect(postStub.callCount).to.eql(0);
 
             await rokuECP['doRequest']('/query/my-route', options, 'post');
-            expect(postStub.getCall(0).args).to.eql([`http://1.1.1.1:8060/query/my-route`, undefined]);
-            expect(getStub.callCount).to.eql(1);
-            expect(postStub.callCount).to.eql(1);
-
+            expect(stub.getCall(0).args).to.eql([
+                options.device,
+                '/query/my-route',
+                { method: 'POST', ecpPort: undefined, timeout: 1000 }
+            ]);
         });
     });
 
@@ -116,9 +70,9 @@ describe('RokuECP', () => {
             sections: {}
         };
 
-        it('calls rokuDeploy.queryRegistry with the bare host when device is absent', async () => {
+        it('calls rokuDeploy.queryRegistry with the device option', async () => {
             let options = {
-                host: '1.1.1.1',
+                device: { host: '1.1.1.1' },
                 remotePort: 8080,
                 appId: 'dev'
             };
@@ -142,7 +96,6 @@ describe('RokuECP', () => {
 
         it('passes a local device config through to roku-deploy', async () => {
             let options = {
-                host: '1.1.1.1',
                 remotePort: 8080,
                 device: { host: '1.1.1.1' },
                 appId: 'dev'
@@ -161,7 +114,6 @@ describe('RokuECP', () => {
 
         it('passes an RCE device config through to roku-deploy', async () => {
             let options = {
-                host: '1.1.1.1',
                 device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
                 appId: 'dev'
             };
@@ -193,7 +145,7 @@ describe('RokuECP', () => {
                 }
             });
 
-            let result = await rokuECP.getRegistry({ host: '1.1.1.1', appId: 'dev' });
+            let result = await rokuECP.getRegistry({ device: { host: '1.1.1.1' }, appId: 'dev' });
             expect(result).to.eql({
                 devId: '12345',
                 plugins: ['12', '34', 'dev'],
@@ -216,7 +168,7 @@ describe('RokuECP', () => {
                 sections: {}
             });
 
-            let result = await rokuECP.getRegistry({ host: '1.1.1.1', appId: 'dev' });
+            let result = await rokuECP.getRegistry({ device: { host: '1.1.1.1' }, appId: 'dev' });
             expect(result).to.eql({
                 devId: undefined,
                 plugins: undefined,
@@ -229,7 +181,7 @@ describe('RokuECP', () => {
         it('propagates errors from roku-deploy', async () => {
             sinon.stub(rokuDeploy, 'queryRegistry').rejects(new Error('Could not retrieve registry: Device not keyed'));
 
-            await expectThrowsAsync(() => rokuECP.getRegistry({ host: '1.1.1.1', appId: 'dev' }), 'Could not retrieve registry: Device not keyed');
+            await expectThrowsAsync(() => rokuECP.getRegistry({ device: { host: '1.1.1.1' }, appId: 'dev' }), 'Could not retrieve registry: Device not keyed');
         });
     });
 
@@ -242,9 +194,9 @@ describe('RokuECP', () => {
             state: 'active'
         };
 
-        it('calls rokuDeploy.queryAppState with the bare host when device is absent', async () => {
+        it('calls rokuDeploy.queryAppState with the device option', async () => {
             let options = {
-                host: '1.1.1.1',
+                device: { host: '1.1.1.1' },
                 remotePort: 8080,
                 appId: 'dev'
             };
@@ -269,7 +221,6 @@ describe('RokuECP', () => {
 
         it('passes an RCE device config through to roku-deploy', async () => {
             let options = {
-                host: '1.1.1.1',
                 device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
                 appId: 'dev'
             };
@@ -291,7 +242,7 @@ describe('RokuECP', () => {
                 state: 'unknown'
             });
 
-            let result = await rokuECP.getAppState({ host: '1.1.1.1', appId: 'dev' });
+            let result = await rokuECP.getAppState({ device: { host: '1.1.1.1' }, appId: 'dev' });
             expect(result).to.eql({
                 appId: 'dev',
                 appDevId: '12345',
@@ -305,14 +256,14 @@ describe('RokuECP', () => {
         it('propagates errors from roku-deploy', async () => {
             sinon.stub(rokuDeploy, 'queryAppState').rejects(new Error('Could not retrieve app state: App not found'));
 
-            await expectThrowsAsync(() => rokuECP.getAppState({ host: '1.1.1.1', appId: 'dev' }), 'Could not retrieve app state: App not found');
+            await expectThrowsAsync(() => rokuECP.getAppState({ device: { host: '1.1.1.1' }, appId: 'dev' }), 'Could not retrieve app state: App not found');
         });
     });
 
     describe('exitApp', () => {
-        it('calls rokuDeploy.exitApp with the bare host when device is absent', async () => {
+        it('calls rokuDeploy.exitApp with the device option', async () => {
             let options = {
-                host: '1.1.1.1',
+                device: { host: '1.1.1.1' },
                 remotePort: 8080,
                 appId: 'dev'
             };
@@ -332,7 +283,6 @@ describe('RokuECP', () => {
 
         it('passes an RCE device config through to roku-deploy', async () => {
             let options = {
-                host: '1.1.1.1',
                 device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
                 appId: 'dev'
             };
@@ -354,14 +304,14 @@ describe('RokuECP', () => {
         it('propagates errors from roku-deploy', async () => {
             sinon.stub(rokuDeploy, 'exitApp').rejects(new Error('Could not exit app: App not found'));
 
-            await expectThrowsAsync(() => rokuECP.exitApp({ host: '1.1.1.1', appId: 'dev' }), 'Could not exit app: App not found');
+            await expectThrowsAsync(() => rokuECP.exitApp({ device: { host: '1.1.1.1' }, appId: 'dev' }), 'Could not exit app: App not found');
         });
     });
 
     describe('captureHeapSnapshot', () => {
         it('calls doRequest with correct route and options', async () => {
             let options = {
-                host: '1.1.1.1',
+                device: { host: '1.1.1.1' },
                 remotePort: 8080,
                 channelId: 'dev'
             };
@@ -395,7 +345,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 });
-                let result = await rokuECP.captureHeapSnapshot({ host: '1.1.1.1', channelId: 'dev' });
+                let result = await rokuECP.captureHeapSnapshot({ device: { host: '1.1.1.1' }, channelId: 'dev' });
                 expect(result).to.eql({
                     timestamp: 1772434731151,
                     timestampEnd: 1772434731188,
@@ -416,7 +366,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 });
-                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ host: '1.1.1.1', channelId: 'dev' }), `Channel 'dev' not running, cannot fetch heap graph`);
+                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ device: { host: '1.1.1.1' }, channelId: 'dev' }), `Channel 'dev' not running, cannot fetch heap graph`);
             });
 
             it('handles failed status with missing error', async () => {
@@ -429,7 +379,7 @@ describe('RokuECP', () => {
                     `,
                     statusCode: 200
                 });
-                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ host: '1.1.1.1', channelId: 'dev' }), 'Unknown error');
+                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ device: { host: '1.1.1.1' }, channelId: 'dev' }), 'Unknown error');
             });
 
             it('handles error response without xml', async () => {
@@ -437,7 +387,7 @@ describe('RokuECP', () => {
                     body: `ECP command not allowed in Limited mode.`,
                     statusCode: 403
                 });
-                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ host: '1.1.1.1', channelId: 'dev' }), 'ECP command not allowed in Limited mode.');
+                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ device: { host: '1.1.1.1' }, channelId: 'dev' }), 'ECP command not allowed in Limited mode.');
             });
         });
     });

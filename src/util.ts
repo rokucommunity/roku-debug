@@ -16,8 +16,8 @@ import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
-import type { DeviceOption, TelnetSocket } from 'roku-deploy';
-import { isRceDeviceConfig } from 'roku-deploy';
+import type { DeviceConfig, TelnetSocket } from 'roku-deploy';
+import { isRceById, isRceByUrl, isRceDeviceConfig } from 'roku-deploy';
 const request = r as typeof requestType;
 
 class Util {
@@ -552,11 +552,30 @@ class Util {
      * directly on the device option always wins. Anything that is not a tokenless RCE device
      * config is returned unchanged.
      */
-    public hydrateRceTokenFromEnv(device: DeviceOption): DeviceOption {
-        if (typeof device === 'object' && isRceDeviceConfig(device) && !device.rceToken && process.env.ROKU_RCE_TOKEN) {
-            return { ...device, rceToken: process.env.ROKU_RCE_TOKEN };
+    public hydrateRceTokenFromEnv<T extends DeviceConfig>(device: T): T {
+        if (device && isRceDeviceConfig(device) && !device.rceToken && process.env.ROKU_RCE_TOKEN) {
+            return { ...device, rceToken: process.env.ROKU_RCE_TOKEN } as T;
         }
         return device;
+    }
+
+    /**
+     * A short human-readable identifier for a device, safe for log and error messages (never
+     * includes credentials like the rceToken). A local device is identified by its host and an RCE
+     * device by its instanceUrl, id, or esn.
+     */
+    public deviceLabel(device: DeviceConfig): string {
+        //a device may legitimately be absent on early error paths (before a session is configured)
+        if (!device) {
+            return undefined;
+        }
+        if (isRceDeviceConfig(device)) {
+            if (isRceByUrl(device)) {
+                return device.instanceUrl;
+            }
+            return isRceById(device) ? device.id : device.esn;
+        }
+        return device.host;
     }
 
     /**

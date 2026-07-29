@@ -8,5 +8,9 @@ export class SocketConnectionInUseError extends Error {
     }
 
     public port: number;
+    /**
+     * A label identifying the device the connection was made to: the host for a local device, or
+     * the instanceUrl/id/esn for a Roku Cloud Emulator device.
+     */
     public host: string;
 }

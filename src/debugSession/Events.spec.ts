@@ -21,4 +21,28 @@ describe('Events', () => {
         expect(isLaunchStartEvent(null)).to.be.false;
         expect(isChannelPublishedEvent(null)).to.be.false;
     });
+
+    it('scrubs the rceToken from the launch config echoed in LaunchStartEvent and ChannelPublishedEvent', () => {
+        const launchConfiguration = {
+            rootDir: '/some/project',
+            device: { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret-token' }
+        } as any;
+
+        const launchStartEvent = new LaunchStartEvent(launchConfiguration);
+        expect((launchStartEvent.body.device as any).rceToken).to.be.undefined;
+        expect((launchStartEvent.body.device as any).instanceUrl).to.equal('https://device.rce.roku.com/instance/abc');
+        expect(launchStartEvent.body.rootDir).to.equal('/some/project');
+
+        const channelPublishedEvent = new ChannelPublishedEvent(launchConfiguration);
+        expect((channelPublishedEvent.body.launchConfiguration.device as any).rceToken).to.be.undefined;
+
+        //the original config is left untouched (the debugger still needs the token)
+        expect(launchConfiguration.device.rceToken).to.equal('secret-token');
+    });
+
+    it('leaves a local device config untouched in echoed events', () => {
+        const launchConfiguration = { device: { host: '1.2.3.4' } } as any;
+        const launchStartEvent = new LaunchStartEvent(launchConfiguration);
+        expect(launchStartEvent.body.device).to.eql({ host: '1.2.3.4' });
+    });
 });

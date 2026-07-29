@@ -1,7 +1,7 @@
 import { orderBy } from 'natural-orderby';
 import * as EventEmitter from 'eventemitter3';
 import { rokuDeploy, createTelnetSocket } from 'roku-deploy';
-import type { DeviceConfig, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
+import type { TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
 import { PrintedObjectParser } from '../PrintedObjectParser';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
@@ -276,10 +276,8 @@ export class TelnetAdapter {
         this.isInMicroDebugger = false;
         this.isNextBreakpointSkipped = false;
         try {
-            //`device` is the canonical way to address the target; a string device is a registry name,
-            //which cannot be resolved here, so fall back to the deprecated `host` field (the debug
-            //session keeps `host` in sync with the resolved device config for exactly this reason).
-            const device: DeviceConfig = typeof this.options.device === 'object' ? this.options.device : { host: this.options.host };
+            //normalizeAdapterOptions guarantees `device` is a concrete device config
+            const device = this.options.device;
 
             this.logger.log('Pressing home button');
             //force roku to return to home screen. This gives the roku adapter some security in knowing new messages won't be appearing during initialization
@@ -297,13 +295,12 @@ export class TelnetAdapter {
             //After a successful connection the deferred is already resolved, so a post-connection
             //socket error (e.g. ETIMEDOUT on device disconnect) must not crash the process.
             telnetSocket.on('error', (err) => {
-                deferred.tryReject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
+                deferred.tryReject(new Error(`Error with connection to: ${util.deviceLabel(device)}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
             const settlePromise = this.settleTelnetConnection(telnetSocket);
             telnetSocket.connect(() => {
-                const target = 'host' in device ? `${device.host}:${this.options.brightScriptConsolePort}` : 'cloud device';
-                this.logger.log(`Telnet connection established to ${target}`);
+                this.logger.log(`Telnet connection established to ${util.deviceLabel(device)}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
                 this.connectionDeferred.resolve();
                 this.emit('connected', this.connected);
@@ -311,9 +308,9 @@ export class TelnetAdapter {
 
             const settledLogs = await settlePromise;
             if (settledLogs.trim().startsWith('Console connection is already in use.')) {
-                throw new SocketConnectionInUseError(`Telnet connection ${this.options.host}:${this.options.brightScriptConsolePort} already is use`, {
+                throw new SocketConnectionInUseError(`Telnet connection ${util.deviceLabel(device)}:${this.options.brightScriptConsolePort} already is use`, {
                     port: this.options.brightScriptConsolePort,
-                    host: this.options.host
+                    host: util.deviceLabel(device)
                 });
             }
 

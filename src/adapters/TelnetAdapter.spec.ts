@@ -61,7 +61,7 @@ describe('TelnetAdapter ', () => {
     beforeEach(() => {
         adapter = new TelnetAdapter(
             {
-                host: '127.0.0.1'
+                device: { host: '127.0.0.1' }
             },
             rendezvousTracker
         );
@@ -328,11 +328,10 @@ describe('TelnetAdapter ', () => {
             await closePromise;
         });
 
-        it('passes the configured device, channel, and port to the telnet socket factory when options.device is set', async () => {
+        it('passes the configured device and port to the telnet socket factory', async () => {
             const rceDevice = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'token-value' };
             const rceAdapter = new TelnetAdapter(
                 {
-                    host: '127.0.0.1',
                     device: rceDevice,
                     brightScriptConsolePort: 8085
                 },
@@ -353,7 +352,7 @@ describe('TelnetAdapter ', () => {
             });
         });
 
-        it('falls back to a local device config built from options.host when options.device is absent', async () => {
+        it('passes the configured local device config to the telnet socket factory', async () => {
             sinon.stub(rokuDeploy, 'keyPress').resolves();
             sinon.stub(adapter as any, 'settleTelnetConnection').resolves('');
             const fakeTelnetSocket = new FakeTelnetSocket();
