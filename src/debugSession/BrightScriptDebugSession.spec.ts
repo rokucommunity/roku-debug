@@ -81,7 +81,8 @@ describe('BrightScriptDebugSession', () => {
             rootDir: rootDir,
             outDir: outDir,
             stagingDir: stagingDir,
-            files: DefaultFiles
+            files: DefaultFiles,
+            device: { host: '1.2.3.4' }
         } as any;
         session['launchConfiguration'] = launchConfiguration;
         session.projectManager.launchConfiguration = launchConfiguration;
@@ -229,6 +230,7 @@ describe('BrightScriptDebugSession', () => {
 
         await session.launchRequest({} as any, {
             cwd: tempDir,
+            device: { host: '1.2.3.4' },
             //where the source files reside
             rootDir: rootDir,
             files: DefaultFiles,
@@ -2955,6 +2957,7 @@ describe('BrightScriptDebugSession', () => {
                 const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
 
                 //the deprecated dap-input path: launchRequest normalizes this into the device config
+                delete (launchConfiguration as any).device;
                 (launchConfiguration as LaunchConfiguration).host = '1.2.3.4';
                 launchConfiguration.deviceInfo = {
                     'developer-enabled': 'true',
@@ -2980,6 +2983,7 @@ describe('BrightScriptDebugSession', () => {
                 const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
 
                 //the deprecated dap-input path: launchRequest normalizes this into the device config
+                delete (launchConfiguration as any).device;
                 (launchConfiguration as LaunchConfiguration).host = '1.2.3.4';
 
                 await session.launchRequest({} as any, launchConfiguration);
@@ -3108,11 +3112,25 @@ describe('BrightScriptDebugSession', () => {
             expect(config.device).to.eql({ host: '1.2.3.4' });
         });
 
+        it('deletes the deprecated host field from the config during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ host: '1.2.3.4' } as any);
+            expect('host' in config).to.be.false;
+        });
+
         it('prefers a supplied device config over the deprecated host field during normalize', () => {
             const config = session['normalizeLaunchConfig']({ device: { host: '5.6.7.8' }, host: '1.2.3.4' } as any);
             (session as any).launchConfiguration = config;
             expect(session['launchConfiguration'].device).to.eql({ host: '5.6.7.8' });
             expect(session['isLocalDevice']).to.be.true;
+        });
+
+        it('aborts the launch with a clear message when the config supplies no device addressing', async () => {
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves();
+
+            await session.launchRequest({} as any, {} as any);
+
+            expect(shutdownStub.calledOnce).to.be.true;
+            expect(shutdownStub.getCall(0).args[0]).to.include('does not specify a target device');
         });
 
         it('passes a cloud emulator device config through untouched and never leaks the token in the label', () => {

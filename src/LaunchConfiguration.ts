@@ -422,10 +422,10 @@ export interface LaunchConfiguration extends DebugProtocol.LaunchRequestArgument
 
 /**
  * A launch configuration after the debug session has normalized it: the deprecated `host` field has
- * been consumed (`normalizeLaunchConfig` converts it into `device`, the only time it is ever read)
- * and `device` is a concrete roku-deploy device config. Everything inside the debugger works
- * against this type; the raw `LaunchConfiguration` (with `host`) exists only at the DAP input
- * boundary.
+ * been consumed (`normalizeLaunchConfig` converts it into `device`, the only time it is ever read,
+ * and then deletes it from the object) and `device` is a concrete roku-deploy device config.
+ * Everything inside the debugger works against this type; the raw `LaunchConfiguration` (with
+ * `host`) exists only at the DAP input boundary.
  */
 export type ResolvedLaunchConfiguration = Omit<LaunchConfiguration, 'host'> & {
     device: DeviceConfig;

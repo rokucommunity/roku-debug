@@ -8,7 +8,7 @@ describe('SceneGraphDebugCommandController ', () => {
     let execStub: sinon.SinonStub;
 
     beforeEach(() => {
-        commandController = new SceneGraphDebugCommandController('192.168.1.1');
+        commandController = new SceneGraphDebugCommandController({ host: '192.168.1.1' });
         commandController['connection'] = {};
         execStub = sinon.stub(commandController, 'exec').callsFake((command: string) => {
             return new Promise((resolve) => {
@@ -244,11 +244,11 @@ class FakeTelnetSocket extends stream.Duplex {
     public writtenChunks: string[] = [];
 
     /**
-     * Text pushed shortly after connect(), simulating the device's connection greeting. Defaults to
-     * a local device's shape: a leading blank line followed by a bare `>` prompt with no trailing
-     * newline. RCE-shaped scenarios would instead see a banner line with no prompt at all (the Roku
-     * Cloud Emulator's debug-server proxy holds the promptless `>` forever), which is why the
-     * controller has to drain this itself rather than relying on telnet-client's own prompt wait.
+     * Text pushed shortly after connect(), simulating the device's connection greeting: a leading
+     * blank line followed by a bare `>` prompt with no trailing newline. Both device types deliver
+     * this shape (the Roku Cloud Emulator's instance api ports routes pass the un-terminated `>`
+     * through byte-unchanged); the controller has to consume it itself because telnet-client skips
+     * its own prompt wait for an injected sock.
      */
     public initialGreeting = '\r\n>';
 
@@ -318,7 +318,7 @@ describe('SceneGraphDebugCommandController transport', () => {
     let createTelnetSocketStub: sinon.SinonStub;
 
     beforeEach(() => {
-        controller = new SceneGraphDebugCommandController('192.168.1.50');
+        controller = new SceneGraphDebugCommandController({ host: '192.168.1.50' });
         fakeTelnetSocket = new FakeTelnetSocket();
         createTelnetSocketStub = sinon.stub(controller as any, 'createTelnetSocket').returns(fakeTelnetSocket);
     });
@@ -328,7 +328,7 @@ describe('SceneGraphDebugCommandController transport', () => {
     });
 
     describe('createTelnetSocket factory', () => {
-        it('passes a resolved local device config and the configured port when constructed with a host string', async () => {
+        it('passes the local device config and the configured port through', async () => {
             await controller.connect();
 
             expect(createTelnetSocketStub.calledOnce).to.be.true;
@@ -353,7 +353,7 @@ describe('SceneGraphDebugCommandController transport', () => {
     });
 
     describe('connect', () => {
-        it('drains the connect greeting before handing the socket to telnet-client, so it does not pollute the first exec response', async () => {
+        it('consumes the connect greeting before handing the socket to telnet-client, so it does not pollute the first exec response', async () => {
             await controller.connect();
 
             expect(controller['connection']).to.exist;
@@ -362,11 +362,38 @@ describe('SceneGraphDebugCommandController transport', () => {
             fakeTelnetSocket.queuedResponses.push('abc123\r\n>');
             let response = await controller.exec('showkey');
 
-            //if the greeting had not been drained first, its bytes would still be sitting in front
+            //if the greeting had not been consumed first, its bytes would still be sitting in front
             //of the real response text here
             expect(response.error).to.be.undefined;
             expect(response.result.rawResponse).to.include('abc123');
             expect(response.result.rawResponse.startsWith('>')).to.be.false;
+        });
+
+        it('rejects and destroys the socket when the shell prompt never arrives', async () => {
+            //a greeting with no prompt in it: the prompt wait can never complete
+            fakeTelnetSocket.initialGreeting = 'some banner text\r\n';
+
+            let thrownError: Error | undefined;
+            try {
+                await controller.connect({ timeout: 50 });
+            } catch (e) {
+                thrownError = e as Error;
+            }
+
+            expect(thrownError).to.be.instanceOf(Error);
+            expect(thrownError.message).to.include(`waiting for the SceneGraph debug server's shell prompt`);
+            expect(fakeTelnetSocket.destroyed).to.be.true;
+            expect(controller['connection']).to.be.null;
+        });
+
+        it('does not crash when the socket errors after the connection is established', async () => {
+            await controller.connect();
+
+            //a transport error on the live connection (a device reboot mid-session, for example)
+            //must be swallowed by the controller's own listener rather than crashing the process
+            expect(() => {
+                fakeTelnetSocket.emit('error', new Error('read ECONNRESET'));
+            }).not.to.throw();
         });
 
         it('destroys the socket when the transport connect fails', async () => {

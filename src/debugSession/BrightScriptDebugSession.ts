@@ -623,7 +623,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //`device` is the canonical way to address the target device; `host` is a deprecated alias.
         //this is the ONLY place the debugger reads the top-level `host` field: whatever was supplied
         //is resolved to a concrete device config here, and everything downstream uses `device`.
-        config.device ??= { host: config.host };
+        if (!config.device && config.host) {
+            config.device = { host: config.host };
+        }
+        //the deprecated field is now consumed. Delete it so the runtime object matches the resolved
+        //type and nothing downstream (including the configs echoed back to the client) carries it.
+        delete config.host;
         //an RCE device config without a token picks one up from the environment (the extension
         //injects ROKU_RCE_TOKEN into this process so the token does not have to travel through the
         //launch config over DAP). The custom events that echo this config back to the client scrub
@@ -664,6 +669,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         try {
             this.resetSessionState();
             this.launchConfiguration = this.normalizeLaunchConfig(config);
+            //fail fast when the launch config supplied no device addressing at all, rather than
+            //failing later with a confusing dns or connection error for an undefined host
+            if (!this.launchConfiguration.device) {
+                return await this.shutdown(`Launch config does not specify a target device. Please supply the 'device' option (or the deprecated 'host' option).`);
+            }
             this.setupProcessErrorHandlers();
 
             //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
