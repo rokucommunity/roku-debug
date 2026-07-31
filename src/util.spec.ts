@@ -62,13 +62,13 @@ describe('Util', () => {
         });
     });
 
-    describe('deviceLabel', () => {
+    describe('getDeviceLabel', () => {
         it('identifies each device addressing scheme without leaking credentials', () => {
-            expect(util.deviceLabel({ host: '1.2.3.4' })).to.equal('1.2.3.4');
-            expect(util.deviceLabel({ instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' })).to.equal('https://device.rce.roku.com/instance/abc');
-            expect(util.deviceLabel({ id: 'device-id', rceToken: 'secret' })).to.equal('device-id');
-            expect(util.deviceLabel({ esn: 'esn-value', rceToken: 'secret' })).to.equal('esn-value');
-            expect(util.deviceLabel(undefined)).to.equal(undefined);
+            expect(util.getDeviceLabel({ host: '1.2.3.4' })).to.equal('1.2.3.4');
+            expect(util.getDeviceLabel({ instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' })).to.equal('https://device.rce.roku.com/instance/abc');
+            expect(util.getDeviceLabel({ id: 'device-id', rceToken: 'secret' })).to.equal('device-id');
+            expect(util.getDeviceLabel({ esn: 'esn-value', rceToken: 'secret' })).to.equal('esn-value');
+            expect(util.getDeviceLabel(undefined)).to.equal(undefined);
         });
     });
 

@@ -295,12 +295,12 @@ export class TelnetAdapter {
             //After a successful connection the deferred is already resolved, so a post-connection
             //socket error (e.g. ETIMEDOUT on device disconnect) must not crash the process.
             socket.on('error', (err) => {
-                deferred.tryReject(new Error(`Error with connection to: ${util.deviceLabel(device)}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
+                deferred.tryReject(new Error(`Error with connection to: ${util.getDeviceLabel(device)}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
 
             const settlePromise = this.settleTelnetConnection(socket);
             socket.connect(() => {
-                this.logger.log(`Telnet connection established to ${util.deviceLabel(device)}:${this.options.brightScriptConsolePort}`);
+                this.logger.log(`Telnet connection established to ${util.getDeviceLabel(device)}:${this.options.brightScriptConsolePort}`);
                 this.connected = true;
                 this.connectionDeferred.resolve();
                 this.emit('connected', this.connected);
@@ -308,9 +308,9 @@ export class TelnetAdapter {
 
             const settledLogs = await settlePromise;
             if (settledLogs.trim().startsWith('Console connection is already in use.')) {
-                throw new SocketConnectionInUseError(`Telnet connection ${util.deviceLabel(device)}:${this.options.brightScriptConsolePort} already is use`, {
+                throw new SocketConnectionInUseError(`Telnet connection ${util.getDeviceLabel(device)}:${this.options.brightScriptConsolePort} already is use`, {
                     port: this.options.brightScriptConsolePort,
-                    host: util.deviceLabel(device)
+                    host: util.getDeviceLabel(device)
                 });
             }
 

@@ -417,7 +417,7 @@ export class DebugProtocolAdapter {
 
             await this.client.connect();
 
-            this.logger.log(`Connected to device`, { device: util.deviceLabel(this.options.device), connected: this.connected });
+            this.logger.log(`Connected to device`, { device: util.getDeviceLabel(this.options.device), connected: this.connected });
             this.connected = true;
             this.isAppRunning = true;
             this.handleStartupIfReady();
@@ -474,7 +474,7 @@ export class DebugProtocolAdapter {
         try {
             //normalizeAdapterOptions guarantees `device` is a concrete device config
             const device = this.options.device;
-            const deviceLabel = util.deviceLabel(device);
+            const deviceLabel = util.getDeviceLabel(device);
 
             this.compileClient = this.createRokuDeploySocket({ device: device, port: this.options.brightScriptConsolePort });
             util.registerSocketLogging(this.compileClient, this.logger, 'CompileClient');

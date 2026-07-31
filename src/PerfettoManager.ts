@@ -304,7 +304,7 @@ export class PerfettoManager {
      * Enable tracing on the Roku device. This returns true if we were successful, and throws if we we failed to enable
      */
     public async enableTracing(): Promise<boolean> {
-        this.logger.log(`Enabling Perfetto tracing on channel ${this.config.channelId} on device ${util.deviceLabel(this.config.device)}`);
+        this.logger.log(`Enabling Perfetto tracing on channel ${this.config.channelId} on device ${util.getDeviceLabel(this.config.device)}`);
 
         try {
             const result = await rokuECP.enablePerfettoTracing({

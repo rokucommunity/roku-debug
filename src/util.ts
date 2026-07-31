@@ -564,7 +564,7 @@ class Util {
      * includes credentials like the rceToken). A local device is identified by its host and an RCE
      * device by its instanceUrl, id, or esn.
      */
-    public deviceLabel(device: DeviceConfig): string {
+    public getDeviceLabel(device: DeviceConfig): string {
         //a device may legitimately be absent on early error paths (before a session is configured)
         if (!device) {
             return undefined;

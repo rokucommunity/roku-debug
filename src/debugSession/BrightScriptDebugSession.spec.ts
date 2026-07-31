@@ -92,6 +92,9 @@ describe('BrightScriptDebugSession', () => {
 
         //mock the rokuDeploy module with promises so we can have predictable tests
         session.rokuDeploy = <any>{
+            resolveDns: (device) => {
+                return Promise.resolve(device);
+            },
             stage: () => {
                 return Promise.resolve();
             },
@@ -3103,7 +3106,6 @@ describe('BrightScriptDebugSession', () => {
         it('reads the device config from the launch config', () => {
             (session as any).launchConfiguration = { device: { host: '1.2.3.4' } };
             expect(session['launchConfiguration'].device).to.eql({ host: '1.2.3.4' });
-            expect(session['isLocalDevice']).to.be.true;
             expect(session['deviceLabel']).to.equal('1.2.3.4');
         });
 
@@ -3121,7 +3123,6 @@ describe('BrightScriptDebugSession', () => {
             const config = session['normalizeLaunchConfig']({ device: { host: '5.6.7.8' }, host: '1.2.3.4' } as any);
             (session as any).launchConfiguration = config;
             expect(session['launchConfiguration'].device).to.eql({ host: '5.6.7.8' });
-            expect(session['isLocalDevice']).to.be.true;
         });
 
         it('aborts the launch with a clear message when the config supplies no device addressing', async () => {
@@ -3137,7 +3138,6 @@ describe('BrightScriptDebugSession', () => {
             const device = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' };
             (session as any).launchConfiguration = { device: device };
             expect(session['launchConfiguration'].device).to.equal(device);
-            expect(session['isLocalDevice']).to.be.false;
             expect(session['deviceLabel']).to.equal('https://device.rce.roku.com/instance/abc');
             expect(session['deviceLabel']).not.to.include('secret');
         });

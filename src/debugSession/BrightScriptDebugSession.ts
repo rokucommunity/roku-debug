@@ -2,8 +2,8 @@ import * as fsExtra from 'fs-extra';
 import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as semver from 'semver';
-import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError, isLocalDeviceConfig } from 'roku-deploy';
-import type { DeviceInfo, LocalDeviceConfig, RokuDeploy, SideloadOptions } from 'roku-deploy';
+import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError } from 'roku-deploy';
+import type { DeviceInfo, RokuDeploy, SideloadOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     LoggingDebugSession,
@@ -360,19 +360,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public rokuDeploy = rokuDeploy as unknown as RokuDeploy;
 
     /**
-     * Is the target device addressed over the local network (by host/ip)? Only local devices get
-     * host-based treatment like DNS resolution.
-     */
-    private get isLocalDevice(): boolean {
-        return isLocalDeviceConfig(this.launchConfiguration.device);
-    }
-
-    /**
      * A short human-readable identifier for the target device, safe for log and error messages
      * (never includes credentials like the rceToken)
      */
     private get deviceLabel(): string {
-        return util.deviceLabel(this.launchConfiguration.device);
+        return util.getDeviceLabel(this.launchConfiguration.device);
     }
 
     private componentLibraryServer = new ComponentLibraryServer();
@@ -686,15 +678,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             this.sendLaunchProgress('start', 'Finding device on network');
 
-            //do a DNS lookup for the host to fix issues with roku rejecting ECP.
-            //only applies to local devices; other device types (like the Roku Cloud Emulator) are not addressed by host
-            if (this.isLocalDevice) {
-                const device = this.launchConfiguration.device as LocalDeviceConfig;
-                try {
-                    device.host = await util.dnsLookup(device.host);
-                } catch (e) {
-                    return this.shutdown(`Could not resolve ip address for host '${device.host}'`);
-                }
+            //do a DNS lookup for the host to fix issues with roku rejecting ECP. Only local devices
+            //are addressed by host; other device types (like the Roku Cloud Emulator) pass through unchanged
+            try {
+                this.launchConfiguration.device = await this.rokuDeploy.resolveDns(this.launchConfiguration.device);
+            } catch (e) {
+                return this.shutdown(`Could not resolve ip address for host '${this.deviceLabel}'`);
             }
 
             // fetch device info if not supplied via launch config
