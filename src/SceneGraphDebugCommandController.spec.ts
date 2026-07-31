@@ -235,12 +235,12 @@ describe('SceneGraphDebugCommandController ', () => {
 });
 
 /**
- * Minimal fake standing in for roku-deploy's TelnetSocket. Genuinely extends `stream.Duplex`
+ * Minimal fake standing in for roku-deploy's RokuDeploySocket. Genuinely extends `stream.Duplex`
  * (rather than just an EventEmitter) because the controller hands this straight to telnet-client as
  * an injected `sock`, and telnet-client's `_checkSocket()` guard requires `pipe`, `_write`,
  * `_writableState`, `_read`, and `_readableState`, all of which only a real Node stream provides.
  */
-class FakeTelnetSocket extends stream.Duplex {
+class FakeRokuDeploySocket extends stream.Duplex {
     public writtenChunks: string[] = [];
 
     /**
@@ -314,25 +314,25 @@ class FakeTelnetSocket extends stream.Duplex {
 
 describe('SceneGraphDebugCommandController transport', () => {
     let controller: SceneGraphDebugCommandController;
-    let fakeTelnetSocket: FakeTelnetSocket;
-    let createTelnetSocketStub: sinon.SinonStub;
+    let fakeRokuDeploySocket: FakeRokuDeploySocket;
+    let createRokuDeploySocketStub: sinon.SinonStub;
 
     beforeEach(() => {
         controller = new SceneGraphDebugCommandController({ host: '192.168.1.50' });
-        fakeTelnetSocket = new FakeTelnetSocket();
-        createTelnetSocketStub = sinon.stub(controller as any, 'createTelnetSocket').returns(fakeTelnetSocket);
+        fakeRokuDeploySocket = new FakeRokuDeploySocket();
+        createRokuDeploySocketStub = sinon.stub(controller as any, 'createRokuDeploySocket').returns(fakeRokuDeploySocket);
     });
 
     afterEach(() => {
         sinon.restore();
     });
 
-    describe('createTelnetSocket factory', () => {
+    describe('createRokuDeploySocket factory', () => {
         it('passes the local device config and the configured port through', async () => {
             await controller.connect();
 
-            expect(createTelnetSocketStub.calledOnce).to.be.true;
-            let options = createTelnetSocketStub.firstCall.args[0];
+            expect(createRokuDeploySocketStub.calledOnce).to.be.true;
+            let options = createRokuDeploySocketStub.firstCall.args[0];
             expect(options.device).to.eql({ host: '192.168.1.50' });
             expect(options.port).to.equal(8080);
         });
@@ -340,13 +340,13 @@ describe('SceneGraphDebugCommandController transport', () => {
         it('passes an RCE device config through verbatim when constructed with one', async () => {
             let rceDevice = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'token-value' };
             let rceController = new SceneGraphDebugCommandController(rceDevice, 8080);
-            let rceFakeTelnetSocket = new FakeTelnetSocket();
-            let rceCreateTelnetSocketStub = sinon.stub(rceController as any, 'createTelnetSocket').returns(rceFakeTelnetSocket);
+            let rceFakeRokuDeploySocket = new FakeRokuDeploySocket();
+            let rceCreateRokuDeploySocketStub = sinon.stub(rceController as any, 'createRokuDeploySocket').returns(rceFakeRokuDeploySocket);
 
             await rceController.connect();
 
-            expect(rceCreateTelnetSocketStub.calledOnce).to.be.true;
-            let options = rceCreateTelnetSocketStub.firstCall.args[0];
+            expect(rceCreateRokuDeploySocketStub.calledOnce).to.be.true;
+            let options = rceCreateRokuDeploySocketStub.firstCall.args[0];
             expect(options.device).to.equal(rceDevice);
             expect(options.port).to.equal(8080);
         });
@@ -357,9 +357,9 @@ describe('SceneGraphDebugCommandController transport', () => {
             await controller.connect();
 
             expect(controller['connection']).to.exist;
-            expect(createTelnetSocketStub.calledOnce).to.be.true;
+            expect(createRokuDeploySocketStub.calledOnce).to.be.true;
 
-            fakeTelnetSocket.queuedResponses.push('abc123\r\n>');
+            fakeRokuDeploySocket.queuedResponses.push('abc123\r\n>');
             let response = await controller.exec('showkey');
 
             //if the greeting had not been consumed first, its bytes would still be sitting in front
@@ -371,7 +371,7 @@ describe('SceneGraphDebugCommandController transport', () => {
 
         it('rejects and destroys the socket when the shell prompt never arrives', async () => {
             //a greeting with no prompt in it: the prompt wait can never complete
-            fakeTelnetSocket.initialGreeting = 'some banner text\r\n';
+            fakeRokuDeploySocket.initialGreeting = 'some banner text\r\n';
 
             let thrownError: Error | undefined;
             try {
@@ -382,7 +382,7 @@ describe('SceneGraphDebugCommandController transport', () => {
 
             expect(thrownError).to.be.instanceOf(Error);
             expect(thrownError.message).to.include(`waiting for the SceneGraph debug server's shell prompt`);
-            expect(fakeTelnetSocket.destroyed).to.be.true;
+            expect(fakeRokuDeploySocket.destroyed).to.be.true;
             expect(controller['connection']).to.be.null;
         });
 
@@ -392,12 +392,12 @@ describe('SceneGraphDebugCommandController transport', () => {
             //a transport error on the live connection (a device reboot mid-session, for example)
             //must be swallowed by the controller's own listener rather than crashing the process
             expect(() => {
-                fakeTelnetSocket.emit('error', new Error('read ECONNRESET'));
+                fakeRokuDeploySocket.emit('error', new Error('read ECONNRESET'));
             }).not.to.throw();
         });
 
         it('destroys the socket when the transport connect fails', async () => {
-            fakeTelnetSocket.connectShouldFail = new Error('connect ECONNREFUSED 192.168.1.50:8080');
+            fakeRokuDeploySocket.connectShouldFail = new Error('connect ECONNREFUSED 192.168.1.50:8080');
 
             let thrownError: Error | undefined;
             try {
@@ -408,7 +408,7 @@ describe('SceneGraphDebugCommandController transport', () => {
 
             expect(thrownError).to.be.instanceOf(Error);
             expect(thrownError.message).to.include('ECONNREFUSED');
-            expect(fakeTelnetSocket.destroyed).to.be.true;
+            expect(fakeRokuDeploySocket.destroyed).to.be.true;
             expect(controller['connection']).to.be.null;
         });
     });

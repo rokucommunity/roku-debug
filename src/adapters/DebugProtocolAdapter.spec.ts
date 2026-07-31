@@ -32,17 +32,17 @@ import { EventEmitter } from 'events';
 const sinon = createSandbox();
 
 /**
- * Minimal fake standing in for roku-deploy's TelnetSocket. A real TelnetSocket is itself an
+ * Minimal fake standing in for roku-deploy's RokuDeploySocket. A real RokuDeploySocket is itself an
  * EventEmitter ('connect'|'ready'|'data'|'close'|'error', ...), so extending Node's EventEmitter
  * directly gives correct on/removeListener/emit semantics.
  */
-class FakeTelnetSocket extends EventEmitter {
+class FakeRokuDeploySocket extends EventEmitter {
     public writtenChunks: Array<string | Buffer> = [];
 
     public destroyed = false;
 
     /**
-     * Mirrors TelnetSocket#connect(): emits 'connect' then 'ready', then invokes the connect
+     * Mirrors RokuDeploySocket#connect(): emits 'connect' then 'ready', then invokes the connect
      * listener, exactly like net.Socket does.
      */
     public connect(connectListener?: () => void): this {
@@ -813,8 +813,8 @@ describe('DebugProtocolAdapter', function() {
             // Stub the settle method so processTelnetOutput completes without a real connection
             sinon.stub(adapter as any, 'settleCompileClient').resolves('');
             // Inject a fake telnet socket instead of opening a real one
-            const fakeTelnetSocket = new FakeTelnetSocket();
-            sinon.stub(adapter as any, 'createTelnetSocket').returns(fakeTelnetSocket);
+            const fakeRokuDeploySocket = new FakeRokuDeploySocket();
+            sinon.stub(adapter as any, 'createRokuDeploySocket').returns(fakeRokuDeploySocket);
 
             await adapter.processTelnetOutput();
 

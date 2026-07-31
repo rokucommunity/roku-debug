@@ -3,11 +3,11 @@ import { defer, util } from '../util';
 import type { Logger } from '../logging';
 import { createLogger } from '../logging';
 import { Deferred } from 'brighterscript';
-import type { TelnetSocket } from 'roku-deploy';
+import type { RokuDeploySocket } from 'roku-deploy';
 
 export class TelnetRequestPipeline {
     public constructor(
-        public client: TelnetSocket
+        public client: RokuDeploySocket
     ) {
 
     }

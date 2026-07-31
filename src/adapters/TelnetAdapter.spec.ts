@@ -8,24 +8,24 @@ import type { LaunchConfiguration } from '../LaunchConfiguration';
 import type { EvaluateContainer } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import { rokuDeploy } from 'roku-deploy';
-import type { TelnetSocketOptions } from 'roku-deploy';
+import type { SocketOptions } from 'roku-deploy';
 
 const sinon = createSandbox();
 
 /**
- * Minimal fake standing in for roku-deploy's TelnetSocket. A real TelnetSocket is itself an
+ * Minimal fake standing in for roku-deploy's RokuDeploySocket. A real RokuDeploySocket is itself an
  * EventEmitter ('connect'|'ready'|'data'|'close'|'error', ...), so extending Node's EventEmitter
  * directly gives correct on/removeListener/emit semantics. TelnetAdapter never hands this to
  * telnet-client (that is only SceneGraphDebugCommandController's concern), so it does not need to
  * satisfy telnet-client's `_checkSocket()` stream-internals requirements.
  */
-class FakeTelnetSocket extends EventEmitter {
+class FakeRokuDeploySocket extends EventEmitter {
     public writtenChunks: Array<string | Buffer> = [];
 
     public destroyed = false;
 
     /**
-     * Mirrors TelnetSocket#connect(): emits 'connect' then 'ready', then invokes the connect
+     * Mirrors RokuDeploySocket#connect(): emits 'connect' then 'ready', then invokes the connect
      * listener, exactly like net.Socket does.
      */
     public connect(connectListener?: () => void): this {
@@ -296,8 +296,8 @@ describe('TelnetAdapter ', () => {
             // Stub keyPress so we don't need a real device
             sinon.stub(rokuDeploy, 'keyPress').resolves();
             // Inject a fake telnet socket instead of opening a real one
-            const fakeTelnetSocket = new FakeTelnetSocket();
-            sinon.stub(adapter as any, 'createTelnetSocket').returns(fakeTelnetSocket);
+            const fakeRokuDeploySocket = new FakeRokuDeploySocket();
+            sinon.stub(adapter as any, 'createRokuDeploySocket').returns(fakeRokuDeploySocket);
             // Stub the settle method so connect() completes immediately
             sinon.stub(adapter as any, 'settleTelnetConnection').resolves('');
 
@@ -315,12 +315,12 @@ describe('TelnetAdapter ', () => {
             // (simulating ETIMEDOUT on device disconnect) must not throw, because the adapter
             // is required to keep an 'error' listener attached to the socket at all times.
             expect(() => {
-                fakeTelnetSocket.emit('error', new Error('read ETIMEDOUT'));
+                fakeRokuDeploySocket.emit('error', new Error('read ETIMEDOUT'));
             }).not.to.throw();
 
             // On a real connected socket Node.js automatically fires 'close' after 'error'.
             // Our fake replicates that here.
-            fakeTelnetSocket.emit('close');
+            fakeRokuDeploySocket.emit('close');
 
             // TelnetAdapter.emit() wraps every event in setTimeout(0). Awaiting closePromise
             // yields back to the event loop so that deferred callback can run, confirming
@@ -339,13 +339,13 @@ describe('TelnetAdapter ', () => {
             );
             sinon.stub(rokuDeploy, 'keyPress').resolves();
             sinon.stub(rceAdapter as any, 'settleTelnetConnection').resolves('');
-            const fakeTelnetSocket = new FakeTelnetSocket();
-            const createTelnetSocketStub = sinon.stub(rceAdapter as any, 'createTelnetSocket').returns(fakeTelnetSocket);
+            const fakeRokuDeploySocket = new FakeRokuDeploySocket();
+            const createRokuDeploySocketStub = sinon.stub(rceAdapter as any, 'createRokuDeploySocket').returns(fakeRokuDeploySocket);
 
             await rceAdapter.connect();
 
-            expect(createTelnetSocketStub.calledOnce).to.be.true;
-            const options: TelnetSocketOptions = createTelnetSocketStub.firstCall.args[0];
+            expect(createRokuDeploySocketStub.calledOnce).to.be.true;
+            const options: SocketOptions = createRokuDeploySocketStub.firstCall.args[0];
             expect(options).to.eql({
                 device: rceDevice,
                 port: 8085
@@ -355,13 +355,13 @@ describe('TelnetAdapter ', () => {
         it('passes the configured local device config to the telnet socket factory', async () => {
             sinon.stub(rokuDeploy, 'keyPress').resolves();
             sinon.stub(adapter as any, 'settleTelnetConnection').resolves('');
-            const fakeTelnetSocket = new FakeTelnetSocket();
-            const createTelnetSocketStub = sinon.stub(adapter as any, 'createTelnetSocket').returns(fakeTelnetSocket);
+            const fakeRokuDeploySocket = new FakeRokuDeploySocket();
+            const createRokuDeploySocketStub = sinon.stub(adapter as any, 'createRokuDeploySocket').returns(fakeRokuDeploySocket);
 
             await adapter.connect();
 
-            expect(createTelnetSocketStub.calledOnce).to.be.true;
-            const options: TelnetSocketOptions = createTelnetSocketStub.firstCall.args[0];
+            expect(createRokuDeploySocketStub.calledOnce).to.be.true;
+            const options: SocketOptions = createRokuDeploySocketStub.firstCall.args[0];
             expect(options).to.eql({
                 device: { host: '127.0.0.1' },
                 port: 8085

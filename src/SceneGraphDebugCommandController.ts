@@ -1,5 +1,5 @@
-import { createTelnetSocket } from 'roku-deploy';
-import type { DeviceConfig, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
+import { createRokuDeploySocket } from 'roku-deploy';
+import type { DeviceConfig, RokuDeploySocket, SocketOptions } from 'roku-deploy';
 import { logger } from './logging';
 // eslint-disable-next-line
 const Telnet = require('telnet-client');
@@ -29,8 +29,8 @@ export class SceneGraphDebugCommandController {
      * Create the transport used to reach the SceneGraph debug server. Extracted to a protected
      * method so tests can substitute a fake socket.
      */
-    protected createTelnetSocket(options: TelnetSocketOptions): TelnetSocket {
-        return createTelnetSocket(options);
+    protected createRokuDeploySocket(options: SocketOptions): RokuDeploySocket {
+        return createRokuDeploySocket(options);
     }
 
     public async connect(options: { execTimeout?: number; timeout?: number } = {}) {
@@ -38,24 +38,24 @@ export class SceneGraphDebugCommandController {
 
         const timeoutMs = options.timeout ?? this.timeout;
 
-        let telnetSocket: TelnetSocket | undefined;
+        let socket: RokuDeploySocket | undefined;
         try {
-            telnetSocket = this.createTelnetSocket({
+            socket = this.createRokuDeploySocket({
                 device: this.device,
                 port: this.port
             });
             //keep an error listener attached for the socket's whole life: waitForConnectPrompt and
             //telnet-client each remove or narrow theirs at various points, and a socket 'error'
             //emitted while no listener is attached would crash the whole process
-            telnetSocket.on('error', (error: Error) => {
+            socket.on('error', (error: Error) => {
                 this.logger.debug('SceneGraph debug server socket error', error);
             });
 
-            await this.waitForSocketConnect(telnetSocket, timeoutMs);
+            await this.waitForSocketConnect(socket, timeoutMs);
             //an injected sock skips telnet-client's own prompt wait entirely (see the comment on
             //waitForConnectPrompt below), so the greeting has to be consumed here first or it would
             //otherwise arrive mid-exec and prematurely terminate the first command's response
-            await this.waitForConnectPrompt(telnetSocket, timeoutMs);
+            await this.waitForConnectPrompt(socket, timeoutMs);
 
             // Make a new telnet connections object
             let connection = new Telnet();
@@ -71,7 +71,7 @@ export class SceneGraphDebugCommandController {
                 execTimeout: this.execTimeout,
                 maxBufferLength: this.maxBufferLength,
                 ...options,
-                sock: telnetSocket
+                sock: socket
             };
             this.logger.debug('Establishing telnet connection', config);
             await connection.connect(config);
@@ -79,7 +79,7 @@ export class SceneGraphDebugCommandController {
         } catch (e) {
             //the socket was created but never became the live connection, so nothing else will ever
             //destroy it. Leaving it dangling would leak an open socket or websocket.
-            telnetSocket?.destroy();
+            socket?.destroy();
             throw new Error((e as Error).message);
         }
     }
@@ -91,12 +91,12 @@ export class SceneGraphDebugCommandController {
      * (telnet-client resolves immediately for an injected sock, before its timeout is even armed),
      * so this is the only thing enforcing one here.
      */
-    private waitForSocketConnect(telnetSocket: TelnetSocket, timeoutMs: number): Promise<void> {
+    private waitForSocketConnect(socket: RokuDeploySocket, timeoutMs: number): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const cleanup = () => {
                 clearTimeout(timeoutHandle);
-                telnetSocket.removeListener('connect', onConnect);
-                telnetSocket.removeListener('error', onError);
+                socket.removeListener('connect', onConnect);
+                socket.removeListener('error', onError);
             };
             const onConnect = () => {
                 cleanup();
@@ -111,9 +111,9 @@ export class SceneGraphDebugCommandController {
                 reject(new Error(`Timed out connecting to the SceneGraph debug server after ${timeoutMs}ms`));
             }, timeoutMs);
 
-            telnetSocket.once('connect', onConnect);
-            telnetSocket.once('error', onError);
-            telnetSocket.connect();
+            socket.once('connect', onConnect);
+            socket.once('error', onError);
+            socket.connect();
         });
     }
 
@@ -125,7 +125,7 @@ export class SceneGraphDebugCommandController {
      * would prematurely terminate the first command's response. Rejects if the prompt does not
      * arrive within `timeoutMs`.
      */
-    private waitForConnectPrompt(telnetSocket: TelnetSocket, timeoutMs: number): Promise<void> {
+    private waitForConnectPrompt(socket: RokuDeploySocket, timeoutMs: number): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             let accumulatedText = '';
             //a fresh non-global copy avoids a stateful lastIndex across calls, since
@@ -133,7 +133,7 @@ export class SceneGraphDebugCommandController {
             const nonGlobalShellPrompt = new RegExp(this.shellPrompt.source, this.shellPrompt.flags.replace('g', ''));
 
             const finish = (error?: Error) => {
-                telnetSocket.removeListener('data', onData);
+                socket.removeListener('data', onData);
                 clearTimeout(timeoutHandle);
                 if (error) {
                     reject(error);
@@ -151,7 +151,7 @@ export class SceneGraphDebugCommandController {
                 finish(new Error(`Timed out after ${timeoutMs}ms waiting for the SceneGraph debug server's shell prompt`));
             }, timeoutMs);
 
-            telnetSocket.on('data', onData);
+            socket.on('data', onData);
         });
     }
 

@@ -1,5 +1,5 @@
 import type { DebugProtocolClient } from './DebugProtocolClient';
-import type { TelnetSocket } from 'roku-deploy';
+import type { RokuDeploySocket } from 'roku-deploy';
 import type { ProtocolRequest, ProtocolResponse, ProtocolUpdate } from '../events/ProtocolEvent';
 
 export interface DebugProtocolClientPlugin {
@@ -18,7 +18,7 @@ export interface DebugProtocolClientPlugin {
 
 export interface OnServerConnectedEvent {
     client: DebugProtocolClient;
-    server: TelnetSocket;
+    server: RokuDeploySocket;
 }
 
 export interface ProvideResponseOrUpdateEvent {

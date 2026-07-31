@@ -47,8 +47,8 @@ import type { VerifiedBreakpoint } from '../events/updates/BreakpointVerifiedUpd
 import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUpdate';
 import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
 import { ExceptionBreakpointErrorUpdate } from '../events/updates/ExceptionBreakpointErrorUpdate';
-import { createTelnetSocket } from 'roku-deploy';
-import type { DeviceConfig, TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
+import { createRokuDeploySocket } from 'roku-deploy';
+import type { DeviceConfig, RokuDeploySocket, SocketOptions } from 'roku-deploy';
 
 export class DebugProtocolClient {
 
@@ -113,7 +113,7 @@ export class DebugProtocolClient {
     /**
      * The primary socket for this session. It's used to communicate with the debugger by sending commands and receives responses or updates
      */
-    private controlSocket: TelnetSocket;
+    private controlSocket: RokuDeploySocket;
     /**
      * Promise that is resolved when the control socket is closed
      */
@@ -121,7 +121,7 @@ export class DebugProtocolClient {
     /**
      * A socket where the debug server will send stdio
      */
-    private ioSocket: TelnetSocket;
+    private ioSocket: RokuDeploySocket;
     /**
      * Resolves when the ioSocket has closed
      */
@@ -201,8 +201,8 @@ export class DebugProtocolClient {
      * `/api/v0/ports/<port>` WebSocket for a cloud device. Extracted to a protected method so tests
      * can substitute a fake socket.
      */
-    protected createTelnetSocket(options: TelnetSocketOptions): TelnetSocket {
-        return createTelnetSocket(options);
+    protected createRokuDeploySocket(options: SocketOptions): RokuDeploySocket {
+        return createRokuDeploySocket(options);
     }
 
     /**
@@ -210,8 +210,8 @@ export class DebugProtocolClient {
      * whenever there is an early-terminated debug session
      */
     private async establishControlConnection() {
-        const connection = await new Promise<TelnetSocket>((resolve) => {
-            const socket = this.createTelnetSocket({
+        const connection = await new Promise<RokuDeploySocket>((resolve) => {
+            const socket = this.createRokuDeploySocket({
                 device: this.options.device,
                 port: this.options.controlPort
             });
@@ -1091,7 +1091,7 @@ export class DebugProtocolClient {
     private connectToIoPort(update: IOPortOpenedUpdate) {
         if (update.success) {
             // Create a new client socket to the io port the device just opened
-            this.ioSocket = this.createTelnetSocket({
+            this.ioSocket = this.createRokuDeploySocket({
                 device: this.options.device,
                 port: update.data.port
             });

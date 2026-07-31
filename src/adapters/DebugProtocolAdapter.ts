@@ -1,6 +1,6 @@
 import * as EventEmitter from 'events';
-import { createTelnetSocket } from 'roku-deploy';
-import type { TelnetSocket, TelnetSocketOptions } from 'roku-deploy';
+import { createRokuDeploySocket } from 'roku-deploy';
+import type { RokuDeploySocket, SocketOptions } from 'roku-deploy';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
@@ -74,7 +74,7 @@ export class DebugProtocolAdapter {
      */
     public connected: boolean;
 
-    private compileClient: TelnetSocket;
+    private compileClient: RokuDeploySocket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
     private chanperfTracker: ChanperfTracker;
@@ -232,7 +232,7 @@ export class DebugProtocolAdapter {
      * @param client
      * @param maxWaitMilliseconds
      */
-    private settleCompileClient(client: TelnetSocket, maxWaitMilliseconds = 400) {
+    private settleCompileClient(client: RokuDeploySocket, maxWaitMilliseconds = 400) {
         return new Promise<string>((resolve) => {
             let timeoutStarted = false;
             let callCount = -1;
@@ -285,8 +285,8 @@ export class DebugProtocolAdapter {
      * Create the transport used to reach the device's BrightScript console. Extracted to a
      * protected method so tests can substitute a fake socket.
      */
-    protected createTelnetSocket(options: TelnetSocketOptions): TelnetSocket {
-        return createTelnetSocket(options);
+    protected createRokuDeploySocket(options: SocketOptions): RokuDeploySocket {
+        return createRokuDeploySocket(options);
     }
 
     /**
@@ -476,7 +476,7 @@ export class DebugProtocolAdapter {
             const device = this.options.device;
             const deviceLabel = util.deviceLabel(device);
 
-            this.compileClient = this.createTelnetSocket({ device: device, port: this.options.brightScriptConsolePort });
+            this.compileClient = this.createRokuDeploySocket({ device: device, port: this.options.brightScriptConsolePort });
             util.registerSocketLogging(this.compileClient, this.logger, 'CompileClient');
 
             this.compileErrorProcessor.on('diagnostics', (errors) => {
