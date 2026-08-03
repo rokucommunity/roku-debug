@@ -722,6 +722,17 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             this.sendLaunchProgress('update', 'Connecting to debug server');
             const connectAdapterEnd = this.logger.timeStart('log', 'Connect adapter');
             this.createRokuAdapter(this.rendezvousTracker);
+
+            // Manipulating complibs on-device autolaunches the dev app and often triggers compile errors,
+            // so if we have at least one installable complib, delete the dev app and any complibs to avoid all that.
+            if (this.launchConfiguration.componentLibraries?.some(x => x.install)) {
+                this.sendLaunchProgress('update', 'Removing existing dev app and component libraries');
+                await rokuDeploy.deleteAllSideloadedPlugins({
+                    host: this.launchConfiguration.host,
+                    password: this.launchConfiguration.password
+                });
+            }
+
             await this.connectRokuAdapter();
             connectAdapterEnd();
 
@@ -846,10 +857,21 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.tryProfilingConnectOnStart();
 
             //all setBreakpoints requests have arrived by this point (configurationDone is the DAP signal
-            //that the client has finished sending configuration). Inject the STOPs and seal zips now.
+            //that the client has finished sending configuration). Inject the STOPs and postfix each project's
+            //own files now (still no zips. those are sealed after cross-project references are rewritten).
             await Promise.all([
-                this.packageMainProject(),
-                this.packageAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+                this.writeMainProjectBreakpoints(),
+                this.writeAndPostfixComponentLibraries(this.launchConfiguration.componentLibraries)
+            ]);
+
+            //now that EVERY project (main + all complibs) is postfixed, rewrite cross-project `Library`
+            //references to point at the postfixed file names. Must run before any project zip is sealed.
+            await this.projectManager.applyLibraryReferencePostfixes();
+
+            //now zip the main project, also zip and upload installable complibs, and start the webserver for non-installed complibs.
+            await Promise.all([
+                this.zipMainProject(),
+                this.zipServeAndInstallComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
             ]);
 
             this.sendLaunchProgress('update', 'Uploading to Roku');
@@ -1380,17 +1402,24 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     }
 
     /**
-     * Inject breakpoint STOP statements into the staged main project and create the zip package.
-     * Runs after the DAP `InitializedEvent` so client-side `setBreakpoints` requests have landed
-     * before any STOPs are written to the staged .brs files (telnet path) and before the zip is sealed.
+     * Inject breakpoint STOP statements into the staged main project. Runs after the DAP `InitializedEvent`
+     * so client-side `setBreakpoints` requests have landed before any STOPs are written to the staged .brs
+     * files (telnet path). Kept separate from zipping so the cross-project `Library` reference rewrite can
+     * run in between (after every project is postfixed, before any zip is sealed).
      */
-    private async packageMainProject() {
+    private async writeMainProjectBreakpoints() {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
         //validate breakpoints for all debugger types (and write `stop` statements for telnet — decided internally)
         await this.breakpointManager.validateAndWriteBreakpointsForProject(this.projectManager.mainProject);
+    }
 
+    /**
+     * Create the main project's zip package (or run the configured packageTask). Must run AFTER
+     * `applyLibraryReferencePostfixes` so any rewritten `Library` statements are included in the zip.
+     */
+    private async zipMainProject() {
         if (this.launchConfiguration.packageTask) {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
             await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
@@ -1495,36 +1524,56 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     }
 
     /**
-     * Inject breakpoint STOPs into the staged complibs, seal their zips, install installable ones,
-     * and start static file hosting. Runs in `configurationDoneRequest` (after `InitializedEvent`)
-     * so client-side `setBreakpoints` requests have landed before the staged .brs files are written
-     * and the zips are sealed.
+     * Inject breakpoint STOPs into the staged complibs and postfix each library's own files. Runs in
+     * `configurationDoneRequest` (after `InitializedEvent`) so client-side `setBreakpoints` requests have
+     * landed before the staged .brs files are written. Kept separate from zipping so the cross-project
+     * `Library` reference rewrite can run after EVERY project is postfixed but before any zip is sealed.
      */
-    protected async packageAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
+    protected async writeAndPostfixComponentLibraries(componentLibraries: ComponentLibraryConfiguration[]) {
+        if (!componentLibraries || componentLibraries.length === 0) {
+            return;
+        }
+
+        // Add breakpoint lines to the staging files and before publishing
+        util.log('Adding stop statements for active breakpoints in Component Libraries');
+
+        //validate breakpoints (and write STOPs for telnet) and postfix each complib's own files in parallel
+        await Promise.all(
+            this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
+                await this.breakpointManager.validateAndWriteBreakpointsForProject(compLibProject);
+                await compLibProject.postfixFiles();
+            })
+        );
+    }
+
+    /**
+     * Seal every component library's zip, install the installable ones (in order), and start static file
+     * hosting. Must run AFTER `applyLibraryReferencePostfixes` so each zip contains the rewritten `Library`
+     * statements.
+     */
+    protected async zipServeAndInstallComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
         if (!componentLibraries || componentLibraries.length === 0) {
             return;
         }
         const componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
 
-        // Add breakpoint lines to the staging files and before publishing
-        util.log('Adding stop statements for active breakpoints in Component Libraries');
-
-        //validate breakpoints (and write STOPs for telnet), postfix, and zip each complib in parallel — each targets distinct files
-        const packagePromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
-            await this.breakpointManager.validateAndWriteBreakpointsForProject(compLibProject);
-            await compLibProject.postfixFiles();
-            await compLibProject.zipPackage({ retainStagingFolder: true });
-        });
-
         const needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
         if (needToDeleteComplibs) {
-            await rokuDeploy.deleteAllComponentLibraries({
-                host: this.launchConfiguration.host,
-                password: this.launchConfiguration.password,
-                username: this.launchConfiguration.username || 'rokudev'
-            });
+            //deleteAllComponentLibraries pauses compile-error reporting (to swallow deletion-induced errors) and
+            //leaves it paused. Now that deletion is done and we're about to put libraries back on the device, settle
+            //(draining any lingering deletion output) and resume reporting so real install errors are surfaced.
+            await this.deleteAllComponentLibraries();
         }
 
+        //zip each complib in parallel
+        const packagePromises = this.projectManager.componentLibraryProjects.map(
+            compLibProject => compLibProject.zipPackage({ retainStagingFolder: true })
+        );
+
+        //install component libraries strictly in their declared order (which must be dependency order:
+        //a library may only depend on libraries declared before it). Each install is fully awaited before the
+        //next begins, and a failure aborts the launch. Installing out of order, or continuing past a failed
+        //install, leaves the device with dangling `Library` references that fail to compile.
         for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
             const compLibProject = this.projectManager.componentLibraryProjects[i];
 
@@ -1553,10 +1602,15 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     options.outFile = path.basename(componentLibraries[i].packagePath);
                 }
 
+                util.log(`Installing component library ${i} (${compLibProject.outFile})`);
                 try {
                     await rokuDeploy.publish(options);
+                    util.log(`Installed component library ${i} (${compLibProject.outFile})`);
                 } catch (error) {
-                    this.logger.error(`Error installing component library ${i}`, error);
+                    //do NOT continue installing further libraries (or publishing the main app) - a failed install
+                    //here means later libraries and the main app would reference a library that isn't on the device
+                    this.logger.error(`Error installing component library ${i} (${compLibProject.outFile})`, error);
+                    throw error;
                 }
             }
         }
@@ -1570,6 +1624,114 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             ...packagePromises,
             hostingPromise
         ]);
+    }
+
+    /**
+     * Delete every component library installed on the device.
+     *
+     * A complib can only depend on complibs the user declared BEFORE it, so the user's configured order is already
+     * dependency order. Deleting in the REVERSE of that order therefore deletes each complib before the ones it
+     * depends on, avoiding compile errors entirely. We use that reverse order as the delete priority.
+     *
+     * Anything still installed that the user did NOT configure (e.g. leftovers from a previous session) has no known
+     * order, so we fall back to compile-error tolerance for those: deleting a complib while another still references
+     * it fails with a compile error, which we ignore and retry later (after its dependent is gone). We finish when
+     * every complib is gone, and fail if the only complibs left are ones that can never be deleted.
+     */
+    private async deleteAllComponentLibraries() {
+        const deviceOptions = {
+            host: this.launchConfiguration.host,
+            password: this.launchConfiguration.password,
+            username: this.launchConfiguration.username || 'rokudev'
+        };
+
+        //The user's configured complibs, in REVERSE declaration order (dependents before their dependencies). A
+        //complib's position here is its delete priority; complibs the user didn't configure aren't in this list.
+        const deletePriority = this.projectManager.componentLibraryProjects
+            .map(complib => complib.outFile)
+            .reverse();
+        //sort key for a complib: its index in `deletePriority`, or Infinity (delete last) if it wasn't configured
+        const priorityOf = (fileName: string) => {
+            const index = deletePriority.indexOf(fileName);
+            return index === -1 ? Infinity : index;
+        };
+
+        const maxAttempts = 5;
+        //how many times we've tried to delete each complib, and the ones we've given up on after maxAttempts
+        const attempts = new Map<string, number>();
+        const failed = new Set<string>();
+
+        while (true) {
+            //re-fetch the installed complibs after each iteration: deleting one complib can cascade-delete others, so never delete a stale entry
+            const installed = (await rokuDeploy.listSideloadedPlugins(deviceOptions)).filter(x => x.appType === 'dcl');
+
+            const attemptCount = (complib: { archiveFileName: string }) => attempts.get(complib.archiveFileName) ?? 0;
+
+            //of the complibs we haven't given up on, pick the next to delete: fewest attempts first (spreads retries
+            //evenly so a dependent gets deleted before we circle back to a complib that previously failed), and among
+            //equal attempts, follow the reverse-configured delete priority (dependents before dependencies).
+            const candidates = installed.filter(complib => !failed.has(complib.archiveFileName));
+            const next = candidates.sort((a, b) =>
+                attemptCount(a) - attemptCount(b) ||
+                priorityOf(a.archiveFileName) - priorityOf(b.archiveFileName)
+            )[0];
+
+            //nothing left to try — done if the device is clear, otherwise hard-fail with whatever remains
+            if (!next) {
+                if (installed.length > 0) {
+                    throw new Error(`Failed to delete existing component libraries on device; ${installed.length} still installed: ${installed.map(x => x.archiveFileName).join(', ')}`);
+                }
+                return;
+            }
+
+            const fileName = next.archiveFileName;
+            attempts.set(fileName, (attempts.get(fileName) ?? 0) + 1);
+            try {
+                await rokuDeploy.deleteComponentLibrary({ ...deviceOptions, fileName: fileName });
+            } catch (error) {
+                //re-throw anything that isn't a dependency compile error (auth, network, etc.)
+                if (!this.isComponentLibraryDependencyCompileError(error)) {
+                    throw error;
+                }
+                //Deleting a complib that a dependent still references produces a compile error - but the delete may
+                //STILL have succeeded (the device reports both a compile error and 'Delete Succeeded'). If it actually
+                //deleted, treat it as done. Only if it did NOT succeed do we defer and retry it later.
+                if (this.wasComponentLibraryDeleteSuccessful(error)) {
+                    this.logger.trace(`Deleted '${fileName}' (device reported a compile error but the delete succeeded)`);
+                } else {
+                    //another not-yet-deleted complib still depends on this one. Give up on it once it's out of
+                    //attempts; otherwise leave it pending so we retry after its dependents are gone.
+                    if (attempts.get(fileName) >= maxAttempts) {
+                        failed.add(fileName);
+                    }
+                    this.logger.log(`Deferring delete of '${fileName}'; another component library still depends on it`);
+                }
+            }
+
+            //the Roku doesn't appreciate back-to-back deletes; give it a moment between requests
+            await util.sleep(10);
+        }
+    }
+
+    /**
+     * Is this error the device reporting a compile failure (which, during complib deletion, means another
+     * installed complib still references the one we tried to delete)?
+     */
+    private isComponentLibraryDependencyCompileError(error: any): boolean {
+        const message = `${error?.message ?? ''}`;
+        return /compile error|compilation failed/i.test(message);
+    }
+
+    /**
+     * Did the component-library delete actually succeed, even though the device also reported a compile error?
+     * When we delete a complib that a dependent still references, the device reports BOTH a compile error AND a
+     * `Delete Succeeded` message - meaning the complib really was removed. roku-deploy attaches the parsed device
+     * messages (`{ errors, infos, successes }`) to the thrown error as `.results`; we look for the success there.
+     * Absence of that success message means the delete did NOT happen, so it should be treated as a failure/retry.
+     */
+    private wasComponentLibraryDeleteSuccessful(error: any): boolean {
+        const successes: string[] = error?.results?.successes ?? [];
+        return successes.some(message => /delete succeeded/i.test(message));
     }
 
     protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments) {

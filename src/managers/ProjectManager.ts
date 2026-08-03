@@ -91,6 +91,71 @@ export class ProjectManager {
     }
 
     /**
+     * Rewrite `Library "file.brs"` statements across every project so a reference to a file exported by a
+     * component library points at that library's postfixed file name. Only rewritten when the consumer requires
+     * that library AND the library exports a file with that name (from its `libsource`).
+     *
+     * `bs_libs_required` is satisfied only by `bs_libs_provided`, and `sg_component_libs_required` only by
+     * `sg_component_libs_provided` - the two mechanisms never cross (though one library may declare both).
+     *
+     * Must run AFTER every component library has been staged and postfixed.
+     */
+    public async applyLibraryReferencePostfixes() {
+        for (const consumer of this.getAllProjects()) {
+            //skip the file walk unless at least one library we require is actually provided by a loaded library
+            //(matched per-mechanism, same as the rewrite below)
+            const hasProvidedLibrary = this.componentLibraryProjects.some(library =>
+                consumer.bsLibsRequired?.some(name => library.bsLibsProvided?.includes(name)) ||
+                consumer.sgComponentLibsRequired?.some(name => library.sgComponentLibsProvided?.includes(name))
+            );
+            if (!hasProvidedLibrary) {
+                continue;
+            }
+
+            await replaceInFile({
+                files: [
+                    path.join(consumer.stagingDir, '**/*.brs')
+                ],
+                //don't throw when a project has no brs files
+                allowEmptyPaths: true,
+                from: /(Library\s+")([^"]+)(")/gi,
+                to: (match: string, prefix: string, fileName: string, suffix: string) => {
+                    //which of the libraries we require via `bs_libs_required` exports this file? `bs_libs_required`
+                    //is satisfied ONLY by `bs_libs_provided`
+                    const bsLibrary = this.componentLibraryProjects.find(library =>
+                        consumer.bsLibsRequired?.some(name => library.bsLibsProvided?.includes(name)) &&
+                        library.getExportedLibraryFileNames().includes(fileName)
+                    );
+
+                    //same question for `sg_component_libs_required`, satisfied ONLY by `sg_component_libs_provided`
+                    const sgComponentLibrary = this.componentLibraryProjects.find(library =>
+                        consumer.sgComponentLibsRequired?.some(name => library.sgComponentLibsProvided?.includes(name)) &&
+                        library.getExportedLibraryFileNames().includes(fileName)
+                    );
+
+                    //two DIFFERENT libraries export this file, one per mechanism, so we can't know which one the
+                    //device would load. Warn, then make the educated guess: prefer the `bs_libs_provided` library.
+                    //(one library declaring both manifest keys is fine: it resolves to itself either way)
+                    if (bsLibrary && sgComponentLibrary && bsLibrary !== sgComponentLibrary) {
+                        this.logger.warn(
+                            `Ambiguous 'Library "${fileName}"' in '${consumer.stagingDir}': provided by both`,
+                            `bs_libs_provided '${bsLibrary.name}' and sg_component_libs_provided`,
+                            `'${sgComponentLibrary.name}'. Using '${bsLibrary.name}'.`
+                        );
+                    }
+
+                    //leave the statement untouched if it doesn't reference a file from a required library
+                    const library = bsLibrary ?? sgComponentLibrary;
+                    if (!library) {
+                        return match;
+                    }
+                    return `${prefix}${fileName.replace(/\.brs$/i, `${library.postfix}.brs`)}${suffix}`;
+                }
+            });
+        }
+    }
+
+    /**
      * Get staging-dir info for every project. The main project is always first; component libraries
      * follow in order. This main-first ordering is a contract that clients rely on, so it is covered
      * by unit tests to guard against regressions.
@@ -388,6 +453,17 @@ export class Project {
     public injectRdbOnDeviceComponent: boolean;
     public rdbFilesBasePath: string;
     public enhanceREPLCompletions: boolean;
+    /**
+     * The names of the component libraries this project imports via `bs_libs_required` in its manifest.
+     * Populated during `stage()`. Used to know which libraries' files a `Library` statement may reference.
+     */
+    public bsLibsRequired: string[] = [];
+
+    /**
+     * The names of the component libraries this project imports via `sg_component_libs_required` in its manifest.
+     * Populated during `stage()`. Used to know which libraries' files a `Library` statement may reference.
+     */
+    public sgComponentLibsRequired: string[] = [];
 
     /**
      * A BrighterScript project for the stagingDir
@@ -441,9 +517,26 @@ export class Project {
 
         await this.transformManifestWithBsConst();
 
+        await this.loadRequiredLibraryNames();
+
         await this.copyAndTransformRaleTrackerTask();
 
         await this.copyAndTransformRDB();
+    }
+
+    /**
+     * Read the staged manifest's `bs_libs_required` and `sg_component_libs_required` values and store the
+     * (comma-delimited) library names this project imports under each mechanism. The two lists are kept separate
+     * because a `bs_libs_required` entry is only ever satisfied by a `bs_libs_provided` library, and an
+     * `sg_component_libs_required` entry only by an `sg_component_libs_provided` library. These names are later
+     * matched against the libraries that actually provide them so that only `Library` statements referencing
+     * files from a required library get postfixed.
+     */
+    private async loadRequiredLibraryNames() {
+        const manifestPath = s`${this.stagingDir}/manifest`;
+        const manifestValues = await util.convertManifestToObject(manifestPath);
+        this.bsLibsRequired = util.splitAndTrim(manifestValues?.bs_libs_required);
+        this.sgComponentLibsRequired = util.splitAndTrim(manifestValues?.sg_component_libs_required);
     }
 
     /**
@@ -1022,6 +1115,21 @@ export class ComponentLibraryProject extends Project {
     public name: string;
 
     /**
+     * The library names this project broadcasts via `sg_component_libs_provided` in its manifest. Only a consumer's
+     * `sg_component_libs_required` entries may resolve against these. Loaded during `this.computeOutFileName`.
+     */
+    public sgComponentLibsProvided: string[] = [];
+
+    /**
+     * The library names this project broadcasts via `bs_libs_provided` in its manifest. Only a consumer's
+     * `bs_libs_required` entries may resolve against these. Loaded during `this.computeOutFileName`.
+     *
+     * A library may broadcast itself under both mechanisms by declaring both manifest keys, in which case this
+     * and `sgComponentLibsProvided` are both populated.
+     */
+    public bsLibsProvided: string[] = [];
+
+    /**
      * Takes a component Library and checks the outFile for replaceable values pulled from the libraries manifest
      * @param manifestPath the path to the manifest file to check
      */
@@ -1035,6 +1143,11 @@ export class ComponentLibraryProject extends Project {
 
         //load the component libary name from the manifest
         this.name = manifestValues.sg_component_libs_provided || manifestValues.bs_libs_provided;
+
+        //track each `provided` mechanism separately so `Library` reference postfixing never matches a
+        //`bs_libs_required` against an `sg_component_libs_provided` (or vice versa)
+        this.sgComponentLibsProvided = util.splitAndTrim(manifestValues.sg_component_libs_provided);
+        this.bsLibsProvided = util.splitAndTrim(manifestValues.bs_libs_provided);
 
         // search the outFile for replaceable values such as ${title}
         while ((renamingMatch = regexp.exec(this.outFile))) {
@@ -1120,6 +1233,8 @@ export class ComponentLibraryProject extends Project {
                 path.join(this.stagingDir, '**/*.xml'),
                 path.join(this.stagingDir, '**/*.brs')
             ],
+            //do not throw an error whenever we match zero files with the given glob (e.g. if there are no brs files or no xml files in the library)
+            allowEmptyPaths: true,
             from: /uri\s*=\s*"(.+)\.brs"/gi,
             to: (match: string) => {
                 // only alter file ending if it is a) pkg:/ url or b) relative url
@@ -1132,5 +1247,20 @@ export class ComponentLibraryProject extends Project {
                 }
             }
         });
+    }
+
+    /**
+     * The set of `.brs` file names (basename only, e.g. `LibAlpha.brs`) that this component library exports
+     * from its `libsource` folder. These are the only files a consuming project may reference in a `Library`
+     * statement, so only files under `libsource` are eligible - any other staged `.brs` (components, source, etc.)
+     * is NOT a library export and must never be rewritten. Computed from `fileMappings`, which retain the
+     * original (pre-postfix) file names.
+     */
+    public getExportedLibraryFileNames(): string[] {
+        return (this.fileMappings ?? [])
+            //only files inside a `libsource` folder are library exports
+            .filter(fileMapping => /(^|[\\/])libsource[\\/]/i.test(fileMapping.dest))
+            .map(fileMapping => path.basename(fileMapping.dest))
+            .filter(fileName => /\.brs$/i.test(fileName));
     }
 }

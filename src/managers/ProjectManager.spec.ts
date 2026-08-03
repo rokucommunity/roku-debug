@@ -6,11 +6,12 @@ import { rokuDeploy } from 'roku-deploy';
 import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { ComponentLibraryConstructorParams } from './ProjectManager';
-import { Project, ComponentLibraryProject, ProjectManager } from './ProjectManager';
+import { Project, ComponentLibraryProject, ProjectManager, componentLibraryPostfix } from './ProjectManager';
 import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
 import * as JSZip from 'jszip';
+import { undent } from 'undent';
 import { forceDeleteDir } from '../testHelpers.spec';
 
 /**
@@ -1665,6 +1666,57 @@ describe('Project', () => {
         });
     });
 
+    describe('loadRequiredLibraryNames', () => {
+        /**
+         * Write the given `manifestContents` to the project's staged manifest, run the loader, and return
+         * both parsed required-library lists.
+         */
+        async function loadFrom(manifestContents: string) {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/manifest`, manifestContents);
+            await project['loadRequiredLibraryNames']();
+            return {
+                bs: project.bsLibsRequired,
+                sg: project.sgComponentLibsRequired
+            };
+        }
+
+        it('parses a comma-delimited bs_libs_required list, trimming whitespace', async () => {
+            expect(await loadFrom(`bs_libs_required=LibAlpha, LibBeta ,LibCharlie`)).to.eql({
+                bs: ['LibAlpha', 'LibBeta', 'LibCharlie'],
+                sg: []
+            });
+        });
+
+        it('parses a comma-delimited sg_component_libs_required list, trimming whitespace', async () => {
+            expect(await loadFrom(`sg_component_libs_required=LibAlpha, LibBeta ,LibCharlie`)).to.eql({
+                bs: [],
+                sg: ['LibAlpha', 'LibBeta', 'LibCharlie']
+            });
+        });
+
+        it('parses both required lists independently when both are present', async () => {
+            expect(await loadFrom(undent`
+                bs_libs_required=BsOne,BsTwo
+                sg_component_libs_required=SgOne,SgTwo
+            `)).to.eql({
+                bs: ['BsOne', 'BsTwo'],
+                sg: ['SgOne', 'SgTwo']
+            });
+        });
+
+        it('returns empty arrays when neither required key is present', async () => {
+            expect(await loadFrom(`title=NoLibsHere`)).to.eql({ bs: [], sg: [] });
+        });
+
+        it('returns empty arrays when the manifest does not exist', async () => {
+            project.stagingDir = s`${tempPath}/does-not-exist`;
+            await project['loadRequiredLibraryNames']();
+            expect(project.bsLibsRequired).to.eql([]);
+            expect(project.sgComponentLibsRequired).to.eql([]);
+        });
+    });
+
     describe('copyAndTransformRaleTrackerTask', () => {
         let raleTrackerTaskFileLocation = s`${cwd}/TrackerTask.xml`;
         before(() => {
@@ -2106,6 +2158,40 @@ describe('ComponentLibraryProject', () => {
                 </component>
             `);
         });
+
+        it('does not crash when the library has no .brs files (only .xml)', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            //only an xml file exists in staging - the `**/*.brs` glob will match zero files
+            fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="CustomComponent.brs"/>
+                </component>
+            `);
+            //should not throw "No files match the pattern"
+            await project.postfixFiles();
+            //the xml reference should still get postfixed
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/components/Component1.xml`).toString()
+            ).to.eql(`
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="CustomComponent__lib0.brs"/>
+                </component>
+            `);
+        });
+
+        it('does not crash when the library has no .xml files (only .brs)', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            //only a brs file exists in staging - the `**/*.xml` glob will match zero files
+            fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, `sub main()\nend sub`);
+            //should not throw "No files match the pattern"
+            await project.postfixFiles();
+            //the brs file should be untouched (no uri references to rewrite)
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/source/main.brs`).toString()
+            ).to.eql(`sub main()\nend sub`);
+        });
     });
 
     describe('stage', () => {
@@ -2217,6 +2303,705 @@ describe('ComponentLibraryProject', () => {
             });
             await project.stage();
             expect(project.name).to.equal('SGLibrary');
+        });
+
+        /**
+         * Stage a component library whose manifest is exactly `manifestContents`, and return the two
+         * parsed `provided` library-name lists.
+         */
+        async function loadProvidedFrom(manifestContents: string) {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, manifestContents);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            return {
+                bs: project.bsLibsProvided,
+                sg: project.sgComponentLibsProvided
+            };
+        }
+
+        it('tracks bs_libs_provided and sg_component_libs_provided in separate lists', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                sg_component_libs_provided=SGLibrary
+                bs_libs_provided=BSLibrary
+            `)).to.eql({
+                bs: ['BSLibrary'],
+                sg: ['SGLibrary']
+            });
+        });
+
+        it('leaves the sg provided list empty when only bs_libs_provided is present', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                bs_libs_provided=BSLibrary
+            `)).to.eql({
+                bs: ['BSLibrary'],
+                sg: []
+            });
+        });
+
+        it('leaves the bs provided list empty when only sg_component_libs_provided is present', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                sg_component_libs_provided=SGLibrary
+            `)).to.eql({
+                bs: [],
+                sg: ['SGLibrary']
+            });
+        });
+
+        it('parses a comma-delimited provided list, trimming whitespace', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                bs_libs_provided=One, Two ,Three
+            `)).to.eql({
+                bs: ['One', 'Two', 'Three'],
+                sg: []
+            });
+        });
+
+        it('supports a library that broadcasts the SAME name under both mechanisms', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                sg_component_libs_provided=SharedName
+                bs_libs_provided=SharedName
+            `)).to.eql({
+                bs: ['SharedName'],
+                sg: ['SharedName']
+            });
+        });
+
+        it('leaves both provided lists empty when neither key is present', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+            `)).to.eql({ bs: [], sg: [] });
+        });
+    });
+
+    describe('applyLibraryReferencePostfixes', () => {
+        /**
+         * A compact description of a single project (the main app or a component library) in a test world.
+         */
+        interface ProjectSpec {
+            /** the library name(s) this project exports via `bs_libs_provided` (omit for the main project) */
+            bsLibsProvided?: string | string[];
+            /** the library names this project imports via `bs_libs_required` (comma-delimited in the real manifest) */
+            bsLibsRequired?: string[];
+            /** the library name(s) this project exports via `sg_component_libs_provided` */
+            sgComponentLibsProvided?: string | string[];
+            /** the library names this project imports via `sg_component_libs_required` */
+            sgComponentLibsRequired?: string[];
+            /** the staged files this project ships, by relative path (e.g. `libsource/Alpha.brs`, `components/Widget.brs`).
+             *  Only files under `libsource` count as library exports - that's what production decides from the path. */
+            files?: string[];
+            /** the `.brs` source files this project contains, keyed by relative path (these hold the `Library` statements) */
+            source?: Record<string, string>;
+        }
+
+        /**
+         * Build a world of projects from `specs` (the FIRST spec is the main project, the rest are component
+         * libraries), wire up each library's name/required-names/exported-files/postfix, run the manager's
+         * library-reference fixer, then return every project's rewritten source keyed by `name/relativePath`.
+         *
+         * This lets each test read as "given these libraries and these Library statements, here's what they become"
+         * without any per-test staging/manifest boilerplate.
+         */
+        /** every message the manager logged via `logger.warn` during the most recent `doTest` call */
+        let warnings: string[] = [];
+        /**
+         * How many times a `Library` statement was resolved during the most recent `doTest` call.
+         * `getExportedLibraryFileNames` is only reached from inside the `replaceInFile` callback, so a count of
+         * zero proves we never walked/rewrote any files.
+         */
+        let resolveCount = 0;
+
+        beforeEach(() => {
+            warnings = [];
+            resolveCount = 0;
+        });
+
+        async function doTest(specs: Record<string, ProjectSpec>) {
+            let sourceMapManager = new SourceMapManager();
+            let locationManager = new LocationManager(sourceMapManager);
+            let breakpointManager = new BreakpointManager(sourceMapManager, locationManager);
+            let manager = new ProjectManager({ locationManager: locationManager, breakpointManager: breakpointManager });
+
+            //capture warnings so tests can assert that the collision guard fired
+            sinon.stub(manager.logger, 'warn').callsFake((...args) => {
+                warnings.push(args.join(' '));
+                return undefined;
+            });
+
+            const names = Object.keys(specs);
+            const projectsByName: Record<string, any> = {};
+
+            names.forEach((name, index) => {
+                const spec = specs[name];
+                const projectStagingDir = s`${tempPath}/${name}-staging`;
+
+                const postfix = index === 0 ? '' : `${componentLibraryPostfix}${index - 1}`;
+                //fileMappings hold each staged file at its real (pre-postfix) relative path - postfixFiles renames
+                //files on disk but does not mutate fileMapping.dest, and production decides which files are library
+                //exports by whether the path is under `libsource`. The postfix comes from the project's `postfix` getter.
+                const fileMappings = (spec.files ?? []).map(relativePath => ({
+                    src: s`${tempPath}/${name}-root/${relativePath}`,
+                    dest: s`${projectStagingDir}/${relativePath}`
+                }));
+
+                //write this project's brs source files (the ones containing `Library` statements)
+                for (const [relativePath, contents] of Object.entries(spec.source ?? {})) {
+                    fsExtra.outputFileSync(s`${projectStagingDir}/${relativePath}`, contents);
+                }
+
+                //a bare string in the spec means a single provided library name
+                const toArray = (value: string | string[] | undefined) => (value === undefined ? [] : [value].flat());
+
+                const project: any = {
+                    name: spec.bsLibsProvided ?? spec.sgComponentLibsProvided,
+                    bsLibsProvided: toArray(spec.bsLibsProvided),
+                    sgComponentLibsProvided: toArray(spec.sgComponentLibsProvided),
+                    bsLibsRequired: spec.bsLibsRequired ?? [],
+                    sgComponentLibsRequired: spec.sgComponentLibsRequired ?? [],
+                    fileMappings: fileMappings,
+                    stagingDir: projectStagingDir,
+                    postfix: postfix,
+                    //use the real implementation so the helper exercises production logic instead of reimplementing it,
+                    //but count the calls so tests can prove whether we resolved any `Library` statement at all
+                    getExportedLibraryFileNames: function () {
+                        resolveCount++;
+                        return ComponentLibraryProject.prototype.getExportedLibraryFileNames.call(this);
+                    }
+                };
+                projectsByName[name] = { project, spec, stagingDir: projectStagingDir };
+
+                if (index === 0) {
+                    manager.mainProject = project;
+                } else {
+                    manager.componentLibraryProjects.push(project);
+                }
+            });
+
+            await manager.applyLibraryReferencePostfixes();
+
+            //read back every project's source so tests can assert the rewritten `Library` statements
+            const result: Record<string, string> = {};
+            for (const name of names) {
+                const { spec, stagingDir } = projectsByName[name];
+                for (const relativePath of Object.keys(spec.source ?? {})) {
+                    result[`${name}/${relativePath}`] = fsExtra.readFileSync(s`${stagingDir}/${relativePath}`).toString();
+                }
+            }
+            return result;
+        }
+
+        it('rewrites a Library statement for a file exported by a required library', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+        });
+
+        it('does NOT rewrite a Library statement when the consumer does not require any library', async () => {
+            const result = await doTest({
+                main: { source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            //Alpha is exported by lib1, but main never declared `bs_libs_required=LibOne`, so leave it alone
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+        });
+
+        it('does NOT rewrite when the required library does not export the referenced file', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Missing.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Missing.brs"`);
+        });
+
+        it('does NOT rewrite a reference to a library .brs file that lives OUTSIDE libsource', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Widget.brs"` } },
+                //Widget.brs is staged by lib1 but lives in components/, not libsource/, so it is not a library export
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs', 'components/Widget.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Widget.brs"`);
+        });
+
+        it('silently skips a required library name that no loaded library provides', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['DoesNotExist'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+        });
+
+        it('resolves an overlapping file name to the REQUIRED library, not another library that also exports it', async () => {
+            const result = await doTest({
+                main: { source: {} },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs', 'libsource/Beta.brs', 'libsource/Charlie.brs'] },
+                lib2: { bsLibsProvided: 'LibTwo', files: ['libsource/Alpha.brs', 'libsource/Beta.brs', 'libsource/Delta.brs'] },
+                //lib3 requires ONLY lib1, and references Alpha (in both libs), Charlie (lib1 only), and Delta (lib2 only)
+                lib3: {
+                    bsLibsProvided: 'LibThree', bsLibsRequired: ['LibOne'], source: {
+                        'source/lib3.brs': undent`
+                            Library "Alpha.brs"
+                            Library "Charlie.brs"
+                            Library "Delta.brs"
+                        `
+                    }
+                }
+            });
+            //Alpha -> lib1's postfix (NOT lib2's, even though lib2 also exports Alpha) because lib3 only requires LibOne
+            //Charlie -> lib1's postfix (unique to lib1)
+            //Delta -> UNCHANGED (only lib2 exports it, and lib3 does not require lib2)
+            expect(result['lib3/source/lib3.brs']).to.equal(undent`
+                Library "Alpha__lib0.brs"
+                Library "Charlie__lib0.brs"
+                Library "Delta.brs"
+            `);
+        });
+
+        it('rewrites references in a transitive chain (LibAlpha->LibBeta, LibCharlie->LibAlpha+LibBeta)', async () => {
+            const result = await doTest({
+                main: { source: {} },
+                libAlpha: { bsLibsProvided: 'LibAlpha', bsLibsRequired: ['LibBeta'], files: ['libsource/AlphaUtil.brs'], source: { 'source/alpha.brs': `Library "BetaUtil.brs"` } },
+                libBeta: { bsLibsProvided: 'LibBeta', files: ['libsource/BetaUtil.brs'] },
+                libCharlie: {
+                    bsLibsProvided: 'LibCharlie', bsLibsRequired: ['LibAlpha', 'LibBeta'], source: {
+                        'source/charlie.brs': undent`
+                            Library "AlphaUtil.brs"
+                            Library "BetaUtil.brs"
+                        `
+                    }
+                }
+            });
+            //libAlpha requires libBeta -> its reference to BetaUtil is postfixed with libBeta's postfix (index 2 -> __lib1)
+            expect(result['libAlpha/source/alpha.brs']).to.equal(`Library "BetaUtil__lib1.brs"`);
+            //libCharlie requires both -> AlphaUtil gets libAlpha's postfix (__lib0), BetaUtil gets libBeta's (__lib1)
+            expect(result['libCharlie/source/charlie.brs']).to.equal(undent`
+                Library "AlphaUtil__lib0.brs"
+                Library "BetaUtil__lib1.brs"
+            `);
+        });
+
+        it('rewrites references in the main project the same as in libraries', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+        });
+
+        it('does NOT rewrite a main project reference to a file from a library the main project does not require', async () => {
+            const result = await doTest({
+                //main requires ONLY lib1, but references files from both lib1 and lib2
+                main: {
+                    bsLibsRequired: ['LibOne'], source: {
+                        'source/main.brs': undent`
+                            Library "Alpha.brs"
+                            Library "Delta.brs"
+                        `
+                    }
+                },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] },
+                lib2: { bsLibsProvided: 'LibTwo', files: ['libsource/Delta.brs'] }
+            });
+            //Alpha -> lib1's postfix (main requires LibOne); Delta -> UNCHANGED (only lib2 has it, main does not require lib2)
+            expect(result['main/source/main.brs']).to.equal(undent`
+                Library "Alpha__lib0.brs"
+                Library "Delta.brs"
+            `);
+        });
+
+        it('resolves an overlapping file name in the main project to the REQUIRED library', async () => {
+            const result = await doTest({
+                //main requires ONLY lib2; both libs export Alpha, so Alpha must resolve to lib2's postfix (not lib1's)
+                main: { bsLibsRequired: ['LibTwo'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] },
+                lib2: { bsLibsProvided: 'LibTwo', files: ['libsource/Alpha.brs'] }
+            });
+            //lib1 is index 1 (__lib0), lib2 is index 2 (__lib1) -> Alpha resolves to lib2's __lib1
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib1.brs"`);
+        });
+
+        it('rewrites a lowercase `library` statement and preserves the keyword casing', async () => {
+            //libraries in the wild use a lowercase `library` keyword; only the file name should change
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`library "Alpha__lib0.brs"`);
+        });
+
+        it('handles a full dependency graph the same way the real sample does (app + 3 libs, mixed keyword casing)', async () => {
+            //mirrors the private-samples/code-library project: libs are declared leaf-first so postfix indexes line up,
+            //the app requires all 3 and references each, and libs reference their own dependencies with a lowercase keyword
+            const result = await doTest({
+                //app: requires all three, references one file from each
+                app: {
+                    bsLibsRequired: ['LibCharlie', 'LibBeta', 'LibAlpha'],
+                    source: {
+                        'source/main.brs': undent`
+                            Library "LibCharlie.brs"
+                            Library "LibBeta.brs"
+                            Library "LibAlpha.brs"
+                        `
+                    }
+                },
+                //LibCharlie: leaf dependency, requires nothing (index 1 -> __lib0)
+                LibCharlie: { bsLibsProvided: 'LibCharlie', files: ['libsource/LibCharlie.brs'] },
+                //LibBeta: requires LibCharlie (index 2 -> __lib1)
+                LibBeta: {
+                    bsLibsProvided: 'LibBeta', bsLibsRequired: ['LibCharlie'], files: ['libsource/LibBeta.brs'],
+                    source: { 'libsource/LibBeta.brs': `library "LibCharlie.brs"` }
+                },
+                //LibAlpha: requires LibBeta and LibCharlie (index 3 -> __lib2)
+                LibAlpha: {
+                    bsLibsProvided: 'LibAlpha', bsLibsRequired: ['LibBeta', 'LibCharlie'], files: ['libsource/LibAlpha.brs'],
+                    source: {
+                        'libsource/LibAlpha.brs': undent`
+                            library "LibBeta.brs"
+                            library "LibCharlie.brs"
+                        `
+                    }
+                }
+            });
+            //the app's references each resolve to the providing library's own index
+            expect(result['app/source/main.brs']).to.equal(undent`
+                Library "LibCharlie__lib0.brs"
+                Library "LibBeta__lib1.brs"
+                Library "LibAlpha__lib2.brs"
+            `);
+            //LibBeta references LibCharlie's file -> LibCharlie's index (__lib0), keyword stays lowercase
+            expect(result['LibBeta/libsource/LibBeta.brs']).to.equal(`library "LibCharlie__lib0.brs"`);
+            //LibAlpha references both of its dependencies -> each resolves to that dependency's index
+            expect(result['LibAlpha/libsource/LibAlpha.brs']).to.equal(undent`
+                library "LibBeta__lib1.brs"
+                library "LibCharlie__lib0.brs"
+            `);
+        });
+
+        describe('sg_component_libs vs bs_libs (the two mechanisms must never mix)', () => {
+            it('rewrites a Library statement for a file exported by a required sg component library', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['SgLibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SgLibOne', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+            });
+
+            it('does NOT satisfy bs_libs_required with an sg_component_libs_provided library', async () => {
+                const result = await doTest({
+                    //main declares `bs_libs_required=LibOne`, but lib1 only broadcasts LibOne via `sg_component_libs_provided`
+                    main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+            });
+
+            it('does NOT satisfy sg_component_libs_required with a bs_libs_provided library', async () => {
+                const result = await doTest({
+                    //main declares `sg_component_libs_required=LibOne`, but lib1 only broadcasts LibOne via `bs_libs_provided`
+                    main: { sgComponentLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+            });
+
+            it('resolves a library that broadcasts the same name under BOTH mechanisms, from either required list', async () => {
+                //lib1 declares both `bs_libs_provided=Shared` and `sg_component_libs_provided=Shared`, so a consumer
+                //using either `required` key resolves to it
+                const viaBs = await doTest({
+                    main: { bsLibsRequired: ['Shared'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'Shared', sgComponentLibsProvided: 'Shared', files: ['libsource/Alpha.brs'] }
+                });
+                expect(viaBs['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+
+                const viaSg = await doTest({
+                    main: { sgComponentLibsRequired: ['Shared'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'Shared', sgComponentLibsProvided: 'Shared', files: ['libsource/Alpha.brs'] }
+                });
+                expect(viaSg['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+            });
+
+            it('resolves a library that broadcasts DIFFERENT names under each mechanism, by the matching name only', async () => {
+                const result = await doTest({
+                    //lib1 is `BsName` to bs consumers and `SgName` to sg consumers
+                    main: {
+                        bsLibsRequired: ['BsName'], source: { 'source/main.brs': `Library "Alpha.brs"` }
+                    },
+                    lib1: { bsLibsProvided: 'BsName', sgComponentLibsProvided: 'SgName', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+
+                //the same name used through the WRONG mechanism does not resolve
+                const crossed = await doTest({
+                    main: { sgComponentLibsRequired: ['BsName'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsName', sgComponentLibsProvided: 'SgName', files: ['libsource/Alpha.brs'] }
+                });
+                expect(crossed['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+            });
+
+            it('resolves each required list against its own providers when two libraries share a provided name across mechanisms', async () => {
+                const result = await doTest({
+                    //main requires `Shared` under BOTH mechanisms; lib1 provides `Shared` via bs (and exports BsFile),
+                    //lib2 provides `Shared` via sg (and exports SgFile). Each file must resolve to its own library.
+                    main: {
+                        bsLibsRequired: ['Shared'],
+                        sgComponentLibsRequired: ['Shared'],
+                        source: {
+                            'source/main.brs': undent`
+                                Library "BsFile.brs"
+                                Library "SgFile.brs"
+                            `
+                        }
+                    },
+                    lib1: { bsLibsProvided: 'Shared', files: ['libsource/BsFile.brs'] },
+                    lib2: { sgComponentLibsProvided: 'Shared', files: ['libsource/SgFile.brs'] }
+                });
+                //lib1 is index 1 (__lib0), lib2 is index 2 (__lib1)
+                expect(result['main/source/main.brs']).to.equal(undent`
+                    Library "BsFile__lib0.brs"
+                    Library "SgFile__lib1.brs"
+                `);
+            });
+
+            it('does NOT rewrite when the consumer requires under the wrong mechanism even though the file name matches', async () => {
+                const result = await doTest({
+                    //main requires SgOne via bs_libs_required (wrong mechanism) and BsOne via sg_component_libs_required (also wrong)
+                    main: {
+                        bsLibsRequired: ['SgOne'],
+                        sgComponentLibsRequired: ['BsOne'],
+                        source: {
+                            'source/main.brs': undent`
+                                Library "SgFile.brs"
+                                Library "BsFile.brs"
+                            `
+                        }
+                    },
+                    lib1: { bsLibsProvided: 'BsOne', files: ['libsource/BsFile.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgOne', files: ['libsource/SgFile.brs'] }
+                });
+                //neither reference resolves, because each required name was declared under the other mechanism
+                expect(result['main/source/main.brs']).to.equal(undent`
+                    Library "SgFile.brs"
+                    Library "BsFile.brs"
+                `);
+            });
+
+            it('rewrites references from a mix of bs-required and sg-required libraries in the same project', async () => {
+                const result = await doTest({
+                    main: {
+                        bsLibsRequired: ['BsOne'],
+                        sgComponentLibsRequired: ['SgOne'],
+                        source: {
+                            'source/main.brs': undent`
+                                Library "BsFile.brs"
+                                Library "SgFile.brs"
+                            `
+                        }
+                    },
+                    lib1: { bsLibsProvided: 'BsOne', files: ['libsource/BsFile.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgOne', files: ['libsource/SgFile.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(undent`
+                    Library "BsFile__lib0.brs"
+                    Library "SgFile__lib1.brs"
+                `);
+            });
+
+            it('still requires the file to live under libsource for an sg component library', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['SgLibOne'], source: { 'source/main.brs': `Library "Widget.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SgLibOne', files: ['libsource/Alpha.brs', 'components/Widget.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Widget.brs"`);
+            });
+
+            it('silently skips an sg required library name that no loaded library provides', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['DoesNotExist'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SgLibOne', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+            });
+
+            it('resolves a library that provides MULTIPLE names under one mechanism', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['SecondName'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    //lib1 broadcasts two names via `sg_component_libs_provided=FirstName,SecondName`
+                    lib1: { sgComponentLibsProvided: ['FirstName', 'SecondName'], files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+            });
+
+            it('skips the file walk entirely when there are no component libraries at all', async () => {
+                const result = await doTest({
+                    main: { source: { 'source/main.brs': `Library "Alpha.brs"` } }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('skips the file walk when a library exists but the consumer requires nothing', async () => {
+                const result = await doTest({
+                    main: { source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('skips the file walk when the consumer requires a bs lib that nothing provides', async () => {
+                const result = await doTest({
+                    main: { bsLibsRequired: ['Nope'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('skips the file walk when the consumer requires an sg complib that nothing provides', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['Nope'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('skips the file walk when the required name is only provided under the OTHER mechanism', async () => {
+                const result = await doTest({
+                    //main requires `SharedName` via bs, but the only library providing `SharedName` does so via sg -
+                    //so nothing is resolvable and we must not walk the files
+                    main: { bsLibsRequired: ['SharedName'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SharedName', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('DOES walk the files when at least one required library is provided', async () => {
+                const result = await doTest({
+                    main: { bsLibsRequired: ['BsLib'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] }
+                });
+                //sanity check that resolveCount actually moves - otherwise the skip assertions above prove nothing
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+                expect(resolveCount).to.be.greaterThan(0);
+            });
+
+            it('prefers the bs lib and warns when a file name is exported through BOTH mechanisms', async () => {
+                const result = await doTest({
+                    //main requires `BsLib` via bs and `SgLib` via sg; both providers export a file named `Alpha.brs`,
+                    //so we can't know which one the device would load
+                    main: {
+                        bsLibsRequired: ['BsLib'],
+                        sgComponentLibsRequired: ['SgLib'],
+                        source: { 'source/main.brs': `Library "Alpha.brs"` }
+                    },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs'] }
+                });
+                //educated guess: the bs lib (lib1, __lib0) wins over the sg complib (lib2, __lib1)
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+                expect(warnings).to.have.lengthOf(1);
+                expect(warnings[0]).to.include('Alpha.brs');
+                expect(warnings[0]).to.include('BsLib');
+                expect(warnings[0]).to.include('SgLib');
+            });
+
+            it('prefers the bs lib regardless of which library was registered first', async () => {
+                const result = await doTest({
+                    //same as above, but the sg complib is registered BEFORE the bs lib, so a "first match wins"
+                    //implementation would pick the sg one. The bs lib must still win.
+                    main: {
+                        bsLibsRequired: ['BsLib'],
+                        sgComponentLibsRequired: ['SgLib'],
+                        source: { 'source/main.brs': `Library "Alpha.brs"` }
+                    },
+                    lib1: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs'] },
+                    lib2: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] }
+                });
+                //lib2 is the bs provider (index 2 -> __lib1), and it wins despite being registered second
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib1.brs"`);
+                expect(warnings).to.have.lengthOf(1);
+            });
+
+            it('postfixes the unambiguous files normally when one file name collides across mechanisms', async () => {
+                const result = await doTest({
+                    main: {
+                        bsLibsRequired: ['BsLib'],
+                        sgComponentLibsRequired: ['SgLib'],
+                        source: {
+                            'source/main.brs': undent`
+                                Library "Alpha.brs"
+                                Library "BsOnly.brs"
+                                Library "SgOnly.brs"
+                            `
+                        }
+                    },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs', 'libsource/BsOnly.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs', 'libsource/SgOnly.brs'] }
+                });
+                //the ambiguous `Alpha.brs` resolves to the bs lib; the rest resolve to their own library
+                expect(result['main/source/main.brs']).to.equal(undent`
+                    Library "Alpha__lib0.brs"
+                    Library "BsOnly__lib0.brs"
+                    Library "SgOnly__lib1.brs"
+                `);
+                expect(warnings).to.have.lengthOf(1);
+            });
+
+            it('does NOT warn when the same file name is provided by libraries the consumer requires under only ONE mechanism', async () => {
+                const result = await doTest({
+                    //both libs export `Alpha.brs`, but main only requires lib2 (via sg), so there's no ambiguity
+                    main: { sgComponentLibsRequired: ['SgLib'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib1.brs"`);
+                expect(warnings).to.be.empty;
+            });
+
+            it('does NOT warn when a single library provides the same file under both mechanisms', async () => {
+                const result = await doTest({
+                    //one library broadcasting both keys is legitimate - the postfix is the same either way
+                    main: {
+                        bsLibsRequired: ['Shared'],
+                        sgComponentLibsRequired: ['Shared'],
+                        source: { 'source/main.brs': `Library "Alpha.brs"` }
+                    },
+                    lib1: { bsLibsProvided: 'Shared', sgComponentLibsProvided: 'Shared', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+                expect(warnings).to.be.empty;
+            });
+
+            it('rewrites sg-required references between component libraries (not just the main project)', async () => {
+                const result = await doTest({
+                    main: { source: {} },
+                    libBeta: { sgComponentLibsProvided: 'SgBeta', files: ['libsource/BetaUtil.brs'] },
+                    libAlpha: {
+                        sgComponentLibsProvided: 'SgAlpha', sgComponentLibsRequired: ['SgBeta'],
+                        source: { 'source/alpha.brs': `Library "BetaUtil.brs"` }
+                    }
+                });
+                //libBeta is index 1 -> __lib0
+                expect(result['libAlpha/source/alpha.brs']).to.equal(`Library "BetaUtil__lib0.brs"`);
+            });
         });
     });
 });
