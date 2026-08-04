@@ -573,7 +573,7 @@ class Util {
             if (isRceByUrl(device)) {
                 return device.instanceUrl;
             }
-            return isRceById(device) ? device.id : device.esn;
+            return isRceById(device) ? String(device.id) : device.esn;
         }
         return device.host;
     }

@@ -43,8 +43,8 @@ describe('Util', () => {
 
         it('a token already on the device option wins over the env var', () => {
             process.env.ROKU_RCE_TOKEN = 'env-token';
-            expect(util.hydrateRceTokenFromEnv({ id: 'device-id', rceToken: 'config-token' })).to.eql({
-                id: 'device-id',
+            expect(util.hydrateRceTokenFromEnv({ id: 83, rceToken: 'config-token' })).to.eql({
+                id: 83,
                 rceToken: 'config-token'
             });
         });
@@ -66,7 +66,7 @@ describe('Util', () => {
         it('identifies each device addressing scheme without leaking credentials', () => {
             expect(util.getDeviceLabel({ host: '1.2.3.4' })).to.equal('1.2.3.4');
             expect(util.getDeviceLabel({ instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' })).to.equal('https://device.rce.roku.com/instance/abc');
-            expect(util.getDeviceLabel({ id: 'device-id', rceToken: 'secret' })).to.equal('device-id');
+            expect(util.getDeviceLabel({ id: 83, rceToken: 'secret' })).to.equal('83');
             expect(util.getDeviceLabel({ esn: 'esn-value', rceToken: 'secret' })).to.equal('esn-value');
             expect(util.getDeviceLabel(undefined)).to.equal(undefined);
         });

@@ -3143,7 +3143,7 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('labels id-addressed and esn-addressed cloud emulator devices by their identifier', () => {
-            (session as any).launchConfiguration = { device: { id: '83', rceToken: 'secret' } };
+            (session as any).launchConfiguration = { device: { id: 83, rceToken: 'secret' } };
             expect(session['deviceLabel']).to.equal('83');
             (session as any).launchConfiguration = { device: { esn: 'XY020078HH5S', rceToken: 'secret' } };
             expect(session['deviceLabel']).to.equal('XY020078HH5S');
