@@ -608,7 +608,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private normalizeLaunchConfig(config: LaunchConfiguration) {
         config.cwd ??= process.cwd();
         config.outDir ??= s`${config.cwd}/out`;
-        config.stagingDir ??= rokuDeploy.getStagingDir({ outDir: config.outDir, cwd: config.cwd });
+        config.stagingDir ??= util.getStagingDir({ outDir: config.outDir, cwd: config.cwd });
         config.componentLibrariesPort ??= 8080;
         config.packagePort ??= 80;
         config.remotePort ??= 8060;
@@ -1126,7 +1126,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             packagePort: this.launchConfiguration.packagePort,
             ecpPort: this.launchConfiguration.remotePort,
             //sideload the zip that was already built from the staging folder (or supplied via packagePath)
-            zip: this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipPath({ outDir: this.launchConfiguration.outDir }),
+            zip: this.launchConfiguration.packagePath ?? util.getOutputZipPath({ outDir: this.launchConfiguration.outDir }),
             // enable the debug protocol if true
             remoteDebug: this.enableDebugProtocol,
             //necessary for capturing compile errors from the protocol (has no effect on telnet)
@@ -1410,7 +1410,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
             await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
 
-            const packagePath = this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipPath({ outDir: this.launchConfiguration.outDir });
+            const packagePath = this.launchConfiguration.packagePath ?? util.getOutputZipPath({ outDir: this.launchConfiguration.outDir });
 
             if (!fsExtra.pathExistsSync(packagePath)) {
                 return this.shutdown(`Cancelling debug session. Package does not exist at '${packagePath}'`);
@@ -1549,7 +1549,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     username: this.launchConfiguration.username || 'rokudev',
                     packagePort: this.launchConfiguration.packagePort,
                     ecpPort: this.launchConfiguration.remotePort,
-                    zip: componentLibraries[i].packagePath ?? rokuDeploy.getOutputZipPath({ outDir: compLibProject.outDir, outFile: compLibProject.outFile }),
+                    zip: componentLibraries[i].packagePath ?? util.getOutputZipPath({ outDir: compLibProject.outDir, outFile: compLibProject.outFile }),
                     failOnCompileError: true,
                     appType: 'dcl',
                     //installing a component library should never close or delete the sideloaded channel

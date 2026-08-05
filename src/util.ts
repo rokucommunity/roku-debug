@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
+import * as path from 'path';
 import * as net from 'net';
 import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
@@ -19,6 +20,28 @@ import type { Logger } from '@rokucommunity/logger';
 const request = r as typeof requestType;
 
 class Util {
+    /**
+     * Resolve a project's staging folder the same way roku-deploy's `stage()` does: the default
+     * staging folder name inside `outDir`. roku-deploy does not expose this resolution, so it is
+     * rolled here and must stay in step with roku-deploy's own defaults.
+     */
+    public getStagingDir(options: { outDir?: string; cwd?: string }): string {
+        return path.resolve(options.cwd ?? process.cwd(), options.outDir ?? './out', '.roku-deploy-staging');
+    }
+
+    /**
+     * Resolve a project's output zip path the same way roku-deploy's `zip()` does: `outFile`
+     * inside `outDir`, with a `.zip` extension enforced. roku-deploy does not expose this
+     * resolution, so it is rolled here and must stay in step with roku-deploy's own defaults.
+     */
+    public getOutputZipPath(options: { outDir?: string; outFile?: string; cwd?: string }): string {
+        let out = path.resolve(options.cwd ?? process.cwd(), options.outDir ?? './out', options.outFile ?? 'roku-deploy.zip');
+        if (!out.toLowerCase().endsWith('.zip')) {
+            out += '.zip';
+        }
+        return out;
+    }
+
     /**
      * If the path does not have a trailing slash, one is appended to it
      * @param dirPath

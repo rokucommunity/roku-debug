@@ -1,6 +1,6 @@
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import { rokuDeploy, RokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
+import { rokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
 import * as fastGlob from 'fast-glob';
 import type { BreakpointManager } from './BreakpointManager';
@@ -354,7 +354,7 @@ export class Project {
             throw new Error('outDir is required');
         }
         this.outDir = fileUtils.standardizePath(params.outDir);
-        this.stagingDir = params.stagingDir ?? rokuDeploy.getStagingDir({ outDir: this.outDir });
+        this.stagingDir = params.stagingDir ?? util.getStagingDir({ outDir: this.outDir });
         this.bsConst = params.bsConst;
         this.sourceDirs = (params.sourceDirs ?? [])
             //standardize every sourcedir
@@ -373,7 +373,7 @@ export class Project {
      * The filename of the zip package that gets created from the staging folder (relative to `outDir`).
      * Component libraries override this with their computed out file name.
      */
-    public outFile = RokuDeploy.defaults.outFile;
+    public outFile = 'roku-deploy.zip';
     public packagePath: string;
     public sourceDirs: string[];
     public files: Array<FileEntry>;
@@ -953,7 +953,7 @@ export class Project {
             //make sure the output folder exists
             await fsExtra.ensureDir(this.outDir);
 
-            packagePath = rokuDeploy.getOutputZipPath({ outDir: this.outDir, outFile: this.outFile });
+            packagePath = util.getOutputZipPath({ outDir: this.outDir, outFile: this.outFile });
         }
 
         //ensure the manifest file exists in the staging folder
