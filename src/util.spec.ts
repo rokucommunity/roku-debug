@@ -128,6 +128,26 @@ describe('Util', () => {
         });
     });
 
+    describe('splitAndTrim', () => {
+        it('returns an empty array for a missing or blank value', () => {
+            expect(util.splitAndTrim(undefined)).to.eql([]);
+            expect(util.splitAndTrim('')).to.eql([]);
+            expect(util.splitAndTrim('   ')).to.eql([]);
+        });
+
+        it('splits on commas and trims whitespace', () => {
+            expect(util.splitAndTrim('LibAlpha, LibBeta ,LibCharlie')).to.eql(['LibAlpha', 'LibBeta', 'LibCharlie']);
+        });
+
+        it('handles a single entry', () => {
+            expect(util.splitAndTrim('LibAlpha')).to.eql(['LibAlpha']);
+        });
+
+        it('drops empty entries from trailing or doubled commas', () => {
+            expect(util.splitAndTrim('LibAlpha,,LibBeta,')).to.eql(['LibAlpha', 'LibBeta']);
+        });
+    });
+
     describe('convertManifestToObject', () => {
         let fileContents: string;
         let expectedManifestObject: Record<string, string>;
