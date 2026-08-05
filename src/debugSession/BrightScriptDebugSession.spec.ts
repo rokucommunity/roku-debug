@@ -18,6 +18,7 @@ import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brigh
 import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
+import { expectThrowsAsync } from '../testHelpers.spec';
 import { RendezvousTracker } from '../RendezvousTracker';
 import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
@@ -1136,7 +1137,8 @@ describe('BrightScriptDebugSession', () => {
 
             //simulate "launch" — stage in launchRequest, then write breakpoints + zip in configurationDoneRequest
             await session.prepareMainProject();
-            await session['packageMainProject']();
+            await session['writeMainProjectBreakpoints']();
+            await session['zipMainProject']();
 
             //remove the breakpoint
             args.breakpoints = [];
@@ -1861,22 +1863,32 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
-    describe('prepareAndHostComponentLibraries', () => {
-        //runs the two-phase complib flow that used to live in a single method, mirroring how the
-        //real launch flow now splits prepare (stage) from package-and-host (write+zip+install+host).
+    describe('prepareComponentLibraries / packageAndHostComponentLibraries', () => {
+        //runs the full complib flow in the same order launchRequest does: stage, then write+postfix,
+        //then the cross-project `Library` rewrite, then zip+install+host.
         async function runPrepareAndHost(componentLibraries: any[], port: number) {
             await session['prepareComponentLibraries'](componentLibraries);
-            await session['packageAndHostComponentLibraries'](componentLibraries, port);
+            await session['writeAndPostfixComponentLibraries'](componentLibraries);
+            await session.projectManager.applyLibraryReferencePostfixes();
+            await session['zipServeAndInstallComponentLibraries'](componentLibraries, port);
         }
 
         function stubDefaults() {
-            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            //deletion now reads the installed list and deletes each one directly; default to a device with nothing installed
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            session['rokuAdapter'] = <any>{};
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
             session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
+            session.projectManager.mainProject = <any>{
+                stagingDir: s`${tempDir}/main-staging`,
+                zipPackage: sinon.stub().resolves()
+            };
         }
 
         it('installs libraries sequentially when marked install=true', async () => {
@@ -1936,23 +1948,31 @@ describe('BrightScriptDebugSession', () => {
             expect(path.basename(options.zip)).to.equal('testLib.zip');
         });
 
-        it('logs error when publish fails and includes lib index', async () => {
+        it('logs the error AND fails the launch when a library install fails', async () => {
             stubDefaults();
             sinon.stub(rokuDeploy, 'sideload').rejects(new Error('Network error'));
 
-            await runPrepareAndHost([
+            //a failed install must abort the launch (not silently continue with a missing library)
+            await expectThrowsAsync(() => runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
-            ] as any, 8080);
+            ] as any, 8080));
 
-            expect(errorSpy.calledWith('Error installing component library 0')).to.be.true;
+            expect(errorSpy.calledWith('Error installing component library 0 (lib1.zip)')).to.be.true;
         });
 
         it('waits for stage and zip before installing (slow lib1, fast lib2)', async () => {
-            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            session['rokuAdapter'] = <any>{};
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
             session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
+            session.projectManager.mainProject = <any>{
+                stagingDir: s`${tempDir}/main-staging`,
+                zipPackage: sinon.stub().resolves()
+            };
 
             const events = [];
             sinon.stub(ComponentLibraryProject.prototype, 'stage').callsFake(async function(this: ComponentLibraryProject) {
@@ -1981,7 +2001,9 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('fails build when complib promise fails', async () => {
-            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            session['rokuAdapter'] = <any>{};
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
@@ -2003,7 +2025,8 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('skips deleting complibs when none are marked install=true', async () => {
-            const deleteStub = sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            const getInstalledStub = sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
@@ -2014,7 +2037,8 @@ describe('BrightScriptDebugSession', () => {
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: undefined }
             ] as any, 8080);
 
-            expect(deleteStub.called).to.be.false;
+            //no library is being installed, so we never touch the device to delete existing complibs
+            expect(getInstalledStub.called).to.be.false;
         });
 
         it('does not start server when no component libraries present', async () => {
@@ -2027,6 +2051,7 @@ describe('BrightScriptDebugSession', () => {
 
         it('calls packageTask for each component library if packageTask defined', async () => {
             stubDefaults();
+            sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', results: [] });
             const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
             await runPrepareAndHost([
@@ -2087,6 +2112,191 @@ describe('BrightScriptDebugSession', () => {
                 zip: s`${tempDir}/custom/cl2.zip`,
                 packageUploadOverrides: packageUploadOverrides2
             });
+        });
+    });
+
+    describe('deleteAllComponentLibraries', () => {
+        /**
+         * Simulate a device that has `installed` component libraries, where `dependencies[x]` lists the complibs
+         * that `x` depends on (references). Deleting a complib that another STILL-installed complib depends on
+         * produces a device compile error - mirroring real Roku behavior.
+         *
+         * By default a blocked delete does NOT remove the complib (it must be retried after its dependents are gone).
+         * If `deletesDespiteError` is true, a blocked delete instead rejects with a compile error that ALSO carries a
+         * `Delete Succeeded` message and removes the complib - mirroring the real device behavior where deleting a
+         * still-referenced complib both errors and succeeds.
+         *
+         * Stubs the device calls against this fake state and returns the recorded delete order.
+         */
+        function stubDevice(installed: string[], dependencies: Record<string, string[]> = {}, options: { deletesDespiteError?: boolean } = {}) {
+            const present = new Set(installed);
+            const deleteOrder: string[] = [];
+
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
+            session['launchConfiguration'].password = 'test123';
+            //deletion pauses/resumes compile-error reporting on the adapter; stub those so the flow works without a device
+            session['rokuAdapter'] = <any>{};
+
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').callsFake(() => Promise.resolve(
+                [...present].map(archiveFileName => ({ appType: 'dcl', archiveFileName } as any))
+            ));
+
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').callsFake((deleteOptions: any) => {
+                const target = deleteOptions.fileName;
+                //is any other still-installed complib depending on `target`?
+                const blockedBy = [...present].find(other => other !== target && (dependencies[other] ?? []).includes(target));
+                if (blockedBy) {
+                    const error: any = new Error(`Install Failure: Compilation Failed. (compile error &hb9) ... '${target}'`);
+                    //the device reports parsed messages on `.results`; a delete that succeeds-despite-error includes 'Delete Succeeded'
+                    error.results = {
+                        errors: [`Install Failure: Compilation Failed. (compile error &hb9) ... '${target}'`],
+                        infos: [],
+                        successes: options.deletesDespiteError ? ['Delete Succeeded'] : []
+                    };
+                    //when the device deletes it anyway, remove it from the installed set even though it errored
+                    if (options.deletesDespiteError) {
+                        deleteOrder.push(target);
+                        present.delete(target);
+                    }
+                    return Promise.reject(error);
+                }
+                deleteOrder.push(target);
+                present.delete(target);
+                return Promise.resolve(null);
+            });
+
+            return { deleteOrder, present, adapter: session['rokuAdapter'] as any };
+        }
+
+        /** point the session's configured complibs at the given outFiles, in declaration order */
+        function configureComplibs(outFiles: string[]) {
+            session.projectManager.componentLibraryProjects = outFiles.map(outFile => ({ outFile })) as any;
+        }
+
+        it('deletes configured libraries in REVERSE configured order (dependents before dependencies)', async () => {
+            //user configured C, B, A (so A depends on B+C, B depends on C) - all are installed
+            configureComplibs(['LibCharlie.zip', 'LibBeta.zip', 'LibAlpha.zip']);
+            const { deleteOrder, present } = stubDevice(
+                ['LibCharlie.zip', 'LibBeta.zip', 'LibAlpha.zip'],
+                { 'LibAlpha.zip': ['LibBeta.zip', 'LibCharlie.zip'], 'LibBeta.zip': ['LibCharlie.zip'] }
+            );
+
+            await session['deleteAllComponentLibraries']();
+
+            //reverse of configured order - and because that's dependency-correct, every delete succeeds first try
+            expect(deleteOrder).to.eql(['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip']);
+            expect(present.size).to.equal(0);
+        });
+
+        it('deletes everything even when the device lists them in a dependency-breaking order', async () => {
+            //the device reports installed complibs alphabetically (Alpha, Beta, Charlie), but we still delete safely
+            configureComplibs(['LibCharlie.zip', 'LibBeta.zip', 'LibAlpha.zip']);
+            const { deleteOrder, present } = stubDevice(
+                ['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip'],
+                { 'LibAlpha.zip': ['LibBeta.zip', 'LibCharlie.zip'], 'LibBeta.zip': ['LibCharlie.zip'] }
+            );
+
+            await session['deleteAllComponentLibraries']();
+
+            expect(deleteOrder).to.eql(['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip']);
+            expect(present.size).to.equal(0);
+        });
+
+        it('treats a delete that reports a compile error BUT "Delete Succeeded" as done (does not retry it)', async () => {
+            //the device deletes each complib even though deleting a still-referenced one also reports a compile error
+            configureComplibs(['LibCharlie.zip', 'LibBeta.zip', 'LibAlpha.zip']);
+            const { deleteOrder, present } = stubDevice(
+                ['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip'],
+                { 'LibAlpha.zip': ['LibBeta.zip', 'LibCharlie.zip'], 'LibBeta.zip': ['LibCharlie.zip'] },
+                { deletesDespiteError: true }
+            );
+            const deleteSpy = rokuDeploy.deleteComponentLibrary as SinonStub;
+
+            await session['deleteAllComponentLibraries']();
+
+            //every complib is gone, and each was deleted exactly once - the compile errors were NOT treated as failures to retry
+            expect(present.size).to.equal(0);
+            expect(deleteOrder).to.eql(['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip']);
+            expect(deleteSpy.callCount).to.equal(3);
+        });
+
+        it('retries a delete that reports a compile error and NO success message (delete did not happen)', async () => {
+            //unconfigured orphans (no known delete order): dep is depended-on by other. With no priority, the code may
+            //try to delete `dep` first - that's blocked and errors WITHOUT a success message, so it must NOT be counted
+            //as deleted and must be retried after `other` (its dependent) is gone.
+            configureComplibs([]);
+            const { deleteOrder, present } = stubDevice(
+                ['dep.zip', 'other.zip'],
+                { 'other.zip': ['dep.zip'] }
+                //deletesDespiteError defaults to false → a blocked delete errors and does NOT remove the complib
+            );
+            const deleteSpy = rokuDeploy.deleteComponentLibrary as SinonStub;
+
+            await session['deleteAllComponentLibraries']();
+
+            //everything is eventually deleted, and `other` (the dependent) comes out before `dep`
+            expect(present.size).to.equal(0);
+            expect(deleteOrder).to.eql(['other.zip', 'dep.zip']);
+            //`dep` was attempted while still blocked (and not removed), so there were more than 2 total delete calls
+            expect(deleteSpy.callCount).to.be.greaterThan(2);
+        });
+
+        it('deletes unconfigured (orphan) libraries too, using compile-error tolerance for their order', async () => {
+            //none of the installed complibs are configured; orphan2 depends on orphan1, so orphan2 must go first
+            configureComplibs([]);
+            const { deleteOrder, present } = stubDevice(
+                ['orphan1.zip', 'orphan2.zip'],
+                { 'orphan2.zip': ['orphan1.zip'] }
+            );
+
+            await session['deleteAllComponentLibraries']();
+
+            expect(deleteOrder).to.eql(['orphan2.zip', 'orphan1.zip']);
+            expect(present.size).to.equal(0);
+        });
+
+        it('deletes configured libraries first, then orphans', async () => {
+            //configured A (depends on nothing here) plus a leftover orphan that depends on A
+            configureComplibs(['LibAlpha.zip']);
+            const { deleteOrder, present } = stubDevice(
+                ['LibAlpha.zip', 'orphan.zip'],
+                { 'orphan.zip': ['LibAlpha.zip'] }
+            );
+
+            await session['deleteAllComponentLibraries']();
+
+            //orphan depends on LibAlpha, so it must be deleted before LibAlpha despite LibAlpha being configured
+            expect(deleteOrder).to.eql(['orphan.zip', 'LibAlpha.zip']);
+            expect(present.size).to.equal(0);
+        });
+
+        it('returns without error when no component libraries are installed', async () => {
+            configureComplibs(['LibAlpha.zip']);
+            const { deleteOrder } = stubDevice([]);
+
+            await session['deleteAllComponentLibraries']();
+
+            expect(deleteOrder).to.eql([]);
+        });
+
+        it('re-throws a non-compile error (e.g. auth/network failure) immediately', async () => {
+            configureComplibs(['LibAlpha.zip']);
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([{ appType: 'dcl', archiveFileName: 'LibAlpha.zip' } as any]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').rejects(new Error('Unauthorized. Please verify credentials'));
+
+            await expectThrowsAsync(() => session['deleteAllComponentLibraries']());
+        });
+
+        it('throws when a component library can never be deleted (after exhausting attempts)', async function() {
+            this.timeout(5000);
+            configureComplibs([]);
+            //a complib that always fails with a compile error and is never unblocked - should give up and throw
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([{ appType: 'dcl', archiveFileName: 'stuck.zip' } as any]);
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').rejects(new Error('Install Failure: Compilation Failed. (compile error &hb9)'));
+
+            await expectThrowsAsync(() => session['deleteAllComponentLibraries']());
         });
     });
 
@@ -2243,11 +2453,15 @@ describe('BrightScriptDebugSession', () => {
         describe('findVariableByPath', () => {
             it('walks childVariables down a multi-segment path', () => {
                 const variables = [
-                    makeVariable('a', { children: [
-                        makeVariable('b', { children: [
-                            makeVariable('c')
-                        ] })
-                    ] })
+                    makeVariable('a', {
+                        children: [
+                            makeVariable('b', {
+                                children: [
+                                    makeVariable('c')
+                                ]
+                            })
+                        ]
+                    })
                 ];
                 expect(session['findVariableByPath'](variables, ['a', 'b', 'c'], 0)?.name).to.eql('c');
             });
@@ -2353,10 +2567,12 @@ describe('BrightScriptDebugSession', () => {
 
             it('returns object members (fields + interface methods) for dot access, without globals', async () => {
                 seedLocals([
-                    makeVariable('person', { type: VariableType.AssociativeArray, children: [
-                        makeVariable('firstName'),
-                        makeVariable('lastName')
-                    ] })
+                    makeVariable('person', {
+                        type: VariableType.AssociativeArray, children: [
+                            makeVariable('firstName'),
+                            makeVariable('lastName')
+                        ]
+                    })
                 ]);
 
                 await requestCompletions('person.');
@@ -2431,10 +2647,12 @@ describe('BrightScriptDebugSession', () => {
 
             it('completes string keys with a text-edit that closes the access and omits interface methods', async () => {
                 seedLocals([
-                    makeVariable('m', { type: VariableType.AssociativeArray, children: [
-                        makeVariable('firstName'),
-                        makeVariable('lastName')
-                    ] })
+                    makeVariable('m', {
+                        type: VariableType.AssociativeArray, children: [
+                            makeVariable('firstName'),
+                            makeVariable('lastName')
+                        ]
+                    })
                 ]);
 
                 await requestCompletions('m["fo');
@@ -2481,10 +2699,12 @@ describe('BrightScriptDebugSession', () => {
 
             it('rewrites a non-identifier member as bracket access, consuming the dot', async () => {
                 seedLocals([
-                    makeVariable('m', { type: VariableType.AssociativeArray, children: [
-                        makeVariable('countrycode'),
-                        makeVariable('contry code') //a space -> not dot-accessible
-                    ] })
+                    makeVariable('m', {
+                        type: VariableType.AssociativeArray, children: [
+                            makeVariable('countrycode'),
+                            makeVariable('contry code') //a space -> not dot-accessible
+                        ]
+                    })
                 ]);
 
                 await requestCompletions('m.');
@@ -2531,10 +2751,12 @@ describe('BrightScriptDebugSession', () => {
 
             function seedArray() {
                 seedLocals([
-                    makeVariable('arr', { type: VariableType.Array, children: [
-                        makeVariable('0'),
-                        makeVariable('1')
-                    ] })
+                    makeVariable('arr', {
+                        type: VariableType.Array, children: [
+                            makeVariable('0'),
+                            makeVariable('1')
+                        ]
+                    })
                 ]);
             }
 
@@ -2942,8 +3164,11 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
             sinon.stub(session, 'prepareMainProject').resolves();
             sinon.stub(session as any, 'prepareComponentLibraries').resolves();
-            sinon.stub(session as any, 'packageMainProject').resolves();
-            sinon.stub(session as any, 'packageAndHostComponentLibraries').resolves();
+            sinon.stub(session as any, 'writeMainProjectBreakpoints').resolves();
+            sinon.stub(session as any, 'writeAndPostfixComponentLibraries').resolves();
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
+            sinon.stub(session as any, 'zipMainProject').resolves();
+            sinon.stub(session as any, 'zipServeAndInstallComponentLibraries').resolves();
             sinon.stub(session, 'initRendezvousTracking').resolves();
             // Prevent createRokuAdapter from replacing the mock rokuAdapter with a real adapter
             sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
@@ -3076,6 +3301,74 @@ describe('BrightScriptDebugSession', () => {
                 await session.launchRequest({} as any, launchConfiguration);
 
                 expect(getProgressEvents()).to.be.empty;
+            });
+        });
+
+        describe('library reference postfixing lifecycle', () => {
+            /**
+             * Stub the postfixing and zipping phases so each records a marker when it runs, then run the launch
+             * flow (launchRequest stages; the package phase runs in configurationDoneRequest) and return the
+             * recorded order. The write/postfix phases resolve on a later tick so the test proves the `Library`
+             * rewrite truly waits for BOTH write/postfix branches to finish.
+             */
+            async function recordPhaseOrder() {
+                const order: string[] = [];
+                sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+                sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
+                sinon.stub(session, 'initRendezvousTracking').resolves();
+                sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
+                sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
+                sinon.stub(session as any, 'tryProfilingConnectOnStart').resolves();
+                sinon.stub(session.rokuDeploy, 'keyPress').resolves();
+                sinon.stub(session as any, 'publish').resolves();
+                sinon.stub(session, 'setupProcessErrorHandlers');
+                //staging is a no-op for this test; we care about the write/postfix -> rewrite -> zip ordering
+                sinon.stub(session, 'prepareMainProject').resolves();
+                sinon.stub(session as any, 'prepareComponentLibraries').resolves();
+                rokuAdapter.connected = true;
+
+                //write+postfix phases: resolve on a later tick so a missing barrier would let the rewrite sneak in early
+                sinon.stub(session as any, 'writeMainProjectBreakpoints').callsFake(async () => {
+                    await util.sleep(20);
+                    order.push('postfix:main');
+                });
+                sinon.stub(session as any, 'writeAndPostfixComponentLibraries').callsFake(async () => {
+                    await util.sleep(10);
+                    order.push('postfix:complibs');
+                });
+                //the cross-project `Library` rewrite - must run AFTER all postfixing, BEFORE any zipping
+                sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').callsFake(() => {
+                    order.push('rewrite');
+                    return Promise.resolve();
+                });
+                //zip/upload phases - must run AFTER the rewrite
+                sinon.stub(session as any, 'zipMainProject').callsFake(() => {
+                    order.push('zip:main');
+                    return Promise.resolve();
+                });
+                sinon.stub(session as any, 'zipServeAndInstallComponentLibraries').callsFake(() => {
+                    order.push('zip:complibs');
+                    return Promise.resolve();
+                });
+
+                //launchRequest stages the projects; configurationDoneRequest runs the package phase
+                //(write/postfix -> rewrite -> zip) that this test asserts the ordering of
+                await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
+                return order;
+            }
+
+            it('rewrites `Library` references only after ALL projects are postfixed, and before any zipping', async function() {
+                this.timeout(5000);
+                const order = await recordPhaseOrder();
+
+                const rewriteIndex = order.indexOf('rewrite');
+                //both write/postfix phases complete before the rewrite starts
+                expect(order.indexOf('postfix:main')).to.be.lessThan(rewriteIndex);
+                expect(order.indexOf('postfix:complibs')).to.be.lessThan(rewriteIndex);
+                //all zipping/uploading happens after the rewrite
+                expect(order.indexOf('zip:main')).to.be.greaterThan(rewriteIndex);
+                expect(order.indexOf('zip:complibs')).to.be.greaterThan(rewriteIndex);
             });
         });
 
