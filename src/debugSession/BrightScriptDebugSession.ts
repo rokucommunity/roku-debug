@@ -681,7 +681,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             //do a DNS lookup for the host to fix issues with roku rejecting ECP. Only local devices
             //are addressed by host; other device types (like the Roku Cloud Emulator) pass through unchanged
             try {
-                this.launchConfiguration.device = await this.rokuDeploy.resolveDns(this.launchConfiguration.device);
+                this.launchConfiguration.device = await this.rokuDeploy.withDnsResolvedHost(this.launchConfiguration.device);
             } catch (e) {
                 return this.shutdown(`Could not resolve ip address for host '${this.deviceLabel}'`);
             }

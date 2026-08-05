@@ -93,7 +93,7 @@ describe('BrightScriptDebugSession', () => {
 
         //mock the rokuDeploy module with promises so we can have predictable tests
         session.rokuDeploy = <any>{
-            resolveDns: (device) => {
+            withDnsResolvedHost: (device) => {
                 return Promise.resolve(device);
             },
             stage: () => {
