@@ -5,11 +5,11 @@ import type { DeviceConfig, EcpResult } from 'roku-deploy';
 
 export class RokuECP {
     /**
-     * Send a raw ECP request through roku-deploy's `ecp()` transport, which routes a local device
+     * Send a raw ECP request through roku-deploy's `sendEcpRequest()` transport, which routes a local device
      * over plain HTTP and a Roku Cloud Emulator device through its instance's ECP proxy.
      */
     private async doRequest(route: string, options: BaseOptions, method: 'post' | 'get' = 'get'): Promise<EcpResult> {
-        return rokuDeploy.ecp(options.device, route, {
+        return rokuDeploy.sendEcpRequest(options.device, route, {
             method: method === 'post' ? 'POST' : 'GET',
             ecpPort: options.remotePort,
             timeout: options.requestOptions?.timeout

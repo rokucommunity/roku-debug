@@ -18,13 +18,13 @@ describe('RokuECP', () => {
     });
 
     describe('doRequest', () => {
-        it('routes the request through rokuDeploy.ecp as a GET by default', async () => {
+        it('routes the request through rokuDeploy.sendEcpRequest as a GET by default', async () => {
             let options = {
                 device: { host: '1.1.1.1' },
                 remotePort: 8080
             };
 
-            let stub = sinon.stub(rokuDeploy, 'ecp').resolves({
+            let stub = sinon.stub(rokuDeploy, 'sendEcpRequest').resolves({
                 status: 200,
                 body: '',
                 json: undefined
@@ -47,7 +47,7 @@ describe('RokuECP', () => {
                 }
             };
 
-            let stub = sinon.stub(rokuDeploy, 'ecp').resolves({
+            let stub = sinon.stub(rokuDeploy, 'sendEcpRequest').resolves({
                 status: 200,
                 body: '',
                 json: undefined
