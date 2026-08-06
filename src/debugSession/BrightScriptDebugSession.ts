@@ -407,6 +407,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private launchProgressId: string | undefined;
 
     /**
+     * Sends the deferred ProgressEndEvent for the launch progress bar (sendLaunchProgress holds it
+     * back for UX). Kept here so shutdown can flush it immediately: the adapter can exit before the
+     * delay elapses, which would otherwise leave the client's progress notification stuck open.
+     * Cleared once the event has been sent.
+     */
+    private flushLaunchProgressEnd: (() => void) | undefined;
+
+    /**
      * The first encountered compile error, will be used to send to the client as a runtime error (nicer UI presentation)
      */
     private compileError: BSDebugDiagnostic;
@@ -3488,9 +3496,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             } else {
                 const lastId = this.launchProgressId;
                 this.sendEvent(new ProgressUpdateEvent(lastId, message));
-                setTimeout(() => {
+                const endTimer = setTimeout(() => this.flushLaunchProgressEnd?.(), 1000); // add a slight delay before ending the progress to improve UX
+                this.flushLaunchProgressEnd = () => {
+                    clearTimeout(endTimer);
+                    this.flushLaunchProgressEnd = undefined;
                     this.sendEvent(new ProgressEndEvent(lastId, message));
-                }, 1000); // add a slight delay before ending the progress to improve UX
+                };
                 this.launchProgressId = undefined;
             }
         }
@@ -3598,6 +3609,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
         // Ensure any active launch progress bar is dismissed before showing error messages or the terminated event.
         this.sendLaunchProgress('end', 'Complete');
+        // 'end' defers its ProgressEndEvent for UX; deliver it right now (whether from the line above or from an
+        // earlier 'end' whose delay has not elapsed yet) - the adapter exits before a pending timer would fire,
+        // which would leave the client's progress notification stuck open
+        this.flushLaunchProgressEnd?.();
 
         //send the message FIRST before anything else. This improves the chances that the message will be displayed to the user
         try {

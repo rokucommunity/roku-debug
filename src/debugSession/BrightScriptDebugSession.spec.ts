@@ -1260,6 +1260,29 @@ describe('BrightScriptDebugSession', () => {
 
             expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
         });
+
+        it('flushes the deferred ProgressEndEvent when shutdown lands inside the end delay', async () => {
+            const clock = sinon.useFakeTimers();
+            const events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Waiting on application');
+            session['sendLaunchProgress']('end', 'Complete');
+            //the end event is held back for UX, so it has not been sent yet
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
+
+            const shutdownPromise = session.shutdown();
+            //the flush happens synchronously at the start of shutdown, before the delay elapses,
+            //so the notification cannot get stuck open when the adapter exits
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.have.lengthOf(1);
+
+            await clock.tickAsync(2000);
+            await shutdownPromise;
+
+            //the cancelled delay timer must not deliver a second end event
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.have.lengthOf(1);
+        });
     });
 
     describe('disconnectRequest', () => {
