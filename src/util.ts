@@ -18,7 +18,7 @@ import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
 import type { DeviceConfig, RokuDeploySocket } from 'roku-deploy';
-import { isRceById, isRceByUrl, isRceDeviceConfig } from 'roku-deploy';
+import { isRceDeviceConfigById, isRceDeviceConfigByUrl, isRceDeviceConfig } from 'roku-deploy';
 const request = r as typeof requestType;
 
 class Util {
@@ -605,10 +605,10 @@ class Util {
             return undefined;
         }
         if (isRceDeviceConfig(device)) {
-            if (isRceByUrl(device)) {
+            if (isRceDeviceConfigByUrl(device)) {
                 return device.instanceUrl;
             }
-            return isRceById(device) ? String(device.id) : device.esn;
+            return isRceDeviceConfigById(device) ? String(device.id) : device.esn;
         }
         return device.host;
     }
