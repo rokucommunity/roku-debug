@@ -398,7 +398,7 @@ export class DebugProtocolAdapter {
                 //if there were any unsuccessful breakpoint verifications, we need to ask the device to delete those breakpoints as they've gone missing on our side
                 if (unverifiableDeviceIds.length > 0) {
                     this.logger.warn('Could not find breakpoints to verify. Removing from device:', { deviceBreakpointIds: unverifiableDeviceIds });
-                    void this.client.removeBreakpoints(unverifiableDeviceIds);
+                    void this.client?.removeBreakpoints(unverifiableDeviceIds);
                 }
                 this.emit('breakpoints-verified', event);
             });
@@ -416,6 +416,16 @@ export class DebugProtocolAdapter {
             });
 
             await this.client.connect();
+
+            //the client can be torn down while the connect above is still settling (its 'close'
+            //handler clears `this.client` - for example the device immediately killing the session
+            //it accepted). Everything below configures a client that no longer exists, so bail and
+            //leave the queued breakpoint state for the next connection instead of crashing.
+            if (!this.client) {
+                this.logger.warn('Debug protocol client closed before setup completed; waiting for a new connection');
+                deferred.resolve();
+                return await deferred.promise;
+            }
 
             this.logger.log(`Connected to device`, { device: util.getDeviceLabel(this.options.device), connected: this.connected });
             this.connected = true;

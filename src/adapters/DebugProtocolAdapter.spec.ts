@@ -1,7 +1,7 @@
 /* eslint-disable prefer-arrow-callback */
 
 import { expect } from 'chai';
-import type { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
+import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import { ProtocolCapabilities } from '../debugProtocol/client/ProtocolCapabilities';
 import { DebugProtocolAdapter, KeyType } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
@@ -193,6 +193,33 @@ describe('DebugProtocolAdapter', function() {
         //load stack frames
         await adapter.getStackTrace(0);
     }
+
+    describe('createDebugProtocolClient', () => {
+        it('bails out gracefully when the client closes while connect is in flight', async () => {
+            sinon.stub(adapter, 'processTelnetOutput').callsFake(async () => { });
+            await adapter.connect();
+            //filters that were queued before the client existed
+            adapter['pendingExceptionBreakpointFilters'] = [{ filter: 'caught' }] as any;
+
+            sinon.stub(DebugProtocolClient.prototype, 'destroy').resolves();
+            sinon.stub(DebugProtocolClient.prototype, 'connect').callsFake(async function connect(this: DebugProtocolClient) {
+                //the device kills the session it just accepted: the client's emit defers a tick, so
+                //stay "connecting" long enough for the adapter's 'close' handler to run (clearing
+                //adapter.client) while this connect is still settling
+                (this as any).emit('close');
+                await util.sleep(10);
+                return true;
+            });
+
+            //must not throw (this used to crash reading setExceptionBreakpoints off the cleared client)
+            await adapter['createDebugProtocolClient']();
+
+            expect(adapter['client']).to.be.undefined;
+            expect(adapter['connected']).to.be.false;
+            //the queued filters survive for the next connection
+            expect(adapter['pendingExceptionBreakpointFilters']).to.eql([{ filter: 'caught' }]);
+        });
+    });
 
     describe('getStackTrace', () => {
         it('recovers when there are no stack frames', async () => {
