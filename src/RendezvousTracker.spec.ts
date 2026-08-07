@@ -5,7 +5,7 @@ import type { RendezvousHistory } from './RendezvousTracker';
 import { RendezvousTracker } from './RendezvousTracker';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
 import type { LaunchConfiguration } from './LaunchConfiguration';
-import { util } from './util';
+import { rokuDeploy } from 'roku-deploy';
 
 describe('BrightScriptFileUtils ', () => {
     let rendezvousTracker: RendezvousTracker;
@@ -15,7 +15,7 @@ describe('BrightScriptFileUtils ', () => {
 
     beforeEach(() => {
         let launchConfig = {
-            'host': '192.168.1.5',
+            'device': { host: '192.168.1.5' },
             'remotePort': 8060
         };
         let deviceInfo = {
@@ -390,32 +390,80 @@ describe('BrightScriptFileUtils ', () => {
         });
     });
 
-    describe('toggleEcpRendezvousTracking', () => {
-        async function doTest(statusCode: number, expectedValue: boolean) {
-            const stub = sinon.stub(util, 'httpPost').returns(Promise.resolve({ statusCode: statusCode } as any));
-            expect(
-                await rendezvousTracker.toggleEcpRendezvousTracking('track')
-            ).to.eq(expectedValue);
-            expect(
-                await rendezvousTracker.toggleEcpRendezvousTracking('untrack')
-            ).to.eql(expectedValue);
-            stub.restore();
-        }
+    describe('getEcpRendezvous', () => {
+        const rendezvousResult = {
+            trackingEnabled: true,
+            items: [{
+                id: '1',
+                startTime: '100',
+                endTime: '200',
+                lineNumber: '10',
+                file: 'pkg:/components/MyComponent.brs'
+            }]
+        };
 
-        it('returns true for 200 response code', async () => {
-            await doTest(200, true);
-            await doTest(202, true);
-            await doTest(205, true);
-            await doTest(299, true);
+        it('queries roku-deploy with the bare host when device is not set', async () => {
+            const queryRendezvousStub = sinon.stub(rokuDeploy, 'queryRendezvous').resolves(rendezvousResult);
+
+            const result = await rendezvousTracker.getEcpRendezvous();
+
+            expect(queryRendezvousStub.getCall(0).args).to.eql([{
+                device: { host: '192.168.1.5' },
+                ecpPort: 8060
+            }]);
+            expect(result).to.eql(rendezvousResult);
         });
 
-        it('returns true for 200 response code', async () => {
-            await doTest(0, false);
-            await doTest(100, false);
-            await doTest(301, false);
-            await doTest(401, false);
-            await doTest(404, false);
-            await doTest(500, false);
+        it('passes an RCE device config through to roku-deploy', async () => {
+            const rceDeviceConfig = { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' };
+            rendezvousTracker['launchConfiguration'].device = rceDeviceConfig;
+            const queryRendezvousStub = sinon.stub(rokuDeploy, 'queryRendezvous').resolves(rendezvousResult);
+
+            const result = await rendezvousTracker.getEcpRendezvous();
+
+            expect(queryRendezvousStub.getCall(0).args[0].device).to.equal(rceDeviceConfig);
+            expect(result).to.eql(rendezvousResult);
+        });
+    });
+
+    describe('toggleEcpRendezvousTracking', () => {
+        it('returns true when roku-deploy succeeds', async () => {
+            const setRendezvousTrackingStub = sinon.stub(rokuDeploy, 'setRendezvousTracking').resolves(true);
+
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('track')).to.be.true;
+            expect(setRendezvousTrackingStub.getCall(0).args).to.eql([{
+                device: { host: '192.168.1.5' },
+                enabled: true,
+                ecpPort: 8060
+            }]);
+
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('untrack')).to.be.true;
+            expect(setRendezvousTrackingStub.getCall(1).args).to.eql([{
+                device: { host: '192.168.1.5' },
+                enabled: false,
+                ecpPort: 8060
+            }]);
+        });
+
+        it('returns false when roku-deploy throws', async () => {
+            sinon.stub(rokuDeploy, 'setRendezvousTracking').rejects(new Error('boom'));
+
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('track')).to.be.false;
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('untrack')).to.be.false;
+        });
+
+        it('passes an RCE device config through to roku-deploy', async () => {
+            const rceDeviceConfig = { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' };
+            rendezvousTracker['launchConfiguration'].device = rceDeviceConfig;
+            const setRendezvousTrackingStub = sinon.stub(rokuDeploy, 'setRendezvousTracking').resolves(true);
+
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('track')).to.be.true;
+            expect(setRendezvousTrackingStub.getCall(0).args[0].device).to.equal(rceDeviceConfig);
+            expect(setRendezvousTrackingStub.getCall(0).args[0].enabled).to.equal(true);
+
+            expect(await rendezvousTracker.toggleEcpRendezvousTracking('untrack')).to.be.true;
+            expect(setRendezvousTrackingStub.getCall(1).args[0].device).to.equal(rceDeviceConfig);
+            expect(setRendezvousTrackingStub.getCall(1).args[0].enabled).to.equal(false);
         });
     });
 

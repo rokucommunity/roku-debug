@@ -8,12 +8,19 @@ import { standardizePath as s } from 'brighterscript';
 import { createLogger } from './logging';
 import { rokuECP } from './RokuECP';
 import { util } from './util';
+import { isLocalDeviceConfig } from 'roku-deploy';
+import type { DeviceConfig, LocalDeviceConfig } from 'roku-deploy';
 
 /**
  * Configuration interface for Perfetto tracing
  */
 interface PerfettoConfig {
-    host: string;
+    /**
+     * The roku-deploy device config for the target device. The perfetto trace WebSocket connects
+     * directly to the device's ECP port, so tracing currently requires a local device (one with a
+     * host); ECP commands route through roku-deploy and work for any device.
+     */
+    device: DeviceConfig;
     enabled?: boolean;
     dir?: string;
     filename?: string;
@@ -119,7 +126,8 @@ export class PerfettoManager {
     }
 
     private createWebSocket() {
-        const url = `ws://${this.config.host}:${this.config.remotePort}/perfetto-session`;
+        const device = this.config.device as LocalDeviceConfig;
+        const url = `ws://${device.host}:${this.config.remotePort}/perfetto-session`;
         this.socket = new WebSocket(url);
         return this.socket;
     }
@@ -129,8 +137,11 @@ export class PerfettoManager {
      * @param includeResultOnStop whether to include the file path when the 'stop' event fires. This should be false if the caller is going to emit their own 'stop' event (like when heapSnapshot is the activator of tracing.
      */
     public async startTracing(options?: { excludeResultOnStop: boolean }): Promise<void> {
-        if (!this.config.host) {
-            throw this.emitError(new Error('No host configured for Perfetto tracing'));
+        //the trace websocket connects straight to the device's ECP port, so only host-addressed
+        //(local) devices are supported for now
+        const device = this.config.device;
+        if (!device || !isLocalDeviceConfig(device) || !device.host) {
+            throw this.emitError(new Error('Perfetto tracing requires a device with a host'));
         }
 
         try {
@@ -293,11 +304,11 @@ export class PerfettoManager {
      * Enable tracing on the Roku device. This returns true if we were successful, and throws if we we failed to enable
      */
     public async enableTracing(): Promise<boolean> {
-        this.logger.log(`Enabling Perfetto tracing on channel ${this.config.channelId} at host ${this.config.host}`);
+        this.logger.log(`Enabling Perfetto tracing on channel ${this.config.channelId} on device ${util.getDeviceLabel(this.config.device)}`);
 
         try {
             const result = await rokuECP.enablePerfettoTracing({
-                host: this.config.host,
+                device: this.config.device,
                 remotePort: this.config.remotePort,
                 channelId: this.config.channelId
             });
@@ -465,7 +476,7 @@ export class PerfettoManager {
 
             await rokuECP.captureHeapSnapshot({
                 channelId: this.config.channelId,
-                host: this.config.host,
+                device: this.config.device,
                 remotePort: this.config.remotePort
             });
 

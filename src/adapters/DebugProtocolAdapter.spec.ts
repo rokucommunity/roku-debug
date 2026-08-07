@@ -1,7 +1,7 @@
 /* eslint-disable prefer-arrow-callback */
 
 import { expect } from 'chai';
-import type { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
+import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 import { ProtocolCapabilities } from '../debugProtocol/client/ProtocolCapabilities';
 import { DebugProtocolAdapter, KeyType } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
@@ -28,8 +28,48 @@ import { RemoveBreakpointsRequest } from '../debugProtocol/events/requests/Remov
 import type { AfterSendRequestEvent } from '../debugProtocol/client/DebugProtocolClientPlugin';
 import { GenericV3Response } from '../debugProtocol/events/responses/GenericV3Response';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { Socket } from 'net';
+import { EventEmitter } from 'events';
 const sinon = createSandbox();
+
+/**
+ * Minimal fake standing in for roku-deploy's RokuDeploySocket. A real RokuDeploySocket is itself an
+ * EventEmitter ('connect'|'ready'|'data'|'close'|'error', ...), so extending Node's EventEmitter
+ * directly gives correct on/removeListener/emit semantics.
+ */
+class FakeRokuDeploySocket extends EventEmitter {
+    public writtenChunks: Array<string | Buffer> = [];
+
+    public destroyed = false;
+
+    /**
+     * Mirrors RokuDeploySocket#connect(): emits 'connect' then 'ready', then invokes the connect
+     * listener, exactly like net.Socket does.
+     */
+    public connect(connectListener?: () => void): this {
+        this.emit('connect');
+        this.emit('ready');
+        connectListener?.();
+        return this;
+    }
+
+    public write(data: string | Buffer): boolean {
+        this.writtenChunks.push(data);
+        return true;
+    }
+
+    public destroy(): this {
+        this.destroyed = true;
+        return this;
+    }
+
+    public end(): this {
+        return this;
+    }
+
+    public setTimeout(timeout: number, callback?: () => void): this {
+        return this;
+    }
+}
 
 let cwd = s`${process.cwd()}`;
 let tmpDir = s`${cwd}/.tmp`;
@@ -60,9 +100,11 @@ describe('DebugProtocolAdapter', function() {
 
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
+        //`device` addresses the adapter's client sockets; `host` remains only as the DebugProtocolServer bind address
         const options = {
             controlPort: undefined as number,
-            host: '127.0.0.1'
+            host: '127.0.0.1',
+            device: { host: '127.0.0.1' }
         };
         const sourcemapManager = new SourceMapManager();
         const locationManager = new LocationManager(sourcemapManager);
@@ -151,6 +193,33 @@ describe('DebugProtocolAdapter', function() {
         //load stack frames
         await adapter.getStackTrace(0);
     }
+
+    describe('createDebugProtocolClient', () => {
+        it('bails out gracefully when the client closes while connect is in flight', async () => {
+            sinon.stub(adapter, 'processTelnetOutput').callsFake(async () => { });
+            await adapter.connect();
+            //filters that were queued before the client existed
+            adapter['pendingExceptionBreakpointFilters'] = [{ filter: 'caught' }] as any;
+
+            sinon.stub(DebugProtocolClient.prototype, 'destroy').resolves();
+            sinon.stub(DebugProtocolClient.prototype, 'connect').callsFake(async function connect(this: DebugProtocolClient) {
+                //the device kills the session it just accepted: the client's emit defers a tick, so
+                //stay "connecting" long enough for the adapter's 'close' handler to run (clearing
+                //adapter.client) while this connect is still settling
+                (this as any).emit('close');
+                await util.sleep(10);
+                return true;
+            });
+
+            //must not throw (this used to crash reading setExceptionBreakpoints off the cleared client)
+            await adapter['createDebugProtocolClient']();
+
+            expect(adapter['client']).to.be.undefined;
+            expect(adapter['connected']).to.be.false;
+            //the queued filters survive for the next connection
+            expect(adapter['pendingExceptionBreakpointFilters']).to.eql([{ filter: 'caught' }]);
+        });
+    });
 
     describe('getStackTrace', () => {
         it('recovers when there are no stack frames', async () => {
@@ -770,10 +839,9 @@ describe('DebugProtocolAdapter', function() {
         it('does not crash and triggers shutdown when the socket errors after the connection is established', async () => {
             // Stub the settle method so processTelnetOutput completes without a real connection
             sinon.stub(adapter as any, 'settleCompileClient').resolves('');
-            // Stub Socket.prototype.connect so it doesn't attempt a real connection
-            sinon.stub(Socket.prototype, 'connect').callsFake(function(this: Socket) {
-                return this;
-            });
+            // Inject a fake telnet socket instead of opening a real one
+            const fakeRokuDeploySocket = new FakeRokuDeploySocket();
+            sinon.stub(adapter as any, 'createRokuDeploySocket').returns(fakeRokuDeploySocket);
 
             await adapter.processTelnetOutput();
 

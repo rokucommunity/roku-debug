@@ -1,5 +1,6 @@
 import * as EventEmitter from 'events';
-import { Socket } from 'net';
+import { createRokuDeploySocket } from 'roku-deploy';
+import type { RokuDeploySocket, SocketOptions } from 'roku-deploy';
 import { DiagnosticSeverity, util as bscUtil } from 'brighterscript';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
 import { CompileErrorProcessor } from '../CompileErrorProcessor';
@@ -73,7 +74,7 @@ export class DebugProtocolAdapter {
      */
     public connected: boolean;
 
-    private compileClient: Socket;
+    private compileClient: RokuDeploySocket;
     private compileErrorProcessor: CompileErrorProcessor;
     private emitter: EventEmitter;
     private chanperfTracker: ChanperfTracker;
@@ -231,7 +232,7 @@ export class DebugProtocolAdapter {
      * @param client
      * @param maxWaitMilliseconds
      */
-    private settleCompileClient(client: Socket, maxWaitMilliseconds = 400) {
+    private settleCompileClient(client: RokuDeploySocket, maxWaitMilliseconds = 400) {
         return new Promise<string>((resolve) => {
             let timeoutStarted = false;
             let callCount = -1;
@@ -278,6 +279,14 @@ export class DebugProtocolAdapter {
      */
     public onReady() {
         return this.firstConnectDeferred.promise;
+    }
+
+    /**
+     * Create the transport used to reach the device's BrightScript console. Extracted to a
+     * protected method so tests can substitute a fake socket.
+     */
+    protected createRokuDeploySocket(options: SocketOptions): RokuDeploySocket {
+        return createRokuDeploySocket(options);
     }
 
     /**
@@ -389,7 +398,7 @@ export class DebugProtocolAdapter {
                 //if there were any unsuccessful breakpoint verifications, we need to ask the device to delete those breakpoints as they've gone missing on our side
                 if (unverifiableDeviceIds.length > 0) {
                     this.logger.warn('Could not find breakpoints to verify. Removing from device:', { deviceBreakpointIds: unverifiableDeviceIds });
-                    void this.client.removeBreakpoints(unverifiableDeviceIds);
+                    void this.client?.removeBreakpoints(unverifiableDeviceIds);
                 }
                 this.emit('breakpoints-verified', event);
             });
@@ -408,7 +417,17 @@ export class DebugProtocolAdapter {
 
             await this.client.connect();
 
-            this.logger.log(`Connected to device`, { host: this.options.host, connected: this.connected });
+            //the client can be torn down while the connect above is still settling (its 'close'
+            //handler clears `this.client` - for example the device immediately killing the session
+            //it accepted). Everything below configures a client that no longer exists, so bail and
+            //leave the queued breakpoint state for the next connection instead of crashing.
+            if (!this.client) {
+                this.logger.warn('Debug protocol client closed before setup completed; waiting for a new connection');
+                deferred.resolve();
+                return await deferred.promise;
+            }
+
+            this.logger.log(`Connected to device`, { device: util.getDeviceLabel(this.options.device), connected: this.connected });
             this.connected = true;
             this.isAppRunning = true;
             this.handleStartupIfReady();
@@ -463,7 +482,11 @@ export class DebugProtocolAdapter {
 
         let deferred = defer();
         try {
-            this.compileClient = new Socket({ allowHalfOpen: false });
+            //normalizeAdapterOptions guarantees `device` is a concrete device config
+            const device = this.options.device;
+            const deviceLabel = util.getDeviceLabel(device);
+
+            this.compileClient = this.createRokuDeploySocket({ device: device, port: this.options.brightScriptConsolePort });
             util.registerSocketLogging(this.compileClient, this.logger, 'CompileClient');
 
             this.compileErrorProcessor.on('diagnostics', (errors) => {
@@ -480,11 +503,11 @@ export class DebugProtocolAdapter {
             //After a successful connection the deferred is already resolved, so a post-connection
             //socket error (e.g. ECONNRESET on device disconnect) must not crash the process.
             this.compileClient.on('error', (err) => {
-                deferred.tryReject(new Error(`Error with connection to: ${this.options.host}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
+                deferred.tryReject(new Error(`Error with connection to: ${deviceLabel}:${this.options.brightScriptConsolePort} \n\n ${err.message} `));
             });
-            this.logger.info('Connecting via telnet to gather compile info', { host: this.options.host, port: this.options.brightScriptConsolePort });
-            this.compileClient.connect(this.options.brightScriptConsolePort, this.options.host, () => {
-                this.logger.log(`CONNECTED via telnet to gather compile info`, { host: this.options.host, port: this.options.brightScriptConsolePort });
+            this.logger.info('Connecting via telnet to gather compile info', { device: deviceLabel, port: this.options.brightScriptConsolePort });
+            this.compileClient.connect(() => {
+                this.logger.log(`CONNECTED via telnet to gather compile info`, { device: deviceLabel, port: this.options.brightScriptConsolePort });
             });
 
             this.logger.debug('Waiting for the compile client to settle');
@@ -493,14 +516,14 @@ export class DebugProtocolAdapter {
             this.logger.trace('Settled logs:', settledLogs);
 
             if (settledLogs.trim().startsWith('Console connection is already in use.')) {
-                throw new SocketConnectionInUseError(`Telnet connection ${this.options.host}:${this.options.brightScriptConsolePort} already is use`, {
+                throw new SocketConnectionInUseError(`Telnet connection ${deviceLabel}:${this.options.brightScriptConsolePort} already is use`, {
                     port: this.options.brightScriptConsolePort,
-                    host: this.options.host
+                    host: deviceLabel
                 });
             }
 
             let lastPartialLine = '';
-            this.compileClient.on('data', (buffer) => {
+            this.compileClient.on('data', (buffer: Buffer) => {
                 let responseText = buffer.toString();
                 this.logger.info('CompileClient received data', { responseText });
 

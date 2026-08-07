@@ -18,7 +18,7 @@ describe('Profiling/Tracing Integration Tests', () => {
 
     beforeEach(() => {
         perfettoManager = new PerfettoManager({
-            host: '192.168.1.100',
+            device: { host: '192.168.1.100' },
             enabled: true,
             dir: s`${tempDir}/profiling`,
             filename: 'test_${timestamp}.perfetto-trace',
@@ -68,7 +68,7 @@ describe('Profiling/Tracing Integration Tests', () => {
     describe('TC-03: connectOnStart Behavior', () => {
         it('should create manager with connectOnStart: false by default', () => {
             const manager = new PerfettoManager({
-                host: '192.168.1.100',
+                device: { host: '192.168.1.100' },
                 enabled: true
             });
             // connectOnStart should not cause auto-start, just config storage
@@ -77,7 +77,7 @@ describe('Profiling/Tracing Integration Tests', () => {
 
         it('should store connectOnStart: true in config', () => {
             const manager = new PerfettoManager({
-                host: '192.168.1.100',
+                device: { host: '192.168.1.100' },
                 enabled: true,
                 connectOnStart: true
             } as any);
@@ -176,7 +176,7 @@ describe('Profiling/Tracing Integration Tests', () => {
         it('should generate unique filenames using sequence numbers', () => {
             // Create manager with sequence-based filename
             const manager = new PerfettoManager({
-                host: '192.168.1.100',
+                device: { host: '192.168.1.100' },
                 enabled: true,
                 dir: s`${tempDir}/profiling`,
                 filename: 'test_${sequence}.perfetto-trace',
@@ -276,21 +276,21 @@ describe('Profiling/Tracing Integration Tests', () => {
     describe('Configuration Defaults', () => {
         it('should use default channel ID "dev" when not specified', () => {
             const manager = new PerfettoManager({
-                host: '192.168.1.100'
+                device: { host: '192.168.1.100' }
             });
             expect((manager as any).config.channelId).to.equal('dev');
         });
 
         it('should use default port 8060 when not specified', () => {
             const manager = new PerfettoManager({
-                host: '192.168.1.100'
+                device: { host: '192.168.1.100' }
             });
             expect((manager as any).config.remotePort).to.equal(8060);
         });
 
         it('should use default profiling directory when not specified', () => {
             const manager = new PerfettoManager({
-                host: '192.168.1.100',
+                device: { host: '192.168.1.100' },
                 rootDir: '/app/root'
             });
             expect((manager as any).config.dir).to.equal(s`/app/root/profiling`);
@@ -298,14 +298,14 @@ describe('Profiling/Tracing Integration Tests', () => {
 
         it('should use custom values when provided', () => {
             const manager = new PerfettoManager({
-                host: '10.0.0.1',
+                device: { host: '10.0.0.1' },
                 channelId: 'prod',
                 remotePort: 9090,
                 dir: '/custom/traces',
                 rootDir: '/app'
             });
 
-            expect((manager as any).config.host).to.equal('10.0.0.1');
+            expect((manager as any).config.device).to.eql({ host: '10.0.0.1' });
             expect((manager as any).config.channelId).to.equal('prod');
             expect((manager as any).config.remotePort).to.equal(9090);
             expect((manager as any).config.dir).to.equal('/custom/traces');

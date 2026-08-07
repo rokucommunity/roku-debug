@@ -66,19 +66,14 @@ describe('DebugProtocolClient', () => {
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
 
-        const options = {
-            controlPort: undefined as number,
-            host: '127.0.0.1'
-        };
+        const controlPort = await util.getPort();
 
-        if (!options.controlPort) {
-            options.controlPort = await util.getPort();
-        }
-        server = new DebugProtocolServer(options);
+        //`host` is the DebugProtocolServer bind address; the client addresses its sockets by `device`
+        server = new DebugProtocolServer({ controlPort: controlPort, host: '127.0.0.1' });
         plugin = server.plugins.add(new DebugProtocolServerTestPlugin());
         await server.start();
 
-        client = new DebugProtocolClient(options);
+        client = new DebugProtocolClient({ controlPort: controlPort, device: { host: '127.0.0.1' } });
         //disable logging for tests because they clutter the test output
         client['logger'].logLevel = 'off';
     });

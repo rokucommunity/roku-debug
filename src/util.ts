@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
+import * as path from 'path';
 import * as net from 'net';
 import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
@@ -16,9 +17,33 @@ import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
+import type { DeviceConfig, RokuDeploySocket } from 'roku-deploy';
+import { isRceDeviceConfigById, isRceDeviceConfigByUrl, isRceDeviceConfig } from 'roku-deploy';
 const request = r as typeof requestType;
 
 class Util {
+    /**
+     * Resolve a project's staging folder the same way roku-deploy's `stage()` does: the default
+     * staging folder name inside `outDir`. roku-deploy does not expose this resolution, so it is
+     * rolled here and must stay in step with roku-deploy's own defaults.
+     */
+    public getStagingDir(options: { outDir?: string; cwd?: string }): string {
+        return path.resolve(options.cwd ?? process.cwd(), options.outDir ?? './out', '.roku-deploy-staging');
+    }
+
+    /**
+     * Resolve a project's output zip path the same way roku-deploy's `zip()` does: `outFile`
+     * inside `outDir`, with a `.zip` extension enforced. roku-deploy does not expose this
+     * resolution, so it is rolled here and must stay in step with roku-deploy's own defaults.
+     */
+    public getOutputZipPath(options: { outDir?: string; outFile?: string; cwd?: string }): string {
+        let out = path.resolve(options.cwd ?? process.cwd(), options.outDir ?? './out', options.outFile ?? 'roku-deploy.zip');
+        if (!out.toLowerCase().endsWith('.zip')) {
+            out += '.zip';
+        }
+        return out;
+    }
+
     /**
      * If the path does not have a trailing slash, one is appended to it
      * @param dirPath
@@ -555,12 +580,49 @@ class Util {
     }
 
     /**
+     * Hydrate the Cloud Emulator api token onto an RCE device option from the `ROKU_RCE_TOKEN`
+     * environment variable when the option does not already carry one. The VS Code extension
+     * injects that variable into the debug adapter process so the token does not have to travel
+     * through the launch config (where it would end up in DAP traffic and logs); a token supplied
+     * directly on the device option always wins. Anything that is not a tokenless RCE device
+     * config is returned unchanged.
+     */
+    public hydrateRceTokenFromEnv<T extends DeviceConfig>(device: T): T {
+        if (device && isRceDeviceConfig(device) && !device.rceToken && process.env.ROKU_RCE_TOKEN) {
+            return { ...device, rceToken: process.env.ROKU_RCE_TOKEN } as T;
+        }
+        return device;
+    }
+
+    /**
+     * A short human-readable identifier for a device, safe for log and error messages (never
+     * includes credentials like the rceToken). A local device is identified by its host and an RCE
+     * device by its instanceUrl, id, or esn.
+     */
+    public getDeviceLabel(device: DeviceConfig): string {
+        //a device may legitimately be absent on early error paths (before a session is configured)
+        if (!device) {
+            return undefined;
+        }
+        if (isRceDeviceConfig(device)) {
+            if (isRceDeviceConfigByUrl(device)) {
+                return device.instanceUrl;
+            }
+            return isRceDeviceConfigById(device) ? String(device.id) : device.esn;
+        }
+        return device.host;
+    }
+
+    /**
      * Register the socket events for logging
-     * @param socket - the socket to listen to for events
+     * @param socket - the socket to listen to for events. Accepts a real `net.Socket` as well as
+     * roku-deploy's `RokuDeploySocket` (an RCE device's telnet socket is not a real tcp socket, so its
+     * address-related fields are always undefined; the events below that never fire for it are
+     * harmless no-ops)
      * @param logger - the logger to use for logging
      * @param socketType - the type of socket (e.g. "client", "server")
      */
-    public registerSocketLogging(socket: net.Socket, logger: Logger, socketType: string) {
+    public registerSocketLogging(socket: net.Socket | RokuDeploySocket, logger: Logger, socketType: string) {
         // create a new child logger for the socket events
         let socketLogger = logger.createLogger(`[${socketType}]`);
 
@@ -613,7 +675,7 @@ class Util {
         });
     }
 
-    private getSocketAddressForLogs(socket: net.Socket, ip?: string, port?: number, family?: number): string {
+    private getSocketAddressForLogs(socket: net.Socket | RokuDeploySocket, ip?: string, port?: number, family?: number): string {
         let familyString: string;
         if (typeof family === 'number') {
             familyString = `IPv${family}`;

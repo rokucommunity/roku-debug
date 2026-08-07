@@ -18,6 +18,60 @@ beforeEach(() => {
 
 describe('Util', () => {
 
+    describe('hydrateRceTokenFromEnv', () => {
+        let originalEnvToken: string | undefined;
+
+        beforeEach(() => {
+            originalEnvToken = process.env.ROKU_RCE_TOKEN;
+        });
+
+        afterEach(() => {
+            if (originalEnvToken === undefined) {
+                delete process.env.ROKU_RCE_TOKEN;
+            } else {
+                process.env.ROKU_RCE_TOKEN = originalEnvToken;
+            }
+        });
+
+        it('hydrates the token onto a tokenless RCE device option', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            expect(util.hydrateRceTokenFromEnv({ instanceUrl: 'https://device.rce.roku.com/instance/abc' })).to.eql({
+                instanceUrl: 'https://device.rce.roku.com/instance/abc',
+                rceToken: 'env-token'
+            });
+        });
+
+        it('a token already on the device option wins over the env var', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            expect(util.hydrateRceTokenFromEnv({ id: 83, rceToken: 'config-token' })).to.eql({
+                id: 83,
+                rceToken: 'config-token'
+            });
+        });
+
+        it('returns a tokenless RCE device option unchanged when the env var is not set', () => {
+            delete process.env.ROKU_RCE_TOKEN;
+            const device = { esn: 'esn-value' };
+            expect(util.hydrateRceTokenFromEnv(device)).to.equal(device);
+        });
+
+        it('leaves local device configs untouched', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            const localDevice = { host: '1.2.3.4' };
+            expect(util.hydrateRceTokenFromEnv(localDevice)).to.equal(localDevice);
+        });
+    });
+
+    describe('getDeviceLabel', () => {
+        it('identifies each device addressing scheme without leaking credentials', () => {
+            expect(util.getDeviceLabel({ host: '1.2.3.4' })).to.equal('1.2.3.4');
+            expect(util.getDeviceLabel({ instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' })).to.equal('https://device.rce.roku.com/instance/abc');
+            expect(util.getDeviceLabel({ id: 83, rceToken: 'secret' })).to.equal('83');
+            expect(util.getDeviceLabel({ esn: 'esn-value', rceToken: 'secret' })).to.equal('esn-value');
+            expect(util.getDeviceLabel(undefined)).to.equal(undefined);
+        });
+    });
+
     describe('hasNonNullishProperty', () => {
         it('detects objects with only nullish props or no props at all', () => {
             expect(util.hasNonNullishProperty({})).to.be.false;

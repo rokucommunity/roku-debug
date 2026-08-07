@@ -12,7 +12,7 @@ import type { StackFrame } from '../adapters/TelnetAdapter';
 import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { defer, util } from '../util';
 import { HighLevelType } from '../interfaces';
-import type { LaunchConfiguration } from '../LaunchConfiguration';
+import type { LaunchConfiguration, ResolvedLaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brighterscript';
 import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
@@ -48,7 +48,7 @@ describe('BrightScriptDebugSession', () => {
 
     let session: BrightScriptDebugSession;
 
-    let launchConfiguration: LaunchConfiguration;
+    let launchConfiguration: ResolvedLaunchConfiguration;
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
     let rokuAdapter: TelnetAdapter;
@@ -82,7 +82,8 @@ describe('BrightScriptDebugSession', () => {
             rootDir: rootDir,
             outDir: outDir,
             stagingDir: stagingDir,
-            files: DefaultFiles
+            files: DefaultFiles,
+            device: { host: '1.2.3.4' }
         } as any;
         session['launchConfiguration'] = launchConfiguration;
         session.projectManager.launchConfiguration = launchConfiguration;
@@ -92,25 +93,23 @@ describe('BrightScriptDebugSession', () => {
 
         //mock the rokuDeploy module with promises so we can have predictable tests
         session.rokuDeploy = <any>{
-            prepublishToStaging: () => {
+            withDnsResolvedHost: (device) => {
+                return Promise.resolve(device);
+            },
+            stage: () => {
                 return Promise.resolve();
             },
-            zipPackage: () => {
+            zip: () => {
                 return Promise.resolve();
             },
-            pressHomeButton: () => {
+            keyPress: () => {
                 return Promise.resolve();
             },
-            publish: () => {
+            sideload: () => {
                 return Promise.resolve();
             },
-            createPackage: () => {
+            createSignedPackage: () => {
                 return Promise.resolve();
-            },
-            deploy: () => {
-                return Promise.resolve();
-            },
-            getOptions: () => {
             },
             getFilePaths: () => {
             }
@@ -204,11 +203,13 @@ describe('BrightScriptDebugSession', () => {
         let sendEvent = session.sendEvent.bind(session);
         sinon.stub(session, 'sendEvent').callsFake((event) => {
             if (isCustomRequestEvent(event)) {
-                void rokuDeploy.zipFolder(session['launchConfiguration'].stagingDir, packagePath).then(() => {
+                void rokuDeploy.zip({ dir: session['launchConfiguration'].stagingDir, out: packagePath }).then(() => {
                     //pretend we are the client and send a response back
                     session.emit(ClientToServerCustomEventName.customRequestEventResponse, {
                         requestId: event.body.requestId
                     });
+                }, (e) => {
+                    console.error('Failed to zip the staging folder', e);
                 });
             } else {
                 //call through
@@ -221,7 +222,7 @@ describe('BrightScriptDebugSession', () => {
             return Promise.resolve(session['rokuAdapter']);
         });
 
-        const publishStub = sinon.stub(session.rokuDeploy, 'publish').callsFake(() => {
+        const publishStub = sinon.stub(session.rokuDeploy, 'sideload').callsFake(() => {
             //emit the app-ready event
             (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
 
@@ -233,8 +234,10 @@ describe('BrightScriptDebugSession', () => {
 
         await session.launchRequest({} as any, {
             cwd: tempDir,
+            device: { host: '1.2.3.4' },
             //where the source files reside
             rootDir: rootDir,
+            files: DefaultFiles,
             //where roku-debug should put the staged files (and inject breakpoints)
             stagingDir: `${stagingDir}/staging`,
             //the name of the task that should be run to create the zip (doesn't matter for this test...we're going to intercept it anyway)
@@ -1257,6 +1260,29 @@ describe('BrightScriptDebugSession', () => {
 
             expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
         });
+
+        it('flushes the deferred ProgressEndEvent when shutdown lands inside the end delay', async () => {
+            const clock = sinon.useFakeTimers();
+            const events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Waiting on application');
+            session['sendLaunchProgress']('end', 'Complete');
+            //the end event is held back for UX, so it has not been sent yet
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
+
+            const shutdownPromise = session.shutdown();
+            //the flush happens synchronously at the start of shutdown, before the delay elapses,
+            //so the notification cannot get stuck open when the adapter exits
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.have.lengthOf(1);
+
+            await clock.tickAsync(2000);
+            await shutdownPromise;
+
+            //the cancelled delay timer must not deliver a second end event
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.have.lengthOf(1);
+        });
     });
 
     describe('disconnectRequest', () => {
@@ -1264,7 +1290,7 @@ describe('BrightScriptDebugSession', () => {
         //  - https://github.com/rokucommunity/vscode-brightscript-language/issues/807 (EHOSTDOWN)
         //  - https://github.com/rokucommunity/roku-debug/issues/332 (ECONNREFUSED)
         //@vscode/debugadapter dispatches disconnectRequest without awaiting the returned Promise
-        //(debugSession.js:391), so any rejection from `await this.rokuDeploy.pressHomeButton(...)`
+        //(debugSession.js:391), so any rejection from the `await this.rokuDeploy.keyPress(...)` home press
         //becomes an unhandled rejection that crashes the DAP process. When the device is powered
         //off / unreachable at disconnect time, the ECP connect attempt fails — the specific Node
         //error code depends on the OS-level reason (host unresponsive vs. connection refused).
@@ -1275,7 +1301,7 @@ describe('BrightScriptDebugSession', () => {
                 host: '192.168.1.17',
                 remotePort: 8060
             };
-            session.rokuDeploy.pressHomeButton = () => Promise.reject(rejection);
+            session.rokuDeploy.keyPress = () => Promise.reject(rejection);
             //stub shutdown so the test doesn't tear down the whole session machinery
             sinon.stub(session, 'shutdown').resolves();
         }
@@ -1881,7 +1907,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
             sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
             session.projectManager.mainProject = <any>{
                 stagingDir: s`${tempDir}/main-staging`,
@@ -1892,8 +1918,8 @@ describe('BrightScriptDebugSession', () => {
         it('installs libraries sequentially when marked install=true', async () => {
             stubDefaults();
             const installOrder = [];
-            const publishStub = sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
-                installOrder.push(options.outFile);
+            const publishStub = sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
+                installOrder.push(path.basename(options.zip));
                 await util.sleep(10);
                 return { message: 'success', results: [] };
             });
@@ -1910,8 +1936,8 @@ describe('BrightScriptDebugSession', () => {
         it('skips libraries where install is not true', async () => {
             stubDefaults();
             const installOrder = [];
-            const publishStub = sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
-                installOrder.push(options.outFile);
+            const publishStub = sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
+                installOrder.push(path.basename(options.zip));
                 await util.sleep(10);
                 return { message: 'success', results: [] };
             });
@@ -1930,24 +1956,25 @@ describe('BrightScriptDebugSession', () => {
 
         it('sends proper form data for installation', async () => {
             stubDefaults();
-            const publishStub = sinon.stub(rokuDeploy, 'publish').resolves({ message: 'success', results: [] });
+            const publishStub = sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', results: [] });
 
             await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'testLib.zip', install: true }
             ] as any, 8080);
 
-            expect(publishStub.getCall(0).args[0]).to.include({
-                host: '192.168.1.100',
+            const options = publishStub.getCall(0).args[0];
+            expect(options).to.include({
                 password: 'test123',
                 username: 'rokudev',
-                outFile: 'testLib.zip',
                 appType: 'dcl'
             });
+            expect(options.device).to.eql({ host: '192.168.1.100' });
+            expect(path.basename(options.zip)).to.equal('testLib.zip');
         });
 
         it('logs the error AND fails the launch when a library install fails', async () => {
             stubDefaults();
-            sinon.stub(rokuDeploy, 'publish').rejects(new Error('Network error'));
+            sinon.stub(rokuDeploy, 'sideload').rejects(new Error('Network error'));
 
             //a failed install must abort the launch (not silently continue with a missing library)
             await expectThrowsAsync(() => runPrepareAndHost([
@@ -1964,7 +1991,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
             session.projectManager.mainProject = <any>{
                 stagingDir: s`${tempDir}/main-staging`,
@@ -1982,8 +2009,8 @@ describe('BrightScriptDebugSession', () => {
                 events.push(`zip-${this['outFile']}`);
                 await util.sleep(1);
             });
-            sinon.stub(rokuDeploy, 'publish').callsFake((options) => {
-                events.push(`install-${options.outFile}`);
+            sinon.stub(rokuDeploy, 'sideload').callsFake((options) => {
+                events.push(`install-${path.basename(options.zip)}`);
                 return Promise.resolve({ message: 'success', results: [] });
             });
 
@@ -2004,7 +2031,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
 
             sinon.stub(ComponentLibraryProject.prototype, 'stage').rejects(new Error('Stage failed'));
@@ -2048,7 +2075,7 @@ describe('BrightScriptDebugSession', () => {
 
         it('calls packageTask for each component library if packageTask defined', async () => {
             stubDefaults();
-            sinon.stub(rokuDeploy, 'publish').resolves({ message: 'success', results: [] });
+            sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', results: [] });
             const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
             await runPrepareAndHost([
@@ -2068,7 +2095,7 @@ describe('BrightScriptDebugSession', () => {
         it('handles packagePath and packageUploadOverrides for component libraries', async () => {
             stubDefaults();
             const installOrder = [];
-            sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
+            sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
                 installOrder.push(options);
                 await util.sleep(10);
                 return { message: 'success', results: [] };
@@ -2102,13 +2129,11 @@ describe('BrightScriptDebugSession', () => {
 
             expect(installOrder.length).to.equal(2);
             expect(installOrder[0]).to.include({
-                outFile: path.basename(s`${tempDir}/custom/cl1.zip`),
-                outDir: path.dirname(s`${tempDir}/custom/cl1.zip`),
+                zip: s`${tempDir}/custom/cl1.zip`,
                 packageUploadOverrides: packageUploadOverrides1
             });
             expect(installOrder[1]).to.include({
-                outFile: path.basename(s`${tempDir}/custom/cl2.zip`),
-                outDir: path.dirname(s`${tempDir}/custom/cl2.zip`),
+                zip: s`${tempDir}/custom/cl2.zip`,
                 packageUploadOverrides: packageUploadOverrides2
             });
         });
@@ -2131,7 +2156,7 @@ describe('BrightScriptDebugSession', () => {
             const present = new Set(installed);
             const deleteOrder: string[] = [];
 
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
             //deletion pauses/resumes compile-error reporting on the adapter; stub those so the flow works without a device
             session['rokuAdapter'] = <any>{};
@@ -2280,7 +2305,7 @@ describe('BrightScriptDebugSession', () => {
 
         it('re-throws a non-compile error (e.g. auth/network failure) immediately', async () => {
             configureComplibs(['LibAlpha.zip']);
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([{ appType: 'dcl', archiveFileName: 'LibAlpha.zip' } as any]);
             sinon.stub(rokuDeploy, 'deleteComponentLibrary').rejects(new Error('Unauthorized. Please verify credentials'));
 
@@ -2292,7 +2317,7 @@ describe('BrightScriptDebugSession', () => {
             configureComplibs([]);
             //a complib that always fails with a compile error and is never unblocked - should give up and throw
             sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([{ appType: 'dcl', archiveFileName: 'stuck.zip' } as any]);
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             sinon.stub(rokuDeploy, 'deleteComponentLibrary').rejects(new Error('Install Failure: Compilation Failed. (compile error &hb9)'));
 
             await expectThrowsAsync(() => session['deleteAllComponentLibraries']());
@@ -3006,7 +3031,7 @@ describe('BrightScriptDebugSession', () => {
             //stub PerfettoManager prototype methods so no real connections are made
             startTracingStub = sinon.stub(PerfettoManager.prototype, 'startTracing').resolves();
             sinon.stub(PerfettoManager.prototype, 'on').returns(() => { });
-            session['perfettoManager'] = new PerfettoManager({ host: 'localhost' });
+            session['perfettoManager'] = new PerfettoManager({ device: { host: 'localhost' } });
         });
 
         it('calls startTracing when connectOnStart is true and device supports perfetto', async () => {
@@ -3183,7 +3208,9 @@ describe('BrightScriptDebugSession', () => {
                 setupLaunchStubs();
                 const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
 
-                launchConfiguration.host = '1.2.3.4';
+                //the deprecated dap-input path: launchRequest normalizes this into the device config
+                delete (launchConfiguration as any).device;
+                (launchConfiguration as LaunchConfiguration).host = '1.2.3.4';
                 launchConfiguration.deviceInfo = {
                     'developer-enabled': 'true',
                     'software-version': '11.5.0',
@@ -3207,7 +3234,9 @@ describe('BrightScriptDebugSession', () => {
                 setupLaunchStubs();
                 const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
 
-                launchConfiguration.host = '1.2.3.4';
+                //the deprecated dap-input path: launchRequest normalizes this into the device config
+                delete (launchConfiguration as any).device;
+                (launchConfiguration as LaunchConfiguration).host = '1.2.3.4';
 
                 await session.launchRequest({} as any, launchConfiguration);
 
@@ -3276,7 +3305,7 @@ describe('BrightScriptDebugSession', () => {
                 setupLaunchStubs();
                 // Override the publish stub to throw a CompileError
                 (session as any).publish.restore();
-                sinon.stub(session as any, 'publish').rejects(new CompileError('compile failed', [], {} as any));
+                sinon.stub(session as any, 'publish').rejects(new CompileError('compile failed'));
                 session['initRequestArgs'].supportsProgressReporting = true;
 
                 await session.launchRequest({} as any, launchConfiguration);
@@ -3314,7 +3343,7 @@ describe('BrightScriptDebugSession', () => {
                 sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
                 sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
                 sinon.stub(session as any, 'tryProfilingConnectOnStart').resolves();
-                sinon.stub(session.rokuDeploy, 'pressHomeButton').resolves();
+                sinon.stub(session.rokuDeploy, 'keyPress').resolves();
                 sinon.stub(session as any, 'publish').resolves();
                 sinon.stub(session, 'setupProcessErrorHandlers');
                 //staging is a no-op for this test; we care about the write/postfix -> rewrite -> zip ordering
@@ -3392,6 +3421,72 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('device option', () => {
+        it('reads the device config from the launch config', () => {
+            (session as any).launchConfiguration = { device: { host: '1.2.3.4' } };
+            expect(session['launchConfiguration'].device).to.eql({ host: '1.2.3.4' });
+            expect(session['deviceLabel']).to.equal('1.2.3.4');
+        });
+
+        it('builds the device option from the deprecated host field during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ host: '1.2.3.4' } as any);
+            expect(config.device).to.eql({ host: '1.2.3.4' });
+        });
+
+        it('deletes the deprecated host field from the config during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ host: '1.2.3.4' } as any);
+            expect('host' in config).to.be.false;
+        });
+
+        it('prefers a supplied device config over the deprecated host field during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ device: { host: '5.6.7.8' }, host: '1.2.3.4' } as any);
+            (session as any).launchConfiguration = config;
+            expect(session['launchConfiguration'].device).to.eql({ host: '5.6.7.8' });
+        });
+
+        it('aborts the launch with a clear message when the config supplies no device addressing', async () => {
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves();
+
+            await session.launchRequest({} as any, {} as any);
+
+            expect(shutdownStub.calledOnce).to.be.true;
+            expect(shutdownStub.getCall(0).args[0]).to.include('does not specify a target device');
+        });
+
+        it('passes a cloud emulator device config through untouched and never leaks the token in the label', () => {
+            const device = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' };
+            (session as any).launchConfiguration = { device: device };
+            expect(session['launchConfiguration'].device).to.equal(device);
+            expect(session['deviceLabel']).to.equal('https://device.rce.roku.com/instance/abc');
+            expect(session['deviceLabel']).not.to.include('secret');
+        });
+
+        it('labels id-addressed and esn-addressed cloud emulator devices by their identifier', () => {
+            (session as any).launchConfiguration = { device: { id: 83, rceToken: 'secret' } };
+            expect(session['deviceLabel']).to.equal('83');
+            (session as any).launchConfiguration = { device: { esn: 'XY020078HH5S', rceToken: 'secret' } };
+            expect(session['deviceLabel']).to.equal('XY020078HH5S');
+        });
+
+        it('sends the launch config device to sideload', async () => {
+            const device = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' };
+            (session as any).launchConfiguration = {
+                ...session['launchConfiguration'],
+                device: device,
+                outDir: tempDir
+            };
+            rokuAdapter.connected = true;
+            const sideloadStub = sinon.stub(session.rokuDeploy, 'sideload').callsFake(() => {
+                (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
+                return Promise.resolve({ message: 'success', results: [] });
+            });
+
+            await (session as any).publish();
+
+            expect(sideloadStub.getCall(0).args[0].device).to.equal(device);
+        });
+    });
+
     describe('publish', () => {
         it('waits 60 seconds before aborting when the app never becomes ready', async () => {
             session['publishTimeout'] = 60_000;
@@ -3399,7 +3494,7 @@ describe('BrightScriptDebugSession', () => {
             const clock = sinon.useFakeTimers();
             const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
             rokuAdapter.connected = false;
-            sinon.stub(session.rokuDeploy, 'publish').resolves();
+            sinon.stub(session.rokuDeploy, 'sideload').resolves();
 
             const publishPromise = (session as any).publish();
 
