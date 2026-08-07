@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.0](https://github.com/rokucommunity/roku-debug/compare/0.23.16...v0.24.0) - 2026-08-07
+### Changed
+ - Migrate to roku-deploy v4 and Roku Cloud Emulator support- #399 ([#398](https://github.com/rokucommunity/roku-debug/pull/398))
+ - Fail breakpoints only when unplaceable in every project ([#406](https://github.com/rokucommunity/roku-debug/pull/406))
+ - Bump brace-expansion from 1.1.16 to 1.1.18 ([#403](https://github.com/rokucommunity/roku-debug/pull/403))
+ - Bump ip-address from 10.2.0 to 10.4.0 ([#402](https://github.com/rokucommunity/roku-debug/pull/402))
+ - Clarify a diagnostic in BrightScriptDebugSession.ts ([#397](https://github.com/rokucommunity/roku-debug/pull/397))
+ - Replace glob with fast-glob to fix brace-expansion audit issue ([#396](https://github.com/rokucommunity/roku-debug/pull/396))
+ - Make perfettoManager action calls null-safe ([#390](https://github.com/rokucommunity/roku-debug/pull/390))
+ - upgrade to [@rokucommunity/logger@0.4.1](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#041---2026-07-10). Notable changes since 0.4.0:
+     - Serialize Error.cause (recursively) when logging ([#33](https://github.com/rokucommunity/logger/pull/33))
+     - chore: Update create-vsix to support multi-vsix and shared bot logic ([#32](https://github.com/rokucommunity/logger/pull/32))
+ - upgrade to [roku-deploy@3.18.2](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#3182---2026-07-20). Notable changes since 3.17.7:
+     - Restore dist/Logger as a compatibility shim ([#327](https://github.com/rokucommunity/roku-deploy/pull/327))
+     - Fix write EPIPE when uploading large zips through digest auth ([#324](https://github.com/rokucommunity/roku-deploy/pull/324))
+     - Migrate to @rokucommunity/logger ([#318](https://github.com/rokucommunity/roku-deploy/pull/318))
+     - Fix device test timeout durations and remove dead code ([#319](https://github.com/rokucommunity/roku-deploy/pull/319))
+     - Better undersized zip error handling ([#312](https://github.com/rokucommunity/roku-deploy/pull/312))
+     - Add deleteAllSideloadedPlugins, expose listSideloadedPlugins ([#309](https://github.com/rokucommunity/roku-deploy/pull/309))
+     - Migrate networking library from `postman-request` to `needle` ([#282](https://github.com/rokucommunity/roku-deploy/pull/282))
+### Fixed
+ - Fix npm audit vulnerabilities in qs/uuid via overrides ([#404](https://github.com/rokucommunity/roku-debug/pull/404))
+ - Fix `libary` statement complib postfixes ([#323](https://github.com/rokucommunity/roku-debug/pull/323))
+
+
+
 ## [0.23.16](https://github.com/rokucommunity/roku-debug/compare/0.23.15...v0.23.16) - 2026-07-07
 ### Changed
  - Improve ECP access mode error messages with step-by-step navigation ([#386](https://github.com/rokucommunity/roku-debug/pull/386))
