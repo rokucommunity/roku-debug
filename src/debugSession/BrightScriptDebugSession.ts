@@ -3,7 +3,7 @@ import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as semver from 'semver';
 import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError } from 'roku-deploy';
-import type { DeviceInfo, DeviceOption, RokuDeploy, SideloadOptions } from 'roku-deploy';
+import type { DeviceInfo, RokuDeploy, SideloadOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
     LoggingDebugSession,
@@ -58,6 +58,7 @@ import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
+import type { ResolvedLaunchConfiguration } from '../LaunchConfiguration';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { PerfettoManager } from '../PerfettoManager';
@@ -359,12 +360,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     public rokuDeploy = rokuDeploy as unknown as RokuDeploy;
 
     /**
-     * The roku-deploy `device` option for the target device. This is the single place where the launch
-     * configuration is converted into a device config, so future device addressing schemes (like the
-     * Roku Cloud Emulator) only need to be handled here.
+     * A short human-readable identifier for the target device, safe for log and error messages
+     * (never includes credentials like the rceToken)
      */
-    private get device(): DeviceOption {
-        return { host: this.launchConfiguration.host };
+    private get deviceLabel(): string {
+        return util.getDeviceLabel(this.launchConfiguration.device);
     }
 
     private componentLibraryServer = new ComponentLibraryServer();
@@ -407,6 +407,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private launchProgressId: string | undefined;
 
     /**
+     * Sends the deferred ProgressEndEvent for the launch progress bar (sendLaunchProgress holds it
+     * back for UX). Kept here so shutdown can flush it immediately: the adapter can exit before the
+     * delay elapses, which would otherwise leave the client's progress notification stuck open.
+     * Cleared once the event has been sent.
+     */
+    private flushLaunchProgressEnd: (() => void) | undefined;
+
+    /**
      * The first encountered compile error, will be used to send to the client as a runtime error (nicer UI presentation)
      */
     private compileError: BSDebugDiagnostic;
@@ -437,7 +445,13 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         return this.rokuAdapter;
     }
 
-    private launchConfiguration: LaunchConfiguration;
+    /**
+     * The normalized launch config for this session. The resolved type has no `host` (so nothing in
+     * the session can read or write it) and a concrete `device` config, which is the only way the
+     * debugger addresses the device. The raw `LaunchConfiguration` exists only as launchRequest's
+     * DAP input; normalizeLaunchConfig converts it.
+     */
+    private launchConfiguration: ResolvedLaunchConfiguration;
     private initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
     private exceptionBreakpoints: ExceptionBreakpoint[] = [];
@@ -605,7 +619,21 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      * @param config
      * @returns
      */
-    private normalizeLaunchConfig(config: LaunchConfiguration) {
+    private normalizeLaunchConfig(config: LaunchConfiguration): ResolvedLaunchConfiguration {
+        //`device` is the canonical way to address the target device; `host` is a deprecated alias.
+        //this is the ONLY place the debugger reads the top-level `host` field: whatever was supplied
+        //is resolved to a concrete device config here, and everything downstream uses `device`.
+        if (!config.device && config.host) {
+            config.device = { host: config.host };
+        }
+        //the deprecated field is now consumed. Delete it so the runtime object matches the resolved
+        //type and nothing downstream (including the configs echoed back to the client) carries it.
+        delete config.host;
+        //an RCE device config without a token picks one up from the environment (the extension
+        //injects ROKU_RCE_TOKEN into this process so the token does not have to travel through the
+        //launch config over DAP). The custom events that echo this config back to the client scrub
+        //the token out again (see Events.ts), so it never rides the DAP wire in either direction.
+        config.device = util.hydrateRceTokenFromEnv(config.device);
         config.cwd ??= process.cwd();
         config.outDir ??= s`${config.cwd}/out`;
         config.stagingDir ??= util.getStagingDir({ outDir: config.outDir, cwd: config.cwd });
@@ -632,7 +660,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             config.enableVariablesPanel = true;
         }
         config.deferScopeLoading ??= config.enableVariablesPanel === false;
-        return config;
+        return config as ResolvedLaunchConfiguration;
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
@@ -641,6 +669,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         try {
             this.resetSessionState();
             this.launchConfiguration = this.normalizeLaunchConfig(config);
+            //fail fast when the launch config supplied no device addressing at all, rather than
+            //failing later with a confusing dns or connection error for an undefined host
+            if (!this.launchConfiguration.device) {
+                return await this.shutdown(`Launch config does not specify a target device. Please supply the 'device' option (or the deprecated 'host' option).`);
+            }
             this.setupProcessErrorHandlers();
 
             //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
@@ -653,11 +686,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             this.sendLaunchProgress('start', 'Finding device on network');
 
-            //do a DNS lookup for the host to fix issues with roku rejecting ECP
+            //do a DNS lookup for the host to fix issues with roku rejecting ECP. Only local devices
+            //are addressed by host; other device types (like the Roku Cloud Emulator) pass through unchanged
             try {
-                this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
+                this.launchConfiguration.device = await this.rokuDeploy.withDnsResolvedHost(this.launchConfiguration.device);
             } catch (e) {
-                return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
+                return this.shutdown(`Could not resolve ip address for host '${this.deviceLabel}'`);
             }
 
             // fetch device info if not supplied via launch config
@@ -665,20 +699,20 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 if (this.launchConfiguration.deviceInfo) {
                     this.deviceInfo = rokuDeploy.enhanceDeviceInfo(this.launchConfiguration.deviceInfo);
                 } else {
-                    this.deviceInfo = await rokuDeploy.getDeviceInfo({ device: this.device, ecpPort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                    this.deviceInfo = await rokuDeploy.getDeviceInfo({ device: this.launchConfiguration.device, ecpPort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
                 }
                 if (this.deviceInfo.ecpSettingMode === 'limited') {
-                    return await this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Limited (device: ${this.launchConfiguration.host})`);
+                    return await this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Limited (device: ${this.deviceLabel})`);
                 }
             } catch (e) {
                 if (e instanceof EcpNetworkAccessModeDisabledError) {
-                    return this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Disabled (device: ${this.launchConfiguration.host})`);
+                    return this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Disabled (device: ${this.deviceLabel})`);
                 }
-                return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
+                return this.shutdown(`Unable to connect to roku at '${this.deviceLabel}'. Verify the device address is correct and that the device is powered on and reachable.`);
             }
 
             if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
-                return await this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
+                return await this.shutdown(`Developer mode is not enabled for device '${this.deviceLabel}'.`);
             }
 
             // everything is ready, send the response to the launch request so the UI can update and configuration can begin
@@ -714,9 +748,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             packageEnd();
 
             if (this.enableDebugProtocol) {
-                util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.launchConfiguration.host}:${this.launchConfiguration.controlPort}`);
+                util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.deviceLabel}:${this.launchConfiguration.controlPort}`);
             } else {
-                util.log(`Connecting to Roku via telnet at ${this.launchConfiguration.host}:${this.launchConfiguration.brightScriptConsolePort}`);
+                util.log(`Connecting to Roku via telnet at ${this.deviceLabel}:${this.launchConfiguration.brightScriptConsolePort}`);
             }
 
             //activate rendezvous tracking (if enabled). Log the error and move on if it crashes, this shouldn't bring down the session.
@@ -737,7 +771,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             if (this.launchConfiguration.componentLibraries?.some(x => x.install)) {
                 this.sendLaunchProgress('update', 'Removing existing dev app and component libraries');
                 await rokuDeploy.deleteAllSideloadedPlugins({
-                    device: this.device,
+                    device: this.launchConfiguration.device,
                     password: this.launchConfiguration.password
                 });
             }
@@ -795,7 +829,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
-            await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
+            await this.rokuDeploy.keyPress({ device: this.launchConfiguration.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
 
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
@@ -813,7 +847,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             this.rokuAdapter.on('device-unresponsive', async (data: { lastCommand: string }) => {
                 const stopDebuggerAction = 'Stop Debugger';
-                const message = `Roku device ${this.launchConfiguration.host} is not responding and may not recover.` +
+                const message = `Roku device ${this.deviceLabel} is not responding and may not recover.` +
                     (data.lastCommand ? `\n\nActive command:\n"${util.truncate(data.lastCommand, 30)}"` : '');
                 this.logger.log(message, data);
                 const response = await this.showPopupMessage(message, 'warn', false, [stopDebuggerAction]);
@@ -904,12 +938,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             if (!error) {
                 if (this.rokuAdapter.connected) {
                     this.logger.info('Host connection was established before the main public process was completed');
-                    this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
+                    this.logger.log(`deployed to Roku@${this.deviceLabel}`);
                 } else {
                     this.logger.info('Main public process was completed but we are still waiting for a connection to the host');
                     this.rokuAdapter.on('connected', (status) => {
                         if (status) {
-                            this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
+                            this.logger.log(`deployed to Roku@${this.deviceLabel}`);
                         }
                     });
                 }
@@ -924,7 +958,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 //if we are at a breakpoint, continue
                 await this.rokuAdapter.continue();
                 //kill the app on the roku
-                // await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
+                // await this.rokuDeploy.keyPress({ device: this.launchConfiguration.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
                 //convert a hostname to an ip address
                 const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
                 //send the deep link http request
@@ -955,7 +989,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         // Initialize PerfettoManager
         this.perfettoManager = new PerfettoManager({
-            host: this.launchConfiguration.host,
+            device: this.launchConfiguration.device,
             rootDir: this.launchConfiguration.rootDir,
             remotePort: this.launchConfiguration.remotePort,
             ...this.launchConfiguration.profiling?.tracing
@@ -1126,7 +1160,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         try {
             if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
                 await this.rokuDeploy.deleteDevChannel({
-                    device: this.device,
+                    device: this.launchConfiguration.device,
                     password: this.launchConfiguration.password,
                     username: this.launchConfiguration.username,
                     packagePort: this.launchConfiguration.packagePort
@@ -1144,7 +1178,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
         const isConnected = this.rokuAdapter.once('app-ready');
         const options: SideloadOptions = {
-            device: this.device,
+            device: this.launchConfiguration.device,
             password: this.launchConfiguration.password,
             username: this.launchConfiguration.username,
             packagePort: this.launchConfiguration.packagePort,
@@ -1344,7 +1378,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
         if (commands) {
-            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.host, this.launchConfiguration.sceneGraphDebugCommandsPort);
+            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.device, this.launchConfiguration.sceneGraphDebugCommandsPort);
 
             try {
                 await connection.connect();
@@ -1592,7 +1626,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                 }
 
                 const options: SideloadOptions = {
-                    device: this.device,
+                    device: this.launchConfiguration.device,
                     password: this.launchConfiguration.password,
                     username: this.launchConfiguration.username || 'rokudev',
                     packagePort: this.launchConfiguration.packagePort,
@@ -1644,7 +1678,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      */
     private async deleteAllComponentLibraries() {
         const deviceOptions = {
-            device: this.device,
+            device: this.launchConfiguration.device,
             password: this.launchConfiguration.password,
             username: this.launchConfiguration.username || 'rokudev'
         };
@@ -2338,7 +2372,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             } else if (v.type === '$$Registry') {
                 // This is a special scope variable used to load registry data via an ECP call
                 // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
-                await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
+                await populateVariableFromRegistryEcp({ remotePort: this.launchConfiguration.remotePort, device: this.launchConfiguration.device, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
             }
         } catch (error) {
             logger.error(`Error getting variables for scope ${v.type}`, error);
@@ -3074,7 +3108,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //    https://github.com/rokucommunity/roku-debug/issues/332
         if (!this.enableDebugProtocol) {
             try {
-                await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
+                await this.rokuDeploy.keyPress({ device: this.launchConfiguration.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
             } catch (e) {
                 this.logger.warn('Failed to press home button during disconnect; device may be unreachable', e);
             }
@@ -3117,8 +3151,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
 
             try {
                 let appStateResult = await rokuECP.getAppState({
-                    host: this.launchConfiguration.host,
                     remotePort: this.launchConfiguration.remotePort,
+                    device: this.launchConfiguration.device,
                     appId: 'dev',
                     requestOptions: { timeout: 300 }
                 });
@@ -3131,8 +3165,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
                     // If the app supports Instant Resume and is running in the background or the app does not support Instant Resume and is running, sending this command terminates the app.
                     // This means that we might need to send this command twice to terminate the app.
                     await rokuECP.exitApp({
-                        host: this.launchConfiguration.host,
                         remotePort: this.launchConfiguration.remotePort,
+                        device: this.launchConfiguration.device,
                         appId: 'dev',
                         requestOptions: { timeout: 300 }
                     });
@@ -3461,9 +3495,12 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             } else {
                 const lastId = this.launchProgressId;
                 this.sendEvent(new ProgressUpdateEvent(lastId, message));
-                setTimeout(() => {
+                const endTimer = setTimeout(() => this.flushLaunchProgressEnd?.(), 1000); // add a slight delay before ending the progress to improve UX
+                this.flushLaunchProgressEnd = () => {
+                    clearTimeout(endTimer);
+                    this.flushLaunchProgressEnd = undefined;
                     this.sendEvent(new ProgressEndEvent(lastId, message));
-                }, 1000); // add a slight delay before ending the progress to improve UX
+                };
                 this.launchProgressId = undefined;
             }
         }
@@ -3571,6 +3608,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
         // Ensure any active launch progress bar is dismissed before showing error messages or the terminated event.
         this.sendLaunchProgress('end', 'Complete');
+        // 'end' defers its ProgressEndEvent for UX; deliver it right now (whether from the line above or from an
+        // earlier 'end' whose delay has not elapsed yet) - the adapter exits before a pending timer would fire,
+        // which would leave the client's progress notification stuck open
+        this.flushLaunchProgressEnd?.();
 
         //send the message FIRST before anything else. This improves the chances that the message will be displayed to the user
         try {
@@ -3603,7 +3644,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             //press the home button to return to the home screen
             try {
                 this.logger.log('Press home button');
-                await this.rokuDeploy.keyPress({ device: this.device, key: 'home', ecpPort: this.launchConfiguration.remotePort });
+                await this.rokuDeploy.keyPress({ device: this.launchConfiguration.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
             } catch (e) {
                 this.logger.error(e);
             }

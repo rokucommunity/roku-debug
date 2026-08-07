@@ -1,3 +1,5 @@
+import type { DeviceConfig } from 'roku-deploy';
+
 export enum HighLevelType {
     primative = 'primative',
     array = 'array',
@@ -16,7 +18,13 @@ export interface RokuAdapterEvaluateResponse {
 }
 
 export interface AdapterOptions {
-    host: string;
+    /**
+     * The roku-deploy device config for the target device. The debug session normalizes whatever
+     * addressing the launch config supplied (including the deprecated `host` field) into a concrete
+     * device config before constructing an adapter, so this is the only way adapters address the
+     * device.
+     */
+    device: DeviceConfig;
     brightScriptConsolePort?: number;
     remotePort?: number;
     /**

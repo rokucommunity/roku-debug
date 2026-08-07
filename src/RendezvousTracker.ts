@@ -4,16 +4,15 @@ import * as replaceLast from 'replace-last';
 import type { SourceLocation } from './managers/LocationManager';
 import { logger } from './logging';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
-import * as xml2js from 'xml2js';
-import { util } from './util';
 import * as semver from 'semver';
+import { rokuDeploy } from 'roku-deploy';
 import type { DeviceInfo } from 'roku-deploy';
-import type { LaunchConfiguration } from './LaunchConfiguration';
+import type { ResolvedLaunchConfiguration } from './LaunchConfiguration';
 
 export class RendezvousTracker {
     constructor(
         private deviceInfo: DeviceInfo,
-        private launchConfiguration: LaunchConfiguration
+        private launchConfiguration: ResolvedLaunchConfiguration
     ) {
         this.clientPathsMap = {};
         this.emitter = new EventEmitter();
@@ -144,7 +143,7 @@ export class RendezvousTracker {
      * Run a SceneGraph logendezvous 8080 command and get the text output
      */
     private async runSGLogrendezvousCommand(command: 'status' | 'on' | 'off'): Promise<string> {
-        let sgDebugCommandController = new SceneGraphDebugCommandController(this.launchConfiguration.host, this.launchConfiguration.sceneGraphDebugCommandsPort);
+        let sgDebugCommandController = new SceneGraphDebugCommandController(this.launchConfiguration.device, this.launchConfiguration.sceneGraphDebugCommandsPort);
         try {
             this.logger.info(`port 8080 command: logrendezvous ${command}`);
             return (await sgDebugCommandController.logrendezvous(command)).result.rawResponse;
@@ -202,40 +201,13 @@ export class RendezvousTracker {
      * Get the response from an ECP sgrendezvous request from the Roku
      */
     public async getEcpRendezvous(): Promise<EcpRendezvousData> {
-        const url = `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/query/sgrendezvous`;
-        this.logger.trace(`Sending ECP rendezvous request:`, url);
-        // Send rendezvous query to ECP
-        const rendezvousQuery = await util.httpGet(url);
-        let rendezvousQueryData = rendezvousQuery.body as string;
-        let ecpData: EcpRendezvousData = {
-            trackingEnabled: false,
-            items: []
-        };
-
-        this.logger.trace('Parsing rendezvous response', rendezvousQuery);
-        // Parse rendezvous query data
-        await new Promise<EcpRendezvousData>((resolve, reject) => {
-            xml2js.parseString(rendezvousQueryData, (err, result) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    const itemArray = result.sgrendezvous.data[0].item;
-                    ecpData.trackingEnabled = result.sgrendezvous.data[0]['tracking-enabled'][0];
-                    if (Array.isArray(itemArray)) {
-                        ecpData.items = itemArray.map((obj: any) => ({
-                            id: obj.id[0],
-                            startTime: obj['start-tm'][0],
-                            endTime: obj['end-tm'][0],
-                            lineNumber: obj['line-number'][0],
-                            file: obj.file[0]
-                        }));
-                    }
-                    resolve(ecpData);
-                }
-            });
+        this.logger.trace('Sending ECP rendezvous request');
+        const rendezvous = await rokuDeploy.queryRendezvous({
+            device: this.launchConfiguration.device,
+            ecpPort: this.launchConfiguration.remotePort
         });
-        this.logger.trace('Parsed ECP rendezvous data:', ecpData);
-        return ecpData;
+        this.logger.trace('Parsed ECP rendezvous data:', rendezvous);
+        return rendezvous;
     }
 
     /**
@@ -245,13 +217,12 @@ export class RendezvousTracker {
     public async toggleEcpRendezvousTracking(toggle: 'track' | 'untrack'): Promise<boolean> {
         try {
             this.logger.log(`Sending ecp sgrendezvous request: ${toggle}`);
-            const response = await util.httpPost(
-                `http://${this.launchConfiguration.host}:${this.launchConfiguration.remotePort}/sgrendezvous/${toggle}`,
-                //not sure if we need this, but it works...so probably better to just leave it here
-                { body: '' }
-            );
-            //this was successful if we got a 200 level status code (200-299)
-            return response.statusCode >= 200 && response.statusCode < 300;
+            await rokuDeploy.setRendezvousTracking({
+                device: this.launchConfiguration.device,
+                enabled: toggle === 'track',
+                ecpPort: this.launchConfiguration.remotePort
+            });
+            return true;
         } catch (e) {
             return false;
         }
