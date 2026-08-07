@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.0](https://github.com/rokucommunity/roku-debug/compare/0.23.16...v0.24.0) - 2026-08-07
+### Changed
+ - Roku Cloud Emulator support ([#399](https://github.com/rokucommunity/roku-debug/pull/399))
+ - Migrate to roku-deploy v4 ([#398](https://github.com/rokucommunity/roku-debug/pull/398))
+ - Better ECP limited messaging ([#397](https://github.com/rokucommunity/roku-debug/pull/397))
+ - Replace glob with fast-glob to fix brace-expansion audit issue ([#396](https://github.com/rokucommunity/roku-debug/pull/396))
+ - upgrade to [@rokucommunity/logger@0.4.1](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#041---2026-07-10). Notable changes since 0.4.0:
+     - Serialize Error.cause (recursively) when logging ([#33](https://github.com/rokucommunity/logger/pull/33))
+ - upgrade to [roku-deploy@4.0.0-alpha.3](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#400-alpha3---2026-08-07). Notable changes since 3.17.7:
+     - Roku Cloud Emulator support ([#331](https://github.com/rokucommunity/roku-deploy/pull/331))
+     - Unified device option ([#323](https://github.com/rokucommunity/roku-deploy/pull/323))
+     - Enhanced logging levels ([#168](https://github.com/rokucommunity/roku-deploy/pull/168))
+### Fixed
+ - Fail to apply breakpoints in component libraries ([#406](https://github.com/rokucommunity/roku-debug/pull/406))
+ - Make perfettoManager action calls null-safe ([#390](https://github.com/rokucommunity/roku-debug/pull/390))
+ - Fix `libary` statement complib postfixes ([#323](https://github.com/rokucommunity/roku-debug/pull/323))
+
+
+
 ## [0.23.16](https://github.com/rokucommunity/roku-debug/compare/0.23.15...v0.23.16) - 2026-07-07
 ### Changed
  - Improve ECP access mode error messages with step-by-step navigation ([#386](https://github.com/rokucommunity/roku-debug/pull/386))
