@@ -866,12 +866,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             await this.tryProfilingConnectOnStart();
 
             //all setBreakpoints requests have arrived by this point (configurationDone is the DAP signal
-            //that the client has finished sending configuration). Inject the STOPs and postfix each project's
-            //own files now (still no zips. those are sealed after cross-project references are rewritten).
-            await Promise.all([
-                this.writeMainProjectBreakpoints(),
-                this.writeAndPostfixComponentLibraries(this.launchConfiguration.componentLibraries)
-            ]);
+            //that the client has finished sending configuration). Validate breakpoints across every project
+            //in one pass (and inject the STOPs for telnet) - validating per project would fail every other
+            //project's breakpoints. Must finish before postfixing renames the complib files.
+            await this.writeBreakpoints();
+
+            //postfix each complib's own files now (still no zips. those are sealed after cross-project
+            //references are rewritten).
+            await this.postfixComponentLibraries(this.launchConfiguration.componentLibraries);
 
             //now that EVERY project (main + all complibs) is postfixed, rewrite cross-project `Library`
             //references to point at the postfixed file names. Must run before any project zip is sealed.
@@ -1417,17 +1419,19 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     }
 
     /**
-     * Inject breakpoint STOP statements into the staged main project. Runs after the DAP `InitializedEvent`
-     * so client-side `setBreakpoints` requests have landed before any STOPs are written to the staged .brs
-     * files (telnet path). Kept separate from zipping so the cross-project `Library` reference rewrite can
-     * run in between (after every project is postfixed, before any zip is sealed).
+     * Validate every breakpoint against the staged projects and (telnet only) write STOP statements into the
+     * staged .brs files. Runs after the DAP `InitializedEvent` so client-side `setBreakpoints` requests have
+     * landed before any STOPs are written. Validates the main project and every component library in ONE pass:
+     * a breakpoint is only failed when it can't be placed in any project, so validating per project would fail
+     * every other project's breakpoints. Must complete before `postfixComponentLibraries` renames the complib
+     * files so telnet STOPs are written to the original file names.
      */
-    private async writeMainProjectBreakpoints() {
+    private async writeBreakpoints() {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
         //validate breakpoints for all debugger types (and write `stop` statements for telnet — decided internally)
-        await this.breakpointManager.validateAndWriteBreakpointsForProject(this.projectManager.mainProject);
+        await this.breakpointManager.validateAndWriteBreakpointsForProjects(this.projectManager.getAllProjects());
     }
 
     /**
@@ -1531,25 +1535,20 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
     }
 
     /**
-     * Inject breakpoint STOPs into the staged complibs and postfix each library's own files. Runs in
-     * `configurationDoneRequest` (after `InitializedEvent`) so client-side `setBreakpoints` requests have
-     * landed before the staged .brs files are written. Kept separate from zipping so the cross-project
-     * `Library` reference rewrite can run after EVERY project is postfixed but before any zip is sealed.
+     * Postfix each staged complib's own files (rename its `.brs` files with the `__lib<index>` postfix and
+     * rewrite its `uri=` references). Runs in `configurationDoneRequest` AFTER `writeBreakpoints` so any
+     * telnet STOPs have already been written to the original file names. Kept separate from zipping so the
+     * cross-project `Library` reference rewrite can run after EVERY project is postfixed but before any zip
+     * is sealed.
      */
-    protected async writeAndPostfixComponentLibraries(componentLibraries: ComponentLibraryConfiguration[]) {
+    protected async postfixComponentLibraries(componentLibraries: ComponentLibraryConfiguration[]) {
         if (!componentLibraries || componentLibraries.length === 0) {
             return;
         }
 
-        // Add breakpoint lines to the staging files and before publishing
-        util.log('Adding stop statements for active breakpoints in Component Libraries');
-
-        //validate breakpoints (and write STOPs for telnet) and postfix each complib's own files in parallel
+        //postfix each complib's own files in parallel
         await Promise.all(
-            this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
-                await this.breakpointManager.validateAndWriteBreakpointsForProject(compLibProject);
-                await compLibProject.postfixFiles();
-            })
+            this.projectManager.componentLibraryProjects.map(compLibProject => compLibProject.postfixFiles())
         );
     }
 

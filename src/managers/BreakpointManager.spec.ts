@@ -34,7 +34,7 @@ describe('BreakpointManager', () => {
     let sourceMapManager: SourceMapManager;
     let projectManager: ProjectManager;
 
-    //There is now a single public entry point (validateAndWriteBreakpointsForProject) that decides
+    //There is now a single public entry point (validateAndWriteBreakpointsForProjects) that decides
     //whether to write STOPs from launchConfiguration.enableDebugProtocol. These helpers preserve the
     //intent of the old two-method API in the tests: "inject" = telnet (writes STOPs), "resolve" = DAP
     //(validate only). They set the flag and delegate to the unified method.
@@ -47,12 +47,12 @@ describe('BreakpointManager', () => {
     /** telnet path — validates AND writes STOP statements into the staged files */
     function injectBreakpointsForProject(project: Project) {
         setDebuggerType(false);
-        return bpManager.validateAndWriteBreakpointsForProject(project);
+        return bpManager.validateAndWriteBreakpointsForProjects([project]);
     }
     /** DebugProtocol path — validates only, never writes STOPs */
     function resolveBreakpointsForProject(project: Project) {
         setDebuggerType(true);
-        return bpManager.validateAndWriteBreakpointsForProject(project);
+        return bpManager.validateAndWriteBreakpointsForProjects([project]);
     }
 
     beforeEach(() => {
@@ -398,7 +398,104 @@ describe('BreakpointManager', () => {
         });
     });
 
-    describe('validateAndWriteBreakpointsForProject', () => {
+    describe('validateAndWriteBreakpointsForProjects with multiple projects', () => {
+        let tmpDir = s`${cwd}/.tmp`;
+        let mainRootDir = s`${tmpDir}/mainProject/rootDir`;
+        let mainStagingDir = s`${tmpDir}/mainProject/staging`;
+        let libRootDir = s`${tmpDir}/library/rootDir`;
+        let libStagingDir = s`${tmpDir}/library/staging`;
+        const mainSrcPath = s`${mainRootDir}/source/main.brs`;
+        const libSrcPath = s`${libRootDir}/components/Task.brs`;
+
+        let mainProject: Project;
+        let libProject: ComponentLibraryProject;
+
+        beforeEach(() => {
+            const code = `sub main()\n    print 1\n    print 2\nend sub`;
+            fsExtra.outputFileSync(mainSrcPath, code);
+            fsExtra.outputFileSync(libSrcPath, code);
+            //copy the files to staging (this is what the extension would normally do automatically)
+            fsExtra.outputFileSync(s`${mainStagingDir}/source/main.brs`, code);
+            fsExtra.outputFileSync(s`${libStagingDir}/components/Task.brs`, code);
+
+            mainProject = new Project(<any>{
+                rootDir: mainRootDir,
+                outDir: s`${tmpDir}/mainProject/out`,
+                stagingDir: mainStagingDir
+            });
+            libProject = new ComponentLibraryProject(<any>{
+                rootDir: libRootDir,
+                outDir: s`${tmpDir}/library/out`,
+                stagingDir: libStagingDir,
+                outFile: 'complib.zip',
+                libraryIndex: 0
+            });
+        });
+
+        afterEach(async () => {
+            await forceDeleteDir(tmpDir);
+        });
+
+        it('keeps a component library breakpoint placeable when validating all projects together', async () => {
+            setDebuggerType(true);
+            const [breakpoint] = bpManager.replaceBreakpoints(libSrcPath, [{ line: 2 }]);
+
+            await bpManager.validateAndWriteBreakpointsForProjects([mainProject, libProject]);
+
+            //the main project's pass must not fail the complib breakpoint
+            expect(breakpoint.reason).to.not.equal('failed');
+
+            //the breakpoint makes it into the diff (this is what gets sent to the device)
+            const diff = await bpManager.getDiff([mainProject, libProject]);
+            expect(
+                diff.added.map(x => ({ pkgPath: x.pkgPath, line: x.line }))
+            ).to.eql([{
+                pkgPath: 'pkg:/components/Task__lib0.brs',
+                line: 2
+            }]);
+        });
+
+        it('keeps a main project breakpoint placeable when a component library is present', async () => {
+            setDebuggerType(true);
+            const [breakpoint] = bpManager.replaceBreakpoints(mainSrcPath, [{ line: 2 }]);
+
+            await bpManager.validateAndWriteBreakpointsForProjects([mainProject, libProject]);
+
+            //the complib's pass must not fail the main project breakpoint
+            expect(breakpoint.reason).to.not.equal('failed');
+
+            const diff = await bpManager.getDiff([mainProject, libProject]);
+            expect(
+                diff.added.map(x => ({ pkgPath: x.pkgPath, line: x.line }))
+            ).to.eql([{
+                pkgPath: 'pkg:/source/main.brs',
+                line: 2
+            }]);
+        });
+
+        it('still fails breakpoints that have no staging location in any project', async () => {
+            setDebuggerType(true);
+            const [breakpoint] = bpManager.replaceBreakpoints(s`${tmpDir}/unrelated/orphan.brs`, [{ line: 2 }]);
+
+            await bpManager.validateAndWriteBreakpointsForProjects([mainProject, libProject]);
+
+            expect(breakpoint.reason).to.equal('failed');
+            expect(breakpoint.verified).to.be.false;
+        });
+
+        it('writes telnet STOP statements into every project in a single call', async () => {
+            setDebuggerType(false);
+            bpManager.replaceBreakpoints(mainSrcPath, [{ line: 2 }]);
+            bpManager.replaceBreakpoints(libSrcPath, [{ line: 2 }]);
+
+            await bpManager.validateAndWriteBreakpointsForProjects([mainProject, libProject]);
+
+            expect(fsExtra.readFileSync(`${mainStagingDir}/source/main.brs`).toString()).to.include('STOP');
+            expect(fsExtra.readFileSync(`${libStagingDir}/components/Task.brs`).toString()).to.include('STOP');
+        });
+    });
+
+    describe('validateAndWriteBreakpointsForProjects', () => {
         let tmpDir = s`${cwd}/.tmp`;
         let rootDir = s`${tmpDir}/rokuProject`;
         let outDir = s`${tmpDir}/out`;
@@ -810,7 +907,7 @@ describe('BreakpointManager', () => {
                 const project = setup();
                 bpManager.launchConfiguration = { enableDebugProtocol: false } as any;
 
-                await bpManager.validateAndWriteBreakpointsForProject(project);
+                await bpManager.validateAndWriteBreakpointsForProjects([project]);
 
                 expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString())
                     .to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);
@@ -820,7 +917,7 @@ describe('BreakpointManager', () => {
                 const project = setup();
                 bpManager.launchConfiguration = { enableDebugProtocol: true } as any;
 
-                await bpManager.validateAndWriteBreakpointsForProject(project);
+                await bpManager.validateAndWriteBreakpointsForProjects([project]);
 
                 //file is untouched — the device sets breakpoints by line number
                 expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString()).to.equal(code);
@@ -852,7 +949,7 @@ describe('BreakpointManager', () => {
                 fsExtra.outputFileSync(srcPath.replace(s`${rootDir}`, s`${stagingDir}`), code);
                 offManager.launchConfiguration = { enableDebugProtocol: true } as any;
                 const [bp] = offManager.replaceBreakpoints(srcPath, [{ line: line }]);
-                await offManager.validateAndWriteBreakpointsForProject(project());
+                await offManager.validateAndWriteBreakpointsForProjects([project()]);
                 return bp;
             }
 
@@ -913,7 +1010,7 @@ describe('BreakpointManager', () => {
 
                 offManager.launchConfiguration = { enableDebugProtocol: true } as any;
                 const [bp] = offManager.replaceBreakpoints(s`${rootDir}/source/helper.script`, [{ line: 2 }]);
-                await offManager.validateAndWriteBreakpointsForProject(proj);
+                await offManager.validateAndWriteBreakpointsForProjects([proj]);
 
                 expect(bp.reason, 'script-referenced non-.brs file breakpoint should be kept').to.not.equal('failed');
             });
@@ -925,7 +1022,7 @@ describe('BreakpointManager', () => {
 
                 offManager.launchConfiguration = { enableDebugProtocol: false } as any;
                 offManager.replaceBreakpoints(s`${rootDir}/source/main.brs`, [{ line: 3 }]);
-                await offManager.validateAndWriteBreakpointsForProject(project());
+                await offManager.validateAndWriteBreakpointsForProjects([project()]);
 
                 expect(fsExtra.readFileSync(`${stagingDir}/source/main.brs`).toString())
                     .to.equal(`sub main()\n    print 1\nSTOP\n    print 2\nend sub`);

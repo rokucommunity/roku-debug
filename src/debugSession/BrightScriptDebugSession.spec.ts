@@ -1132,7 +1132,7 @@ describe('BrightScriptDebugSession', () => {
 
             //simulate "launch" — stage in launchRequest, then write breakpoints + zip in configurationDoneRequest
             await session.prepareMainProject();
-            await session['writeMainProjectBreakpoints']();
+            await session['writeBreakpoints']();
             await session['zipMainProject']();
 
             //remove the breakpoint
@@ -1858,12 +1858,13 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
-    describe('prepareComponentLibraries / packageAndHostComponentLibraries', () => {
-        //runs the full complib flow in the same order launchRequest does: stage, then write+postfix,
-        //then the cross-project `Library` rewrite, then zip+install+host.
+    describe('prepareComponentLibraries / zipServeAndInstallComponentLibraries', () => {
+        //runs the full complib flow in the same order launchRequest does: stage, then write breakpoints,
+        //then postfix, then the cross-project `Library` rewrite, then zip+install+host.
         async function runPrepareAndHost(componentLibraries: any[], port: number) {
             await session['prepareComponentLibraries'](componentLibraries);
-            await session['writeAndPostfixComponentLibraries'](componentLibraries);
+            await session['writeBreakpoints']();
+            await session['postfixComponentLibraries'](componentLibraries);
             await session.projectManager.applyLibraryReferencePostfixes();
             await session['zipServeAndInstallComponentLibraries'](componentLibraries, port);
         }
@@ -3159,8 +3160,8 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
             sinon.stub(session, 'prepareMainProject').resolves();
             sinon.stub(session as any, 'prepareComponentLibraries').resolves();
-            sinon.stub(session as any, 'writeMainProjectBreakpoints').resolves();
-            sinon.stub(session as any, 'writeAndPostfixComponentLibraries').resolves();
+            sinon.stub(session as any, 'writeBreakpoints').resolves();
+            sinon.stub(session as any, 'postfixComponentLibraries').resolves();
             sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
             sinon.stub(session as any, 'zipMainProject').resolves();
             sinon.stub(session as any, 'zipServeAndInstallComponentLibraries').resolves();
@@ -3297,10 +3298,10 @@ describe('BrightScriptDebugSession', () => {
 
         describe('library reference postfixing lifecycle', () => {
             /**
-             * Stub the postfixing and zipping phases so each records a marker when it runs, then run the launch
-             * flow (launchRequest stages; the package phase runs in configurationDoneRequest) and return the
-             * recorded order. The write/postfix phases resolve on a later tick so the test proves the `Library`
-             * rewrite truly waits for BOTH write/postfix branches to finish.
+             * Stub the breakpoint-write, postfixing, and zipping phases so each records a marker when it runs,
+             * then run the launch flow (launchRequest stages; the package phase runs in configurationDoneRequest)
+             * and return the recorded order. The write/postfix phases resolve on a later tick so the test proves
+             * each downstream phase truly waits for the previous one to finish.
              */
             async function recordPhaseOrder() {
                 const order: string[] = [];
@@ -3318,12 +3319,12 @@ describe('BrightScriptDebugSession', () => {
                 sinon.stub(session as any, 'prepareComponentLibraries').resolves();
                 rokuAdapter.connected = true;
 
-                //write+postfix phases: resolve on a later tick so a missing barrier would let the rewrite sneak in early
-                sinon.stub(session as any, 'writeMainProjectBreakpoints').callsFake(async () => {
+                //write+postfix phases: resolve on a later tick so a missing barrier would let the next phase sneak in early
+                sinon.stub(session as any, 'writeBreakpoints').callsFake(async () => {
                     await util.sleep(20);
-                    order.push('postfix:main');
+                    order.push('write');
                 });
-                sinon.stub(session as any, 'writeAndPostfixComponentLibraries').callsFake(async () => {
+                sinon.stub(session as any, 'postfixComponentLibraries').callsFake(async () => {
                     await util.sleep(10);
                     order.push('postfix:complibs');
                 });
@@ -3354,8 +3355,10 @@ describe('BrightScriptDebugSession', () => {
                 const order = await recordPhaseOrder();
 
                 const rewriteIndex = order.indexOf('rewrite');
-                //both write/postfix phases complete before the rewrite starts
-                expect(order.indexOf('postfix:main')).to.be.lessThan(rewriteIndex);
+                //breakpoints are written (telnet STOPs) before any complib file is renamed with its postfix
+                expect(order.indexOf('write')).to.be.lessThan(order.indexOf('postfix:complibs'));
+                //the write and postfix phases complete before the rewrite starts
+                expect(order.indexOf('write')).to.be.lessThan(rewriteIndex);
                 expect(order.indexOf('postfix:complibs')).to.be.lessThan(rewriteIndex);
                 //all zipping/uploading happens after the rewrite
                 expect(order.indexOf('zip:main')).to.be.greaterThan(rewriteIndex);
