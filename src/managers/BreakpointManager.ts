@@ -529,29 +529,42 @@ export class BreakpointManager {
     }
 
     /**
-     * Reconcile every breakpoint against the project's staged files, marking any that can't be placed
-     * (unsupported file type, or a file not in the project) as failed. Returns the placeable breakpoints
-     * keyed by staging file path.
+     * Reconcile every breakpoint against the staged files of the given projects, marking any that can't be
+     * placed (unsupported file type, or a file not in any project) as failed. Returns the placeable
+     * breakpoints keyed by staging file path.
+     *
+     * Always pass every project in the session (main project and all component libraries) together: a
+     * breakpoint is only failed when it has no staging location in ANY of the given projects, so validating
+     * one project at a time would incorrectly fail every other project's breakpoints.
      *
      * For telnet there is no on-device breakpoint API, so this also bakes a literal `STOP` into the staged
      * files for each breakpoint and registers them as permanent/verified. DebugProtocol writes nothing
      * (the device breaks by line number). The choice is made here from `launchConfiguration.enableDebugProtocol`.
      */
-    public async validateAndWriteBreakpointsForProject(project: Project) {
+    public async validateAndWriteBreakpointsForProjects(projects: Project[]) {
         //telnet bakes in a literal STOP per breakpoint; DebugProtocol breaks by line number and writes nothing
         const willInjectStop = !this.launchConfiguration?.enableDebugProtocol;
 
-        const breakpointsByStagingFilePath = await this.getBreakpointWork(project, willInjectStop);
+        //compute the breakpoint work for every project up front so the failure check below sees the whole session
+        const workForProjects = await Promise.all(
+            projects.map(project => this.getBreakpointWork(project, willInjectStop))
+        );
 
-        //track which breakpoints were successfully mapped to a staging location
+        //track which breakpoints were successfully mapped to a staging location in at least one project.
+        //staging file paths are unique per project (each project has its own staging dir), so the work
+        //records can be safely merged into one
         const stagedSrcHashes = new Set<string>();
-        for (const stagingFilePath in breakpointsByStagingFilePath) {
-            for (const breakpoint of breakpointsByStagingFilePath[stagingFilePath]) {
-                stagedSrcHashes.add(breakpoint.srcHash);
+        const breakpointsByStagingFilePath: Record<string, BreakpointWorkItem[]> = {};
+        for (const workForProject of workForProjects) {
+            for (const stagingFilePath in workForProject) {
+                for (const breakpoint of workForProject[stagingFilePath]) {
+                    stagedSrcHashes.add(breakpoint.srcHash);
+                }
+                breakpointsByStagingFilePath[stagingFilePath] = workForProject[stagingFilePath];
             }
         }
 
-        //fail any breakpoints that had no staging location
+        //fail any breakpoints that had no staging location in any project
         for (const [, breakpoints] of this.breakpointsByFilePath) {
             for (const bp of breakpoints) {
                 if (!stagedSrcHashes.has(bp.srcHash) && bp.reason !== 'failed') {
@@ -578,7 +591,7 @@ export class BreakpointManager {
     /**
      * Write STOP statements into the project's staging files for each breakpoint location and update the
      * sourcemaps to match. Marks the written breakpoints as verified and registers them as permanent.
-     * Telnet only — `validateAndWriteBreakpointsForProject` calls this when no on-device breakpoint API
+     * Telnet only — `validateAndWriteBreakpointsForProjects` calls this when no on-device breakpoint API
      * is available.
      */
     private async writeBreakpointsForProject(breakpointsByStagingFilePath: Record<string, BreakpointWorkItem[]>) {
