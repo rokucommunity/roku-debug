@@ -796,16 +796,24 @@ export class DebugProtocolClient {
     /**
      * Sometimes a request arrives that we don't understand. If that's the case, this function can be used
      * to discard that entire response by discarding `packet_length` number of bytes
+     * @returns true if bytes were actually discarded, false if the buffer was left untouched
      */
-    private discardNextResponseOrUpdate() {
+    private discardNextResponseOrUpdate(): boolean {
+        //an unparseable pre-handshake buffer is a fragmented handshake still accumulating, not an
+        //unknown message, so there's no packet length to recover with yet. never discard here
+        if (!this.isHandshakeComplete) {
+            return false;
+        }
         const response = GenericV3Response.fromBuffer(this.buffer);
-        if (response.success && response.data.packetLength > 0) {
+        if (response.success && response.data.packetLength > 0 && response.data.packetLength <= this.buffer.length) {
             this.logger.warn(`Unsupported response or updated encountered. Discarding ${response.data.packetLength} bytes:`, JSON.stringify(
                 this.buffer.slice(0, response.data.packetLength + 1).toJSON().data
             ));
             //we have a valid event. Clear the buffer of this data
             this.buffer = this.buffer.slice(response.data.packetLength);
+            return true;
         }
+        return false;
     }
 
     /**
@@ -845,9 +853,9 @@ export class DebugProtocolClient {
             //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
             if (!responseOrUpdate) {
                 this.logger.info('Unable to convert buffer into anything meaningful', this.buffer);
-                //if we have packet length, and we have at least that many bytes, throw out this message so we can hopefully recover
-                this.discardNextResponseOrUpdate();
-                return false;
+                //if we have packet length, and we have at least that many bytes, throw out this message so we can hopefully recover.
+                //if we actually discarded bytes, there may be another full message right behind it in the same buffer, so keep looping
+                return this.discardNextResponseOrUpdate();
             }
             if (!responseOrUpdate.success || responseOrUpdate.data.packetLength > this.buffer.length) {
                 this.logger.log(`event parse failed. ${responseOrUpdate?.data?.packetLength} bytes required, ${this.buffer.length} bytes available`);
