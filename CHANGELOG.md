@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.1](https://github.com/rokucommunity/roku-debug/compare/0.24.0...v0.24.1) - 2026-08-28
+### Changed
+ - upgrade to [@rokucommunity/logger@0.4.1](https://github.com/rokucommunity/logger/blob/master/CHANGELOG.md#041---2026-07-10). Notable changes since 0.4.0:
+     - Serialize Error.cause (recursively) when logging ([#33](https://github.com/rokucommunity/logger/pull/33))
+     - chore: Update create-vsix to support multi-vsix and shared bot logic ([#32](https://github.com/rokucommunity/logger/pull/32))
+### Fixed
+ - Fix debug session dying after a fragmented handshake ([#410](https://github.com/rokucommunity/roku-debug/pull/410))
+
+
+
 ## [0.24.0](https://github.com/rokucommunity/roku-debug/compare/0.23.16...v0.24.0) - 2026-08-07
 ### Changed
  - Roku Cloud Emulator support ([#399](https://github.com/rokucommunity/roku-debug/pull/399))
