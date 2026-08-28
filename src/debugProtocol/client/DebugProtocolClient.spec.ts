@@ -8,7 +8,7 @@ import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import { defer, util } from '../../util';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
-import type { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
+import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 import type { Variable } from '../events/responses/VariablesResponse';
 import { VariablesResponse, VariableType } from '../events/responses/VariablesResponse';
@@ -61,6 +61,19 @@ describe('DebugProtocolClient', () => {
             })),
             await client.once('suspend')
         ]);
+    }
+
+    /**
+     * Builds a raw v3 update packet whose update type isn't handled by `getUpdate()`, so the client
+     * treats it as unsupported and routes it through `discardNextResponseOrUpdate()`.
+     */
+    function buildUnrecognizedUpdatePacket(packetLength: number) {
+        const packetBuffer = Buffer.alloc(packetLength);
+        packetBuffer.writeUInt32LE(packetLength, 0); // packet_length
+        packetBuffer.writeUInt32LE(0, 4); // request_id (0 means this is an update)
+        packetBuffer.writeUInt32LE(ErrorCode.OK, 8); // error_code
+        packetBuffer.writeUInt32LE(999999, 12); // update_type (not a recognized UpdateTypeCode)
+        return packetBuffer;
     }
 
     beforeEach(async () => {
@@ -647,6 +660,117 @@ describe('DebugProtocolClient', () => {
 
         expect(client.watchPacketLength).to.be.equal(false);
         expect(client.isHandshakeComplete).to.be.equal(true);
+    });
+
+    it('waits for the rest of a fragmented handshake instead of discarding it', async () => {
+        const handshakeBuffer = HandshakeV3Response.fromJson({
+            magic: DebugProtocolClient.DEBUGGER_MAGIC,
+            protocolVersion: '3.5.0',
+            revisionTimestamp: new Date(2022, 1, 1)
+        }).toBuffer();
+
+        //feed only the first chunk of the handshake, as if the transport split the write mid-magic/version
+        const firstChunkLength = 20;
+        client['buffer'] = handshakeBuffer.slice(0, firstChunkLength);
+        await client['process']();
+
+        //the partial handshake must not be discarded, and the handshake must not be considered complete yet
+        expect(client['buffer'].length).to.equal(firstChunkLength);
+        expect(client.isHandshakeComplete).to.be.false;
+
+        //now the rest of the handshake arrives
+        client['buffer'] = Buffer.concat([client['buffer'], handshakeBuffer.slice(firstChunkLength)] as any[]);
+        await client['process']();
+
+        expect(client.isHandshakeComplete).to.be.true;
+        expect(client.protocolVersion).to.equal('3.5.0');
+    });
+
+    it('never discards a pre-handshake buffer even when the length guard alone would allow it', async () => {
+        //first 4 bytes decode to a small little-endian packet_length that is well within the buffer's own
+        //length, so the length guard alone would let this through. only the handshake guard should stop it
+        const buffer = Buffer.alloc(12);
+        buffer.writeUInt32LE(8, 0); // would-be packet_length (requestId and errorCode default to zero)
+        client['buffer'] = buffer;
+
+        await client['process']();
+
+        expect(client['buffer'].length).to.equal(12);
+        expect(client.isHandshakeComplete).to.be.false;
+    });
+
+    it('waits for the rest of a fragmented post-handshake packet instead of discarding it', async () => {
+        //simulate a completed handshake without going through the full connect flow
+        client.watchPacketLength = true;
+        client.isHandshakeComplete = true;
+
+        const unrecognizedPacket = buildUnrecognizedUpdatePacket(40);
+        const alignedUpdate = AllThreadsStoppedUpdate.fromJson({
+            threadIndex: 5,
+            stopReason: StopReason.Break,
+            stopReasonDetail: 'aligned'
+        }).toBuffer();
+
+        //feed only the first part of the packet, fewer bytes than its packet_length
+        const firstChunkLength = 20;
+        client['buffer'] = unrecognizedPacket.slice(0, firstChunkLength);
+        await client['process']();
+
+        //there aren't enough bytes to satisfy packet_length yet, so nothing should be discarded
+        expect(client['buffer'].length).to.equal(firstChunkLength);
+
+        //the rest of the unrecognized packet arrives, immediately followed by a real update
+        client['buffer'] = Buffer.concat([
+            client['buffer'],
+            unrecognizedPacket.slice(firstChunkLength),
+            alignedUpdate
+        ] as any[]);
+
+        const receivedUpdatePromise = client.once('update');
+
+        //drain the buffer: one call discards the unrecognized packet, the next parses the aligned update
+        for (let iteration = 0; iteration < 5 && client['buffer'].length > 0; iteration++) {
+            await client['process']();
+        }
+
+        //the discard consumed exactly the unrecognized packet's bytes, so the aligned update parsed cleanly
+        expect(client['buffer'].length).to.equal(0);
+        expect((await receivedUpdatePromise).data).to.include({
+            threadIndex: 5,
+            stopReasonDetail: 'aligned'
+        });
+    });
+
+    it('parses a valid packet that arrives in the same chunk right behind a discarded unrecognized packet', async () => {
+        await client.connect();
+
+        const unrecognizedPacket = buildUnrecognizedUpdatePacket(40);
+        const alignedUpdate = AllThreadsStoppedUpdate.fromJson({
+            threadIndex: 7,
+            stopReason: StopReason.Break,
+            stopReasonDetail: 'same-chunk'
+        }).toBuffer();
+
+        const receivedUpdatePromise = client.once('update');
+
+        //emit both packets as a single 'data' event on the control socket, driving the client's real
+        //drain loop instead of calling process() ourselves, so the loop's early-exit bug can surface
+        client['controlSocket'].emit('data', Buffer.concat([unrecognizedPacket, alignedUpdate] as any[]));
+
+        expect((await receivedUpdatePromise).data).to.include({
+            threadIndex: 7,
+            stopReasonDetail: 'same-chunk'
+        });
+    });
+
+    it('discards a complete unrecognized packet in one shot', async () => {
+        client.watchPacketLength = true;
+        client.isHandshakeComplete = true;
+
+        client['buffer'] = buildUnrecognizedUpdatePacket(40);
+        await client['process']();
+
+        expect(client['buffer'].length).to.equal(0);
     });
 
     it('discards unrecognized updates', async () => {
