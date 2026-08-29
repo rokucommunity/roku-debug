@@ -64,9 +64,12 @@ export class FileUtils {
      * match the partial file path
      * @param partialFilePath the partial file path to search for
      * @param directoryPath the path to the directory to search through
+     * @param relativePaths the pre-computed list of paths relative to `directoryPath` (from
+     * {@link getAllRelativePaths}). Pass this when resolving many partial paths against the same
+     * directory to avoid re-walking the tree on every call; the tree is walked here when omitted.
      * @returns a relative path to the first match found in the directory
      */
-    public async findPartialFileInDirectory(partialFilePath: string, directoryPath: string) {
+    public async findPartialFileInDirectory(partialFilePath: string, directoryPath: string, relativePaths?: string[]) {
         //the debugger path was truncated, so try and map it to a file in the outdir
         partialFilePath = this.standardizePath(
             this.removeFileTruncation(partialFilePath)
@@ -74,7 +77,7 @@ export class FileUtils {
 
         //find any files from the outDir that end the same as this file
         let results: string[] = [];
-        let relativePaths = await this.getAllRelativePaths(directoryPath);
+        relativePaths ??= await this.getAllRelativePaths(directoryPath);
         for (let relativePath of relativePaths) {
             //if the staging path looks like the debugger path, keep it for now
             if (this.pathEndsWith(relativePath, partialFilePath)) {
