@@ -27,7 +27,7 @@ describe('RokuECP', () => {
             let stub = sinon.stub(rokuDeploy, 'sendEcpRequest').resolves({
                 status: 200,
                 body: '',
-                json: undefined
+                headers: {}
             });
 
             await rokuECP['doRequest']('query/my-route', options);
@@ -50,7 +50,7 @@ describe('RokuECP', () => {
             let stub = sinon.stub(rokuDeploy, 'sendEcpRequest').resolves({
                 status: 200,
                 body: '',
-                json: undefined
+                headers: {}
             });
 
             await rokuECP['doRequest']('/query/my-route', options, 'post');
