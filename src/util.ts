@@ -10,6 +10,7 @@ import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeve
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
 import type { AdapterOptions, DisposableLike } from './interfaces';
+import * as needle from 'needle';
 import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
@@ -460,21 +461,43 @@ class Util {
     /**
      * Do an http POST request
      */
-    public async httpPost(url: string, options?: HttpRequestOptions) {
-        const controller = new AbortController();
-        const timeout = options?.timeout === undefined ? undefined : setTimeout(() => controller.abort(), options.timeout);
-        try {
-            return await fetch(url, {
-                method: 'POST',
-                headers: options?.headers,
-                body: options?.body,
-                signal: controller.signal
+    public httpPost(url: string, options?: HttpRequestOptions) {
+        const needleOptions: needle.NeedleOptions = {
+            //Roku responses are HTML/XML that we parse by hand; never let needle auto-parse them
+            'parse_response': false,
+            //never let needle charset-decode a response: a body served with a charset in its
+            //content-type would get every non-utf8 byte replaced with U+FFFD
+            'decode_response': false,
+            //`timeout` bounds the connection and the time to the first response byte. Deliberately do
+            //NOT set `read_timeout`: its per-chunk re-armed timer can be left running after a request
+            //completes, later firing a spurious `request.destroy()` and keeping the event loop alive.
+            'open_timeout': options?.timeout,
+            'response_timeout': options?.timeout,
+            headers: options?.headers,
+            //needle does not send `Connection: close` on modern Node, so the socket to the Roku stays
+            //open after the response and keeps the event loop alive. `agent: false` is also required:
+            //the header alone does not stop Node's pooling `http.globalAgent` from handing back a
+            //keep-alive socket the Roku already closed (an instant ECONNRESET).
+            connection: 'close',
+            agent: false
+        };
+        return new Promise<HttpResponse>((resolve, reject) => {
+            needle.post(url, options?.body ?? null, needleOptions, (error, response) => {
+                if (error) {
+                    return reject(error);
+                }
+                if (!response) {
+                    return reject(new Error(`No response received from ${url}`));
+                }
+                resolve({
+                    statusCode: response.statusCode,
+                    statusMessage: response.statusMessage,
+                    headers: response.headers ?? {},
+                    //with `parse_response`/`decode_response` disabled, needle hands back a Buffer
+                    body: response.body === undefined || response.body === null ? '' : response.body.toString()
+                });
             });
-        } finally {
-            if (timeout !== undefined) {
-                clearTimeout(timeout);
-            }
-        }
+        });
     }
 
     /**
@@ -773,9 +796,22 @@ export interface Deferred<T> {
  */
 export interface HttpRequestOptions {
     /**
-     * Milliseconds to wait before aborting the request.
+     * Milliseconds to wait for the connection to open and for the first response byte.
      */
     timeout?: number;
     headers?: Record<string, string>;
     body?: string;
+}
+
+/**
+ * The response shape returned by `util.httpPost()`. Deliberately our own type rather than needle's,
+ * so `@types/needle` stays a devDependency and needle is not part of this package's public surface.
+ */
+export interface HttpResponse {
+    statusCode: number;
+    statusMessage?: string;
+    /** Response headers, lower-cased names. */
+    headers: Record<string, any>;
+    /** The response body, decoded as a utf8 string (empty string for bodyless responses). */
+    body: string;
 }
