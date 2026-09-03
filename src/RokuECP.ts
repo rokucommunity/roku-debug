@@ -1,5 +1,5 @@
 import { util } from './util';
-import type * as requestType from 'request';
+import type { HttpRequestOptions } from './util';
 import { rokuDeploy } from 'roku-deploy';
 import type { DeviceConfig, EcpResult } from 'roku-deploy';
 
@@ -120,7 +120,7 @@ export enum EcpStatus {
 }
 interface BaseOptions {
     remotePort?: number;
-    requestOptions?: requestType.CoreOptions;
+    requestOptions?: HttpRequestOptions;
     /**
      * The roku-deploy device config for the target device. When this is an RCE device config,
      * roku-deploy routes the request through the instance's ECP proxy instead of the local HTTP

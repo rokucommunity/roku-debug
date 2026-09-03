@@ -72,7 +72,6 @@
         "@types/fs-extra": "^9.0.13",
         "@types/mocha": "^10.0.10",
         "@types/node": "^16.18.126",
-        "@types/request": "^2.48.8",
         "@types/semver": "^7.3.9",
         "@types/sinon": "^10.0.6",
         "@types/ws": "^8.18.1",
@@ -104,7 +103,6 @@
     },
     "dependencies": {
         "@rokucommunity/logger": "^0.4.2",
-        "@types/request": "^2.48.8",
         "@vscode/debugadapter": "^1.68.0",
         "@vscode/debugprotocol": "^1.68.0",
         "brighterscript": "^0.73.1",
@@ -117,7 +115,6 @@
         "fs-extra": "^10.0.0",
         "natural-orderby": "^2.0.3",
         "portfinder": "^1.0.32",
-        "postman-request": "^2.88.1-postman.48",
         "replace-in-file": "^6.3.2",
         "replace-last": "^1.2.6",
         "roku-deploy": "^4.0.0-alpha.5",

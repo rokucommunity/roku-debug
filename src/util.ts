@@ -10,16 +10,12 @@ import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeve
 import { serializeError } from 'serialize-error';
 import * as dns from 'dns';
 import type { AdapterOptions, DisposableLike } from './interfaces';
-import * as r from 'postman-request';
-import type { Response } from 'request';
-import type * as requestType from 'request';
 import { OutputEvent } from '@vscode/debugadapter';
 import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
 import type { DeviceConfig, RokuDeploySocket } from 'roku-deploy';
 import { isRceDeviceConfigById, isRceDeviceConfigByUrl, isRceDeviceConfig } from 'roku-deploy';
-const request = r as typeof requestType;
 
 class Util {
     /**
@@ -462,25 +458,23 @@ class Util {
     }
 
     /**
-     * Do an http GET request
-     */
-    public httpGet(url: string, options?: requestType.CoreOptions) {
-        return new Promise<Response>((resolve, reject) => {
-            request.get(url, options, (err, response) => {
-                return err ? reject(err) : resolve(response);
-            });
-        });
-    }
-
-    /**
      * Do an http POST request
      */
-    public httpPost(url: string, options?: requestType.CoreOptions) {
-        return new Promise<Response>((resolve, reject) => {
-            request.post(url, options, (err, response) => {
-                return err ? reject(err) : resolve(response);
+    public async httpPost(url: string, options?: HttpRequestOptions) {
+        const controller = new AbortController();
+        const timeout = options?.timeout === undefined ? undefined : setTimeout(() => controller.abort(), options.timeout);
+        try {
+            return await fetch(url, {
+                method: 'POST',
+                headers: options?.headers,
+                body: options?.body,
+                signal: controller.signal
             });
-        });
+        } finally {
+            if (timeout !== undefined) {
+                clearTimeout(timeout);
+            }
+        }
     }
 
     /**
@@ -770,4 +764,18 @@ export interface Deferred<T> {
     promise: Promise<T>;
     resolve(value?: T);
     reject(error?: any);
+}
+
+/**
+ * The subset of request options this library actually supports. Previously this was
+ * `CoreOptions` from `@types/request`; it was narrowed to drop the `postman-request`
+ * dependency, which carried vulnerable transitive deps.
+ */
+export interface HttpRequestOptions {
+    /**
+     * Milliseconds to wait before aborting the request.
+     */
+    timeout?: number;
+    headers?: Record<string, string>;
+    body?: string;
 }
