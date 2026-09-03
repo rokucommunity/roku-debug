@@ -459,10 +459,10 @@ class Util {
     }
 
     /**
-     * Do an http POST request
+     * Translate our request options into the needle options we want for talking to a Roku.
      */
-    public httpPost(url: string, options?: HttpRequestOptions) {
-        const needleOptions: needle.NeedleOptions = {
+    private buildNeedleOptions(options?: HttpRequestOptions): needle.NeedleOptions {
+        return {
             //Roku responses are HTML/XML that we parse by hand; never let needle auto-parse them
             'parse_response': false,
             //never let needle charset-decode a response: a body served with a charset in its
@@ -481,21 +481,51 @@ class Util {
             connection: 'close',
             agent: false
         };
+    }
+
+    /**
+     * Build our own `HttpResponse` from needle's response.
+     */
+    private buildHttpResponse(response: needle.NeedleResponse): HttpResponse {
+        return {
+            statusCode: response.statusCode,
+            statusMessage: response.statusMessage,
+            headers: response.headers ?? {},
+            //with `parse_response`/`decode_response` disabled, needle hands back a Buffer
+            body: response.body === undefined || response.body === null ? '' : response.body.toString()
+        };
+    }
+
+    /**
+     * Do an http GET request
+     */
+    public httpGet(url: string, options?: HttpRequestOptions) {
         return new Promise<HttpResponse>((resolve, reject) => {
-            needle.post(url, options?.body ?? null, needleOptions, (error, response) => {
+            needle.get(url, this.buildNeedleOptions(options), (error, response) => {
                 if (error) {
                     return reject(error);
                 }
                 if (!response) {
                     return reject(new Error(`No response received from ${url}`));
                 }
-                resolve({
-                    statusCode: response.statusCode,
-                    statusMessage: response.statusMessage,
-                    headers: response.headers ?? {},
-                    //with `parse_response`/`decode_response` disabled, needle hands back a Buffer
-                    body: response.body === undefined || response.body === null ? '' : response.body.toString()
-                });
+                resolve(this.buildHttpResponse(response));
+            });
+        });
+    }
+
+    /**
+     * Do an http POST request
+     */
+    public httpPost(url: string, options?: HttpRequestOptions) {
+        return new Promise<HttpResponse>((resolve, reject) => {
+            needle.post(url, options?.body ?? null, this.buildNeedleOptions(options), (error, response) => {
+                if (error) {
+                    return reject(error);
+                }
+                if (!response) {
+                    return reject(new Error(`No response received from ${url}`));
+                }
+                resolve(this.buildHttpResponse(response));
             });
         });
     }
