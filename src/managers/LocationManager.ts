@@ -196,7 +196,7 @@ export interface GetSourceLocationOptions {
      */
     sourceDirs?: string[];
     /**
-     * The result of rokuDeploy.getFilePaths(). This is passed in so it can be cached on the outside in order to improve performance
+     * The result of rokuDeploy.resolveFilesArray(). This is passed in so it can be cached on the outside in order to improve performance
      */
     fileMappings: { src: string; dest: string }[];
     /**

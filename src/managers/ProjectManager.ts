@@ -1076,7 +1076,7 @@ export class Project {
      * (`dest` paths are relative in later versions of roku-deploy)
      */
     protected async getFileMappings() {
-        let fileMappings = await rokuDeploy.getFilePaths({ files: this.files, rootDir: this.rootDir });
+        let fileMappings = await rokuDeploy.resolveFilesArray({ files: this.files, rootDir: this.rootDir });
         for (let fileMapping of fileMappings) {
             fileMapping.dest = s`${this.stagingDir}/${fileMapping.dest}`;
         }

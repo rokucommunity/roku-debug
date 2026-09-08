@@ -74,7 +74,7 @@ export class RokuECP {
     }
 
     public async getRegistry(options: BaseOptions & { appId: string }): Promise<EcpRegistryData> {
-        const registry = await rokuDeploy.queryRegistry({
+        const registry = await rokuDeploy.getRegistry({
             device: options.device,
             appId: options.appId,
             ecpPort: options.remotePort
@@ -89,7 +89,7 @@ export class RokuECP {
     }
 
     public async getAppState(options: BaseOptions & { appId: string }): Promise<EcpAppStateData> {
-        const appState = await rokuDeploy.queryAppState({
+        const appState = await rokuDeploy.getAppState({
             device: options.device,
             appId: options.appId,
             ecpPort: options.remotePort

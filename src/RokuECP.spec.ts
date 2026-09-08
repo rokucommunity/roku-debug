@@ -70,14 +70,14 @@ describe('RokuECP', () => {
             sections: {}
         };
 
-        it('calls rokuDeploy.queryRegistry with the device option', async () => {
+        it('calls rokuDeploy.getRegistry with the device option', async () => {
             let options = {
                 device: { host: '1.1.1.1' },
                 remotePort: 8080,
                 appId: 'dev'
             };
 
-            let stub = sinon.stub(rokuDeploy, 'queryRegistry').resolves(registryResult);
+            let stub = sinon.stub(rokuDeploy, 'getRegistry').resolves(registryResult);
 
             let result = await rokuECP.getRegistry(options);
             expect(stub.getCall(0).args).to.eql([{
@@ -101,7 +101,7 @@ describe('RokuECP', () => {
                 appId: 'dev'
             };
 
-            let stub = sinon.stub(rokuDeploy, 'queryRegistry').resolves(registryResult);
+            let stub = sinon.stub(rokuDeploy, 'getRegistry').resolves(registryResult);
 
             await rokuECP.getRegistry(options);
             expect(stub.getCall(0).args).to.eql([{
@@ -118,7 +118,7 @@ describe('RokuECP', () => {
                 appId: 'dev'
             };
 
-            let stub = sinon.stub(rokuDeploy, 'queryRegistry').resolves(registryResult);
+            let stub = sinon.stub(rokuDeploy, 'getRegistry').resolves(registryResult);
 
             await rokuECP.getRegistry(options);
             expect(stub.getCall(0).args).to.eql([{
@@ -130,7 +130,7 @@ describe('RokuECP', () => {
         });
 
         it('maps a populated roku-deploy result onto EcpRegistryData', async () => {
-            sinon.stub(rokuDeploy, 'queryRegistry').resolves({
+            sinon.stub(rokuDeploy, 'getRegistry').resolves({
                 devId: '12345',
                 plugins: ['12', '34', 'dev'],
                 spaceAvailable: '28075',
@@ -164,7 +164,7 @@ describe('RokuECP', () => {
         });
 
         it('maps a minimal roku-deploy result onto EcpRegistryData', async () => {
-            sinon.stub(rokuDeploy, 'queryRegistry').resolves({
+            sinon.stub(rokuDeploy, 'getRegistry').resolves({
                 sections: {}
             });
 
@@ -179,7 +179,7 @@ describe('RokuECP', () => {
         });
 
         it('propagates errors from roku-deploy', async () => {
-            sinon.stub(rokuDeploy, 'queryRegistry').rejects(new Error('Could not retrieve registry: Device not keyed'));
+            sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: Device not keyed'));
 
             await expectThrowsAsync(() => rokuECP.getRegistry({ device: { host: '1.1.1.1' }, appId: 'dev' }), 'Could not retrieve registry: Device not keyed');
         });
@@ -194,14 +194,14 @@ describe('RokuECP', () => {
             state: 'active'
         };
 
-        it('calls rokuDeploy.queryAppState with the device option', async () => {
+        it('calls rokuDeploy.getAppState with the device option', async () => {
             let options = {
                 device: { host: '1.1.1.1' },
                 remotePort: 8080,
                 appId: 'dev'
             };
 
-            let stub = sinon.stub(rokuDeploy, 'queryAppState').resolves(appStateResult);
+            let stub = sinon.stub(rokuDeploy, 'getAppState').resolves(appStateResult);
 
             let result = await rokuECP.getAppState(options);
             expect(stub.getCall(0).args).to.eql([{
@@ -225,7 +225,7 @@ describe('RokuECP', () => {
                 appId: 'dev'
             };
 
-            let stub = sinon.stub(rokuDeploy, 'queryAppState').resolves(appStateResult);
+            let stub = sinon.stub(rokuDeploy, 'getAppState').resolves(appStateResult);
 
             await rokuECP.getAppState(options);
             expect(stub.getCall(0).args).to.eql([{
@@ -237,7 +237,7 @@ describe('RokuECP', () => {
         });
 
         it('maps an unknown state onto AppState.unknown', async () => {
-            sinon.stub(rokuDeploy, 'queryAppState').resolves({
+            sinon.stub(rokuDeploy, 'getAppState').resolves({
                 ...appStateResult,
                 state: 'unknown'
             });
@@ -254,7 +254,7 @@ describe('RokuECP', () => {
         });
 
         it('propagates errors from roku-deploy', async () => {
-            sinon.stub(rokuDeploy, 'queryAppState').rejects(new Error('Could not retrieve app state: App not found'));
+            sinon.stub(rokuDeploy, 'getAppState').rejects(new Error('Could not retrieve app state: App not found'));
 
             await expectThrowsAsync(() => rokuECP.getAppState({ device: { host: '1.1.1.1' }, appId: 'dev' }), 'Could not retrieve app state: App not found');
         });

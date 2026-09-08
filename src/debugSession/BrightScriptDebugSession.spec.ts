@@ -111,7 +111,7 @@ describe('BrightScriptDebugSession', () => {
             createSignedPackage: () => {
                 return Promise.resolve();
             },
-            getFilePaths: () => {
+            resolveFilesArray: () => {
             }
         };
         rokuAdapter = {
@@ -1018,7 +1018,7 @@ describe('BrightScriptDebugSession', () => {
             let filePath = path.resolve(`${folder}/main.brs`);
 
             //prevent actually talking to the file system...just hardcode the list to exactly our main file
-            (session.rokuDeploy as any).getFilePaths = () => {
+            (session.rokuDeploy as any).resolveFilesArray = () => {
                 return [{
                     src: filePath,
                     dest: filePath
