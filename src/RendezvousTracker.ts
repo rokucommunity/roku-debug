@@ -202,7 +202,7 @@ export class RendezvousTracker {
      */
     public async getEcpRendezvous(): Promise<EcpRendezvousData> {
         this.logger.trace('Sending ECP rendezvous request');
-        const rendezvous = await rokuDeploy.queryRendezvous({
+        const rendezvous = await rokuDeploy.getRendezvousTracking({
             device: this.launchConfiguration.device,
             ecpPort: this.launchConfiguration.remotePort
         });

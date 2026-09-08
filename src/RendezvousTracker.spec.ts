@@ -403,11 +403,11 @@ describe('BrightScriptFileUtils ', () => {
         };
 
         it('queries roku-deploy with the bare host when device is not set', async () => {
-            const queryRendezvousStub = sinon.stub(rokuDeploy, 'queryRendezvous').resolves(rendezvousResult);
+            const getRendezvousTrackingStub = sinon.stub(rokuDeploy, 'getRendezvousTracking').resolves(rendezvousResult);
 
             const result = await rendezvousTracker.getEcpRendezvous();
 
-            expect(queryRendezvousStub.getCall(0).args).to.eql([{
+            expect(getRendezvousTrackingStub.getCall(0).args).to.eql([{
                 device: { host: '192.168.1.5' },
                 ecpPort: 8060
             }]);
@@ -417,11 +417,11 @@ describe('BrightScriptFileUtils ', () => {
         it('passes an RCE device config through to roku-deploy', async () => {
             const rceDeviceConfig = { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' };
             rendezvousTracker['launchConfiguration'].device = rceDeviceConfig;
-            const queryRendezvousStub = sinon.stub(rokuDeploy, 'queryRendezvous').resolves(rendezvousResult);
+            const getRendezvousTrackingStub = sinon.stub(rokuDeploy, 'getRendezvousTracking').resolves(rendezvousResult);
 
             const result = await rendezvousTracker.getEcpRendezvous();
 
-            expect(queryRendezvousStub.getCall(0).args[0].device).to.equal(rceDeviceConfig);
+            expect(getRendezvousTrackingStub.getCall(0).args[0].device).to.equal(rceDeviceConfig);
             expect(result).to.eql(rendezvousResult);
         });
     });

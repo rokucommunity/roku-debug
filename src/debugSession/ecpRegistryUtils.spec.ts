@@ -43,7 +43,7 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuDeploy, 'queryRegistry').resolves({
+                sinon.stub(rokuDeploy, 'getRegistry').resolves({
                     sections: {}
                 });
 
@@ -92,7 +92,7 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuDeploy, 'queryRegistry').resolves({
+                sinon.stub(rokuDeploy, 'getRegistry').resolves({
                     devId: '12345',
                     plugins: ['12', '34', 'dev'],
                     spaceAvailable: '28075',
@@ -175,7 +175,7 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuDeploy, 'queryRegistry').resolves({
+                sinon.stub(rokuDeploy, 'getRegistry').resolves({
                     devId: '12345',
                     plugins: ['dev'],
                     spaceAvailable: '32590',
@@ -315,7 +315,7 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuDeploy, 'queryRegistry').rejects(new Error('Could not retrieve registry: Plugin dev not found'));
+                sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: Plugin dev not found'));
 
                 await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
@@ -337,7 +337,7 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuDeploy, 'queryRegistry').rejects(new Error('Could not retrieve registry: Device not keyed'));
+                sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: Device not keyed'));
 
                 await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
@@ -359,7 +359,7 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuDeploy, 'queryRegistry').rejects(new Error('Could not retrieve registry: Unknown error'));
+                sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: Unknown error'));
 
                 await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
@@ -384,7 +384,7 @@ describe('ecpRegistryUtils', () => {
                 //roku-deploy throws an UnparsableDeviceResponseError carrying the device's
                 //plain-text explanation when the response body is not xml (a limited-mode refusal,
                 //for example), so that text still reaches the variables pane
-                sinon.stub(rokuDeploy, 'queryRegistry').rejects(new Error('Could not retrieve registry: ECP command not allowed in Limited mode.'));
+                sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: ECP command not allowed in Limited mode.'));
 
                 await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);

@@ -2200,7 +2200,7 @@ describe('ComponentLibraryProject', () => {
             let project = new ComponentLibraryProject(params);
 
             //roku-deploy returns staging-relative dest paths; getFileMappings makes them absolute
-            sinon.stub(rokuDeploy, 'getFilePaths').returns(Promise.resolve([
+            sinon.stub(rokuDeploy, 'resolveFilesArray').returns(Promise.resolve([
                 { src: s`${rootDir}/manifest`, dest: 'manifest' },
                 { src: s`${rootDir}/source/main.brs`, dest: s`source/main.brs` }
             ]));
