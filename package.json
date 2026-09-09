@@ -97,12 +97,12 @@
         "undent": "^1.0.1"
     },
     "overrides": {
-        "serialize-javascript": "^7.0.5",
+        "serialize-javascript": "^7",
         "js-yaml@^3": "^3.15.2",
-        "js-yaml@^4": "^4.3.2",
-        "qs": "^6.16.0",
+        "js-yaml@^4": "^4",
         "uuid": "^11.1.1",
-        "browserslist": "^4.28.8"
+        "browserslist": "^4.28.8",
+        "istanbul-lib-processinfo": "^3.0.1"
     },
     "dependencies": {
         "@rokucommunity/logger": "^0.4.2",
