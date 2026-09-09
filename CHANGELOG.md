@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.3](https://github.com/rokucommunity/roku-debug/compare/0.24.2...v0.24.3) - 2026-09-09
+### Changed
+ - Security enhancements ([#414](https://github.com/rokucommunity/roku-debug/pull/414), [#417](https://github.com/rokucommunity/roku-debug/pull/417))
+ - Replace postman-request with needle ([#415](https://github.com/rokucommunity/roku-debug/pull/415))
+ - upgrade to [brighterscript@0.73.3](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0733---2026-09-09). Notable changes since 0.73.1:
+     - Security enhancements ([#1796](https://github.com/rokucommunity/brighterscript/pull/1796))
+     - Reduce per-Token lexer allocation to cut GC pressure while editing ([#1712](https://github.com/rokucommunity/brighterscript/pull/1712))
+ - upgrade to [roku-deploy@4.0.0-alpha.6](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#400-alpha6---2026-09-08). Notable changes since 4.0.0-alpha.5:
+     - Migrate RCE routes to /api/v0/input and the 8060 port proxy ([#396](https://github.com/rokucommunity/roku-deploy/pull/396))
+     - Support top-level patterns to external dirs using globstar ([#394](https://github.com/rokucommunity/roku-deploy/pull/394))
+     - Rename getFilePaths to resolveFilesArray ([#393](https://github.com/rokucommunity/roku-deploy/pull/393))
+     - Add rce startDevice/stopDevice CLI commands ([#372](https://github.com/rokucommunity/roku-deploy/pull/372))
+     - Align on RCE camelCase convention ([#369](https://github.com/rokucommunity/roku-deploy/pull/369))
+     - Validate device configs specify exactly one targeting identifier ([#388](https://github.com/rokucommunity/roku-deploy/pull/388))
+     - Remove all @deprecated items ([#389](https://github.com/rokucommunity/roku-deploy/pull/389))
+     - Rename query* ECP methods to get* ([#385](https://github.com/rokucommunity/roku-deploy/pull/385))
+     - Add format property to CaptureScreenshotResult ([#386](https://github.com/rokucommunity/roku-deploy/pull/386))
+
+
+
 ## [0.24.2](https://github.com/rokucommunity/roku-debug/compare/0.24.1...v0.24.2) - 2026-09-02
 ### Changed
  - Security enhancements ([#412](https://github.com/rokucommunity/roku-debug/pull/412))
