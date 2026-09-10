@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import * as path from 'path';
-import * as replaceLast from 'replace-last';
+import { replaceLast } from './formatUtils';
 import type { SourceLocation } from './managers/LocationManager';
 import { logger } from './logging';
 import { SceneGraphDebugCommandController } from './SceneGraphDebugCommandController';
