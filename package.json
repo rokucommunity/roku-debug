@@ -25,20 +25,6 @@
     },
     "author": "RokuCommunity",
     "license": "MIT",
-    "mocha": {
-        "require": [
-            "source-map-support/register",
-            "ts-node/register"
-        ],
-        "watchFiles": [
-            "src/**/*"
-        ],
-        "timeout": 2000,
-        "fullTrace": true,
-        "watchExtensions": [
-            "ts"
-        ]
-    },
     "nyc": {
         "include": [
             "src/**/!(*.spec).ts"
