@@ -18,6 +18,12 @@
     "lib": [
         "es2017",
         "es2019.array",
+        //String.replaceAll
+        "es2021.string",
+        //AggregateError, required by es2022.error below
+        "es2021.promise",
+        //Error.cause
+        "es2022.error",
         "dom"
     ]
   },
