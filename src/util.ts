@@ -7,7 +7,7 @@ import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugS
 import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
 import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
-import { serializeError } from 'serialize-error';
+import { serializeError } from './formatUtils';
 import * as dns from 'dns';
 import type { AdapterOptions, DisposableLike } from './interfaces';
 import * as needle from 'needle';

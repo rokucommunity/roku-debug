@@ -4,7 +4,7 @@ import type { LaunchConfiguration } from './LaunchConfiguration';
 import * as path from 'path';
 import { util } from './util';
 import * as fsExtra from 'fs-extra';
-import * as dateformat from 'dateformat';
+import { formatLogDate } from './formatUtils';
 import { standardizePath as s } from './FileUtils';
 
 const logger = defaultLogger.createLogger('[dap]');
@@ -143,7 +143,7 @@ export class FileLoggingManager {
      * Generate a date string used for log filenames
      */
     private getLogDate(date: Date) {
-        return `${dateformat(date, 'yyyy-mm-dd"T"HH∶MM∶ss')}`;
+        return formatLogDate(date);
     }
 
     /**
