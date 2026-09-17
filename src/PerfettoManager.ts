@@ -8,17 +8,16 @@ import { standardizePath as s } from 'brighterscript';
 import { createLogger } from './logging';
 import { rokuECP } from './RokuECP';
 import { util } from './util';
-import { isLocalDeviceConfig } from 'roku-deploy';
-import type { DeviceConfig, LocalDeviceConfig } from 'roku-deploy';
+import { rokuDeploy } from 'roku-deploy';
+import type { DeviceConfig } from 'roku-deploy';
 
 /**
  * Configuration interface for Perfetto tracing
  */
 interface PerfettoConfig {
     /**
-     * The roku-deploy device config for the target device. The perfetto trace WebSocket connects
-     * directly to the device's ECP port, so tracing currently requires a local device (one with a
-     * host); ECP commands route through roku-deploy and work for any device.
+     * The roku-deploy device config for the target device. Both the perfetto trace WebSocket and
+     * the ECP commands route through roku-deploy, which works for local and Roku Cloud Emulator devices alike.
      */
     device: DeviceConfig;
     enabled?: boolean;
@@ -68,6 +67,13 @@ export class PerfettoManager {
      * When tracing is active, this is the file we're currently writing to. Cleaned up whenever tracing stops or errors.
      */
     private filePath?: string;
+
+    /**
+     * Latch for an in-flight startTracing() attempt, set synchronously before the first await so a reentrant
+     * call made while the handshake is still in progress awaits the same attempt instead of racing a second
+     * socket + write stream open. Cleared once the attempt settles (success or failure) so a later retry can run.
+     */
+    private startTracingPromise: Promise<void> | null = null;
 
     private logger = createLogger('PerfettoManager');
 
@@ -125,10 +131,11 @@ export class PerfettoManager {
         return 'trace';
     }
 
-    private createWebSocket() {
-        const device = this.config.device as LocalDeviceConfig;
-        const url = `ws://${device.host}:${this.config.remotePort}/perfetto-session`;
-        this.socket = new WebSocket(url);
+    private async createWebSocket(): Promise<WebSocket> {
+        this.socket = await rokuDeploy.startPerfettoSession({
+            device: this.config.device,
+            ecpPort: this.config.remotePort
+        });
         return this.socket;
     }
 
@@ -137,43 +144,41 @@ export class PerfettoManager {
      * @param includeResultOnStop whether to include the file path when the 'stop' event fires. This should be false if the caller is going to emit their own 'stop' event (like when heapSnapshot is the activator of tracing.
      */
     public async startTracing(options?: { excludeResultOnStop: boolean }): Promise<void> {
-        //the trace websocket connects straight to the device's ECP port, so only host-addressed
-        //(local) devices are supported for now
         const device = this.config.device;
-        if (!device || !isLocalDeviceConfig(device) || !device.host) {
-            throw this.emitError(new Error('Perfetto tracing requires a device with a host'));
+        if (!device) {
+            throw this.emitError(new Error('Perfetto tracing requires a device'));
         }
 
+        //if a start attempt is already in flight (e.g. the socket handshake hasn't resolved yet), await that
+        //same attempt instead of racing a second socket + write stream open
+        if (this.startTracingPromise !== null) {
+            return this.startTracingPromise;
+        }
+
+        //async sanity check, if we're already tracing, don't start again
+        if (this.socket) {
+            return;
+        }
+
+        this.startTracingPromise = this.startTracingInternal(options);
+        try {
+            await this.startTracingPromise;
+        } finally {
+            this.startTracingPromise = null;
+        }
+    }
+
+    private async startTracingInternal(options?: { excludeResultOnStop: boolean }): Promise<void> {
         try {
             fsExtra.ensureDirSync(this.config.dir);
-
-            //async sanity check, if we're already tracing, don't start again
-            if (this.socket) {
-                return;
-            }
-            this.createWebSocket();
 
             this.filePath = s`${this.config.dir}/${this.getFilename()}`;
             this.writeStream = await this.createWriteStream(this.filePath);
 
+            //`startPerfettoSession` resolves only after the handshake completes, so by the time we get the socket back it's already open
+            await this.createWebSocket();
 
-            // Register all handlers before awaiting open
-            const connected = new Promise<void>((resolve, reject) => {
-                const onConnectOpen = () => {
-                    this.socket.off('error', onConnectError);
-                    resolve();
-                };
-                const onConnectError = (error: Error) => {
-                    this.socket.off('open', onConnectOpen);
-                    //remove our outer error handler since this is a connect error, not a runtime error, and we don't want to emit twice
-                    this.socket.off('error', onError);
-                    reject(error);
-                };
-                this.socket.once('open', onConnectOpen);
-                this.socket.once('error', onConnectError);
-            });
-
-            //register our general error handler next (so it'll be called second, and we can disconnect it if we get a connect error
+            //register our general error handler
             const onError = (error: Error) => {
                 this.emitError(error);
                 // Force-terminate the socket so the 'close' handler fires cleanup + stop event immediately
@@ -215,8 +220,6 @@ export class PerfettoManager {
                 }).catch(e => this.logger.error(e));
             });
 
-            await connected;
-
             this.logger.log('Perfetto WebSocket connected:', this.socket.url);
 
             this.emit('start', { type: 'trace' });
@@ -225,6 +228,9 @@ export class PerfettoManager {
 
             // we crashed, it's almost certainly due to a connection issue, we probably never started
         } catch (error) {
+            //tear down any partial state (e.g. a write stream opened before the socket handshake failed) so a
+            //retry doesn't leak an fd, and so we don't leave writeStream/filePath pointing at an abandoned attempt
+            await this.cleanup();
             throw this.emitError(new Error(`Error starting Perfetto tracing: ${error?.message ?? String(error)}`));
         }
     }
@@ -310,7 +316,7 @@ export class PerfettoManager {
             const result = await rokuECP.enablePerfettoTracing({
                 device: this.config.device,
                 remotePort: this.config.remotePort,
-                channelId: this.config.channelId
+                appId: this.config.channelId
             });
             //fail if our channel isn't in the list of enabled channels, even if the request was successful
             const enabledChannels = result.enabledChannels.map(x => x?.toString()?.toLowerCase() ?? '');
@@ -474,8 +480,8 @@ export class PerfettoManager {
                 type: 'heapSnapshot'
             });
 
-            await rokuECP.captureHeapSnapshot({
-                channelId: this.config.channelId,
+            await rokuECP.triggerHeapSnapshot({
+                appId: this.config.channelId,
                 device: this.config.device,
                 remotePort: this.config.remotePort
             });

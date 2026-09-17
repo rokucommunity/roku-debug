@@ -12,7 +12,6 @@ import * as dns from 'dns';
 import type { AdapterOptions, DisposableLike } from './interfaces';
 import * as needle from 'needle';
 import { OutputEvent } from '@vscode/debugadapter';
-import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
 import type { DeviceConfig, RokuDeploySocket } from 'roku-deploy';
@@ -609,21 +608,6 @@ class Util {
         }
         //empty the array
         disposables.splice(0, disposables.length);
-    }
-
-    /**
-     * Parse an xml file and get back a javascript object containing its results
-     */
-    public parseXml<T = any>(text: string): Promise<T> {
-        return new Promise<any>((resolve, reject) => {
-            xml2js.parseString(text, (err, data) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(data);
-                }
-            });
-        });
     }
 
     /**
