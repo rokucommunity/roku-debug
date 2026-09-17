@@ -151,7 +151,7 @@ export class PerfettoManager {
 
         //if a start attempt is already in flight (e.g. the socket handshake hasn't resolved yet), await that
         //same attempt instead of racing a second socket + write stream open
-        if (this.startTracingPromise) {
+        if (this.startTracingPromise !== null) {
             return this.startTracingPromise;
         }
 
