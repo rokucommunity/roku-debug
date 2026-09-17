@@ -8,6 +8,7 @@ import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
 import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
 import { serializeError } from './formatUtils';
+import { fileUtils } from './FileUtils';
 import * as dns from 'dns';
 import type { AdapterOptions, DisposableLike } from './interfaces';
 import * as needle from 'needle';
@@ -56,6 +57,32 @@ class Util {
         return new Promise((resolve) => {
             fsExtra.exists(filePath, resolve);
         });
+    }
+
+    /**
+     * Determine if a file exists, comparing its path case insensitively. Returns false when the
+     * parent directory does not exist.
+     * @param filePath
+     */
+    public async fileExistsCaseInsensitive(filePath: string): Promise<boolean> {
+        filePath = fileUtils.standardizePath(filePath);
+        const lowerFilePath = filePath.toLowerCase();
+
+        const parentDirectoryPath = path.dirname(filePath);
+
+        //the file can't exist if its parent directory doesn't exist
+        if (await fsExtra.pathExists(parentDirectoryPath) === false) {
+            return false;
+        }
+
+        const filesInDirectory = await fsExtra.readdir(parentDirectoryPath);
+        for (const fileName of filesInDirectory) {
+            const fileInDirectoryPath = fileUtils.standardizePath(`${parentDirectoryPath}/${fileName}`);
+            if (fileInDirectoryPath.toLowerCase() === lowerFilePath) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -137,6 +164,22 @@ class Util {
             .split(',')
             .map(entry => entry.trim())
             .filter(entry => entry.length > 0);
+    }
+
+    /**
+     * Replace the first case-insensitive occurrence of `search` in `subject` with `replace`.
+     * Returns `subject` unchanged when `search` is not found.
+     * @param subject the string that will have its contents replaced
+     * @param search the search text to find in `subject`
+     * @param replace the text to replace `search` with in `subject`
+     */
+    public stringReplaceInsensitive(subject: string, search: string, replace: string): string {
+        const matchIndex = subject.toLowerCase().indexOf(search.toLowerCase());
+        if (matchIndex > -1) {
+            return subject.substring(0, matchIndex) + replace + subject.substring(matchIndex + search.length);
+        } else {
+            return subject;
+        }
     }
 
     /**

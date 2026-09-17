@@ -2,7 +2,7 @@ import * as fastGlob from 'fast-glob';
 import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import { util as rokuDeployUtil } from 'roku-deploy';
+import { util } from './util';
 
 export class FileUtils {
 
@@ -284,7 +284,7 @@ export class FileUtils {
             }
         }
         let relativePath = fileUtils.removeLeadingSlash(
-            rokuDeployUtil.stringReplaceInsensitive(entryPath, projectPath, '')
+            util.stringReplaceInsensitive(entryPath, projectPath, '')
         );
 
         return {
