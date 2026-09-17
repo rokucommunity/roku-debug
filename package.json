@@ -103,7 +103,7 @@
         "needle": "^3.5.0",
         "portfinder": "^1.0.32",
         "replace-in-file": "^6.3.2",
-        "roku-deploy": "^4.0.0-alpha.6",
+        "roku-deploy": "^4.0.0-alpha.7",
         "semver": "^7.5.4",
         "smart-buffer": "^4.2.0",
         "source-map": "^0.7.4",
