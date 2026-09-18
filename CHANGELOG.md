@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.4](https://github.com/rokucommunity/roku-debug/compare/0.24.3...v0.24.4) - 2026-09-18
+### Changed
+ - Route perfetto tracing through roku-deploy's ECP websocket ([#423](https://github.com/rokucommunity/roku-debug/pull/423))
+ - Security enhancements ([#419](https://github.com/rokucommunity/roku-debug/pull/419))
+ - upgrade to [roku-deploy@4.0.0-alpha.8](https://github.com/rokucommunity/roku-deploy/blob/master/CHANGELOG.md#400-alpha8---2026-09-18). Notable changes since 4.0.0-alpha.6:
+     - Security enhancements ([#422](https://github.com/rokucommunity/roku-deploy/pull/422))
+     - Add ECP websocket support and perfetto tracing wrappers ([#419](https://github.com/rokucommunity/roku-deploy/pull/419))
+     - Add sectioned rokudeploy.json config support ([#392](https://github.com/rokucommunity/roku-deploy/pull/392))
+     - Reduce Public Api Surface ([#360](https://github.com/rokucommunity/roku-deploy/pull/360)) ([#424](https://github.com/rokucommunity/roku-deploy/pull/424))
+     - sendEcpRequest: take a single options object ([#413](https://github.com/rokucommunity/roku-deploy/pull/413))
+
+
+
 ## [0.24.3](https://github.com/rokucommunity/roku-debug/compare/0.24.2...v0.24.3) - 2026-09-09
 ### Changed
  - Security enhancements ([#414](https://github.com/rokucommunity/roku-debug/pull/414), [#417](https://github.com/rokucommunity/roku-debug/pull/417))
