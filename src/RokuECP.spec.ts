@@ -1,12 +1,11 @@
 import { expect } from 'chai';
 import { createSandbox } from 'sinon';
 import { describe } from 'mocha';
-import type { EcpAppStateData, EcpHeapSnapshotData, EcpRegistryData } from './RokuECP';
+import type { EcpAppStateData, EcpHeapSnapshotData, EcpPerfettoEnableData, EcpRegistryData } from './RokuECP';
 import { AppState, EcpStatus, rokuECP } from './RokuECP';
 import { expectThrowsAsync } from './testHelpers.spec';
-import { undent } from 'undent';
 import { rokuDeploy } from 'roku-deploy';
-import type { RokuAppState, RokuRegistry } from 'roku-deploy';
+import type { RokuAppState, RokuHeapSnapshotTrigger, RokuPerfettoTracing, RokuRegistry } from 'roku-deploy';
 
 const sinon = createSandbox();
 
@@ -15,51 +14,6 @@ describe('RokuECP', () => {
 
     beforeEach(() => {
         sinon.restore();
-    });
-
-    describe('doRequest', () => {
-        it('routes the request through rokuDeploy.sendEcpRequest as a GET by default', async () => {
-            let options = {
-                device: { host: '1.1.1.1' },
-                remotePort: 8080
-            };
-
-            let stub = sinon.stub(rokuDeploy, 'sendEcpRequest').resolves({
-                status: 200,
-                body: '',
-                headers: {}
-            });
-
-            await rokuECP['doRequest']('query/my-route', options);
-            expect(stub.getCall(0).args).to.eql([
-                { host: '1.1.1.1' },
-                'query/my-route',
-                { method: 'GET', ecpPort: 8080, timeout: undefined }
-            ]);
-            expect(stub.getCall(0).args[0]).to.equal(options.device);
-        });
-
-        it('maps post to POST and passes the requestOptions timeout', async () => {
-            let options = {
-                device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
-                requestOptions: {
-                    timeout: 1000
-                }
-            };
-
-            let stub = sinon.stub(rokuDeploy, 'sendEcpRequest').resolves({
-                status: 200,
-                body: '',
-                headers: {}
-            });
-
-            await rokuECP['doRequest']('/query/my-route', options, 'post');
-            expect(stub.getCall(0).args).to.eql([
-                options.device,
-                '/query/my-route',
-                { method: 'POST', ecpPort: undefined, timeout: 1000 }
-            ]);
-        });
     });
 
     describe('getRegistry', () => {
@@ -308,87 +262,110 @@ describe('RokuECP', () => {
         });
     });
 
-    describe('captureHeapSnapshot', () => {
-        it('calls doRequest with correct route and options', async () => {
+    describe('enablePerfettoTracing', () => {
+        const perfettoTracingResult: RokuPerfettoTracing = {
+            enabledChannels: ['dev'],
+            applicationAlreadyStarted: false,
+            timestamp: 1772434731151,
+            timestampEnd: 1772434731188
+        };
+
+        it('calls rokuDeploy.enablePerfettoTracing with the device option', async () => {
             let options = {
                 device: { host: '1.1.1.1' },
                 remotePort: 8080,
-                channelId: 'dev'
+                appId: 'dev'
             };
 
-            let stub = sinon.stub(rokuECP as any, 'doRequest').resolves({
-                body: `
-                    <?xml version="1.0" encoding="UTF-8" ?>
-                    <perfetto-heapgraph-trigger>
-                        <timestamp>1772434731151</timestamp>
-                        <timestamp-end>1772434731188</timestamp-end>
-                        <status>OK</status>
-                    </perfetto-heapgraph-trigger>
-                `,
-                statusCode: 200
-            });
+            let stub = sinon.stub(rokuDeploy, 'enablePerfettoTracing').resolves(perfettoTracingResult);
 
-            await rokuECP.captureHeapSnapshot(options);
-            expect(stub.getCall(0).args).to.eql(['/perfetto/heapgraph/trigger/dev', options, 'post']);
+            let result = await rokuECP.enablePerfettoTracing(options);
+            expect(stub.getCall(0).args).to.eql([{
+                device: { host: '1.1.1.1' },
+                appId: 'dev',
+                ecpPort: 8080
+            }]);
+            expect(result).to.eql({
+                enabledChannels: ['dev'],
+                timestamp: 1772434731151,
+                timestampEnd: 1772434731188,
+                status: EcpStatus.ok
+            } as EcpPerfettoEnableData);
         });
 
-        describe('non-error responses', () => {
-            it('handles ok response with timestamps', async () => {
-                sinon.stub(rokuECP as any, 'doRequest').resolves({
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <perfetto-heapgraph-trigger>
-                            <timestamp>1772434731151</timestamp>
-                            <timestamp-end>1772434731188</timestamp-end>
-                            <status>OK</status>
-                        </perfetto-heapgraph-trigger>
-                    `,
-                    statusCode: 200
-                });
-                let result = await rokuECP.captureHeapSnapshot({ device: { host: '1.1.1.1' }, channelId: 'dev' });
-                expect(result).to.eql({
-                    timestamp: 1772434731151,
-                    timestampEnd: 1772434731188,
-                    status: EcpStatus.ok
-                } as EcpHeapSnapshotData);
-            });
+        it('passes an RCE device config through to roku-deploy', async () => {
+            let options = {
+                device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
+                appId: 'dev'
+            };
+
+            let stub = sinon.stub(rokuDeploy, 'enablePerfettoTracing').resolves(perfettoTracingResult);
+
+            await rokuECP.enablePerfettoTracing(options);
+            expect(stub.getCall(0).args).to.eql([{
+                device: options.device,
+                appId: 'dev',
+                ecpPort: undefined
+            }]);
+            expect(stub.getCall(0).args[0].device).to.equal(options.device);
         });
 
-        describe('error responses', () => {
-            it('handles failed status with error message', async () => {
-                sinon.stub(rokuECP as any, 'doRequest').resolves({
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <perfetto-heapgraph-trigger>
-                            <status>FAILED</status>
-                            <error>Channel 'dev' not running, cannot fetch heap graph</error>
-                        </perfetto-heapgraph-trigger>
-                    `,
-                    statusCode: 200
-                });
-                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ device: { host: '1.1.1.1' }, channelId: 'dev' }), `Channel 'dev' not running, cannot fetch heap graph`);
-            });
+        it('propagates errors from roku-deploy', async () => {
+            sinon.stub(rokuDeploy, 'enablePerfettoTracing').rejects(new Error(`Could not enable perfetto tracing: Channel 'dev' not running`));
 
-            it('handles failed status with missing error', async () => {
-                sinon.stub(rokuECP as any, 'doRequest').resolves({
-                    body: undent`
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <perfetto-heapgraph-trigger>
-                            <status>FAILED</status>
-                        </perfetto-heapgraph-trigger>
-                    `,
-                    statusCode: 200
-                });
-                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ device: { host: '1.1.1.1' }, channelId: 'dev' }), 'Unknown error');
-            });
+            await expectThrowsAsync(() => rokuECP.enablePerfettoTracing({ device: { host: '1.1.1.1' }, appId: 'dev' }), `Could not enable perfetto tracing: Channel 'dev' not running`);
+        });
+    });
 
-            it('handles error response without xml', async () => {
-                sinon.stub(rokuECP as any, 'doRequest').resolves({
-                    body: `ECP command not allowed in Limited mode.`,
-                    statusCode: 403
-                });
-                await expectThrowsAsync(() => rokuECP.captureHeapSnapshot({ device: { host: '1.1.1.1' }, channelId: 'dev' }), 'ECP command not allowed in Limited mode.');
-            });
+    describe('triggerHeapSnapshot', () => {
+        const heapSnapshotResult: RokuHeapSnapshotTrigger = {
+            timestamp: 1772434731151,
+            timestampEnd: 1772434731188
+        };
+
+        it('calls rokuDeploy.triggerHeapSnapshot with the device option', async () => {
+            let options = {
+                device: { host: '1.1.1.1' },
+                remotePort: 8080,
+                appId: 'dev'
+            };
+
+            let stub = sinon.stub(rokuDeploy, 'triggerHeapSnapshot').resolves(heapSnapshotResult);
+
+            let result = await rokuECP.triggerHeapSnapshot(options);
+            expect(stub.getCall(0).args).to.eql([{
+                device: { host: '1.1.1.1' },
+                appId: 'dev',
+                ecpPort: 8080
+            }]);
+            expect(result).to.eql({
+                timestamp: 1772434731151,
+                timestampEnd: 1772434731188,
+                status: EcpStatus.ok
+            } as EcpHeapSnapshotData);
+        });
+
+        it('passes an RCE device config through to roku-deploy', async () => {
+            let options = {
+                device: { instanceUrl: 'https://device.rce.roku.com/instance/my-instance', rceToken: 'my-rce-token' },
+                appId: 'dev'
+            };
+
+            let stub = sinon.stub(rokuDeploy, 'triggerHeapSnapshot').resolves(heapSnapshotResult);
+
+            await rokuECP.triggerHeapSnapshot(options);
+            expect(stub.getCall(0).args).to.eql([{
+                device: options.device,
+                appId: 'dev',
+                ecpPort: undefined
+            }]);
+            expect(stub.getCall(0).args[0].device).to.equal(options.device);
+        });
+
+        it('propagates errors from roku-deploy', async () => {
+            sinon.stub(rokuDeploy, 'triggerHeapSnapshot').rejects(new Error(`Could not trigger heap snapshot: Channel 'dev' not running, cannot fetch heap graph`));
+
+            await expectThrowsAsync(() => rokuECP.triggerHeapSnapshot({ device: { host: '1.1.1.1' }, appId: 'dev' }), `Could not trigger heap snapshot: Channel 'dev' not running, cannot fetch heap graph`);
         });
     });
 

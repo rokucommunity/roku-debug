@@ -1,6 +1,6 @@
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
-import { rokuDeploy, util as rokuDeployUtil } from 'roku-deploy';
+import { rokuDeploy } from 'roku-deploy';
 import type { FileEntry } from 'roku-deploy';
 import * as fastGlob from 'fast-glob';
 import type { BreakpointManager } from './BreakpointManager';
@@ -1050,7 +1050,7 @@ export class Project {
         }
 
         //ensure the manifest file exists in the staging folder
-        if (!await rokuDeployUtil.fileExistsCaseInsensitive(`${this.stagingDir}/manifest`)) {
+        if (!await util.fileExistsCaseInsensitive(`${this.stagingDir}/manifest`)) {
             throw new Error(`Cannot zip package: missing manifest file in "${this.stagingDir}"`);
         }
 

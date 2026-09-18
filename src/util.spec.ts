@@ -563,6 +563,62 @@ describe('Util', () => {
         });
     });
 
+    describe('stringReplaceInsensitive', () => {
+        it('replaces the first case-insensitive occurrence', () => {
+            expect(util.stringReplaceInsensitive('Hello World', 'WORLD', 'There')).to.equal('Hello There');
+            expect(util.stringReplaceInsensitive('/PROJECT/source/main.brs', '/project', '')).to.equal('/source/main.brs');
+        });
+
+        it('returns the subject unchanged when not found', () => {
+            expect(util.stringReplaceInsensitive('Hello World', 'Missing', 'There')).to.equal('Hello World');
+        });
+    });
+
+    describe('fileExistsCaseInsensitive', () => {
+        let folder: string;
+        let filePath: string;
+
+        beforeEach(() => {
+            fsExtra.emptyDirSync('./.tmp');
+            folder = path.resolve('./.tmp/findMainFunctionTests/');
+            fsExtra.mkdirSync(folder);
+
+            filePath = path.resolve(`${folder}/testFile`);
+        });
+
+        afterEach(() => {
+            fsExtra.emptyDirSync('./.tmp');
+            fsExtra.rmdirSync('./.tmp');
+        });
+
+        it('returns true when the file exists with matching case', async () => {
+            fsExtra.writeFileSync(filePath, '');
+            expect(await util.fileExistsCaseInsensitive(filePath)).to.be.true;
+        });
+
+        it('returns true when the file exists with different case', async () => {
+            fsExtra.writeFileSync(filePath, '');
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/TESTFILE`))).to.be.true;
+        });
+
+        it('returns false when the parent directory does not exist', async () => {
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/missingFolder/testFile`))).to.be.false;
+        });
+
+        it('returns false when the file does not exist inside a directory that does exist', async () => {
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/not-there`))).to.be.false;
+        });
+
+        it('finds the file in a directory with multiple files', async () => {
+            fsExtra.outputFileSync(path.resolve(`${folder}/aaa.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/bbb.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/target.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/zzz.txt`), 'content');
+
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/target.txt`))).to.be.true;
+        });
+    });
+
     describe('isTransientVariable', () => {
         it('is transient', () => {
             expect(util.isTransientVariable('__brs_err__')).to.be.true;
