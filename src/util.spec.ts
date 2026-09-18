@@ -598,11 +598,24 @@ describe('Util', () => {
 
         it('returns true when the file exists with different case', async () => {
             fsExtra.writeFileSync(filePath, '');
-            expect(await util.fileExistsCaseInsensitive(filePath.toUpperCase())).to.be.true;
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/TESTFILE`))).to.be.true;
         });
 
         it('returns false when the parent directory does not exist', async () => {
             expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/missingFolder/testFile`))).to.be.false;
+        });
+
+        it('returns false when the file does not exist inside a directory that does exist', async () => {
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/not-there`))).to.be.false;
+        });
+
+        it('finds the file in a directory with multiple files', async () => {
+            fsExtra.outputFileSync(path.resolve(`${folder}/aaa.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/bbb.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/target.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/zzz.txt`), 'content');
+
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/target.txt`))).to.be.true;
         });
     });
 

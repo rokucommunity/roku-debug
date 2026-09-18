@@ -60,8 +60,9 @@ class Util {
     }
 
     /**
-     * Determine if a file exists, comparing its path case insensitively. Returns false when the
-     * parent directory does not exist.
+     * Determine if a file exists, comparing its name case insensitively against the entries of its
+     * parent directory. The parent directory path itself must exist as given (on a case-sensitive
+     * filesystem that means with matching case); returns false when it does not.
      * @param filePath
      */
     public async fileExistsCaseInsensitive(filePath: string): Promise<boolean> {
