@@ -649,10 +649,14 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
-        if (config.profiling?.tracing?.enable) {
-            config.profiling.tracing.dir ??= s`${config.cwd}/traces/`;
-            // eslint-disable-next-line no-template-curly-in-string
-            config.profiling.tracing.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+        if (config.profiling?.tracing) {
+            // Default to true if not explicitly set
+            config.profiling.tracing.enable ??= true;
+            if (config.profiling.tracing.enable) {
+                config.profiling.tracing.dir ??= s`${config.cwd}/traces/`;
+                // eslint-disable-next-line no-template-curly-in-string
+                config.profiling.tracing.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+            }
         }
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
@@ -1049,6 +1053,10 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
      * If profiling was marked "connectOnStart", try connecting right away
      */
     private async tryProfilingConnectOnStart() {
+        //tracing is off for this session, so there is nothing to connect to
+        if (!this.launchConfiguration.profiling?.tracing?.enable) {
+            return;
+        }
         if (this.launchConfiguration.profiling?.tracing?.connectOnStart && this.supportsPerfettoTracing) {
             try {
                 await this.perfettoManager?.startTracing?.();

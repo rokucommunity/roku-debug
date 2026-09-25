@@ -3035,7 +3035,7 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('calls startTracing when connectOnStart is true and device supports perfetto', async () => {
-            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            launchConfiguration.profiling = { tracing: { connectOnStart: true, enable: true } } as any;
 
             await session['tryProfilingConnectOnStart']();
 
@@ -3059,7 +3059,7 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('logs a warning and shows a popup when connectOnStart is true but device firmware is too old', async () => {
-            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            launchConfiguration.profiling = { tracing: { connectOnStart: true, enable: true } } as any;
             session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
             const warnSpy = sinon.spy(session.logger, 'warn');
             const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
@@ -3074,8 +3074,28 @@ describe('BrightScriptDebugSession', () => {
             expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
         });
 
-        it('catches and logs error when startTracing throws', async () => {
+        it('does not call startTracing or notify when connectOnStart is true but enable is false', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true, enable: false } } as any;
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+            expect(sendCustomRequestStub.callCount).to.equal(0);
+        });
+
+        it('does not call startTracing when connectOnStart is true but enable is missing', async () => {
             launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+            expect(sendCustomRequestStub.callCount).to.equal(0);
+        });
+
+        it('catches and logs error when startTracing throws', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true, enable: true } } as any;
             startTracingStub.rejects(new Error('connection failed'));
 
             await session['tryProfilingConnectOnStart']();
@@ -3418,6 +3438,23 @@ describe('BrightScriptDebugSession', () => {
             expect(initializedIdx, 'InitializedEvent was not sent').to.be.greaterThan(-1);
             expect(profilingIdx, 'initializeProfiling was not called').to.be.greaterThan(-1);
             expect(profilingIdx, 'initializeProfiling must run after InitializedEvent').to.be.greaterThan(initializedIdx);
+        });
+    });
+
+    describe('normalizeLaunchConfig profiling.tracing', () => {
+        it('defaults `enable` to true when `connectOnStart` is set but `enable` is undefined', () => {
+            const config = session['normalizeLaunchConfig']({ profiling: { tracing: { connectOnStart: true } } } as any);
+            expect(config.profiling.tracing.enable).to.be.true;
+        });
+
+        it('leaves `enable` as false when explicitly set to false', () => {
+            const config = session['normalizeLaunchConfig']({ profiling: { tracing: { enable: false, connectOnStart: true } } } as any);
+            expect(config.profiling.tracing.enable).to.be.false;
+        });
+
+        it('does not add a `profiling` block when one is not present in the config', () => {
+            const config = session['normalizeLaunchConfig']({} as any);
+            expect(config.profiling).to.be.undefined;
         });
     });
 
