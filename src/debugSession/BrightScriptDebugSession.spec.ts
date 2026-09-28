@@ -3452,6 +3452,16 @@ describe('BrightScriptDebugSession', () => {
             expect(config.profiling.tracing.enable).to.be.false;
         });
 
+        it('resolves a non-object `tracing` to disabled instead of throwing', () => {
+            const config = session['normalizeLaunchConfig']({ profiling: { tracing: true } } as any);
+            expect(config.profiling.tracing).to.eql({ enable: false });
+        });
+
+        it('resolves a null `tracing` to disabled', () => {
+            const config = session['normalizeLaunchConfig']({ profiling: { tracing: null } } as any);
+            expect(config.profiling.tracing).to.eql({ enable: false });
+        });
+
         it('does not add a `profiling` block when one is not present in the config', () => {
             const config = session['normalizeLaunchConfig']({} as any);
             expect(config.profiling).to.be.undefined;
