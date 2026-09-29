@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.5](https://github.com/rokucommunity/roku-debug/compare/0.24.4...v0.24.5) - 2026-09-29
+### Changed
+ - upgrade to [brighterscript@0.73.5](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0735---2026-09-15). Notable changes since 0.73.3:
+     - Security enhancements ([#1804](https://github.com/rokucommunity/brighterscript/pull/1804), [#1805](https://github.com/rokucommunity/brighterscript/pull/1805))
+### Fixed
+ - Crash when perfetto connectOnStart was true but tracing enabled was false ([#425](https://github.com/rokucommunity/roku-debug/pull/425))
+
+
+
 ## [0.24.4](https://github.com/rokucommunity/roku-debug/compare/0.24.3...v0.24.4) - 2026-09-18
 ### Changed
  - Route perfetto tracing through roku-deploy's ECP websocket ([#423](https://github.com/rokucommunity/roku-debug/pull/423))
