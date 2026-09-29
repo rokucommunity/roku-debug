@@ -8,13 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.24.5](https://github.com/rokucommunity/roku-debug/compare/0.24.4...v0.24.5) - 2026-09-29
 ### Changed
- - Gate perfetto connectOnStart on tracing being enabled ([#425](https://github.com/rokucommunity/roku-debug/pull/425))
  - upgrade to [brighterscript@0.73.5](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0735---2026-09-15). Notable changes since 0.73.3:
-     - Fix crash stripping sourceMappingURL comment from non-transpiled files ([#1821](https://github.com/rokucommunity/brighterscript/pull/1821))
-     - Tolerate older BrsTranspileState in continue back-transpile ([#1812](https://github.com/rokucommunity/brighterscript/pull/1812))
-     - chore: Remove duplicate thenby devDependency ([#1808](https://github.com/rokucommunity/brighterscript/pull/1808))
      - Security enhancements ([#1804](https://github.com/rokucommunity/brighterscript/pull/1804), [#1805](https://github.com/rokucommunity/brighterscript/pull/1805))
-     - Locate the super() call when injecting field initializers ([#1803](https://github.com/rokucommunity/brighterscript/pull/1803))
+### Fixed
+ - Crash when perfetto connectOnStart was true but tracing enabled was false ([#425](https://github.com/rokucommunity/roku-debug/pull/425))
 
 
 
