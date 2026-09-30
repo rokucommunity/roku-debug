@@ -44,6 +44,7 @@ import {
     ChanperfEvent,
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
+    ChannelSideloadedEvent,
     CustomRequestEvent,
     ClientToServerCustomEventName,
     ProfilingErrorEvent,
@@ -1215,6 +1216,11 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //publish the package to the target Roku
         const publishPromise = this.rokuDeploy.sideload(options).then(() => {
             packageIsPublished = true;
+            //the device is now launching THIS package but won't open the debug protocol port until the JS (Hermes)
+            //runtime stops waiting for its debugger, so tell the client now rather than after `isConnected`
+            this.sendEvent(new ChannelSideloadedEvent(
+                this.launchConfiguration
+            ));
         }).catch(async (e) => {
             const statusCode = e?.results?.response?.statusCode;
             const message = e.message as string;
