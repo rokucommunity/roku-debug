@@ -20,7 +20,7 @@ import type { AddProjectParams, ComponentLibraryConstructorParams } from '../man
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
 import { expectThrowsAsync } from '../testHelpers.spec';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { ClientToServerCustomEventName, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
+import { ClientToServerCustomEventName, isChannelSideloadedEvent, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
 import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
@@ -3553,6 +3553,34 @@ describe('BrightScriptDebugSession', () => {
 
             expect(shutdownStub.calledOnceWithExactly('Debug session cancelled: failed to connect to debug protocol control port.')).to.be.true;
             clock.restore();
+        });
+
+        it('sends ChannelSideloadedEvent as soon as the sideload succeeds, before the debug protocol connects', async () => {
+            const clock = sinon.useFakeTimers();
+            sinon.stub(session, 'shutdown').resolves();
+            rokuAdapter.connected = false;
+            sinon.stub(session.rokuDeploy, 'sideload').resolves();
+            const sendEventStub = sinon.stub(session, 'sendEvent');
+
+            const publishPromise = (session as any).publish();
+
+            //still waiting on the debug protocol connection, but the client already knows the channel is sideloaded
+            await clock.tickAsync(1);
+            expect(sendEventStub.getCalls().filter(x => isChannelSideloadedEvent(x.args[0]))).to.have.lengthOf(1);
+
+            await clock.tickAsync(60_000);
+            await publishPromise;
+            clock.restore();
+        });
+
+        it('does not send ChannelSideloadedEvent when the sideload fails', async () => {
+            sinon.stub(session, 'shutdown').resolves();
+            sinon.stub(session.rokuDeploy, 'sideload').rejects(Object.assign(new Error('Unauthorized'), { results: { response: { statusCode: 401 } } }));
+            const sendEventStub = sinon.stub(session, 'sendEvent');
+
+            await (session as any).publish().catch(() => { });
+
+            expect(sendEventStub.getCalls().some(x => isChannelSideloadedEvent(x.args[0]))).to.be.false;
         });
     });
 
