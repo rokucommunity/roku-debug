@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.6](https://github.com/rokucommunity/roku-debug/compare/0.24.5...v0.24.6) - 2026-10-01
+### Changed
+ - Send ChannelSideloadedEvent as soon as sideload succeeds ([#428](https://github.com/rokucommunity/roku-debug/pull/428))
+ - Security enhancements ([#427](https://github.com/rokucommunity/roku-debug/pull/427))
+
+
+
 ## [0.24.5](https://github.com/rokucommunity/roku-debug/compare/0.24.4...v0.24.5) - 2026-09-29
 ### Changed
  - upgrade to [brighterscript@0.73.5](https://github.com/rokucommunity/brighterscript/blob/master/CHANGELOG.md#0735---2026-09-15). Notable changes since 0.73.3:
