@@ -1,10 +1,12 @@
 import { expect } from 'chai';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
+import * as sinonActual from 'sinon';
 import { standardizePath as s } from '../FileUtils';
 import { SourceMapManager } from './SourceMapManager';
 import { forceDeleteDir } from '../testHelpers.spec';
 let tmpPath = s`${process.cwd()}/.tmp`;
+const sinon = sinonActual.createSandbox();
 describe('SourceMapManager', () => {
     let manager: SourceMapManager;
 
@@ -14,6 +16,7 @@ describe('SourceMapManager', () => {
         manager = new SourceMapManager();
     });
     afterEach(async () => {
+        sinon.restore();
         await forceDeleteDir(tmpPath);
     });
 
@@ -178,6 +181,49 @@ describe('SourceMapManager', () => {
             fsExtra.writeJsonSync(mapPath, { version: 3, sources: ['changed.brs'], mappings: '' });
             const second = await manager.getSourceMap(mapPath);
             expect(second).to.equal(first);
+        });
+    });
+
+    describe('getSourceMapPath', () => {
+        it('reads the file from disk to find the sourceMappingURL comment when no contents are provided', async () => {
+            const brsPath = s`${tmpPath}/staging/source/main.brs`;
+            fsExtra.ensureDirSync(path.dirname(brsPath));
+            fsExtra.writeFileSync(brsPath, `sub main()\nend sub\n'//# sourceMappingURL=custom.brs.map`);
+
+            const result = await manager.getSourceMapPath(brsPath);
+            expect(s`${result}`).to.equal(s`${tmpPath}/staging/source/custom.brs.map`);
+        });
+
+        it('uses the provided fileContents instead of reading from disk', async () => {
+            const brsPath = s`${tmpPath}/staging/source/main.brs`;
+            const readFile = sinon.spy(fsExtra, 'readFile');
+
+            const result = await manager.getSourceMapPath(brsPath, `sub main()\nend sub\n'//# sourceMappingURL=custom.brs.map`);
+
+            expect(s`${result}`).to.equal(s`${tmpPath}/staging/source/custom.brs.map`);
+            //it did NOT read the file from disk
+            expect(readFile.called).to.be.false;
+        });
+
+        it('falls back to the colocated .map path when contents have no comment', async () => {
+            const brsPath = s`${tmpPath}/staging/source/main.brs`;
+            const result = await manager.getSourceMapPath(brsPath, `sub main()\nend sub`);
+            expect(s`${result}`).to.equal(s`${brsPath}.map`);
+        });
+
+        it('caches the resolved path and does not read again on subsequent calls', async () => {
+            const brsPath = s`${tmpPath}/staging/source/main.brs`;
+            fsExtra.ensureDirSync(path.dirname(brsPath));
+            fsExtra.writeFileSync(brsPath, `sub main()\nend sub\n'//# sourceMappingURL=custom.brs.map`);
+
+            //first call populates the cache (reading from disk)
+            await manager.getSourceMapPath(brsPath);
+
+            const readFile = sinon.spy(fsExtra, 'readFile');
+            const result = await manager.getSourceMapPath(brsPath);
+            expect(s`${result}`).to.equal(s`${tmpPath}/staging/source/custom.brs.map`);
+            //second call served from cache — no disk read
+            expect(readFile.called).to.be.false;
         });
     });
 
