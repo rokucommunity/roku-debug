@@ -613,6 +613,23 @@ describe('Project', () => {
         expect(project.rdbFilesBasePath).to.eql(rdbFilesBasePath);
     });
 
+    describe('getStagingRelativePaths', () => {
+        it('walks the staging tree only once and caches the result', async () => {
+            const getAllRelativePaths = sinon.stub(fileUtils, 'getAllRelativePaths').returns(Promise.resolve([
+                'source/main.brs',
+                'source/lib.brs'
+            ]));
+
+            const first = await project.getStagingRelativePaths();
+            const second = await project.getStagingRelativePaths();
+
+            expect(first).to.eql(['source/main.brs', 'source/lib.brs']);
+            //the second call returned the cached list without walking the tree again
+            expect(second).to.equal(first);
+            expect(getAllRelativePaths.callCount).to.equal(1);
+        });
+    });
+
     describe('stage', () => {
         afterEach(async () => {
             try {

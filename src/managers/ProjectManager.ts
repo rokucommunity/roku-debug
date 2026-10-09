@@ -372,7 +372,13 @@ export class ProjectManager {
         if (util.getFileScheme(debuggerPath)) {
             relativePath = util.removeFileScheme(debuggerPath);
         } else {
-            relativePath = await fileUtils.findPartialFileInDirectory(debuggerPath, project.stagingDir);
+            //reuse the project's cached staging path list so we don't re-walk the staging tree on every
+            //truncated-path lookup (findPartialFileInDirectory walks the tree itself when the list is omitted)
+            relativePath = await fileUtils.findPartialFileInDirectory(
+                debuggerPath,
+                project.stagingDir,
+                await project.getStagingRelativePaths?.()
+            );
         }
         if (relativePath) {
             relativePath = fileUtils.removeLeadingSlash(
@@ -474,6 +480,23 @@ export class Project {
      * A BrighterScript project for the stagingDir
      */
     private stagingBscProject = new BscProjectThreaded();
+
+    /**
+     * Cached list of every file path in the staging dir, relative to {@link stagingDir}. Lazily computed
+     * on first use and reused for the life of this Project (a new Project is created per debug session, so
+     * this never goes stale within a session). Used to resolve truncated telnet debugger paths without
+     * re-walking the staging tree on every lookup.
+     */
+    private stagingRelativePathsPromise: Promise<string[]> | undefined;
+
+    /**
+     * Get every file path in the staging dir relative to {@link stagingDir}, walking the tree only once
+     * and caching the result for subsequent calls in this session.
+     */
+    public getStagingRelativePaths(): Promise<string[]> {
+        this.stagingRelativePathsPromise ??= fileUtils.getAllRelativePaths(this.stagingDir);
+        return this.stagingRelativePathsPromise;
+    }
 
     //the default project doesn't have a postfix, but component libraries will have a postfix, so just use empty string to standardize the postfix logic
     public get postfix() {
