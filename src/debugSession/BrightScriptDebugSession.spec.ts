@@ -1321,6 +1321,28 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('restartRequest', () => {
+        //the relaunch starts a new component library server on the same port, which fails while the previous
+        //launch's server still holds it ("Port 8080 is currently occupied")
+        it('stops the component library server before relaunching', async () => {
+            //no adapter to tear down: this covers the component library server only
+            session['rokuAdapter'] = undefined;
+            const calls: string[] = [];
+            sinon.stub(session['componentLibraryServer'], 'stop').callsFake(() => {
+                calls.push('stop');
+                return Promise.resolve();
+            });
+            sinon.stub(session as any, 'launchRequest').callsFake(() => {
+                calls.push('launchRequest');
+                return Promise.resolve();
+            });
+
+            await session['restartRequest']({} as DebugProtocol.RestartResponse, { arguments: launchConfiguration } as DebugProtocol.RestartArguments);
+
+            expect(calls).to.eql(['stop', 'launchRequest']);
+        });
+    });
+
     describe('handleDiagnostics', () => {
         it('ends launch progress when a compile error diagnostic is received', async () => {
             const clock = sinon.useFakeTimers();

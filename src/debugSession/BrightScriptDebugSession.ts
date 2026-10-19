@@ -3156,6 +3156,8 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
             this.stagingDefered.tryResolve();
             this.stagingDefered = defer();
         }
+        //the relaunch starts a new component library server on the same port, so free it first
+        await this.componentLibraryServer.stop();
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }
 
@@ -3678,7 +3680,7 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         }
 
         try {
-            this.componentLibraryServer?.stop();
+            await this.componentLibraryServer?.stop();
         } catch (e) {
             this.logger.error(e);
         }
