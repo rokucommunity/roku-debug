@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.7](https://github.com/rokucommunity/roku-debug/compare/0.24.6...v0.24.7) - 2026-10-20
+### Changed
+ - Free the component library port before a restart relaunches ([#434](https://github.com/rokucommunity/roku-debug/pull/434))
+ - Security enhancements ([#431](https://github.com/rokucommunity/roku-debug/pull/431), [#432](https://github.com/rokucommunity/roku-debug/pull/432))
+ - upgrade to [brighterscript@0.73.7](https://github.com/rokucommunity/brighterscript/blob/v0.73.7/CHANGELOG.md#0737---2026-10-13). Notable changes since 0.73.5:
+     - Add component-scope coverage for recursive const resolution ([#1904](https://github.com/rokucommunity/brighterscript/pull/1904))
+     - Add `bsc --init` to create a new bsconfig.json ([#1892](https://github.com/rokucommunity/brighterscript/pull/1892))
+     - Allow a namespaced const to reference an outer symbol with the same name ([#1905](https://github.com/rokucommunity/brighterscript/pull/1905))
+     - Add `...` (DotDotDot) token to the lexer ([#1896](https://github.com/rokucommunity/brighterscript/pull/1896))
+     - Security enhancements ([#1854](https://github.com/rokucommunity/brighterscript/pull/1854), [#1873](https://github.com/rokucommunity/brighterscript/pull/1873), [#1875](https://github.com/rokucommunity/brighterscript/pull/1875), [#1882](https://github.com/rokucommunity/brighterscript/pull/1882))
+ - upgrade to [roku-deploy@4.0.0-alpha.10](https://github.com/rokucommunity/roku-deploy/blob/v4.0.0-alpha.10/CHANGELOG.md#400-alpha10---2026-10-20). Notable changes since 4.0.0-alpha.9:
+     - Add RceManagementApiError with the server's error code and message ([#454](https://github.com/rokucommunity/roku-deploy/pull/454))
+     - Add createSocket and getDestPath to the RokuDeploy class ([#436](https://github.com/rokucommunity/roku-deploy/pull/436))
+     - Accept --esn, --instanceUrl and --rceToken on every device command ([#449](https://github.com/rokucommunity/roku-deploy/pull/449))
+     - Reject unknown CLI commands and options ([#447](https://github.com/rokucommunity/roku-deploy/pull/447))
+     - Security enhancements ([#431](https://github.com/rokucommunity/roku-deploy/pull/431), [#440](https://github.com/rokucommunity/roku-deploy/pull/440), [#446](https://github.com/rokucommunity/roku-deploy/pull/446))
+     - Give device methods named result types instead of raw HttpResponse ([#417](https://github.com/rokucommunity/roku-deploy/pull/417))
+     - Map CLI --host and sideload --dir onto the library's options ([#434](https://github.com/rokucommunity/roku-deploy/pull/434))
+     - Fix per-device settings being silently ignored in the devices registry ([#414](https://github.com/rokucommunity/roku-deploy/pull/414))
+
+
+
 ## [0.24.6](https://github.com/rokucommunity/roku-debug/compare/0.24.5...v0.24.6) - 2026-10-01
 ### Changed
  - Send ChannelSideloadedEvent as soon as sideload succeeds ([#428](https://github.com/rokucommunity/roku-debug/pull/428))
