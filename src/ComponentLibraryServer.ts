@@ -101,11 +101,20 @@ export class ComponentLibraryServer {
     }
 
     /**
-     * Stop the server (if it's running)
+     * Stop the server (if it's running). Resolves once the port is free, so the server can be started again on it
      */
-    public stop() {
-        if (this.server) {
-            this.server.close();
+    public async stop() {
+        const server = this.server;
+        if (!server) {
+            return;
         }
+        this.server = undefined;
+
+        //the device keeps its library download connection alive, which would hold close() open until it times out.
+        //closeAllConnections is Node 18.2+, newer than this repo's @types/node
+        (server as http.Server & { closeAllConnections?: () => void }).closeAllConnections?.();
+        await new Promise<void>((resolve) => {
+            server.close(() => resolve());
+        });
     }
 }
