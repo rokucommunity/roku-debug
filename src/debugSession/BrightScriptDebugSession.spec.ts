@@ -228,7 +228,7 @@ describe('BrightScriptDebugSession', () => {
 
             return Promise.resolve({
                 message: 'success',
-                results: []
+                rokuMessages: { errors: [], infos: [], successes: [] }
             });
         });
 
@@ -1921,7 +1921,7 @@ describe('BrightScriptDebugSession', () => {
             const publishStub = sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
                 installOrder.push(path.basename(options.zip));
                 await util.sleep(10);
-                return { message: 'success', results: [] };
+                return { message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } };
             });
 
             await runPrepareAndHost([
@@ -1939,7 +1939,7 @@ describe('BrightScriptDebugSession', () => {
             const publishStub = sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
                 installOrder.push(path.basename(options.zip));
                 await util.sleep(10);
-                return { message: 'success', results: [] };
+                return { message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } };
             });
 
             await runPrepareAndHost([
@@ -1956,7 +1956,7 @@ describe('BrightScriptDebugSession', () => {
 
         it('sends proper form data for installation', async () => {
             stubDefaults();
-            const publishStub = sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', results: [] });
+            const publishStub = sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } });
 
             await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'testLib.zip', install: true }
@@ -2011,7 +2011,7 @@ describe('BrightScriptDebugSession', () => {
             });
             sinon.stub(rokuDeploy, 'sideload').callsFake((options) => {
                 events.push(`install-${path.basename(options.zip)}`);
-                return Promise.resolve({ message: 'success', results: [] });
+                return Promise.resolve({ message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } });
             });
 
             await runPrepareAndHost([
@@ -2075,7 +2075,7 @@ describe('BrightScriptDebugSession', () => {
 
         it('calls packageTask for each component library if packageTask defined', async () => {
             stubDefaults();
-            sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', results: [] });
+            sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } });
             const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
             await runPrepareAndHost([
@@ -2098,7 +2098,7 @@ describe('BrightScriptDebugSession', () => {
             sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
                 installOrder.push(options);
                 await util.sleep(10);
-                return { message: 'success', results: [] };
+                return { message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } };
             });
 
             const packageUploadOverrides1 = {};
@@ -3525,7 +3525,7 @@ describe('BrightScriptDebugSession', () => {
             rokuAdapter.connected = true;
             const sideloadStub = sinon.stub(session.rokuDeploy, 'sideload').callsFake(() => {
                 (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
-                return Promise.resolve({ message: 'success', results: [] });
+                return Promise.resolve({ message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } });
             });
 
             await (session as any).publish();

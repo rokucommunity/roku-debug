@@ -2,42 +2,14 @@ import { expect } from 'chai';
 import { formatLogDate, replaceLast, serializeError } from './formatUtils';
 
 /**
- * `serialize-error` is no longer a dependency -- this module replaced it. When a copy still
- * happens to be present in node_modules (from an install predating its removal), every
- * `expectMatchesPackage` assertion additionally diffs our output against the real package.
- * Once it is gone those comparisons are skipped and the explicit assertions still stand.
- */
-let referenceSerializeError: ((value: unknown) => unknown) | undefined;
-try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-    referenceSerializeError = require('serialize-error').serializeError;
-} catch {
-    referenceSerializeError = undefined;
-}
-
-/**
- * `serialize-error` copies `name`/`message`/`stack` as NON-enumerable properties, so a plain
- * `deep.equal` against our (enumerable) output fails on shape alone. Round-tripping both sides
- * through JSON compares what actually reaches the log message, which is the only thing that
- * matters at our call sites.
+ * Round-trips through JSON so assertions compare what actually reaches the log message.
  */
 function asJson(value: unknown) {
     return JSON.parse(JSON.stringify(value ?? null));
 }
 
-function expectMatchesPackage(value: unknown) {
-    if (!referenceSerializeError) {
-        return;
-    }
-    expect(asJson(serializeError(value))).to.eql(asJson(referenceSerializeError(value)));
-}
-
 describe('formatUtils', () => {
     describe('serializeError', () => {
-        it('matches the package for a plain Error', () => {
-            expectMatchesPackage(new Error('something broke'));
-        });
-
         it('retains message and stack', () => {
             const result = serializeError(new Error('something broke')) as Record<string, unknown>;
             expect(result.message).to.eql('something broke');
@@ -45,9 +17,8 @@ describe('formatUtils', () => {
             expect(result.stack).to.be.a('string').and.contain('something broke');
         });
 
-        it('matches the package for a custom error with extra props', () => {
+        it('keeps extra props on a custom error', () => {
             const error = Object.assign(new Error('enoent-ish'), { code: 'ENOENT', path: '/tmp/nope' });
-            expectMatchesPackage(error);
             expect(asJson(serializeError(error))).to.include({ code: 'ENOENT', path: '/tmp/nope' });
         });
 
@@ -93,7 +64,6 @@ describe('formatUtils', () => {
 
         it('digs an Error out of a plain wrapper object', () => {
             const value = { context: 'launching', err: new Error('inner boom') };
-            expectMatchesPackage(value);
             //the whole point: the inner message survives rather than stringifying to {}
             const result = asJson(serializeError(value));
             expect(result.err.message).to.eql('inner boom');
@@ -102,7 +72,6 @@ describe('formatUtils', () => {
 
         it('digs Errors out of an array', () => {
             const value = [new Error('first'), new Error('second')];
-            expectMatchesPackage(value);
             const result = asJson(serializeError(value));
             expect(result).to.be.an('array').with.lengthOf(2);
             expect(result.map((x: any) => x.message)).to.eql(['first', 'second']);
@@ -111,7 +80,6 @@ describe('formatUtils', () => {
         it('replaces circular references instead of recursing forever', () => {
             const error: any = new Error('cyclic');
             error.self = error;
-            expectMatchesPackage(error);
             expect(asJson(serializeError(error)).self).to.eql('[Circular]');
         });
 
@@ -119,14 +87,12 @@ describe('formatUtils', () => {
             const error: any = new Error('cyclic-ctx');
             error.ctx = { name: 'ctx' };
             error.ctx.self = error.ctx;
-            expectMatchesPackage(error);
             expect(asJson(serializeError(error)).ctx.self).to.eql('[Circular]');
         });
 
         it('serializes a sibling repeated reference twice rather than marking it circular', () => {
             const shared = { id: 1 };
             const value = { a: shared, b: shared };
-            expectMatchesPackage(value);
             const result = asJson(serializeError(value));
             expect(result.b).to.eql({ id: 1 });
         });
@@ -153,9 +119,8 @@ describe('formatUtils', () => {
             expect(asJson(serializeError(value, { maxDepth: 2 }))).to.eql(value);
         });
 
-        it('matches the package for non-object values', () => {
+        it('passes through non-object values', () => {
             for (const value of ['just a string', 42, null, undefined, false]) {
-                expectMatchesPackage(value);
                 expect(serializeError(value)).to.eql(value);
             }
         });
@@ -168,19 +133,16 @@ describe('formatUtils', () => {
 
         it('drops function-valued properties', () => {
             const error = Object.assign(new Error('with fn'), { handler: () => { } });
-            expectMatchesPackage(error);
             expect(asJson(serializeError(error))).to.not.have.property('handler');
         });
 
         it('summarizes Buffers', () => {
             const error = Object.assign(new Error('with buffer'), { payload: Buffer.from('hello') });
-            expectMatchesPackage(error);
             expect(asJson(serializeError(error)).payload).to.eql('[object Buffer]');
         });
 
         it('honors toJSON', () => {
             const value = { secret: 'hidden', toJSON: () => ({ safe: 'shown' }) };
-            expectMatchesPackage(value);
             expect(asJson(serializeError(value))).to.eql({ safe: 'shown' });
         });
     });
