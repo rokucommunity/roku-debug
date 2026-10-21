@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [0.24.7](https://github.com/rokucommunity/roku-debug/compare/0.24.6...v0.24.7) - 2026-10-20
+### Fixed
+ - Free the component library port before a restart relaunches ([#434](https://github.com/rokucommunity/roku-debug/pull/434))
+### Changed
+ - Security enhancements ([#431](https://github.com/rokucommunity/roku-debug/pull/431), [#432](https://github.com/rokucommunity/roku-debug/pull/432))
+ - upgrade to [brighterscript@0.73.7](https://github.com/rokucommunity/brighterscript/blob/v0.73.7/CHANGELOG.md#0737---2026-10-13). Notable changes since 0.73.5:
+     - Security enhancements ([#1854](https://github.com/rokucommunity/brighterscript/pull/1854), [#1873](https://github.com/rokucommunity/brighterscript/pull/1873), [#1875](https://github.com/rokucommunity/brighterscript/pull/1875), [#1882](https://github.com/rokucommunity/brighterscript/pull/1882))
+ - upgrade to [roku-deploy@4.0.0-alpha.10](https://github.com/rokucommunity/roku-deploy/blob/v4.0.0-alpha.10/CHANGELOG.md#400-alpha10---2026-10-20). Notable changes since 4.0.0-alpha.9:
+     - Security enhancements ([#431](https://github.com/rokucommunity/roku-deploy/pull/431), [#440](https://github.com/rokucommunity/roku-deploy/pull/440), [#446](https://github.com/rokucommunity/roku-deploy/pull/446))
+
+
+
 ## [0.24.6](https://github.com/rokucommunity/roku-debug/compare/0.24.5...v0.24.6) - 2026-10-01
 ### Changed
  - Send ChannelSideloadedEvent as soon as sideload succeeds ([#428](https://github.com/rokucommunity/roku-debug/pull/428))
