@@ -569,17 +569,18 @@ export class DebugProtocolAdapter {
      */
     public async stepOver(threadId: number) {
         this.clearCache();
-        return this.client.stepOver(threadId);
+        //the client is cleared on 'close'/'app-exit', but the IDE may still send execution requests during that window
+        return this.client?.stepOver(threadId);
     }
 
     public async stepInto(threadId: number) {
         this.clearCache();
-        return this.client.stepIn(threadId);
+        return this.client?.stepIn(threadId);
     }
 
     public async stepOut(threadId: number) {
         this.clearCache();
-        return this.client.stepOut(threadId);
+        return this.client?.stepOut(threadId);
     }
 
     /**
@@ -587,7 +588,8 @@ export class DebugProtocolAdapter {
      */
     public async continue() {
         this.clearCache();
-        return this.client.continue();
+        //see https://github.com/rokucommunity/roku-debug/issues/433
+        return this.client?.continue();
     }
 
     /**
@@ -596,7 +598,7 @@ export class DebugProtocolAdapter {
     public async pause() {
         this.clearCache();
         //send the kill signal, which breaks into debugger mode
-        return this.client.pause();
+        return this.client?.pause();
     }
 
     /**

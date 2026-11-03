@@ -221,6 +221,19 @@ describe('DebugProtocolAdapter', function() {
         });
     });
 
+    describe('execution requests after the client is gone', () => {
+        //the client is cleared on 'close'/'app-exit', but the IDE may still send these requests.
+        //See https://github.com/rokucommunity/roku-debug/issues/433
+        it('do not throw when the client is undefined', async () => {
+            adapter['client'] = undefined;
+            await adapter.continue();
+            await adapter.pause();
+            await adapter.stepOver(0);
+            await adapter.stepInto(0);
+            await adapter.stepOut(0);
+        });
+    });
+
     describe('getStackTrace', () => {
         it('recovers when there are no stack frames', async () => {
             await initialize();
