@@ -1,12 +1,11 @@
-import { ConsoleTransport, default as defaultLogger } from '@rokucommunity/logger';
+import { default as defaultLogger, QueuedTransport, FileTransport } from '@rokucommunity/logger';
 import type { Logger } from '@rokucommunity/logger';
-import { QueuedTransport } from '@rokucommunity/logger/dist/transports/QueuedTransport';
-import { FileTransport } from '@rokucommunity/logger/dist/transports/FileTransport';
 import type { LaunchConfiguration } from './LaunchConfiguration';
 import * as path from 'path';
+import { Console } from 'console';
 import { util } from './util';
 import * as fsExtra from 'fs-extra';
-import * as dateformat from 'dateformat';
+import { formatLogDate } from './formatUtils';
 import { standardizePath as s } from './FileUtils';
 
 const logger = defaultLogger.createLogger('[dap]');
@@ -27,10 +26,27 @@ logger.addTransport(fileTransport);
 
 logger.logLevel = 'log';
 
-//disconnect the ConsoleLogger transport when requested (used primarily when in --dap mode in the CLI)
-export function removeConsoleLogger() {
-    logger.transports = logger.transports.filter(transport => !(transport?.constructor?.name === ConsoleTransport.name));
+/**
+ * Route every `console.*` method to stderr. Used in standalone `--dap` mode, where stdout carries the debug adapter protocol
+ * and any stray text (our own ConsoleTransport, third-party libraries, etc.) corrupts the stream for the client.
+ * @returns a function that restores the original console methods
+ */
+export function redirectConsoleToStderr(stderr: NodeJS.WritableStream = process.stderr) {
+    const stderrConsole = new Console({ stdout: stderr, stderr: stderr });
+    const originals = new Map<string, unknown>();
+    for (const key of Object.keys(stderrConsole)) {
+        if (typeof stderrConsole[key] === 'function') {
+            originals.set(key, console[key]);
+            console[key] = stderrConsole[key];
+        }
+    }
+    return () => {
+        for (const [key, original] of originals) {
+            console[key] = original;
+        }
+    };
 }
+
 const createLogger = logger.createLogger.bind(logger) as typeof Logger.prototype.createLogger;
 
 export { logger, createLogger };
@@ -65,7 +81,7 @@ export class FileLoggingManager {
                 filePath: undefined
             }
         };
-        //diisable all file logging if top-level config is omitted or set to false
+        //disable all file logging if top-level config is omitted or set to false
         if (!config || (typeof config === 'object' && config?.enabled === false)) {
             return;
         }
@@ -150,7 +166,7 @@ export class FileLoggingManager {
      * Generate a date string used for log filenames
      */
     private getLogDate(date: Date) {
-        return `${dateformat(date, 'yyyy-mm-dd"T"HH∶MM∶ss')}`;
+        return formatLogDate(date);
     }
 
     /**

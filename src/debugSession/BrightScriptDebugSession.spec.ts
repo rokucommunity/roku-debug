@@ -4,7 +4,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import * as sinonActual from 'sinon';
 import type { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
-import { DebugSession } from '@vscode/debugadapter';
+import { DebugSession, InitializedEvent, Logger as DapLogger, logger as dapLogger, OutputEvent, ProgressEndEvent, ProgressStartEvent, ProgressUpdateEvent } from '@vscode/debugadapter';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { fileUtils } from '../FileUtils';
@@ -12,17 +12,22 @@ import type { StackFrame } from '../adapters/TelnetAdapter';
 import { PrimativeType, TelnetAdapter } from '../adapters/TelnetAdapter';
 import { defer, util } from '../util';
 import { HighLevelType } from '../interfaces';
-import type { LaunchConfiguration } from '../LaunchConfiguration';
+import type { LaunchConfiguration, ResolvedLaunchConfiguration } from '../LaunchConfiguration';
 import type { SinonStub } from 'sinon';
 import { DiagnosticSeverity, util as bscUtil, standardizePath as s } from 'brighterscript';
-import { DefaultFiles, rokuDeploy } from 'roku-deploy';
+import { CompileError, DefaultFiles, rokuDeploy } from 'roku-deploy';
 import type { AddProjectParams, ComponentLibraryConstructorParams } from '../managers/ProjectManager';
 import { ComponentLibraryProject, Project } from '../managers/ProjectManager';
+import { expectThrowsAsync } from '../testHelpers.spec';
 import { RendezvousTracker } from '../RendezvousTracker';
-import { ClientToServerCustomEventName, isCustomRequestEvent, LogOutputEvent } from './Events';
+import { ClientToServerCustomEventName, isChannelSideloadedEvent, isCustomRequestEvent, isProcessCrashEvent, LogOutputEvent } from './Events';
 import { EventEmitter } from 'eventemitter3';
-import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
+import { PerfettoManager } from '../PerfettoManager';
+
+//DebugSession.shutdown() calls process.exit() after a sleep, so we need to prevent that during tests. This should not be a mock, it needs to be permanent for this flow
+DebugSession.prototype.shutdown = () => { };
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
@@ -43,7 +48,7 @@ describe('BrightScriptDebugSession', () => {
 
     let session: BrightScriptDebugSession;
 
-    let launchConfiguration: LaunchConfiguration;
+    let launchConfiguration: ResolvedLaunchConfiguration;
     let initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
     let rokuAdapter: TelnetAdapter;
@@ -56,11 +61,18 @@ describe('BrightScriptDebugSession', () => {
         //prevent calling DebugSession.shutdown() because that calls process.kill(), which would kill the test session
         sinon.stub(DebugSession.prototype, 'shutdown').returns(null);
 
+        //prevent forceExit()/the shutdown backstop from actually killing the test runner (#486)
+        sinon.stub(process, 'exit').callsFake((() => undefined) as any);
+
         try {
             session = new BrightScriptDebugSession();
+            session['publishTimeout'] = 1_000;
         } catch (e) {
             console.log(e);
         }
+        //always resolve the stagingDefered promise right away since most tests don't care about staging and this prevents a lot of unnecessary waiting
+        session['stagingDefered'].resolve();
+
         errorSpy = sinon.spy(session.logger, 'error');
         //override the error response function and throw an exception so we can fail any tests
         (session as any).sendErrorResponse = (...args: string[]) => {
@@ -70,7 +82,8 @@ describe('BrightScriptDebugSession', () => {
             rootDir: rootDir,
             outDir: outDir,
             stagingDir: stagingDir,
-            files: DefaultFiles
+            files: DefaultFiles,
+            device: { host: '1.2.3.4' }
         } as any;
         session['launchConfiguration'] = launchConfiguration;
         session.projectManager.launchConfiguration = launchConfiguration;
@@ -80,27 +93,25 @@ describe('BrightScriptDebugSession', () => {
 
         //mock the rokuDeploy module with promises so we can have predictable tests
         session.rokuDeploy = <any>{
-            prepublishToStaging: () => {
+            withDnsResolvedHost: (device) => {
+                return Promise.resolve(device);
+            },
+            stage: () => {
                 return Promise.resolve();
             },
-            zipPackage: () => {
+            zip: () => {
                 return Promise.resolve();
             },
-            pressHomeButton: () => {
+            keyPress: () => {
                 return Promise.resolve();
             },
-            publish: () => {
+            sideload: () => {
                 return Promise.resolve();
             },
-            createPackage: () => {
+            createSignedPackage: () => {
                 return Promise.resolve();
             },
-            deploy: () => {
-                return Promise.resolve();
-            },
-            getOptions: () => {
-            },
-            getFilePaths: () => {
+            resolveFilesArray: () => {
             }
         };
         rokuAdapter = {
@@ -187,15 +198,18 @@ describe('BrightScriptDebugSession', () => {
             developerEnabled: true
         }));
         sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+        sinon.stub(session, 'setupProcessErrorHandlers');
 
         let sendEvent = session.sendEvent.bind(session);
         sinon.stub(session, 'sendEvent').callsFake((event) => {
             if (isCustomRequestEvent(event)) {
-                void rokuDeploy.zipFolder(session['launchConfiguration'].stagingDir, packagePath).then(() => {
+                void rokuDeploy.zip({ dir: session['launchConfiguration'].stagingDir, out: packagePath }).then(() => {
                     //pretend we are the client and send a response back
                     session.emit(ClientToServerCustomEventName.customRequestEventResponse, {
                         requestId: event.body.requestId
                     });
+                }, (e) => {
+                    console.error('Failed to zip the staging folder', e);
                 });
             } else {
                 //call through
@@ -208,20 +222,22 @@ describe('BrightScriptDebugSession', () => {
             return Promise.resolve(session['rokuAdapter']);
         });
 
-        const publishStub = sinon.stub(session.rokuDeploy, 'publish').callsFake(() => {
+        const publishStub = sinon.stub(session.rokuDeploy, 'sideload').callsFake(() => {
             //emit the app-ready event
             (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
 
             return Promise.resolve({
                 message: 'success',
-                results: []
+                rokuMessages: { errors: [], infos: [], successes: [] }
             });
         });
 
         await session.launchRequest({} as any, {
             cwd: tempDir,
+            device: { host: '1.2.3.4' },
             //where the source files reside
             rootDir: rootDir,
+            files: DefaultFiles,
             //where roku-debug should put the staged files (and inject breakpoints)
             stagingDir: `${stagingDir}/staging`,
             //the name of the task that should be run to create the zip (doesn't matter for this test...we're going to intercept it anyway)
@@ -236,6 +252,9 @@ describe('BrightScriptDebugSession', () => {
                 }
             }
         } as Partial<LaunchConfiguration> as LaunchConfiguration);
+
+        //publish now runs inside configurationDoneRequest, so invoke it to complete the launch flow
+        await (session as any).configurationDoneRequest({} as any, {} as any);
 
         expect(publishStub.getCall(0).args[0].packageUploadOverrides).to.eql({
             route: '1234',
@@ -461,6 +480,198 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('start', () => {
+        let setupStub: sinonActual.SinonStub;
+
+        beforeEach(() => {
+            setupStub = sinon.stub(dapLogger, 'setup');
+            // stub the base class start() so we don't need real streams
+            sinon.stub(DebugSession.prototype, 'start').returns(undefined);
+            // stub so process error handlers aren't registered for real during tests
+            // (those are covered by logging.spec.ts)
+            sinon.stub(session, 'setupProcessErrorHandlers');
+        });
+
+        it('does not configure DAP logging when ROKU_DAP_LOG_FILE is not set', () => {
+            delete process.env.ROKU_DAP_LOG_FILE;
+            session.start(null as any, null as any);
+            expect(setupStub.called).to.be.false;
+        });
+
+        it('calls dapLogger.setup with the env var path when ROKU_DAP_LOG_FILE is set', () => {
+            process.env.ROKU_DAP_LOG_FILE = '/tmp/test-dap.log';
+            try {
+                session.start(null as any, null as any);
+                expect(setupStub.calledOnce).to.be.true;
+                expect(setupStub.firstCall.args[0]).to.equal(DapLogger.LogLevel.Error);
+                expect(setupStub.firstCall.args[1]).to.equal('/tmp/test-dap.log');
+            } finally {
+                delete process.env.ROKU_DAP_LOG_FILE;
+            }
+        });
+    });
+
+    describe('setupProcessErrorHandlers', () => {
+        let sendEventStub: sinonActual.SinonStub;
+        let shutdownStub: sinonActual.SinonStub;
+
+        beforeEach(() => {
+            sendEventStub = sinon.stub(session, 'sendEvent');
+            shutdownStub = sinon.stub(session, 'shutdown').resolves();
+            session['processErrorHandlersRegistered'] = false;
+        });
+
+        afterEach(() => {
+            session.teardownProcessErrorHandlers();
+        });
+
+        it('registers handlers only once even when called multiple times', () => {
+            const onSpy = sinon.spy(process, 'on');
+            session.setupProcessErrorHandlers();
+            session.setupProcessErrorHandlers();
+            expect(onSpy.withArgs('uncaughtException').callCount).to.equal(1);
+        });
+
+        it('sends ProcessCrashEvent for uncaughtException', () => {
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('test crash'));
+            expect(sendEventStub.calledOnce).to.be.true;
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.type).to.equal('uncaughtException');
+            expect(event.body.message).to.equal('test crash');
+        });
+
+        it('sends ProcessCrashEvent for unhandledRejection', () => {
+            session.setupProcessErrorHandlers();
+            session['_unhandledRejectionHandler'](new Error('rejected'));
+            expect(sendEventStub.calledOnce).to.be.true;
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.type).to.equal('unhandledRejection');
+            expect(event.body.message).to.equal('rejected');
+        });
+
+        it('includes error stack in ProcessCrashEvent', () => {
+            const error = new Error('test crash');
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const event = sendEventStub.firstCall.args[0];
+            expect(event.body.stack).to.equal(error.stack);
+        });
+
+        it('sets isCrashed to true', () => {
+            expect(session['isCrashed']).to.be.false;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            expect(session['isCrashed']).to.be.true;
+        });
+
+        it('handles non-Error thrown values', () => {
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler']('string error' as any);
+            const event = sendEventStub.firstCall.args[0];
+            expect(event.body.message).to.equal('string error');
+            expect(event.body.stack).to.be.undefined;
+        });
+
+        it('calls sendLogOutput with formatted crash output', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            expect(sendLogOutputStub.calledOnce).to.be.true;
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('BRIGHTSCRIPT DEBUGGER INTERNAL ERROR');
+            expect(output).to.include('uncaughtException');
+            expect(output).to.include('boom');
+            expect(output).to.include('https://github.com/RokuCommunity/roku-debug/issues/new');
+        });
+
+        it('includes client name from initRequestArgs in output', () => {
+            session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('**Client Name:** "VS Code"');
+        });
+
+        it('uses "unknown" for client name when initRequestArgs is not set', () => {
+            session['initRequestArgs'] = undefined;
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const error = new Error('boom');
+            error.stack = 'Error: boom\n    at test:1:1';
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('**Client Name:** "unknown"');
+        });
+
+        it('includes additionalInfo fields in ProcessCrashEvent body', () => {
+            session['initRequestArgs'] = { clientName: 'VS Code', clientID: 'vscode' } as any;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            const event = sendEventStub.firstCall.args[0];
+            expect(isProcessCrashEvent(event)).to.be.true;
+            expect(event.body.additionalInfo).to.exist;
+            expect(event.body.additionalInfo.clientName).to.equal('VS Code');
+            expect(event.body.additionalInfo.rokuDebugVersion).to.be.a('string');
+        });
+
+        it('uses "(no stack trace)" in output when error has no stack', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler']('not an error' as any);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('(no stack trace)');
+        });
+
+        it('truncates a very long stack trace in the issue URL', () => {
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            const longStack = 'x'.repeat(3000);
+            const error = new Error('boom');
+            error.stack = longStack;
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](error);
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            expect(output).to.include('...(truncated)');
+        });
+
+        it('falls back to JSON output when readJsonSync throws', () => {
+            sinon.stub(fsExtra, 'readJsonSync').throws(new Error('file not found'));
+            const sendLogOutputStub = sinon.stub(session as any, 'sendLogOutput').resolves();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            const output: string = sendLogOutputStub.firstCall.args[0];
+            // fallback is JSON-stringified error from catch block
+            expect(output).to.include('file not found');
+        });
+
+        it('schedules shutdown() after 5 seconds on uncaughtException', () => {
+            const clock = sinon.useFakeTimers();
+            session.setupProcessErrorHandlers();
+            session['_uncaughtExceptionHandler'](new Error('boom'));
+            expect(shutdownStub.called).to.be.false;
+            clock.tick(5000);
+            expect(shutdownStub.calledOnce).to.be.true;
+            clock.restore();
+        });
+
+        it('schedules shutdown() after 5 seconds on unhandledRejection', () => {
+            const clock = sinon.useFakeTimers();
+            session.setupProcessErrorHandlers();
+            session['_unhandledRejectionHandler'](new Error('rejected'));
+            expect(shutdownStub.called).to.be.false;
+            clock.tick(5000);
+            expect(shutdownStub.calledOnce).to.be.true;
+            clock.restore();
+        });
+    });
+
     describe('initializeRequest', () => {
         it('does not throw', () => {
             assert.doesNotThrow(() => {
@@ -484,6 +695,9 @@ describe('BrightScriptDebugSession', () => {
                 filters: undefined,
                 filterOptions: undefined
             };
+            //the request now waits on `rokuAdapterDeferred` directly (instead of `getRokuAdapter`),
+            //so resolve it up front for these tests
+            session['rokuAdapterDeferred'].resolve(rokuAdapter as any);
         });
 
         it('both caught and uncaught filters', async () => {
@@ -804,7 +1018,7 @@ describe('BrightScriptDebugSession', () => {
             let filePath = path.resolve(`${folder}/main.brs`);
 
             //prevent actually talking to the file system...just hardcode the list to exactly our main file
-            (session.rokuDeploy as any).getFilePaths = () => {
+            (session.rokuDeploy as any).resolveFilesArray = () => {
                 return [{
                     src: filePath,
                     dest: filePath
@@ -921,15 +1135,18 @@ describe('BrightScriptDebugSession', () => {
                 verified: false
             });
 
-            //simulate "launch"
+            //simulate "launch" — stage in launchRequest, then write breakpoints + zip in configurationDoneRequest
             await session.prepareMainProject();
+            await session['writeBreakpoints']();
+            await session['zipMainProject']();
 
             //remove the breakpoint
             args.breakpoints = [];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(response.body.breakpoints).to.be.lengthOf(0);
 
-            //add breakpoint during live debug session. one was there before, the other is new. Neither will be verified right now
+            //add breakpoint during live debug session. one was there before, the other is new.
+            //line 1 was already staged so it comes back verified; line 2 is new so it is not.
             args.breakpoints = [{ line: 1 }, { line: 2 }];
             await session.setBreakPointsRequest(<any>{}, args);
             expect(
@@ -983,6 +1200,16 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
+    describe('resetSessionState', () => {
+        it('resets the breakpoint manager so a restart does not reuse stale staged data', () => {
+            const reset = sinon.stub(session.breakpointManager, 'reset');
+
+            (session as any).resetSessionState();
+
+            expect(reset.calledOnce, 'breakpointManager.reset() should be called').to.be.true;
+        });
+    });
+
     describe('shutdown', () => {
         it('erases all staging folders when configured to do so', async () => {
             let stub = sinon.stub(fsExtra, 'removeSync').returns(null);
@@ -1003,9 +1230,147 @@ describe('BrightScriptDebugSession', () => {
                 'stagingPathB'
             ]);
         });
+
+        it('ends an active launch progress bar when shutdown is called mid-launch', async () => {
+            const clock = sinon.useFakeTimers();
+            const events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+
+            // Simulate a progress bar that was opened before shutdown was called
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['launchProgressId'] = 'mid-launch-progress';
+
+            const shutdownPromise = session.shutdown();
+            await clock.tickAsync(2000);
+            await shutdownPromise;
+
+            const progressEndEvents = events.filter(e => e instanceof ProgressEndEvent);
+            expect(progressEndEvents).to.have.lengthOf(1);
+            expect(progressEndEvents[0].body.progressId).to.equal('mid-launch-progress');
+        });
+
+        it('does not send ProgressEndEvent when no launch progress is active', async () => {
+            const events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+
+            session['initRequestArgs'].supportsProgressReporting = true;
+            expect(session['launchProgressId']).to.be.undefined;
+
+            await session.shutdown();
+
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
+        });
+
+        it('flushes the deferred ProgressEndEvent when shutdown lands inside the end delay', async () => {
+            const clock = sinon.useFakeTimers();
+            const events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Waiting on application');
+            session['sendLaunchProgress']('end', 'Complete');
+            //the end event is held back for UX, so it has not been sent yet
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.be.empty;
+
+            const shutdownPromise = session.shutdown();
+            //the flush happens synchronously at the start of shutdown, before the delay elapses,
+            //so the notification cannot get stuck open when the adapter exits
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.have.lengthOf(1);
+
+            await clock.tickAsync(2000);
+            await shutdownPromise;
+
+            //the cancelled delay timer must not deliver a second end event
+            expect(events.filter(e => e instanceof ProgressEndEvent)).to.have.lengthOf(1);
+        });
+    });
+
+    describe('disconnectRequest', () => {
+        //Regression tests for DAP crashes from unhandled pressHomeButton rejections at disconnect time:
+        //  - https://github.com/rokucommunity/vscode-brightscript-language/issues/807 (EHOSTDOWN)
+        //  - https://github.com/rokucommunity/roku-debug/issues/332 (ECONNREFUSED)
+        //@vscode/debugadapter dispatches disconnectRequest without awaiting the returned Promise
+        //(debugSession.js:391), so any rejection from the `await this.rokuDeploy.keyPress(...)` home press
+        //becomes an unhandled rejection that crashes the DAP process. When the device is powered
+        //off / unreachable at disconnect time, the ECP connect attempt fails — the specific Node
+        //error code depends on the OS-level reason (host unresponsive vs. connection refused).
+        function makeTelnetDisconnectSession(rejection: Error) {
+            (session as any).launchConfiguration = {
+                ...launchConfiguration,
+                enableDebugProtocol: false,
+                host: '192.168.1.17',
+                remotePort: 8060
+            };
+            session.rokuDeploy.keyPress = () => Promise.reject(rejection);
+            //stub shutdown so the test doesn't tear down the whole session machinery
+            sinon.stub(session, 'shutdown').resolves();
+        }
+
+        it('does not reject when pressHomeButton fails with EHOSTDOWN (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect EHOSTDOWN 192.168.1.17:8060 - Local (192.168.1.18:51783)'), { code: 'EHOSTDOWN' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
+        });
+
+        it('does not reject when pressHomeButton fails with ECONNREFUSED (telnet adapter)', async () => {
+            makeTelnetDisconnectSession(
+                Object.assign(new Error('connect ECONNREFUSED 192.168.1.17:8060'), { code: 'ECONNREFUSED' })
+            );
+            await session['disconnectRequest']({} as DebugProtocol.DisconnectResponse, {} as DebugProtocol.DisconnectArguments);
+        });
+    });
+
+    describe('restartRequest', () => {
+        //the relaunch starts a new component library server on the same port, which fails while the previous
+        //launch's server still holds it ("Port 8080 is currently occupied")
+        it('stops the component library server before relaunching', async () => {
+            //no adapter to tear down: this covers the component library server only
+            session['rokuAdapter'] = undefined;
+            const calls: string[] = [];
+            sinon.stub(session['componentLibraryServer'], 'stop').callsFake(() => {
+                calls.push('stop');
+                return Promise.resolve();
+            });
+            sinon.stub(session as any, 'launchRequest').callsFake(() => {
+                calls.push('launchRequest');
+                return Promise.resolve();
+            });
+
+            await session['restartRequest']({} as DebugProtocol.RestartResponse, { arguments: launchConfiguration } as DebugProtocol.RestartArguments);
+
+            expect(calls).to.eql(['stop', 'launchRequest']);
+        });
     });
 
     describe('handleDiagnostics', () => {
+        it('ends launch progress when a compile error diagnostic is received', async () => {
+            const clock = sinon.useFakeTimers();
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+
+            const events: any[] = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Waiting on application');
+
+            await session['handleDiagnostics']([{
+                message: 'Syntax error',
+                path: 'SomeComponent.xml',
+                range: bscUtil.createRange(1, 2, 3, 4),
+                severity: DiagnosticSeverity.Error
+            }]);
+
+            // sendLaunchProgress('end') immediately emits a ProgressUpdateEvent, then ProgressEndEvent after delay
+            const updateEvent = events.find(e => e instanceof ProgressUpdateEvent);
+            expect(updateEvent).to.exist;
+            expect((updateEvent.body as any).message).to.equal('Aborted (compile error)');
+            expect(session['launchProgressId']).to.be.undefined;
+
+            clock.tick(1100);
+            const endEvent = events.find(e => e instanceof ProgressEndEvent);
+            expect(endEvent).to.exist;
+        });
+
         it('finds source location for file-only path', async () => {
             session['rokuAdapter'] = { destroy: () => { } } as any;
             session.projectManager.mainProject = new Project({
@@ -1543,27 +1908,45 @@ describe('BrightScriptDebugSession', () => {
         });
     });
 
-    describe('prepareAndHostComponentLibraries', () => {
+    describe('prepareComponentLibraries / zipServeAndInstallComponentLibraries', () => {
+        //runs the full complib flow in the same order launchRequest does: stage, then write breakpoints,
+        //then postfix, then the cross-project `Library` rewrite, then zip+install+host.
+        async function runPrepareAndHost(componentLibraries: any[], port: number) {
+            await session['prepareComponentLibraries'](componentLibraries);
+            await session['writeBreakpoints']();
+            await session['postfixComponentLibraries'](componentLibraries);
+            await session.projectManager.applyLibraryReferencePostfixes();
+            await session['zipServeAndInstallComponentLibraries'](componentLibraries, port);
+        }
+
         function stubDefaults() {
-            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            //deletion now reads the installed list and deletes each one directly; default to a device with nothing installed
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            session['rokuAdapter'] = <any>{};
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
+            session.projectManager.mainProject = <any>{
+                stagingDir: s`${tempDir}/main-staging`,
+                zipPackage: sinon.stub().resolves()
+            };
         }
 
         it('installs libraries sequentially when marked install=true', async () => {
             stubDefaults();
             const installOrder = [];
-            const publishStub = sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
-                installOrder.push(options.outFile);
+            const publishStub = sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
+                installOrder.push(path.basename(options.zip));
                 await util.sleep(10);
-                return { message: 'success', results: [] };
+                return { message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } };
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1575,13 +1958,13 @@ describe('BrightScriptDebugSession', () => {
         it('skips libraries where install is not true', async () => {
             stubDefaults();
             const installOrder = [];
-            const publishStub = sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
-                installOrder.push(options.outFile);
+            const publishStub = sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
+                installOrder.push(path.basename(options.zip));
                 await util.sleep(10);
-                return { message: 'success', results: [] };
+                return { message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } };
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: undefined },
@@ -1595,38 +1978,47 @@ describe('BrightScriptDebugSession', () => {
 
         it('sends proper form data for installation', async () => {
             stubDefaults();
-            const publishStub = sinon.stub(rokuDeploy, 'publish').resolves({ message: 'success', results: [] });
+            const publishStub = sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'testLib.zip', install: true }
             ] as any, 8080);
 
-            expect(publishStub.getCall(0).args[0]).to.include({
-                host: '192.168.1.100',
+            const options = publishStub.getCall(0).args[0];
+            expect(options).to.include({
                 password: 'test123',
                 username: 'rokudev',
-                outFile: 'testLib.zip',
                 appType: 'dcl'
             });
+            expect(options.device).to.eql({ host: '192.168.1.100' });
+            expect(path.basename(options.zip)).to.equal('testLib.zip');
         });
 
-        it('logs error when publish fails and includes lib index', async () => {
+        it('logs the error AND fails the launch when a library install fails', async () => {
             stubDefaults();
-            sinon.stub(rokuDeploy, 'publish').rejects(new Error('Network error'));
+            sinon.stub(rokuDeploy, 'sideload').rejects(new Error('Network error'));
 
-            await session['prepareAndHostComponentLibraries']([
+            //a failed install must abort the launch (not silently continue with a missing library)
+            await expectThrowsAsync(() => runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
-            ] as any, 8080);
+            ] as any, 8080));
 
-            expect(errorSpy.calledWith('Error installing component library 0')).to.be.true;
+            expect(errorSpy.calledWith('Error installing component library 0 (lib1.zip)')).to.be.true;
         });
 
         it('waits for stage and zip before installing (slow lib1, fast lib2)', async () => {
-            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            session['rokuAdapter'] = <any>{};
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
+            session.projectManager.mainProject = <any>{
+                stagingDir: s`${tempDir}/main-staging`,
+                zipPackage: sinon.stub().resolves()
+            };
 
             const events = [];
             sinon.stub(ComponentLibraryProject.prototype, 'stage').callsFake(async function(this: ComponentLibraryProject) {
@@ -1639,12 +2031,12 @@ describe('BrightScriptDebugSession', () => {
                 events.push(`zip-${this['outFile']}`);
                 await util.sleep(1);
             });
-            sinon.stub(rokuDeploy, 'publish').callsFake((options) => {
-                events.push(`install-${options.outFile}`);
-                return Promise.resolve({ message: 'success', results: [] });
+            sinon.stub(rokuDeploy, 'sideload').callsFake((options) => {
+                events.push(`install-${path.basename(options.zip)}`);
+                return Promise.resolve({ message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } });
             });
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true }
             ] as any, 8080);
@@ -1655,18 +2047,20 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('fails build when complib promise fails', async () => {
-            sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
+            session['rokuAdapter'] = <any>{};
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
-            session['launchConfiguration'].host = '192.168.1.100';
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
             session['launchConfiguration'].password = 'test123';
 
             sinon.stub(ComponentLibraryProject.prototype, 'stage').rejects(new Error('Stage failed'));
 
             let errorThrown = false;
             try {
-                await session['prepareAndHostComponentLibraries']([
+                await runPrepareAndHost([
                     { rootDir: complib1Dir, outFile: 'lib1.zip', install: true }
                 ] as any, 8080);
             } catch (e) {
@@ -1677,33 +2071,36 @@ describe('BrightScriptDebugSession', () => {
         });
 
         it('skips deleting complibs when none are marked install=true', async () => {
-            const deleteStub = sinon.stub(rokuDeploy, 'deleteAllComponentLibraries').resolves();
+            const getInstalledStub = sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').resolves(null);
             sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'stage').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'postfixFiles').resolves();
             sinon.stub(ComponentLibraryProject.prototype, 'zipPackage').resolves();
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: false },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: undefined }
             ] as any, 8080);
 
-            expect(deleteStub.called).to.be.false;
+            //no library is being installed, so we never touch the device to delete existing complibs
+            expect(getInstalledStub.called).to.be.false;
         });
 
         it('does not start server when no component libraries present', async () => {
             const serverStub = sinon.stub(session['componentLibraryServer'], 'startStaticFileHosting').resolves();
 
-            await session['prepareAndHostComponentLibraries']([], 8080);
+            await runPrepareAndHost([], 8080);
 
             expect(serverStub.called).to.be.false;
         });
 
         it('calls packageTask for each component library if packageTask defined', async () => {
             stubDefaults();
+            sinon.stub(rokuDeploy, 'sideload').resolves({ message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } });
             const sendEventStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 { rootDir: complib1Dir, outFile: 'lib1.zip', install: true, packageTask: 'build:lib1' },
                 { rootDir: complib1Dir, outFile: 'lib2.zip', install: true, packageTask: 'build:lib2' },
                 { rootDir: complib1Dir, outFile: 'lib3.zip', install: true }
@@ -1720,10 +2117,10 @@ describe('BrightScriptDebugSession', () => {
         it('handles packagePath and packageUploadOverrides for component libraries', async () => {
             stubDefaults();
             const installOrder = [];
-            sinon.stub(rokuDeploy, 'publish').callsFake(async (options) => {
+            sinon.stub(rokuDeploy, 'sideload').callsFake(async (options) => {
                 installOrder.push(options);
                 await util.sleep(10);
-                return { message: 'success', results: [] };
+                return { message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } };
             });
 
             const packageUploadOverrides1 = {};
@@ -1735,7 +2132,7 @@ describe('BrightScriptDebugSession', () => {
                 }
             };
 
-            await session['prepareAndHostComponentLibraries']([
+            await runPrepareAndHost([
                 {
                     rootDir: complib1Dir,
                     outFile: 'lib1.zip',
@@ -1754,323 +2151,1882 @@ describe('BrightScriptDebugSession', () => {
 
             expect(installOrder.length).to.equal(2);
             expect(installOrder[0]).to.include({
-                outFile: path.basename(s`${tempDir}/custom/cl1.zip`),
-                outDir: path.dirname(s`${tempDir}/custom/cl1.zip`),
+                zip: s`${tempDir}/custom/cl1.zip`,
                 packageUploadOverrides: packageUploadOverrides1
             });
             expect(installOrder[1]).to.include({
-                outFile: path.basename(s`${tempDir}/custom/cl2.zip`),
-                outDir: path.dirname(s`${tempDir}/custom/cl2.zip`),
+                zip: s`${tempDir}/custom/cl2.zip`,
                 packageUploadOverrides: packageUploadOverrides2
             });
         });
     });
 
+    describe('deleteAllComponentLibraries', () => {
+        /**
+         * Simulate a device that has `installed` component libraries, where `dependencies[x]` lists the complibs
+         * that `x` depends on (references). Deleting a complib that another STILL-installed complib depends on
+         * produces a device compile error - mirroring real Roku behavior.
+         *
+         * By default a blocked delete does NOT remove the complib (it must be retried after its dependents are gone).
+         * If `deletesDespiteError` is true, a blocked delete instead rejects with a compile error that ALSO carries a
+         * `Delete Succeeded` message and removes the complib - mirroring the real device behavior where deleting a
+         * still-referenced complib both errors and succeeds.
+         *
+         * Stubs the device calls against this fake state and returns the recorded delete order.
+         */
+        function stubDevice(installed: string[], dependencies: Record<string, string[]> = {}, options: { deletesDespiteError?: boolean } = {}) {
+            const present = new Set(installed);
+            const deleteOrder: string[] = [];
+
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
+            session['launchConfiguration'].password = 'test123';
+            //deletion pauses/resumes compile-error reporting on the adapter; stub those so the flow works without a device
+            session['rokuAdapter'] = <any>{};
+
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').callsFake(() => Promise.resolve(
+                [...present].map(archiveFileName => ({ appType: 'dcl', archiveFileName } as any))
+            ));
+
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').callsFake((deleteOptions: any) => {
+                const target = deleteOptions.fileName;
+                //is any other still-installed complib depending on `target`?
+                const blockedBy = [...present].find(other => other !== target && (dependencies[other] ?? []).includes(target));
+                if (blockedBy) {
+                    const error: any = new Error(`Install Failure: Compilation Failed. (compile error &hb9) ... '${target}'`);
+                    //the device reports parsed messages on `.results`; a delete that succeeds-despite-error includes 'Delete Succeeded'
+                    error.results = {
+                        errors: [`Install Failure: Compilation Failed. (compile error &hb9) ... '${target}'`],
+                        infos: [],
+                        successes: options.deletesDespiteError ? ['Delete Succeeded'] : []
+                    };
+                    //when the device deletes it anyway, remove it from the installed set even though it errored
+                    if (options.deletesDespiteError) {
+                        deleteOrder.push(target);
+                        present.delete(target);
+                    }
+                    return Promise.reject(error);
+                }
+                deleteOrder.push(target);
+                present.delete(target);
+                return Promise.resolve(null);
+            });
+
+            return { deleteOrder, present, adapter: session['rokuAdapter'] as any };
+        }
+
+        /** point the session's configured complibs at the given outFiles, in declaration order */
+        function configureComplibs(outFiles: string[]) {
+            session.projectManager.componentLibraryProjects = outFiles.map(outFile => ({ outFile })) as any;
+        }
+
+        it('deletes configured libraries in REVERSE configured order (dependents before dependencies)', async () => {
+            //user configured C, B, A (so A depends on B+C, B depends on C) - all are installed
+            configureComplibs(['LibCharlie.zip', 'LibBeta.zip', 'LibAlpha.zip']);
+            const { deleteOrder, present } = stubDevice(
+                ['LibCharlie.zip', 'LibBeta.zip', 'LibAlpha.zip'],
+                { 'LibAlpha.zip': ['LibBeta.zip', 'LibCharlie.zip'], 'LibBeta.zip': ['LibCharlie.zip'] }
+            );
+
+            await session['deleteAllComponentLibraries']();
+
+            //reverse of configured order - and because that's dependency-correct, every delete succeeds first try
+            expect(deleteOrder).to.eql(['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip']);
+            expect(present.size).to.equal(0);
+        });
+
+        it('deletes everything even when the device lists them in a dependency-breaking order', async () => {
+            //the device reports installed complibs alphabetically (Alpha, Beta, Charlie), but we still delete safely
+            configureComplibs(['LibCharlie.zip', 'LibBeta.zip', 'LibAlpha.zip']);
+            const { deleteOrder, present } = stubDevice(
+                ['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip'],
+                { 'LibAlpha.zip': ['LibBeta.zip', 'LibCharlie.zip'], 'LibBeta.zip': ['LibCharlie.zip'] }
+            );
+
+            await session['deleteAllComponentLibraries']();
+
+            expect(deleteOrder).to.eql(['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip']);
+            expect(present.size).to.equal(0);
+        });
+
+        it('treats a delete that reports a compile error BUT "Delete Succeeded" as done (does not retry it)', async () => {
+            //the device deletes each complib even though deleting a still-referenced one also reports a compile error
+            configureComplibs(['LibCharlie.zip', 'LibBeta.zip', 'LibAlpha.zip']);
+            const { deleteOrder, present } = stubDevice(
+                ['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip'],
+                { 'LibAlpha.zip': ['LibBeta.zip', 'LibCharlie.zip'], 'LibBeta.zip': ['LibCharlie.zip'] },
+                { deletesDespiteError: true }
+            );
+            const deleteSpy = rokuDeploy.deleteComponentLibrary as SinonStub;
+
+            await session['deleteAllComponentLibraries']();
+
+            //every complib is gone, and each was deleted exactly once - the compile errors were NOT treated as failures to retry
+            expect(present.size).to.equal(0);
+            expect(deleteOrder).to.eql(['LibAlpha.zip', 'LibBeta.zip', 'LibCharlie.zip']);
+            expect(deleteSpy.callCount).to.equal(3);
+        });
+
+        it('retries a delete that reports a compile error and NO success message (delete did not happen)', async () => {
+            //unconfigured orphans (no known delete order): dep is depended-on by other. With no priority, the code may
+            //try to delete `dep` first - that's blocked and errors WITHOUT a success message, so it must NOT be counted
+            //as deleted and must be retried after `other` (its dependent) is gone.
+            configureComplibs([]);
+            const { deleteOrder, present } = stubDevice(
+                ['dep.zip', 'other.zip'],
+                { 'other.zip': ['dep.zip'] }
+                //deletesDespiteError defaults to false → a blocked delete errors and does NOT remove the complib
+            );
+            const deleteSpy = rokuDeploy.deleteComponentLibrary as SinonStub;
+
+            await session['deleteAllComponentLibraries']();
+
+            //everything is eventually deleted, and `other` (the dependent) comes out before `dep`
+            expect(present.size).to.equal(0);
+            expect(deleteOrder).to.eql(['other.zip', 'dep.zip']);
+            //`dep` was attempted while still blocked (and not removed), so there were more than 2 total delete calls
+            expect(deleteSpy.callCount).to.be.greaterThan(2);
+        });
+
+        it('deletes unconfigured (orphan) libraries too, using compile-error tolerance for their order', async () => {
+            //none of the installed complibs are configured; orphan2 depends on orphan1, so orphan2 must go first
+            configureComplibs([]);
+            const { deleteOrder, present } = stubDevice(
+                ['orphan1.zip', 'orphan2.zip'],
+                { 'orphan2.zip': ['orphan1.zip'] }
+            );
+
+            await session['deleteAllComponentLibraries']();
+
+            expect(deleteOrder).to.eql(['orphan2.zip', 'orphan1.zip']);
+            expect(present.size).to.equal(0);
+        });
+
+        it('deletes configured libraries first, then orphans', async () => {
+            //configured A (depends on nothing here) plus a leftover orphan that depends on A
+            configureComplibs(['LibAlpha.zip']);
+            const { deleteOrder, present } = stubDevice(
+                ['LibAlpha.zip', 'orphan.zip'],
+                { 'orphan.zip': ['LibAlpha.zip'] }
+            );
+
+            await session['deleteAllComponentLibraries']();
+
+            //orphan depends on LibAlpha, so it must be deleted before LibAlpha despite LibAlpha being configured
+            expect(deleteOrder).to.eql(['orphan.zip', 'LibAlpha.zip']);
+            expect(present.size).to.equal(0);
+        });
+
+        it('returns without error when no component libraries are installed', async () => {
+            configureComplibs(['LibAlpha.zip']);
+            const { deleteOrder } = stubDevice([]);
+
+            await session['deleteAllComponentLibraries']();
+
+            expect(deleteOrder).to.eql([]);
+        });
+
+        it('re-throws a non-compile error (e.g. auth/network failure) immediately', async () => {
+            configureComplibs(['LibAlpha.zip']);
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([{ appType: 'dcl', archiveFileName: 'LibAlpha.zip' } as any]);
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').rejects(new Error('Unauthorized. Please verify credentials'));
+
+            await expectThrowsAsync(() => session['deleteAllComponentLibraries']());
+        });
+
+        it('throws when a component library can never be deleted (after exhausting attempts)', async function() {
+            this.timeout(5000);
+            configureComplibs([]);
+            //a complib that always fails with a compile error and is never unblocked - should give up and throw
+            sinon.stub(rokuDeploy, 'listSideloadedPlugins').resolves([{ appType: 'dcl', archiveFileName: 'stuck.zip' } as any]);
+            session['launchConfiguration'].device = { host: '192.168.1.100' };
+            sinon.stub(rokuDeploy, 'deleteComponentLibrary').rejects(new Error('Install Failure: Compilation Failed. (compile error &hb9)'));
+
+            await expectThrowsAsync(() => session['deleteAllComponentLibraries']());
+        });
+    });
+
     describe('completionsRequest', () => {
+        //build an in-memory variable node. Pass `children` to make it a container (AA/array); otherwise
+        //it is a leaf. Only the fields the lookup/completion code reads (name, type, frameId, childVariables)
+        //carry meaning; the rest are harmless defaults.
+        function makeVariable(name: string, options: { type?: VariableType | string; frameId?: number; variablesReference?: number; children?: AugmentedVariable[] } = {}): AugmentedVariable {
+            const children = options.children ?? [];
+            return {
+                name: name,
+                value: '',
+                variablesReference: options.variablesReference ?? (children.length > 0 ? 10 : 0),
+                frameId: options.frameId ?? 0,
+                type: options.type ?? VariableType.String,
+                childVariables: children
+            } as AugmentedVariable;
+        }
+
         describe('getClosestCompletionDetails', () => {
-            it('handles empty string columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: '',
-                    column: 0,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
+            //the cursor position is marked inline with `|` (stripped before evaluating). Every case is
+            //asserted under both client column/line bases, since the resolved path must not depend on
+            //whether the client numbers columns/lines from 0 or from 1.
+            function expectClosest(textWithCursor: string, expected: { parentVariablePath: string[]; stringKeyClosing?: string } | undefined) {
+                const cursorIndex = textWithCursor.indexOf('|');
+                const text = textWithCursor.replace('|', '');
+                const textBeforeCursor = textWithCursor.slice(0, cursorIndex);
+                const cursorLine = (textBeforeCursor.match(/\n/g) ?? []).length;
+                const cursorColumn = textBeforeCursor.length - (textBeforeCursor.lastIndexOf('\n') + 1);
+
+                for (const startAt1 of [false, true]) {
+                    session['_clientColumnsStartAt1'] = startAt1;
+                    session['_clientLinesStartAt1'] = startAt1;
+                    const column = startAt1 ? cursorColumn + 1 : cursorColumn;
+                    //a cursor on the first line is sent without an explicit line (matches the real client)
+                    let line: number;
+                    if (cursorLine > 0) {
+                        line = startAt1 ? cursorLine + 1 : cursorLine;
+                    }
+                    expect(
+                        session['getClosestCompletionDetails']({ text: text, column: column, line: line, frameId: 0 }),
+                        `columnsStartAt1=${startAt1}`
+                    ).to.eql(expected);
+                }
+            }
+
+            it('treats an empty line as a local-scope expression', () => {
+                expectClosest('|', { parentVariablePath: [''] });
             });
 
-            it('handles empty string columnsStartAt1 true', () => {
+            it('returns undefined for an invalid variable path', () => {
+                expectClosest('1bad.path|', undefined);
+            });
+
+            it('completes the siblings of a partial trailing segment', () => {
+                expectClosest('person.name|', { parentVariablePath: ['person'] });
+            });
+
+            it('completes the members of a path with a trailing period', () => {
+                expectClosest('person.name.|', { parentVariablePath: ['person', 'name'] });
+            });
+
+            it('returns undefined when the cursor is mid-token', () => {
+                expectClosest('person.na|me', undefined);
+            });
+
+            it('returns undefined after a function-call result, but resolves indexed access', () => {
+                //a call result is not a resolvable variable path
+                expectClosest('getPerson().name|', undefined);
+                //indexed access, however, is a resolvable variable path
+                expectClosest('getPerson[0].name|', { parentVariablePath: ['getPerson', '0'] });
+            });
+
+            it('resolves a path typed inside an open bracket', () => {
+                expectClosest('getValue(person.name|', { parentVariablePath: ['person'] });
+                expectClosest('getValue[person.name|', { parentVariablePath: ['person'] });
+            });
+
+            it('resolves a path inside a call with a trailing close paren', () => {
+                expectClosest('getValue(person.name|)', { parentVariablePath: ['person'] });
+            });
+
+            it('treats the position after a comma as a fresh local-scope expression', () => {
+                expectClosest('getValue(person.name, test|)', { parentVariablePath: [''] });
+                expectClosest('getValue[person.name, test|]', { parentVariablePath: [''] });
+            });
+
+            it('resolves the path on the line the cursor is on (multiline input)', () => {
+                //cursor on the first line, mid-expression
+                expectClosest('getValue(person.name|, {\ntemp: test\n})', { parentVariablePath: ['person'] });
+                //cursor on the second line, a fresh local-scope expression
+                expectClosest('getValue(person.name, {\ntemp: test|\n})', { parentVariablePath: [''] });
+            });
+
+            it('handles the print shorthand (?) before member access', () => {
+                expectClosest('?m.|', { parentVariablePath: ['m'] });
+            });
+
+            it('handles the print keyword before member access', () => {
+                expectClosest('print m.|', { parentVariablePath: ['m'] });
+            });
+
+            it('handles a deeply nested dotted path', () => {
+                expectClosest('a.b.c.|', { parentVariablePath: ['a', 'b', 'c'] });
+            });
+
+            it('treats a trailing space as a fresh (local scope) expression position', () => {
+                expectClosest('m.top |', { parentVariablePath: [''] });
+            });
+
+            it('treats an open curly brace as a fresh (local scope) expression position', () => {
+                expectClosest('getValue({|', { parentVariablePath: [''] });
+            });
+
+            it('does not crash when the cursor column is past the end of the line', () => {
+                //the client can report a column well past the end of the text; we must not throw
                 session['_clientColumnsStartAt1'] = true;
                 expect(session['getClosestCompletionDetails']({
-                    text: '',
-                    column: 1,
+                    text: 'm',
+                    column: 50,
                     line: undefined,
                     frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
+                })).to.eql({ parentVariablePath: [''] });
             });
 
-            it('handles bad variable path columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: '1bad.path',
-                    column: 9,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('resolves indexed (numeric) access followed by a dot', () => {
+                //resolves to the indexed parent so we can complete the members of `arr[0]`
+                expectClosest('arr[0].|', { parentVariablePath: ['arr', '0'] });
             });
 
-            it('handles bad variable path columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: '1bad.path',
-                    column: 10,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            //a partial string-key access resolves to the parent object (so we can complete its keys) rather
+            //than collapsing to the local scope and dumping every global. `stringKeyClosing` is the text to
+            //append when accepting a key, so completions can close the access.
+            it('resolves partial string-key access to the parent object', () => {
+                expectClosest('m["fo|', { parentVariablePath: ['m'], stringKeyClosing: '"]' });
             });
 
-            it('handles simple input of just variable path columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 11,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
+            it('does not auto-close a string key that already has a closing bracket', () => {
+                //cursor is right after `fo`, with `"]` already present
+                expectClosest('m["fo|"]', { parentVariablePath: ['m'], stringKeyClosing: '' });
             });
 
-            it('handles simple input of just variable path columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 12,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
+            it('resolves member access on a completed string-key access (key stays quoted)', () => {
+                //the string key keeps its quotes so it stays case-sensitive when sent to the device
+                expectClosest('m.global["spoof"].|', { parentVariablePath: ['m', 'global', '"spoof"'] });
             });
 
-            it('handles simple input of just variable path with training period columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name.',
-                    column: 12,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person', 'name']
-                });
+            it('resolves member access on a completed string key that contains an escaped quote', () => {
+                //the escaped `""` is preserved in the path segment so the device lookup stays valid
+                expectClosest('m["a""b"].|', { parentVariablePath: ['m', '"a""b"'] });
+            });
+        });
+
+        describe('findVariableByPath', () => {
+            it('walks childVariables down a multi-segment path', () => {
+                const variables = [
+                    makeVariable('a', {
+                        children: [
+                            makeVariable('b', {
+                                children: [
+                                    makeVariable('c')
+                                ]
+                            })
+                        ]
+                    })
+                ];
+                expect(session['findVariableByPath'](variables, ['a', 'b', 'c'], 0)?.name).to.eql('c');
             });
 
-            it('handles simple input of just variable path with training period columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name.',
-                    column: 13,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person', 'name']
-                });
+            it('returns null when the frameId does not match', () => {
+                const variables = [makeVariable('a')];
+                expect(session['findVariableByPath'](variables, ['a'], 1)).to.be.null;
             });
 
-            it('handles simple input of just variable path columnsStartAt1 false but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 9,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            //NOTE: this characterizes the current scope-blind behavior. The first segment is matched
+            //against whatever entry appears first in the list, with no notion of which one is the
+            //frame's actual local. See the matching GAP test in `completionsRequest (full flow)`.
+            it('returns the first matching entry by name (scope-blind)', () => {
+                const variables = [
+                    makeVariable('person', { children: [makeVariable('first')] }),
+                    makeVariable('person', { children: [makeVariable('second')] })
+                ];
+                expect(session['findVariableByPath'](variables, ['person'], 0)?.childVariables[0].name).to.eql('first');
             });
 
-            it('handles simple input of just variable path columnsStartAt1 true but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'person.name',
-                    column: 10,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('matches names case-insensitively and tolerates quoted string keys', () => {
+                //device reports names lower-cased
+                const variables = [makeVariable('topref', { children: [makeVariable('spoof')] })];
+                //user typed `topRef` (different case) and a quoted string key
+                expect(session['findVariableByPath'](variables, ['topRef'], 0)?.name).to.eql('topref');
+                expect(session['findVariableByPath'](variables, ['topRef', '"spoof"'], 0)?.name).to.eql('spoof');
             });
 
-            it('returns undefined following closing brackets columnsStartAt1 false but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson().name',
-                    column: 16,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson[0].name',
-                    column: 17,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+            it('matches a string key that contains a literal quote (escaped in the typed path)', () => {
+                //device reports the raw key `a"b`; the user typed it escaped as `["a""b"]`
+                const variables = [makeVariable('m', { children: [makeVariable('a"b')] })];
+                expect(session['findVariableByPath'](variables, ['m', '"a""b"'], 0)?.name).to.eql('a"b');
             });
+        });
 
-            it('returns undefined following closing brackets columnsStartAt1 true but cursor is not at the end', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson().name',
-                    column: 17,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
+        describe('completionsRequest (full flow)', () => {
+            let response: DebugProtocol.CompletionsResponse;
 
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getPerson[0].name',
-                    column: 18,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql(undefined);
-            });
-
-
-            it('input after a open bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name)',
-                    column: 20,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name)',
-                    column: 21,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, test)',
-                    column: 26,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name, test]',
-                    column: 26,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('input after a open bracket with training closing bracket columnsStartAt1 true', () => {
-                session['_clientColumnsStartAt1'] = true;
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, test)',
-                    column: 27,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue[person.name, test]',
-                    column: 27,
-                    line: undefined,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('handles multiline inout columnsStartAt1 false linesStartAt1 false', () => {
-                session['_clientColumnsStartAt1'] = false;
-                session['_clientLinesStartAt1'] = false;
-
-                // cursor is on the first line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 20,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                // cursor is on the second line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 10,
-                    line: 1,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-            });
-
-            it('handles multiline inout columnsStartAt1 true linesStartAt1 true', () => {
+            beforeEach(() => {
                 session['_clientColumnsStartAt1'] = true;
                 session['_clientLinesStartAt1'] = true;
-
-                // cursor is on the first line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 21,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['person']
-                });
-
-                // cursor is on the second line
-                expect(session['getClosestCompletionDetails']({
-                    text: 'getValue(person.name, {\ntemp: test\n})',
-                    column: 11,
-                    line: 2,
-                    frameId: 0
-                })).to.eql({
-                    parentVariablePath: ['']
-                });
-
+                session['variables'] = {};
+                response = {
+                    request_seq: 0,
+                    success: true,
+                    command: 'completions',
+                    seq: 0,
+                    type: 'response',
+                    body: { targets: [] }
+                } as DebugProtocol.CompletionsResponse;
             });
+
+            //run a completion request with the cursor at the end of `text` (the beforeEach reports 1-based columns)
+            async function requestCompletions(text: string, frameId = 0) {
+                await session['completionsRequest'](
+                    response,
+                    { text: text, column: text.length + 1, frameId: frameId } as DebugProtocol.CompletionsArguments
+                );
+            }
+
+            function targetLabels() {
+                return (response.body.targets ?? []).map(target => target.label);
+            }
+
+            function findTarget(label: string) {
+                return response.body.targets.find(target => target.label === label);
+            }
+
+            //seed the frame's local scope container the same way scopesRequest/populateScopeVariables would
+            function seedLocals(children: AugmentedVariable[], frameId = 0) {
+                const refId = session['getEvaluateRefId']('$$locals', frameId);
+                session['variables'][refId] = {
+                    name: 'Local',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: frameId,
+                    isScope: true,
+                    variablesReference: refId,
+                    childVariables: children
+                } as AugmentedVariable;
+            }
+
+            //the EvaluateContainer the device adapter returns for an associative array with the given string keys
+            function deviceAssociativeArray(name: string, keys: string[]): EvaluateContainer {
+                return {
+                    name: name,
+                    evaluateName: name,
+                    type: VariableType.AssociativeArray,
+                    keyType: 'String',
+                    value: 'roAssociativeArray',
+                    children: keys.map(key => ({
+                        name: key,
+                        evaluateName: `${name}.${key}`,
+                        type: VariableType.String,
+                        value: '',
+                        keyType: null,
+                        children: []
+                    })),
+                    indexedVariables: 0,
+                    namedVariables: keys.length
+                } as unknown as EvaluateContainer;
+            }
+
+            it('returns object members (fields + interface methods) for dot access, without globals', async () => {
+                seedLocals([
+                    makeVariable('person', {
+                        type: VariableType.AssociativeArray, children: [
+                            makeVariable('firstName'),
+                            makeVariable('lastName')
+                        ]
+                    })
+                ]);
+
+                await requestCompletions('person.');
+
+                //child fields
+                expect(targetLabels()).to.include.members(['firstName', 'lastName']);
+                //ifAssociativeArray interface methods
+                expect(targetLabels()).to.include.members(['Count', 'Delete']);
+                //should NOT leak globals on member access
+                expect(targetLabels()).to.not.include('Abs');
+
+                //the child fields should be typed as `field`
+                const firstName = findTarget('firstName');
+                expect(firstName?.type).to.eql('field');
+                //after a trailing `.` the completion inserts at the cursor (nothing to replace yet).
+                //`start` is a 0-based offset into the line ("person." -> offset 7)
+                expect(firstName?.start).to.eql(7);
+                expect(firstName?.length).to.eql(0);
+            });
+
+            it('returns locals + globals + scope functions for an empty (local scope) expression', async () => {
+                seedLocals([makeVariable('localA')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([
+                    { name: 'MyScopeFunc', completionItemKind: 'function' }
+                ]);
+
+                await requestCompletions('');
+
+                expect(targetLabels()).to.include('localA'); //a local
+                expect(targetLabels()).to.include('Abs'); //a global
+                expect(targetLabels()).to.include('MyScopeFunc'); //a scope function
+            });
+
+            it('returns no completions when the parent variable cannot be resolved', async () => {
+                sinon.stub(rokuAdapter, 'getVariable').rejects(new Error('not found'));
+
+                await requestCompletions('doesNotExist.');
+
+                expect(response.body.targets).to.eql([]);
+            });
+
+            it('ranks local variables above globals', async () => {
+                seedLocals([makeVariable('localA')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                await requestCompletions('');
+
+                const local = findTarget('localA');
+                const global = findTarget('Abs');
+                expect(local?.sortText < global?.sortText, 'local variable should sort before global').to.be.true;
+            });
+
+            it('resolves the first segment against the frame locals, not a same-named nested field', async () => {
+                //the real local `person`
+                seedLocals([
+                    makeVariable('person', { type: VariableType.AssociativeArray, children: [makeVariable('firstName')] })
+                ]);
+                //a nested `person` field that lingers in the flat `variables` map; it must NOT shadow the real local
+                session['variables'][9999] = makeVariable('person', {
+                    type: VariableType.AssociativeArray,
+                    variablesReference: 9999,
+                    children: [makeVariable('wrongField')]
+                });
+
+                await requestCompletions('person.');
+
+                expect(targetLabels()).to.include('firstName');
+                expect(targetLabels()).to.not.include('wrongField');
+            });
+
+            it('completes string keys with a text-edit that closes the access and omits interface methods', async () => {
+                seedLocals([
+                    makeVariable('m', {
+                        type: VariableType.AssociativeArray, children: [
+                            makeVariable('firstName'),
+                            makeVariable('lastName')
+                        ]
+                    })
+                ]);
+
+                await requestCompletions('m["fo');
+
+                //the AA keys are offered
+                expect(targetLabels()).to.include.members(['firstName', 'lastName']);
+                //ifAssociativeArray methods are NOT valid string keys, so they are suppressed
+                expect(targetLabels()).to.not.include('Count');
+
+                const firstName = findTarget('firstName');
+                //accepting inserts the key and closes the access, replacing the typed `fo`
+                //(`start` is the 0-based offset of `f` in `m["fo`)
+                expect(firstName.text).to.eql('firstName"]');
+                expect(firstName.start).to.eql(3);
+                expect(firstName.length).to.eql(2);
+            });
+
+            it('escapes embedded double-quotes when inserting a string-key completion', async () => {
+                //a key whose name contains a literal `"` (BrightScript escapes a `"` inside a string as `""`)
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('a"b')] })
+                ]);
+
+                await requestCompletions('m["');
+
+                const key = findTarget('a"b');
+                //the label stays human-readable, but the inserted text escapes the `"` so the access is
+                //valid: `m["` + `a""b"]` -> `m["a""b"]`
+                expect(key.text).to.eql('a""b"]');
+            });
+
+            it('escapes a quote-only key so the completed access is the literal-quote form', async () => {
+                //the key is a single `"`; the valid source form is `m[""""]` (four quotes = the string `"`)
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('"')] })
+                ]);
+
+                await requestCompletions('m["');
+
+                const key = findTarget('"');
+                //`m["` + `"""]` -> `m[""""]`
+                expect(key.text).to.eql('"""]');
+            });
+
+            it('rewrites a non-identifier member as bracket access, consuming the dot', async () => {
+                seedLocals([
+                    makeVariable('m', {
+                        type: VariableType.AssociativeArray, children: [
+                            makeVariable('countrycode'),
+                            makeVariable('contry code') //a space -> not dot-accessible
+                        ]
+                    })
+                ]);
+
+                await requestCompletions('m.');
+
+                //a normal identifier key keeps dot access (no text override; the label is inserted after the `.`)
+                const normal = findTarget('countrycode');
+                expect(normal.text).to.be.undefined;
+
+                //a key with a space can't be dot-accessed, so it is rewritten as bracket access and the `.` is
+                //consumed: `m.` -> `m["contry code"]`
+                const spaced = findTarget('contry code');
+                expect(spaced.text).to.eql('["contry code"]');
+                expect(spaced.start).to.eql(1);
+                expect(spaced.length).to.eql(1);
+            });
+
+            it('escapes embedded quotes when rewriting a dot member as bracket access', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('a"b')] })
+                ]);
+
+                await requestCompletions('m.');
+
+                const key = findTarget('a"b');
+                //`m.` -> `m["a""b"]`
+                expect(key.text).to.eql('["a""b"]');
+                expect(key.start).to.eql(1);
+                expect(key.length).to.eql(1);
+            });
+
+            it('consumes the partial word and the dot when rewriting a dot member as bracket access', async () => {
+                seedLocals([
+                    makeVariable('m', { type: VariableType.AssociativeArray, children: [makeVariable('my-key')] })
+                ]);
+
+                await requestCompletions('m.my');
+
+                const key = findTarget('my-key');
+                //`m.my` -> `m["my-key"]` (the `.my` span is replaced)
+                expect(key.text).to.eql('["my-key"]');
+                expect(key.start).to.eql(1);
+                expect(key.length).to.eql(3);
+            });
+
+            function seedArray() {
+                seedLocals([
+                    makeVariable('arr', {
+                        type: VariableType.Array, children: [
+                            makeVariable('0'),
+                            makeVariable('1')
+                        ]
+                    })
+                ]);
+            }
+
+            it('offers array methods (not index entries) for member access on an array', async () => {
+                seedArray();
+
+                await requestCompletions('arr.');
+
+                //ifArray methods are offered
+                expect(targetLabels()).to.include.members(['Count', 'Push']);
+                //the integer indexes are NOT offered (`arr.0` / `arr.[0]` aren't valid)
+                expect(targetLabels()).to.not.include('0');
+                expect(targetLabels()).to.not.include('[0]');
+            });
+
+            it('offers no completions for a string-key access on an array', async () => {
+                seedArray();
+
+                //a string-key access on an array is invalid (arrays are integer-indexed)
+                await requestCompletions('arr["');
+
+                expect(response.body.targets).to.eql([]);
+            });
+
+            it('falls back to a device lookup and caches the result for the paused state', async () => {
+                //note: no locals are seeded, so the parent must be resolved from the device
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('person', ['firstName'])
+                );
+
+                await requestCompletions('person.');
+                expect(targetLabels()).to.include('firstName');
+                expect(getVariableStub.callCount).to.eql(1);
+
+                //a second identical request should be served from the cache without another device round-trip
+                await requestCompletions('person.');
+                expect(targetLabels()).to.include('firstName');
+                expect(getVariableStub.callCount).to.eql(1);
+
+                //resuming/stepping clears the cache, so the next lookup hits the device again
+                session['clearState']();
+                await requestCompletions('person.');
+                expect(getVariableStub.callCount).to.eql(2);
+            });
+
+            it('populates the frame locals on demand for local-scope completions', async () => {
+                //the locals scope exists but has not been populated yet (Variables panel not expanded)
+                const refId = session['getEvaluateRefId']('$$locals', 0);
+                session['variables'][refId] = {
+                    name: 'Locals',
+                    value: '',
+                    type: '$$Locals',
+                    frameId: 0,
+                    isScope: true,
+                    variablesReference: refId,
+                    childVariables: []
+                } as AugmentedVariable;
+                //the device returns the frame's locals when asked
+                (rokuAdapter as any).getLocalVariables = (() => Promise.resolve(
+                    deviceAssociativeArray('$$locals', ['environment'])
+                )) as any;
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                await requestCompletions('');
+
+                //the local was fetched on demand (without the Variables panel being expanded)
+                expect(targetLabels()).to.include('environment');
+                //globals are still present
+                expect(targetLabels()).to.include('Abs');
+            });
+
+            it('anchors completions to the partial word so the client can filter as the user types', async () => {
+                seedLocals([makeVariable('spoofDetails')]);
+                rokuAdapter.getStackFrameById = (() => ({ filePath: 'pkg:/source/main.brs' })) as any;
+                sinon.stub(session.projectManager, 'getScopeFunctionsForFile').resolves([]);
+
+                //the response must describe the span being replaced (`spo`, a 0-based offset of 0 spanning
+                //3 characters) so the client filters the list correctly as the user keeps typing
+                await requestCompletions('spo');
+
+                const local = findTarget('spoofDetails');
+                expect(local, 'local should be present in the response').to.exist;
+                expect(local.start).to.eql(0);
+                expect(local.length).to.eql(3);
+                //globals carry the same replacement range so the whole list filters consistently
+                const global = findTarget('Abs');
+                expect(global.start).to.eql(0);
+                expect(global.length).to.eql(3);
+            });
+
+            it('rebuilds an indexed path with bracket notation for the device lookup', async () => {
+                //no locals seeded, so resolution falls to the device
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('services[0]', ['id'])
+                );
+
+                await requestCompletions('services[0].');
+
+                //the index must be preserved as `[0]`, not flattened to the invalid `services.0`
+                expect(getVariableStub.calledWith('services[0]', 0)).to.be.true;
+                expect(targetLabels()).to.include('id');
+            });
+
+            it('resolves member access on a string-key result (m.global["spoof"].)', async () => {
+                const getVariableStub = sinon.stub(rokuAdapter, 'getVariable').resolves(
+                    deviceAssociativeArray('m.global.spoof', ['countrycode', 'postalcode'])
+                );
+
+                await requestCompletions('m.global["spoof"].');
+
+                //the string key keeps its quotes so the device lookup stays `m.global["spoof"]` (case-sensitive)
+                expect(getVariableStub.calledWith('m.global["spoof"]', 0)).to.be.true;
+                expect(targetLabels()).to.include.members(['countrycode', 'postalcode']);
+                expect(targetLabels()).to.not.include('Abs');
+            });
+        });
+
+        describe('buildVariableExpression', () => {
+            it('uses dot access for identifiers and brackets for indexes and string keys', () => {
+                expect(session['buildVariableExpression'](['m', 'top'])).to.eql('m.top');
+                expect(session['buildVariableExpression'](['m', 'applicationServices', '0'])).to.eql('m.applicationServices[0]');
+                expect(session['buildVariableExpression'](['arr', '0', 'name'])).to.eql('arr[0].name');
+                //already-quoted string keys keep their quotes (stay case-sensitive on the device)
+                expect(session['buildVariableExpression'](['m', 'global', '"spoof"'])).to.eql('m.global["spoof"]');
+                expect(session['buildVariableExpression'](['m', 'my-key'])).to.eql('m["my-key"]');
+                //a `"` inside a key is escaped as `""` so the expression stays valid
+                expect(session['buildVariableExpression'](['m', 'a"b'])).to.eql('m["a""b"]');
+                expect(session['buildVariableExpression'](['m', '"'])).to.eql('m[""""]');
+                expect(session['buildVariableExpression']([''])).to.eql('');
+            });
+        });
+    });
+
+    describe('initializeProfiling', () => {
+        let enableTracingStub: SinonStub;
+
+        beforeEach(() => {
+            //set device info to support perfetto tracing (OS >= 15.2)
+            session['deviceInfo'] = { softwareVersion: '15.2.0' } as any;
+
+            //stub PerfettoManager prototype methods so no real connections are made
+            enableTracingStub = sinon.stub(PerfettoManager.prototype, 'enableTracing').resolves(true);
+            sinon.stub(PerfettoManager.prototype, 'on').returns(() => { });
+        });
+
+        it('calls enableTracing when profiling.tracing.enable is true and device supports perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(1);
+        });
+
+        it('does not call enableTracing when profiling.tracing.enable is false and device supports perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { enable: false } } as any;
+
+            await session['initializeProfiling']();
+
+            //there is no way to disable perfetto tracing on the device, so we just skip it
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when profiling.tracing.enable is undefined', async () => {
+            launchConfiguration.profiling = { tracing: {} } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when profiling.tracing is undefined', async () => {
+            launchConfiguration.profiling = {} as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when profiling is undefined', async () => {
+            launchConfiguration.profiling = undefined;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when enable is true but device does not support perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call enableTracing when enable is false but device does not support perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { enable: false } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+
+        it('logs a warning and shows a popup when enable is true but device firmware is too old', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+            const warnSpy = sinon.spy(session.logger, 'warn');
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+            expect(warnSpy.callCount).to.be.greaterThan(0);
+            expect(warnSpy.getCall(0).args[0]).to.include('14.0.0');
+            expect(warnSpy.getCall(0).args[0]).to.include('15.2');
+            expect(sendCustomRequestStub.callCount).to.equal(1);
+            expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
+        });
+
+        it('catches and logs error when enableTracing throws (enable=true)', async () => {
+            launchConfiguration.profiling = { tracing: { enable: true } } as any;
+            enableTracingStub.rejects(new Error('connection failed'));
+
+            await session['initializeProfiling']();
+
+            expect(errorSpy.callCount).to.be.greaterThan(0);
+            expect(errorSpy.getCall(0).args[0]).to.include('Failed to enable perfetto tracing');
+        });
+
+        it('does not call enableTracing when enable is false (no way to disable perfetto tracing)', async () => {
+            launchConfiguration.profiling = { tracing: { enable: false } } as any;
+
+            await session['initializeProfiling']();
+
+            expect(enableTracingStub.callCount).to.equal(0);
+        });
+    });
+
+    describe('tryProfilingConnectOnStart', () => {
+        let startTracingStub: SinonStub;
+
+        beforeEach(() => {
+            //set device info to support perfetto tracing (OS >= 15.2)
+            session['deviceInfo'] = { softwareVersion: '15.2.0' } as any;
+
+            //stub PerfettoManager prototype methods so no real connections are made
+            startTracingStub = sinon.stub(PerfettoManager.prototype, 'startTracing').resolves();
+            sinon.stub(PerfettoManager.prototype, 'on').returns(() => { });
+            session['perfettoManager'] = new PerfettoManager({ device: { host: 'localhost' } });
+        });
+
+        it('calls startTracing when connectOnStart is true and device supports perfetto', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true, enable: true } } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(1);
+        });
+
+        it('does not call startTracing when connectOnStart is false', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: false } } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+        });
+
+        it('does not call startTracing when connectOnStart is undefined', async () => {
+            launchConfiguration.profiling = { tracing: {} } as any;
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+        });
+
+        it('logs a warning and shows a popup when connectOnStart is true but device firmware is too old', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true, enable: true } } as any;
+            session['deviceInfo'] = { softwareVersion: '14.0.0' } as any;
+            const warnSpy = sinon.spy(session.logger, 'warn');
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+            expect(warnSpy.callCount).to.be.greaterThan(0);
+            expect(warnSpy.getCall(0).args[0]).to.include('14.0.0');
+            expect(warnSpy.getCall(0).args[0]).to.include('15.2');
+            expect(sendCustomRequestStub.callCount).to.equal(1);
+            expect(sendCustomRequestStub.getCall(0).args[0]).to.equal('showPopupMessage');
+        });
+
+        it('does not call startTracing or notify when connectOnStart is true but enable is false', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true, enable: false } } as any;
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+            expect(sendCustomRequestStub.callCount).to.equal(0);
+        });
+
+        it('does not call startTracing when connectOnStart is true but enable is missing', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true } } as any;
+            const sendCustomRequestStub = sinon.stub(session as any, 'sendCustomRequest').resolves();
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(startTracingStub.callCount).to.equal(0);
+            expect(sendCustomRequestStub.callCount).to.equal(0);
+        });
+
+        it('catches and logs error when startTracing throws', async () => {
+            launchConfiguration.profiling = { tracing: { connectOnStart: true, enable: true } } as any;
+            startTracingStub.rejects(new Error('connection failed'));
+
+            await session['tryProfilingConnectOnStart']();
+
+            expect(errorSpy.callCount).to.be.greaterThan(0);
+            expect(errorSpy.getCall(0).args[0]).to.include('Failed to start perfetto tracing on start');
+        });
+    });
+
+    describe('sendLaunchProgress', () => {
+        let events: any[];
+
+        beforeEach(() => {
+            events = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+        });
+
+        it('does nothing when supportsProgressReporting is false', () => {
+            session['initRequestArgs'].supportsProgressReporting = false;
+            session['sendLaunchProgress']('start', 'Packaging');
+            expect(events).to.be.empty;
+        });
+
+        it('does nothing when supportsProgressReporting is not set', () => {
+            delete session['initRequestArgs'].supportsProgressReporting;
+            session['sendLaunchProgress']('start', 'Packaging');
+            expect(events).to.be.empty;
+        });
+
+        it('sends ProgressStartEvent with the correct title and message', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Packaging');
+            expect(events).to.have.lengthOf(1);
+            expect(events[0]).to.be.instanceOf(ProgressStartEvent);
+            expect(events[0].body.title).to.equal('Launching');
+            expect(events[0].body.message).to.equal('Packaging...');
+        });
+
+        it('assigns a launchProgressId on start', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            expect(session['launchProgressId']).to.be.undefined;
+            session['sendLaunchProgress']('start', 'Packaging');
+            expect(session['launchProgressId']).to.be.a('string').and.not.be.empty;
+        });
+
+        it('sends ProgressUpdateEvent referencing the same progressId', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Packaging');
+            const progressId = session['launchProgressId'];
+
+            session['sendLaunchProgress']('update', 'Uploading to Roku');
+
+            expect(events).to.have.lengthOf(2);
+            expect(events[1]).to.be.instanceOf(ProgressUpdateEvent);
+            expect(events[1].body.progressId).to.equal(progressId);
+            expect(events[1].body.message).to.equal('Uploading to Roku...');
+        });
+
+        it('sends ProgressEndEvent after delay and clears launchProgressId', () => {
+            const clock = sinon.useFakeTimers();
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('start', 'Packaging');
+            const progressId = session['launchProgressId'];
+
+            session['sendLaunchProgress']('end');
+
+            // 'end' immediately emits a ProgressUpdateEvent (final status message) and clears launchProgressId
+            expect(events).to.have.lengthOf(2);
+            expect(events[1]).to.be.instanceOf(ProgressUpdateEvent);
+            expect(session['launchProgressId']).to.be.undefined;
+
+            // After the delay, ProgressEndEvent is sent
+            clock.tick(1100);
+            expect(events).to.have.lengthOf(3);
+            expect(events[2]).to.be.instanceOf(ProgressEndEvent);
+            expect(events[2].body.progressId).to.equal(progressId);
+        });
+
+        it('update is a no-op when no progress is active', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('update', 'Uploading to Roku');
+            expect(events).to.be.empty;
+        });
+
+        it('end is a no-op when no progress is active', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+            session['sendLaunchProgress']('end');
+            expect(events).to.be.empty;
+        });
+
+        it('each start call generates a unique progressId', () => {
+            session['initRequestArgs'].supportsProgressReporting = true;
+
+            session['sendLaunchProgress']('start', 'First launch');
+            const firstId = session['launchProgressId'];
+            session['sendLaunchProgress']('end');
+
+            session['sendLaunchProgress']('start', 'Second launch');
+            const secondId = session['launchProgressId'];
+
+            expect(firstId).to.be.a('string').and.not.be.empty;
+            expect(secondId).to.be.a('string').and.not.be.empty;
+            expect(firstId).to.not.equal(secondId);
+        });
+    });
+
+    describe('launchRequest', () => {
+        function setupLaunchStubs() {
+            sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+            sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
+            sinon.stub(session, 'prepareMainProject').resolves();
+            sinon.stub(session as any, 'prepareComponentLibraries').resolves();
+            sinon.stub(session as any, 'writeBreakpoints').resolves();
+            sinon.stub(session as any, 'postfixComponentLibraries').resolves();
+            sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').resolves();
+            sinon.stub(session as any, 'zipMainProject').resolves();
+            sinon.stub(session as any, 'zipServeAndInstallComponentLibraries').resolves();
+            sinon.stub(session, 'initRendezvousTracking').resolves();
+            // Prevent createRokuAdapter from replacing the mock rokuAdapter with a real adapter
+            sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
+            sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
+            sinon.stub(session as any, 'publish').resolves();
+            sinon.stub(session, 'setupProcessErrorHandlers');
+            rokuAdapter.connected = true;
+        }
+
+        describe('device info', () => {
+            it('uses device info supplied in the launch config instead of requesting it from the device', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
+
+                //the deprecated dap-input path: launchRequest normalizes this into the device config
+                delete (launchConfiguration as any).device;
+                (launchConfiguration as LaunchConfiguration).host = '1.2.3.4';
+                launchConfiguration.deviceInfo = {
+                    'developer-enabled': 'true',
+                    'software-version': '11.5.0',
+                    'software-build': '4170'
+                };
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                //should not have requested device info from the device over the network
+                expect(getDeviceInfoStub.called).to.be.false;
+                //device info should be the normalized (enhanced) form of the supplied raw data
+                expect(session.deviceInfo).to.include({
+                    developerEnabled: true,
+                    softwareVersion: '11.5.0',
+                    softwareBuild: 4170
+                });
+            });
+
+            it('requests device info from the device when none is supplied in the launch config', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                const getDeviceInfoStub = rokuDeploy.getDeviceInfo as sinon.SinonStub;
+
+                //the deprecated dap-input path: launchRequest normalizes this into the device config
+                delete (launchConfiguration as any).device;
+                (launchConfiguration as LaunchConfiguration).host = '1.2.3.4';
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                expect(getDeviceInfoStub.called).to.be.true;
+            });
+        });
+
+        describe('progress events', () => {
+            let events: any[];
+
+            beforeEach(() => {
+                events = [];
+                sinon.stub(session, 'sendEvent').callsFake((event) => events.push(event));
+            });
+
+            function getProgressEvents() {
+                return events.filter(e =>
+                    e instanceof ProgressStartEvent ||
+                    e instanceof ProgressUpdateEvent ||
+                    e instanceof ProgressEndEvent
+                );
+            }
+
+            it('emits progress events in the correct order', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                session['initRequestArgs'].supportsProgressReporting = true;
+
+                await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
+
+                const progressEvents = getProgressEvents();
+                expect(progressEvents).to.have.lengthOf(6);
+                expect(progressEvents[0]).to.be.instanceOf(ProgressStartEvent);
+                expect((progressEvents[0].body as any).message).to.equal('Finding device on network...');
+                expect(progressEvents[1]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[1].body as any).message).to.equal('Packaging Project...');
+                expect(progressEvents[2]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[2].body as any).message).to.equal('Connecting to debug server...');
+                expect(progressEvents[3]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[3].body as any).message).to.equal('Configuring breakpoints...');
+                expect(progressEvents[4]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[4].body as any).message).to.equal('Uploading to Roku...');
+                expect(progressEvents[5]).to.be.instanceOf(ProgressUpdateEvent);
+                expect((progressEvents[5].body as any).message).to.equal('Waiting on application...');
+            });
+
+            it('all progress events share the same progressId', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                session['initRequestArgs'].supportsProgressReporting = true;
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                const progressEvents = getProgressEvents();
+                expect(progressEvents.length).to.be.greaterThan(0);
+                const progressId = progressEvents[0].body.progressId;
+                expect(progressId).to.be.a('string').and.not.be.empty;
+                for (const event of progressEvents) {
+                    expect(event.body.progressId).to.equal(progressId);
+                }
+            });
+
+            it('ends progress with abort message when publish throws a CompileError', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                // Override the publish stub to throw a CompileError
+                (session as any).publish.restore();
+                sinon.stub(session as any, 'publish').rejects(new CompileError('compile failed'));
+                session['initRequestArgs'].supportsProgressReporting = true;
+
+                await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
+
+                const progressUpdateEvents = events.filter(e => e instanceof ProgressUpdateEvent);
+                const abortEvent = progressUpdateEvents.find(e => (e.body as any).message === 'Aborted (compile error)');
+                expect(abortEvent).to.exist;
+                expect(session['launchProgressId']).to.be.undefined;
+            });
+
+            it('sends no progress events when client does not support progress reporting', async function() {
+                this.timeout(5000);
+                setupLaunchStubs();
+                session['initRequestArgs'].supportsProgressReporting = false;
+
+                await session.launchRequest({} as any, launchConfiguration);
+
+                expect(getProgressEvents()).to.be.empty;
+            });
+        });
+
+        describe('library reference postfixing lifecycle', () => {
+            /**
+             * Stub the breakpoint-write, postfixing, and zipping phases so each records a marker when it runs,
+             * then run the launch flow (launchRequest stages; the package phase runs in configurationDoneRequest)
+             * and return the recorded order. The write/postfix phases resolve on a later tick so the test proves
+             * each downstream phase truly waits for the previous one to finish.
+             */
+            async function recordPhaseOrder() {
+                const order: string[] = [];
+                sinon.stub(util, 'dnsLookup').callsFake((host) => Promise.resolve(host));
+                sinon.stub(rokuDeploy, 'getDeviceInfo').resolves({ developerEnabled: true } as any);
+                sinon.stub(session, 'initRendezvousTracking').resolves();
+                sinon.stub(session as any, 'createRokuAdapter').callsFake(() => { });
+                sinon.stub(session as any, 'runAutomaticSceneGraphCommands').resolves();
+                sinon.stub(session as any, 'tryProfilingConnectOnStart').resolves();
+                sinon.stub(session.rokuDeploy, 'keyPress').resolves();
+                sinon.stub(session as any, 'publish').resolves();
+                sinon.stub(session, 'setupProcessErrorHandlers');
+                //staging is a no-op for this test; we care about the write/postfix -> rewrite -> zip ordering
+                sinon.stub(session, 'prepareMainProject').resolves();
+                sinon.stub(session as any, 'prepareComponentLibraries').resolves();
+                rokuAdapter.connected = true;
+
+                //write+postfix phases: resolve on a later tick so a missing barrier would let the next phase sneak in early
+                sinon.stub(session as any, 'writeBreakpoints').callsFake(async () => {
+                    await util.sleep(20);
+                    order.push('write');
+                });
+                sinon.stub(session as any, 'postfixComponentLibraries').callsFake(async () => {
+                    await util.sleep(10);
+                    order.push('postfix:complibs');
+                });
+                //the cross-project `Library` rewrite - must run AFTER all postfixing, BEFORE any zipping
+                sinon.stub(session.projectManager, 'applyLibraryReferencePostfixes').callsFake(() => {
+                    order.push('rewrite');
+                    return Promise.resolve();
+                });
+                //zip/upload phases - must run AFTER the rewrite
+                sinon.stub(session as any, 'zipMainProject').callsFake(() => {
+                    order.push('zip:main');
+                    return Promise.resolve();
+                });
+                sinon.stub(session as any, 'zipServeAndInstallComponentLibraries').callsFake(() => {
+                    order.push('zip:complibs');
+                    return Promise.resolve();
+                });
+
+                //launchRequest stages the projects; configurationDoneRequest runs the package phase
+                //(write/postfix -> rewrite -> zip) that this test asserts the ordering of
+                await session.launchRequest({} as any, launchConfiguration);
+                await (session as any).configurationDoneRequest({} as any, {} as any);
+                return order;
+            }
+
+            it('rewrites `Library` references only after ALL projects are postfixed, and before any zipping', async function() {
+                this.timeout(5000);
+                const order = await recordPhaseOrder();
+
+                const rewriteIndex = order.indexOf('rewrite');
+                //breakpoints are written (telnet STOPs) before any complib file is renamed with its postfix
+                expect(order.indexOf('write')).to.be.lessThan(order.indexOf('postfix:complibs'));
+                //the write and postfix phases complete before the rewrite starts
+                expect(order.indexOf('write')).to.be.lessThan(rewriteIndex);
+                expect(order.indexOf('postfix:complibs')).to.be.lessThan(rewriteIndex);
+                //all zipping/uploading happens after the rewrite
+                expect(order.indexOf('zip:main')).to.be.greaterThan(rewriteIndex);
+                expect(order.indexOf('zip:complibs')).to.be.greaterThan(rewriteIndex);
+            });
+        });
+
+        it('runs initializeProfiling after InitializedEvent so the extension does not clear profiling context keys on session start', async function() {
+            this.timeout(5000);
+            setupLaunchStubs();
+
+            const calls: string[] = [];
+            sinon.stub(session, 'sendEvent').callsFake((event) => {
+                calls.push(`sendEvent:${event.constructor.name}`);
+            });
+            sinon.stub(session as any, 'initializeProfiling').callsFake(() => {
+                calls.push('initializeProfiling');
+                return Promise.resolve();
+            });
+
+            await session.launchRequest({} as any, launchConfiguration);
+
+            const initializedIdx = calls.indexOf('sendEvent:InitializedEvent');
+            const profilingIdx = calls.indexOf('initializeProfiling');
+            expect(initializedIdx, 'InitializedEvent was not sent').to.be.greaterThan(-1);
+            expect(profilingIdx, 'initializeProfiling was not called').to.be.greaterThan(-1);
+            expect(profilingIdx, 'initializeProfiling must run after InitializedEvent').to.be.greaterThan(initializedIdx);
+        });
+    });
+
+    describe('normalizeLaunchConfig profiling.tracing', () => {
+        it('defaults `enable` to true when `connectOnStart` is set but `enable` is undefined', () => {
+            const config = session['normalizeLaunchConfig']({ profiling: { tracing: { connectOnStart: true } } } as any);
+            expect(config.profiling.tracing.enable).to.be.true;
+        });
+
+        it('leaves `enable` as false when explicitly set to false', () => {
+            const config = session['normalizeLaunchConfig']({ profiling: { tracing: { enable: false, connectOnStart: true } } } as any);
+            expect(config.profiling.tracing.enable).to.be.false;
+        });
+
+        it('resolves a non-object `tracing` to disabled instead of throwing', () => {
+            const config = session['normalizeLaunchConfig']({ profiling: { tracing: true } } as any);
+            expect(config.profiling.tracing).to.eql({ enable: false });
+        });
+
+        it('resolves a null `tracing` to disabled', () => {
+            const config = session['normalizeLaunchConfig']({ profiling: { tracing: null } } as any);
+            expect(config.profiling.tracing).to.eql({ enable: false });
+        });
+
+        it('does not add a `profiling` block when one is not present in the config', () => {
+            const config = session['normalizeLaunchConfig']({} as any);
+            expect(config.profiling).to.be.undefined;
+        });
+    });
+
+    describe('device option', () => {
+        it('reads the device config from the launch config', () => {
+            (session as any).launchConfiguration = { device: { host: '1.2.3.4' } };
+            expect(session['launchConfiguration'].device).to.eql({ host: '1.2.3.4' });
+            expect(session['deviceLabel']).to.equal('1.2.3.4');
+        });
+
+        it('builds the device option from the deprecated host field during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ host: '1.2.3.4' } as any);
+            expect(config.device).to.eql({ host: '1.2.3.4' });
+        });
+
+        it('deletes the deprecated host field from the config during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ host: '1.2.3.4' } as any);
+            expect('host' in config).to.be.false;
+        });
+
+        it('prefers a supplied device config over the deprecated host field during normalize', () => {
+            const config = session['normalizeLaunchConfig']({ device: { host: '5.6.7.8' }, host: '1.2.3.4' } as any);
+            (session as any).launchConfiguration = config;
+            expect(session['launchConfiguration'].device).to.eql({ host: '5.6.7.8' });
+        });
+
+        it('aborts the launch with a clear message when the config supplies no device addressing', async () => {
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves();
+
+            await session.launchRequest({} as any, {} as any);
+
+            expect(shutdownStub.calledOnce).to.be.true;
+            expect(shutdownStub.getCall(0).args[0]).to.include('does not specify a target device');
+        });
+
+        it('passes a cloud emulator device config through untouched and never leaks the token in the label', () => {
+            const device = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' };
+            (session as any).launchConfiguration = { device: device };
+            expect(session['launchConfiguration'].device).to.equal(device);
+            expect(session['deviceLabel']).to.equal('https://device.rce.roku.com/instance/abc');
+            expect(session['deviceLabel']).not.to.include('secret');
+        });
+
+        it('labels id-addressed and esn-addressed cloud emulator devices by their identifier', () => {
+            (session as any).launchConfiguration = { device: { id: 83, rceToken: 'secret' } };
+            expect(session['deviceLabel']).to.equal('83');
+            (session as any).launchConfiguration = { device: { esn: 'XY020078HH5S', rceToken: 'secret' } };
+            expect(session['deviceLabel']).to.equal('XY020078HH5S');
+        });
+
+        it('sends the launch config device to sideload', async () => {
+            const device = { instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' };
+            (session as any).launchConfiguration = {
+                ...session['launchConfiguration'],
+                device: device,
+                outDir: tempDir
+            };
+            rokuAdapter.connected = true;
+            const sideloadStub = sinon.stub(session.rokuDeploy, 'sideload').callsFake(() => {
+                (session['rokuAdapter'] as TelnetAdapter)['emit']('app-ready');
+                return Promise.resolve({ message: 'success', rokuMessages: { errors: [], infos: [], successes: [] } });
+            });
+
+            await (session as any).publish();
+
+            expect(sideloadStub.getCall(0).args[0].device).to.equal(device);
+        });
+    });
+
+    describe('publish', () => {
+        it('waits 60 seconds before aborting when the app never becomes ready', async () => {
+            session['publishTimeout'] = 60_000;
+
+            const clock = sinon.useFakeTimers();
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves() as unknown as SinonStub;
+            rokuAdapter.connected = false;
+            sinon.stub(session.rokuDeploy, 'sideload').resolves();
+
+            const publishPromise = (session as any).publish();
+
+            await clock.tickAsync(59_999);
+            expect(shutdownStub.called).to.be.false;
+
+            await clock.tickAsync(1);
+            await publishPromise;
+
+            expect(shutdownStub.calledOnceWithExactly('Debug session cancelled: failed to connect to debug protocol control port.')).to.be.true;
+            clock.restore();
+        });
+
+        it('sends ChannelSideloadedEvent as soon as the sideload succeeds, before the debug protocol connects', async () => {
+            const clock = sinon.useFakeTimers();
+            sinon.stub(session, 'shutdown').resolves();
+            rokuAdapter.connected = false;
+            sinon.stub(session.rokuDeploy, 'sideload').resolves();
+            const sendEventStub = sinon.stub(session, 'sendEvent');
+
+            const publishPromise = (session as any).publish();
+
+            //still waiting on the debug protocol connection, but the client already knows the channel is sideloaded
+            await clock.tickAsync(1);
+            expect(sendEventStub.getCalls().filter(x => isChannelSideloadedEvent(x.args[0]))).to.have.lengthOf(1);
+
+            await clock.tickAsync(60_000);
+            await publishPromise;
+            clock.restore();
+        });
+
+        it('does not send ChannelSideloadedEvent when the sideload fails', async () => {
+            sinon.stub(session, 'shutdown').resolves();
+            sinon.stub(session.rokuDeploy, 'sideload').rejects(Object.assign(new Error('Unauthorized'), { results: { response: { statusCode: 401 } } }));
+            const sendEventStub = sinon.stub(session, 'sendEvent');
+
+            await (session as any).publish().catch(() => { });
+
+            expect(sendEventStub.getCalls().some(x => isChannelSideloadedEvent(x.args[0]))).to.be.false;
+        });
+    });
+
+    describe('threadsRequest', () => {
+        beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+        });
+
+        async function getThreadsResponse() {
+            const response = { body: undefined } as DebugProtocol.ThreadsResponse;
+            await session['threadsRequest'](response);
+            return response;
+        }
+
+        it('returns empty thread list when not at debugger prompt', async () => {
+            rokuAdapter.isAtDebuggerPrompt = false;
+            const response = await getThreadsResponse();
+            expect(response.body.threads).to.eql([]);
+        });
+
+        it('names normal threads without a suffix', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: false, lineNumber: 1, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+
+        it('appends [detached] to the name of detached threads', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: false, lineNumber: 1, filePath: '', functionName: '', lineContents: '' },
+                { threadId: 1, isSelected: false, isDetached: true, lineNumber: 2, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+            expect(response.body.threads[1].name).to.equal('Thread 1 [detached]');
+        });
+
+        it('handles undefined isDetached as not detached', async () => {
+            rokuAdapter.isAtDebuggerPrompt = true;
+            sinon.stub(rokuAdapter, 'getThreads').returns(Promise.resolve([
+                { threadId: 0, isSelected: true, isDetached: undefined, lineNumber: 1, filePath: '', functionName: '', lineContents: '' }
+            ]));
+            const response = await getThreadsResponse();
+            expect(response.body.threads[0].name).to.equal('Thread 0');
+        });
+    });
+
+    describe('getThreadName', () => {
+        //small helper to build a Thread with only the fields getThreadName cares about, plus required filler fields
+        function buildThread(overrides: Partial<AdapterThread>): AdapterThread {
+            return {
+                threadId: 0,
+                isSelected: false,
+                lineNumber: 1,
+                filePath: '',
+                functionName: '',
+                lineContents: '',
+                ...overrides
+            };
+        }
+
+        function getThreadName(overrides: Partial<AdapterThread>) {
+            return session['getThreadName'](buildThread(overrides));
+        }
+
+        //
+        // "Thread {threadId}" branch: none of type/name/osThreadId present
+        //
+        describe('falls back to "Thread {threadId}" when type, name, and osThreadId are all missing', () => {
+            it('uses the threadId', () => {
+                expect(getThreadName({ threadId: 0 })).to.equal('Thread 0');
+            });
+
+            it('uses a nonzero threadId', () => {
+                expect(getThreadName({ threadId: 7 })).to.equal('Thread 7');
+            });
+
+            it('treats explicit undefined fields as missing', () => {
+                expect(getThreadName({ threadId: 3, type: undefined, name: undefined, osThreadId: undefined })).to.equal('Thread 3');
+            });
+
+            it('treats empty-string fields as missing (falsy)', () => {
+                expect(getThreadName({ threadId: 4, type: '', name: '', osThreadId: '' })).to.equal('Thread 4');
+            });
+
+            it('appends [detached] when detached', () => {
+                expect(getThreadName({ threadId: 2, isDetached: true })).to.equal('Thread 2 [detached]');
+            });
+
+            it('does not append [detached] when isDetached is false', () => {
+                expect(getThreadName({ threadId: 2, isDetached: false })).to.equal('Thread 2');
+            });
+
+            it('does not append [detached] when isDetached is undefined', () => {
+                expect(getThreadName({ threadId: 2, isDetached: undefined })).to.equal('Thread 2');
+            });
+        });
+
+        //
+        // "[type] name osThreadId" branch: at least one of type/name/osThreadId present.
+        // Only the fields that are present are included; missing fields are omitted entirely
+        // (no "undefined" tokens leak into the name).
+        //
+        describe('builds "[type] name osThreadId" from only the present fields', () => {
+            it('all three present', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234' })).to.equal('[render] MainThread 1234');
+            });
+
+            it('only type present', () => {
+                expect(getThreadName({ type: 'render' })).to.equal('[render]');
+            });
+
+            it('only name present', () => {
+                expect(getThreadName({ name: 'MainThread' })).to.equal('MainThread');
+            });
+
+            it('only osThreadId present', () => {
+                expect(getThreadName({ osThreadId: '1234' })).to.equal('1234');
+            });
+
+            it('type and name present, osThreadId missing', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread' })).to.equal('[render] MainThread');
+            });
+
+            it('type and osThreadId present, name missing', () => {
+                expect(getThreadName({ type: 'render', osThreadId: '1234' })).to.equal('[render] 1234');
+            });
+
+            it('name and osThreadId present, type missing', () => {
+                expect(getThreadName({ name: 'MainThread', osThreadId: '1234' })).to.equal('MainThread 1234');
+            });
+
+            it('appends [detached] when detached', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234', isDetached: true })).to.equal('[render] MainThread 1234 [detached]');
+            });
+
+            it('appends [detached] even when only one field is present', () => {
+                expect(getThreadName({ type: 'render', isDetached: true })).to.equal('[render] [detached]');
+            });
+
+            it('does not append [detached] when isDetached is false', () => {
+                expect(getThreadName({ type: 'render', name: 'MainThread', osThreadId: '1234', isDetached: false })).to.equal('[render] MainThread 1234');
+            });
+        });
+
+        //
+        // whitespace normalization
+        //
+        describe('whitespace handling', () => {
+            it('collapses internal whitespace within field values', () => {
+                expect(getThreadName({ type: 'render', name: 'Main   Thread', osThreadId: '1234' })).to.equal('[render] Main Thread 1234');
+            });
+
+            it('collapses tabs and newlines in field values to single spaces', () => {
+                expect(getThreadName({ type: 'render', name: 'Main\t\nThread', osThreadId: '1234' })).to.equal('[render] Main Thread 1234');
+            });
+
+            it('trims leading/trailing whitespace produced by field values', () => {
+                //leading space inside type and trailing space in osThreadId get collapsed/trimmed
+                expect(getThreadName({ type: ' render', name: 'MainThread', osThreadId: '1234 ' })).to.equal('[ render] MainThread 1234');
+            });
+        });
+    });
+
+    describe('setupSuspendedState', () => {
+        beforeEach(() => {
+            session.projectManager.mainProject = new Project({
+                rootDir: rootDir,
+                outDir: stagingDir
+            } as Partial<AddProjectParams> as any);
+            session.projectManager.mainProject.fileMappings = [];
+            sinon.stub(rokuAdapter, 'syncBreakpoints').resolves();
+        });
+
+        it('does not crash when thread has corrupted filePath and failedDeletions is non-empty', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'Main',
+                lineNumber: 1295673717,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves({
+                filePath: s`${rootDir}/components/Component.brs`,
+                lineNumber: 33,
+                columnIndex: 0
+            });
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            // should not throw
+            await session['setupSuspendedState']();
+        });
+
+        it('corrects thread.filePath from stack trace when lineNumber mismatch is detected', async () => {
+            const getSourceLocationStub = sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'Main',
+                lineNumber: 1295673717,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            await session['setupSuspendedState']();
+
+            // getSourceLocation should have been called with the corrected pkg path, not 'Main'
+            expect(getSourceLocationStub.args[0][0]).to.equal('pkg:/components/Component.brs');
+        });
+
+        it('does not crash when getSourceLocation returns undefined', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: true,
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([{
+                filePath: 'pkg:/components/Component.brs',
+                lineNumber: 33,
+                functionIdentifier: 'showSomething',
+                frameId: 0
+            }]);
+            sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/components/Component.brs`,
+                line: 33
+            } as any);
+
+            // should not throw even when getSourceLocation returns undefined
+            await session['setupSuspendedState']();
+        });
+
+        it('does not crash when getStackTrace returns empty and failedDeletions is non-empty', async () => {
+            // Thread has a valid filePath from getThreads() but getStackTrace returns empty.
+            // The original filePath must be preserved (not clobbered with undefined) so the
+            // failedDeletions loop can safely call getSourceLocation.
+            const getSourceLocationStub = sinon.stub(session.projectManager, 'getSourceLocation').resolves(undefined);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([{
+                isSelected: false,
+                isDetached: false,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 10,
+                lineContents: '',
+                threadId: 1
+            }]);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+            session.breakpointManager.failedDeletions.push({
+                srcPath: s`${rootDir}/source/main.brs`,
+                line: 10
+            } as any);
+
+            // should not throw — filePath from getThreads() is preserved even when stack trace is empty
+            await session['setupSuspendedState']();
+
+            // getSourceLocation is called with the original filePath, not undefined
+            expect(getSourceLocationStub.args[0][0]).to.equal('pkg:/source/main.brs');
+        });
+
+        it('calls getStackTrace for all threads including those already flagged isDetached by the device', async () => {
+            // Even threads pre-flagged isDetached must go through getStackTrace so the adapter cache
+            // is populated — otherwise stackTraceRequest would make a second round-trip and might
+            // not show the [detached] label if the device returns something unexpected.
+            const getStackTraceStub = sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+            sinon.stub(rokuAdapter, 'getThreads').resolves([
+                { isSelected: true, isDetached: true, filePath: 'pkg:/source/main.brs', lineNumber: 1, lineContents: '', threadId: 0 },
+                { isSelected: false, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 2, lineContents: '', threadId: 1 }
+            ]);
+
+            await session['setupSuspendedState']();
+
+            expect(getStackTraceStub.callCount).to.equal(2);
+        });
+
+        it('returns all threads including detached ones so VS Code can display them', async () => {
+            sinon.stub(rokuAdapter, 'getThreads').resolves([
+                { isSelected: true, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 1, lineContents: '', threadId: 0 },
+                { isSelected: false, isDetached: false, filePath: 'pkg:/source/main.brs', lineNumber: 2, lineContents: '', threadId: 1 }
+            ]);
+            sinon.stub(rokuAdapter, 'getStackTrace')
+                .onFirstCall().resolves([{ filePath: 'pkg:/source/main.brs', lineNumber: 1, functionIdentifier: 'main', frameId: 0 }])
+                .onSecondCall().resolves([]);
+
+            const threads = await session['setupSuspendedState']();
+
+            expect(threads).to.have.length(2);
+        });
+
+        it('does not clobber thread.filePath when line correction stack trace returns no frames', async () => {
+            const threads = [{
+                isSelected: true,
+                isDetached: false,
+                filePath: 'pkg:/source/main.brs',
+                lineNumber: 10,
+                lineContents: '',
+                threadId: 0
+            }];
+            sinon.stub(rokuAdapter, 'getThreads').resolves(threads);
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            await session['setupSuspendedState']();
+
+            // original filePath must be preserved — never overwritten with undefined
+            expect(threads[0].filePath).to.equal('pkg:/source/main.brs');
+        });
+    });
+
+    describe('stackTraceRequest', () => {
+        beforeEach(() => {
+            session['rokuAdapterDeferred'].resolve(session['rokuAdapter']);
+            rokuAdapter.isAtDebuggerPrompt = true;
+        });
+
+        async function getStackTraceResponse(threadId: number) {
+            const response = { body: undefined } as DebugProtocol.StackTraceResponse;
+            await session['stackTraceRequest'](response, { threadId: threadId, startFrame: 0, levels: 20 });
+            return response;
+        }
+
+        it('returns a label frame when getStackTrace returns empty (detached thread)', async () => {
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            const response = await getStackTraceResponse(0);
+
+            expect(response.body.stackFrames).to.have.length(1);
+            expect(response.body.stackFrames[0].presentationHint).to.equal('label');
+            expect(response.body.stackFrames[0].name).to.equal('[unavailable]');
+        });
+
+        it('label frame for detached thread has no source', async () => {
+            sinon.stub(rokuAdapter, 'getStackTrace').resolves([]);
+
+            const response = await getStackTraceResponse(0);
+
+            expect(response.body.stackFrames[0].source).to.be.undefined;
+        });
+    });
+
+    describe('client disconnect (#486)', () => {
+        /**
+         * Simulates the VS Code -> adapter pipe: the adapter keeps its stdio streams open, but once
+         * the client goes away every write to the output stream fails with EPIPE (broken pipe).
+         */
+        function createBrokenStreams() {
+            const inStream = new EventEmitter() as any;
+            inStream.resume = () => { };
+            const outStream = new EventEmitter() as any;
+            outStream.write = () => {
+                //a broken pipe emits an async 'error' on the stream for each write
+                outStream.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+                return false;
+            };
+            outStream.end = () => { };
+            return { inStream, outStream };
+        }
+
+        it('does not keep calling shutdown for every output line after the client pipe breaks', () => {
+            const { inStream, outStream } = createBrokenStreams();
+            session.start(inStream, outStream);
+
+            //don't run the real teardown; we only care how many times shutdown is triggered
+            const shutdownStub = sinon.stub(session, 'shutdown').resolves();
+
+            //the Roku app is still running and streaming output after the client disconnected
+            for (let i = 0; i < 5; i++) {
+                session.sendEvent(new OutputEvent(`device log line ${i}\n`, 'stdout'));
+            }
+
+            //the disconnect should be handled once, not re-triggered by every subsequent write
+            //(before the fix: each broken write emits 'error' -> shutdown(), so callCount === 5)
+            expect(shutdownStub.callCount).to.be.at.most(1);
+        });
+
+        it('recognizes broken-pipe errors as the client going away', () => {
+            expect(session['isClientGoneError'](Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))).to.be.true;
+            expect(session['isClientGoneError'](new Error('write after end'))).to.be.true;
+            expect(session['isClientGoneError'](new Error('some other failure'))).to.be.false;
+        });
+
+        it('exits instead of reporting a crash when the client pipe is gone (EPIPE)', () => {
+            const sendEventStub = sinon.stub(session, 'sendEvent');
+
+            session['handleProcessError']('uncaughtException', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+
+            expect((process.exit as unknown as sinon.SinonStub).called).to.be.true;
+            expect(session['clientDisconnected']).to.be.true;
+            //must not try to report the crash over the (now-dead) stream, which would just loop
+            expect(sendEventStub.called).to.be.false;
+        });
+
+        it('processes only the first error to avoid a crash-report storm', () => {
+            sinon.stub(session as any, 'sendLogOutput').resolves();
+            const sendEventStub = sinon.stub(session, 'sendEvent');
+            sinon.stub(session, 'shutdown').resolves();
+
+            const error = new Error('boom');
+            session['handleProcessError']('uncaughtException', error);
+            session['handleProcessError']('uncaughtException', error);
+            session['handleProcessError']('uncaughtException', error);
+
+            //the crash report should be sent once, not once per re-entry
+            expect(sendEventStub.callCount).to.equal(1);
         });
     });
 });

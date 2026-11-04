@@ -15,6 +15,7 @@ export class CompileErrorProcessor {
     public compileErrorTimer: NodeJS.Timeout;
 
     public on(eventName: 'diagnostics', handler: (params: BSDebugDiagnostic[]) => void);
+    public on(eventName: 'launch-status', handler: (message: string) => void);
     public on(eventName: string, handler: (payload: any) => void) {
         this.emitter.on(eventName, handler);
         return () => {
@@ -24,7 +25,9 @@ export class CompileErrorProcessor {
         };
     }
 
-    private emit(eventName: 'diagnostics', data?) {
+    private emit(eventName: 'diagnostics', data?: BSDebugDiagnostic[]): void;
+    private emit(eventName: 'launch-status', message: string): void;
+    private emit(eventName: string, data?: unknown): void {
         //emit these events on next tick, otherwise they will be processed immediately which could cause issues
         setTimeout(() => {
             //in rare cases, this event is fired after the debugger has closed, so make sure the event emitter still exists
@@ -35,6 +38,7 @@ export class CompileErrorProcessor {
     public processUnhandledLines(responseText: string) {
         let lines = responseText.split(/\r?\n/g);
         for (const line of lines) {
+            this.checkForLaunchStatus(line);
             switch (this.status) {
                 case CompileStatus.compiling:
                 case CompileStatus.compileError:
@@ -67,6 +71,38 @@ export class CompileErrorProcessor {
                     }
                     break;
             }
+        }
+    }
+
+    /**
+     * Checks a single log line for known launch phase signals and emits a `launch-status`
+     * event with a human-readable progress message when one is found.
+     */
+    private checkForLaunchStatus(line: string) {
+        let message: string | undefined;
+        if (/\[beacon\.signal\]\s+\|AppLaunchInitiate/i.test(line)) {
+            message = 'Starting';
+        } else if (/\[beacon\.signal\]\s+\|AppCompileInitiate/i.test(line)) {
+            message = 'Compiling';
+        } else if (/\[scrpt\.load\.mkup\]/i.test(line)) {
+            message = 'Loading markup';
+        } else if (/\[scrpt\.ctx\.cmpl\.time\]\s+Compiled\b/i.test(line)) {
+            message = 'Scripts compiled';
+        } else if (/\[beacon\.signal\]\s+\|AppCompileComplete/i.test(line)) {
+            message = 'Compile complete';
+        } else if (/\[beacon\.signal\]\s+\|AppSplashInitiate/i.test(line)) {
+            message = 'Showing splash screen';
+        } else if (/\[beacon\.signal\]\s+\|AppSplashComplete/i.test(line)) {
+            message = 'Splash screen complete';
+        } else if (/------\s+Running.*------/i.test(line)) {
+            message = 'Running';
+        } else if (/\[plg\.dbg\.conn\.wait\]\s+Waiting for debug(?:ging)? connection/i.test(line)) {
+            message = 'Waiting for debugger';
+        } else if (/\[plg\.dbg\.conn\.ok\]\s+remote debugger connected/i.test(line)) {
+            message = 'Debugger connected';
+        }
+        if (message) {
+            this.emit('launch-status', message);
         }
     }
 

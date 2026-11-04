@@ -3,13 +3,19 @@ import { orderBy } from 'natural-orderby';
 import * as path from 'path';
 import * as semver from 'semver';
 import { rokuDeploy, CompileError, isUpdateCheckRequiredError, isConnectionResetError, EcpNetworkAccessModeDisabledError } from 'roku-deploy';
-import type { DeviceInfo, RokuDeploy, RokuDeployOptions } from 'roku-deploy';
+import type { DeviceInfo, RokuDeploy, SideloadOptions } from 'roku-deploy';
 import {
     BreakpointEvent,
-    DebugSession as BaseDebugSession,
+    LoggingDebugSession,
+    Logger as DapLogger,
+    logger as dapLogger,
+    CapabilitiesEvent,
     InitializedEvent,
     InvalidatedEvent,
     OutputEvent,
+    ProgressEndEvent,
+    ProgressStartEvent,
+    ProgressUpdateEvent,
     Source,
     StackFrame,
     StoppedEvent,
@@ -24,7 +30,7 @@ import { defer, util } from '../util';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import { ComponentLibraryServer } from '../ComponentLibraryServer';
 import { ProjectManager, Project, ComponentLibraryProject } from '../managers/ProjectManager';
-import type { EvaluateContainer } from '../adapters/DebugProtocolAdapter';
+import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { DebugProtocolAdapter } from '../adapters/DebugProtocolAdapter';
 import { TelnetAdapter } from '../adapters/TelnetAdapter';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
@@ -38,22 +44,26 @@ import {
     ChanperfEvent,
     DebugServerLogOutputEvent,
     ChannelPublishedEvent,
+    ChannelSideloadedEvent,
     CustomRequestEvent,
     ClientToServerCustomEventName,
     ProfilingErrorEvent,
     ProfilingStartEvent,
     ProfilingStopEvent,
-    ProfilingEnabledEvent as ProfilingEnableEvent
+    ProfilingEnabledEvent as ProfilingEnableEvent,
+    ProcessCrashEvent
 } from './Events';
+import type { ProcessCrashEventData } from './Events';
 import type { LaunchConfiguration, ComponentLibraryConfiguration } from '../LaunchConfiguration';
 import { FileManager } from '../managers/FileManager';
 import { SourceMapManager } from '../managers/SourceMapManager';
 import { LocationManager } from '../managers/LocationManager';
 import type { AugmentedSourceBreakpoint } from '../managers/BreakpointManager';
+import type { ResolvedLaunchConfiguration } from '../LaunchConfiguration';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { PerfettoManager } from '../PerfettoManager';
-import { logger, FileLoggingManager, debugServerLogOutputEventTransport, LogLevelPriority } from '../logging';
+import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
@@ -67,7 +77,18 @@ import { SocketConnectionInUseError } from '../Exceptions';
 
 const diagnosticSource = 'roku-debug';
 
-export class BrightScriptDebugSession extends BaseDebugSession {
+/**
+ * Sort tiers for debug-console completions. Lower values sort first, so a variable's own members rank
+ * above interface methods, then the file's scope functions, and finally the (large) set of globals.
+ */
+enum CompletionSortTier {
+    Member = '1',
+    Method = '2',
+    ScopeFunction = '3',
+    Global = '4'
+}
+
+export class BrightScriptDebugSession extends LoggingDebugSession {
     public constructor() {
         super();
 
@@ -77,6 +98,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //give util a reference to this session to assist in logging across the entire module
         util._debugSession = this;
+
         this.fileManager = new FileManager();
         this.sourceMapManager = new SourceMapManager();
         this.locationManager = new LocationManager(this.sourceMapManager);
@@ -88,6 +110,202 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             locationManager: this.locationManager
         });
         this.fileLoggingManager = new FileLoggingManager();
+    }
+
+    public start(inStream: NodeJS.ReadableStream, outStream: NodeJS.WritableStream): void {
+        super.start(inStream, outStream);
+
+        //When the client's pipe goes away (e.g. VS Code closed), stop forwarding output. Otherwise the
+        //still-running Roku app keeps streaming output, every write to the dead pipe fails, and each
+        //failure re-triggers shutdown() in a tight loop that pegs the CPU and orphans this process.
+        const markClientGone = () => {
+            this.clientDisconnected = true;
+        };
+        inStream?.on?.('close', markClientGone);
+        inStream?.on?.('end', markClientGone);
+        outStream?.on?.('error', markClientGone);
+
+        // Set up DAP protocol logging as early as possible — immediately after start() so we capture
+        // the initialize request and all early DAP traffic before launchRequest config is available.
+        // The log file path is injected as ROKU_DAP_LOG_FILE by the extension's DebugAdapterDescriptorFactory,
+        // which resolves the path from the `brightscript.debug.debugAdapterProtocolLogging` workspace setting
+        // (or the equivalent launch.json property) before the debug adapter process is spawned.
+        const dapLogFile = process.env.ROKU_DAP_LOG_FILE;
+        if (dapLogFile) {
+            // Use LogLevel.Error (not Verbose) as the console threshold so DAP messages are written
+            // to the log file but are NOT forwarded to VS Code as OutputEvents, which would flood
+            // the debug console and break the extension's output parsing.
+            // Note: InternalLogger always writes ALL messages to the file stream regardless of level,
+            // so the log file will still contain everything.
+            dapLogger.setup(DapLogger.LogLevel.Error, dapLogFile);
+        }
+    }
+
+    /**
+     * Once the client has disconnected, drop outgoing events instead of writing to the dead stream.
+     * Writing to a broken pipe re-triggers the base 'error' -> shutdown() handler in a tight loop.
+     */
+    public sendEvent(event: DebugProtocol.Event): void {
+        if (this.clientDisconnected) {
+            return;
+        }
+        super.sendEvent(event);
+    }
+
+    public setupProcessErrorHandlers() {
+        if (this.processErrorHandlersRegistered) {
+            return;
+        }
+        this.processErrorHandlersRegistered = true;
+
+        this._uncaughtExceptionHandler = (error) => this.handleProcessError('uncaughtException', error);
+        this._unhandledRejectionHandler = (reason) => this.handleProcessError('unhandledRejection', reason);
+
+        process.on('uncaughtException', this._uncaughtExceptionHandler);
+        process.on('unhandledRejection', this._unhandledRejectionHandler);
+    }
+
+    private handlingProcessError = false;
+
+    /**
+     * True when an error indicates the client (e.g. VS Code) has gone away, such as a broken stdout pipe
+     * (EPIPE). Writing to a dead pipe just produces more EPIPEs, so we must not try to report over it.
+     */
+    private isClientGoneError(error: unknown): boolean {
+        const code = (error as NodeJS.ErrnoException)?.code;
+        const message = error instanceof Error ? error.message : String(error ?? '');
+        return code === 'EPIPE' || /\bEPIPE\b|write after end/i.test(message);
+    }
+
+    /**
+     * Tear down the process error handlers and forcibly exit, so we never leave an orphaned adapter
+     * spinning in the background after the client is gone or a graceful shutdown has hung.
+     */
+    private forceExit(code = 0): void {
+        this.teardownProcessErrorHandlers();
+        process.exit(code);
+    }
+
+    private handleProcessError(type: 'uncaughtException' | 'unhandledRejection', error: unknown) {
+        //a broken client pipe (EPIPE) means the client (e.g. VS Code) is gone. Trying to report it over
+        //the now-dead stream just produces more EPIPEs, which re-enter this handler in a tight loop and
+        //peg the CPU. Exit instead.
+        if (this.isClientGoneError(error)) {
+            this.clientDisconnected = true;
+            this.forceExit();
+            return;
+        }
+        //only handle the first error; re-entering here (e.g. from a failed write while reporting) would
+        //spin the CPU and flood the logs
+        if (this.handlingProcessError) {
+            return;
+        }
+        this.handlingProcessError = true;
+
+        const logger = this.logger.createLogger(`${type}`);
+        const message = error instanceof Error ? error.message : String(error);
+        const stack = error instanceof Error ? error.stack : undefined;
+        logger.error(message, stack);
+
+        let output: string;
+        let debuggerVersion: string;
+        let additionalInfo: ProcessCrashEventData['additionalInfo'];
+        try {
+            debuggerVersion = (fsExtra.readJsonSync(path.resolve(__dirname, '../../package.json')) as { version: string }).version;
+
+            const clientName = this.initRequestArgs?.clientName ?? 'unknown';
+
+            additionalInfo = {
+                clientName: clientName,
+                rokuDebugVersion: debuggerVersion,
+                ecpMode: this.deviceInfo?.ecpSettingMode,
+                developerMode: this.deviceInfo?.developerEnabled,
+                firmware: this.deviceInfo ? `${this.deviceInfo?.softwareVersion}.${this.deviceInfo?.softwareBuild}` : undefined,
+                protocolVersion: this.deviceInfo?.brightscriptDebuggerVersion,
+                protocolEnabled: this.enableDebugProtocol
+            };
+
+            const lines = Object.entries(additionalInfo as Record<string, unknown>).map(([key, value]) => {
+                // Insert a space before all uppercase letters preceded by a lowercase letter, then uppercase the first char
+                const spacedString = key.replace(/([a-z])([A-Z])/g, '$1 $2');
+                const formattedKey = spacedString.charAt(0).toUpperCase() + spacedString.slice(1);
+                return `**${formattedKey}:** ${JSON.stringify(value)}`;
+            });
+
+            const issueBodyPrefix = [
+                `**Error type:** ${type}`,
+                `**Message:** ${message}`,
+                ...lines,
+                '',
+                `**Steps to reproduce:**`,
+                `<!-- Please describe what you were doing when this crash occurred -->`,
+                '',
+                '**Stack trace:**',
+                '```',
+                ''
+            ].join('\n');
+            const issueBodySuffix = '\n```';
+
+            const issueTitle = encodeURIComponent(`[crash] ${type}: ${message}`);
+            const baseUrl = 'https://github.com/RokuCommunity/roku-debug/issues/new';
+            const maxUrlLength = 2000;
+            const urlOverhead = `${baseUrl}?title=${issueTitle}&body=`.length;
+            const bodyBudget = maxUrlLength - urlOverhead;
+            const encodedPrefix = encodeURIComponent(issueBodyPrefix);
+            const encodedSuffix = encodeURIComponent(issueBodySuffix);
+            const stackBudget = bodyBudget - encodedPrefix.length - encodedSuffix.length;
+            let truncatedStack: string;
+            if (!stack) {
+                truncatedStack = '(no stack trace)';
+            } else if (encodeURIComponent(stack).length <= stackBudget) {
+                truncatedStack = stack;
+            } else {
+                truncatedStack = decodeURIComponent(encodeURIComponent(stack).slice(0, stackBudget)) + '\n...(truncated)';
+            }
+            const issueUrl = `${baseUrl}?title=${issueTitle}&body=${encodedPrefix}${encodeURIComponent(truncatedStack)}${encodedSuffix}`;
+
+            output = [
+                '',
+                '================================================================',
+                '\tBRIGHTSCRIPT DEBUGGER INTERNAL ERROR',
+                '\tThis is a crash in the debug adapter, not in your application.',
+                '================================================================',
+                `\tError type: ${type}`,
+                `\tMessage: ${message}`,
+                ...lines.map(l => `\t${l}`),
+                '',
+                '\tStack trace:',
+                ...(stack ?? '(no stack trace)').split('\n').map(l => `\t${l}`),
+                '',
+                '\tPlease report this at:',
+                `\t${issueUrl}`,
+                '================================================================',
+                ''
+            ].join('\n');
+        } catch (e) {
+            output = JSON.stringify({
+                name: e.name,
+                message: e.message,
+                stack: e.stack
+            });
+        }
+
+        void this.sendLogOutput(output).catch(() => { /** best-effort */ });
+        this.isCrashed = true;
+        this.sendEvent(new ProcessCrashEvent({ type, message, stack, additionalInfo: additionalInfo ?? {} }));
+        setTimeout(() => void this.shutdown(), 5000).unref();
+    }
+
+    public teardownProcessErrorHandlers() {
+        if (this._uncaughtExceptionHandler) {
+            process.removeListener('uncaughtException', this._uncaughtExceptionHandler);
+            this._uncaughtExceptionHandler = undefined;
+        }
+        if (this._unhandledRejectionHandler) {
+            process.removeListener('unhandledRejection', this._unhandledRejectionHandler);
+            this._unhandledRejectionHandler = undefined;
+        }
+        this.processErrorHandlersRegistered = false;
     }
 
     private onDeviceBreakpointsChanged(eventName: 'changed' | 'new', data: { breakpoints: AugmentedSourceBreakpoint[] }) {
@@ -124,6 +342,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     public fileLoggingManager: FileLoggingManager;
 
+    private processErrorHandlersRegistered = false;
+    private isCrashed = false;
+    /** Set once the client (e.g. VS Code) disconnects, so we stop writing to a now-dead stream */
+    private clientDisconnected = false;
+    /** How long to wait for a graceful shutdown before forcibly exiting the process */
+    private shutdownForceExitTimeout = 10_000;
+    private _uncaughtExceptionHandler: ((error: Error) => void) | undefined;
+    private _unhandledRejectionHandler: ((reason: unknown) => void) | undefined;
+
     public breakpointManager: BreakpointManager;
 
     public locationManager: LocationManager;
@@ -133,6 +360,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     //set imports as class properties so they can be spied upon during testing
     public rokuDeploy = rokuDeploy as unknown as RokuDeploy;
 
+    /**
+     * A short human-readable identifier for the target device, safe for log and error messages
+     * (never includes credentials like the rceToken)
+     */
+    private get deviceLabel(): string {
+        return util.getDeviceLabel(this.launchConfiguration.device);
+    }
+
     private componentLibraryServer = new ComponentLibraryServer();
 
     private rokuAdapterDeferred = defer<DebugProtocolAdapter | TelnetAdapter>();
@@ -141,10 +376,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     private firstRunDeferred = defer<void>();
 
+    /**
+     * Resolved whenever we're finished copying all the files to staging for all projects
+     */
+    private stagingDefered = defer<void>();
+
     private evaluateRefIdLookup: Record<string, number> = {};
     private evaluateRefIdCounter = 1;
 
     private variables: Record<number, AugmentedVariable> = {};
+
+    /**
+     * Caches the device lookups performed while resolving completion requests. Variables don't change
+     * while the debugger is paused, so this avoids repeated round-trips for the same path. Cleared by
+     * `clearState` whenever the debugger resumes or steps.
+     */
+    private completionParentVariableCache = new Map<string, AugmentedVariable>();
 
     private rokuAdapter: DebugProtocolAdapter | TelnetAdapter;
 
@@ -153,6 +400,20 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private rendezvousTracker: RendezvousTracker;
 
     public tempVarPrefix = '__rokudebug__';
+
+    /**
+     * The progressId of the active launch progress bar, if any.
+     * Cleared once the ProgressEndEvent is sent.
+     */
+    private launchProgressId: string | undefined;
+
+    /**
+     * Sends the deferred ProgressEndEvent for the launch progress bar (sendLaunchProgress holds it
+     * back for UX). Kept here so shutdown can flush it immediately: the adapter can exit before the
+     * delay elapses, which would otherwise leave the client's progress notification stuck open.
+     * Cleared once the event has been sent.
+     */
+    private flushLaunchProgressEnd: (() => void) | undefined;
 
     /**
      * The first encountered compile error, will be used to send to the client as a runtime error (nicer UI presentation)
@@ -165,7 +426,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private COMPILE_ERROR_THREAD_ID = 7_777;
 
     private get enableDebugProtocol() {
-        return this.launchConfiguration.enableDebugProtocol;
+        return this.launchConfiguration?.enableDebugProtocol;
     }
 
     /**
@@ -185,7 +446,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         return this.rokuAdapter;
     }
 
-    private launchConfiguration: LaunchConfiguration;
+    /**
+     * The normalized launch config for this session. The resolved type has no `host` (so nothing in
+     * the session can read or write it) and a concrete `device` config, which is the only way the
+     * debugger addresses the device. The raw `LaunchConfiguration` exists only as launchRequest's
+     * DAP input; normalizeLaunchConfig converts it.
+     */
+    private launchConfiguration: ResolvedLaunchConfiguration;
     private initRequestArgs: DebugProtocol.InitializeRequestArguments;
 
     private exceptionBreakpoints: ExceptionBreakpoint[] = [];
@@ -209,16 +476,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // make VS Code to use 'evaluate' when hovering over source
         response.body.supportsEvaluateForHovers = true;
 
-        // make VS Code to show a 'step back' button
-        response.body.supportsStepBack = false;
+        //NOTE: `supportsConditionalBreakpoints` and `supportsHitConditionalBreakpoints` are
+        //sent later in the post-connect CapabilitiesEvent once we know which adapter is in use
+        //(telnet always supports them via stop-statement rewrites; debug protocol requires v3.1.0+).
+        //VS Code reads these caps per-render in the BREAKPOINTS view, so CapabilitiesEvent updates
+        //take effect immediately - unlike `exceptionBreakpointFilters` / `breakpointModes` which
+        //must be in the initialize response.
 
-        // This debug adapter supports conditional breakpoints
-        response.body.supportsConditionalBreakpoints = true;
-
-        response.body.supportsExceptionFilterOptions = true;
-        response.body.supportsExceptionOptions = true;
-
-        //the list of exception breakpoints (we have to send them all the time, even if the device doesn't support them)
+        //surface the filter list here so VS Code's BREAKPOINTS panel renders the checkboxes - the
+        //panel only reads this list from the initialize response, not from later CapabilitiesEvents.
+        //The `supportsExceptionFilterOptions` / `supportsExceptionOptions` booleans are deferred and
+        //sent via CapabilitiesEvent once we know the connected device's protocol version.
         response.body.exceptionBreakpointFilters = [{
             filter: 'caught',
             supportsCondition: true,
@@ -235,12 +503,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             default: true
         }];
 
-        // This debug adapter supports breakpoints that break execution after a specified number of hits
-        response.body.supportsHitConditionalBreakpoints = true;
-
-        // This debug adapter supports log points by interpreting the 'logMessage' attribute of the SourceBreakpoint
-        response.body.supportsLogPoints = true;
-
         response.body.supportsCompletionsRequest = true;
         response.body.completionTriggerCharacters = ['.', '(', '{', ',', ' '];
 
@@ -254,11 +516,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 )
             );
         });
-
-        // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
-        // we request them early by sending an 'initializeRequest' to the frontend.
-        // The frontend will end the configuration sequence by calling 'configurationDone' request.
-        this.sendEvent(new InitializedEvent());
 
         this.logger.log('initializeRequest finished');
     }
@@ -280,12 +537,15 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
             this.exceptionBreakpoints = filterOptions;
 
-            //ensure the rokuAdapter is loaded
-            await this.getRokuAdapter();
+            //wait until the adapter object exists, but don't wait for the device to come online —
+            //VS Code will not send configurationDone (and we cannot launch the channel) until we
+            //respond to this request.
+            await this.rokuAdapterDeferred.promise;
 
             if (this.rokuAdapter.supportsExceptionBreakpoints) {
+                //the adapter queues these filters internally if the debug protocol client hasn't
+                //connected yet, and replays them once it does
                 await this.rokuAdapter.setExceptionBreakpoints(filterOptions);
-                //if success
                 response.body.breakpoints = [
                     { verified: true },
                     { verified: true }
@@ -360,10 +620,24 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param config
      * @returns
      */
-    private normalizeLaunchConfig(config: LaunchConfiguration) {
+    private normalizeLaunchConfig(config: LaunchConfiguration): ResolvedLaunchConfiguration {
+        //`device` is the canonical way to address the target device; `host` is a deprecated alias.
+        //this is the ONLY place the debugger reads the top-level `host` field: whatever was supplied
+        //is resolved to a concrete device config here, and everything downstream uses `device`.
+        if (!config.device && config.host) {
+            config.device = { host: config.host };
+        }
+        //the deprecated field is now consumed. Delete it so the runtime object matches the resolved
+        //type and nothing downstream (including the configs echoed back to the client) carries it.
+        delete config.host;
+        //an RCE device config without a token picks one up from the environment (the extension
+        //injects ROKU_RCE_TOKEN into this process so the token does not have to travel through the
+        //launch config over DAP). The custom events that echo this config back to the client scrub
+        //the token out again (see Events.ts), so it never rides the DAP wire in either direction.
+        config.device = util.hydrateRceTokenFromEnv(config.device);
         config.cwd ??= process.cwd();
         config.outDir ??= s`${config.cwd}/out`;
-        config.stagingDir ??= s`${config.outDir}/.roku-deploy-staging`;
+        config.stagingDir ??= util.getStagingDir({ outDir: config.outDir, cwd: config.cwd });
         config.componentLibrariesPort ??= 8080;
         config.packagePort ??= 80;
         config.remotePort ??= 8060;
@@ -376,10 +650,19 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         config.autoResolveVirtualVariables ??= false;
         config.enhanceREPLCompletions ??= true;
         config.username ??= 'rokudev';
-        if (config.profiling?.tracing?.enable) {
-            config.profiling.tracing.dir ??= s`${config.cwd}/traces/`;
-            // eslint-disable-next-line no-template-curly-in-string
-            config.profiling.tracing.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+        if (config.profiling?.tracing !== undefined) {
+            //`tracing` is documented as an object; anything else is unusable, so resolve it to disabled
+            if (typeof config.profiling.tracing !== 'object' || config.profiling.tracing === null) {
+                config.profiling.tracing = { enable: false };
+            } else {
+                // Default to true if not explicitly set
+                config.profiling.tracing.enable ??= true;
+                if (config.profiling.tracing.enable) {
+                    config.profiling.tracing.dir ??= s`${config.cwd}/traces/`;
+                    // eslint-disable-next-line no-template-curly-in-string
+                    config.profiling.tracing.filename ??= '${appTitle}_${timestamp}.perfetto-trace';
+                }
+            }
         }
 
         // migrate the old `enableVariablesPanel` setting to the new `deferScopeLoading` setting
@@ -387,76 +670,97 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             config.enableVariablesPanel = true;
         }
         config.deferScopeLoading ??= config.enableVariablesPanel === false;
-        return config;
+        return config as ResolvedLaunchConfiguration;
     }
 
     public async launchRequest(response: DebugProtocol.LaunchResponse, config: LaunchConfiguration) {
         const logEnd = this.logger.timeStart('log', '[launchRequest] launch');
 
-        this.resetSessionState();
-
-        //send the response right away so the UI immediately shows the debugger toolbar
-        this.sendResponse(response);
-
-        this.launchConfiguration = this.normalizeLaunchConfig(config);
-
-        //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
-        bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
-
-        //set the logLevel provided by the launch config
-        if (this.launchConfiguration.logLevel) {
-            logger.logLevel = this.launchConfiguration.logLevel;
-        }
-
-        //do a DNS lookup for the host to fix issues with roku rejecting ECP
         try {
-            this.launchConfiguration.host = await util.dnsLookup(this.launchConfiguration.host);
-        } catch (e) {
-            return this.shutdown(`Could not resolve ip address for host '${this.launchConfiguration.host}'`);
-        }
-
-        
-        // fetches the device info and parses the xml data to JSON object
-        try {
-            this.deviceInfo = await rokuDeploy.getDeviceInfo({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
-            if (this.deviceInfo.ecpSettingMode === 'limited') {
-                return await this.shutdown(`ECP access is limited on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+            this.resetSessionState();
+            this.launchConfiguration = this.normalizeLaunchConfig(config);
+            //fail fast when the launch config supplied no device addressing at all, rather than
+            //failing later with a confusing dns or connection error for an undefined host
+            if (!this.launchConfiguration.device) {
+                return await this.shutdown(`Launch config does not specify a target device. Please supply the 'device' option (or the deprecated 'host' option).`);
             }
-        } catch (e) {
-            if (e instanceof EcpNetworkAccessModeDisabledError) {
-                return this.shutdown(`ECP access is disabled on this Roku. Please change it to 'permissive' or 'enabled' and try again. (device: ${this.launchConfiguration.host})`);
+            this.setupProcessErrorHandlers();
+
+            //prebake some threads for our ProjectManager to use later on (1 for the main project, and 1 for every complib)
+            bscProjectWorkerPool.preload(1 + (this.launchConfiguration?.componentLibraries?.length ?? 0));
+
+            //set the logLevel provided by the launch config
+            if (this.launchConfiguration.logLevel) {
+                logger.logLevel = this.launchConfiguration.logLevel;
             }
-            return this.shutdown(`Unable to connect to roku at '${this.launchConfiguration.host}'. Verify the IP address is correct and that the device is powered on and connected to same network as this computer.`);
-        }
-        
-        if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
-            return this.shutdown(`Developer mode is not enabled for host '${this.launchConfiguration.host}'.`);
-        }
-        
-        await this.initializeProfiling();
-        //initialize all file logging (rokuDevice, debugger, etc)
-        this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
 
-        this.projectManager.launchConfiguration = this.launchConfiguration;
-        this.breakpointManager.launchConfiguration = this.launchConfiguration;
+            this.sendLaunchProgress('start', 'Finding device on network');
 
-        this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
+            //do a DNS lookup for the host to fix issues with roku rejecting ECP. Only local devices
+            //are addressed by host; other device types (like the Roku Cloud Emulator) pass through unchanged
+            try {
+                this.launchConfiguration.device = await this.rokuDeploy.withDnsResolvedHost(this.launchConfiguration.device);
+            } catch (e) {
+                return this.shutdown(`Could not resolve ip address for host '${this.deviceLabel}'`);
+            }
 
-        let error: Error;
-        this.logger.log('[launchRequest] Packaging and deploying to roku');
-        try {
+            // fetch device info if not supplied via launch config
+            try {
+                if (this.launchConfiguration.deviceInfo) {
+                    this.deviceInfo = rokuDeploy.enhanceDeviceInfo(this.launchConfiguration.deviceInfo);
+                } else {
+                    this.deviceInfo = await rokuDeploy.getDeviceInfo({ device: this.launchConfiguration.device, ecpPort: this.launchConfiguration.remotePort, enhance: true, timeout: 4_000 });
+                }
+                if (this.deviceInfo.ecpSettingMode === 'limited') {
+                    return await this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Limited (device: ${this.deviceLabel})`);
+                }
+            } catch (e) {
+                if (e instanceof EcpNetworkAccessModeDisabledError) {
+                    return this.shutdown(`To allow the debugger to communicate properly, please ensure on the Roku device that 'Settings' > 'System' > 'Advanced system settings' > 'Control by mobile apps' is set to "Enabled" or "Permissive". Current mode: Disabled (device: ${this.deviceLabel})`);
+                }
+                return this.shutdown(`Unable to connect to roku at '${this.deviceLabel}'. Verify the device address is correct and that the device is powered on and reachable.`);
+            }
+
+            if (this.deviceInfo && !this.deviceInfo.developerEnabled) {
+                return await this.shutdown(`Developer mode is not enabled for device '${this.deviceLabel}'.`);
+            }
+
+            // everything is ready, send the response to the launch request so the UI can update and configuration can begin
+            this.sendResponse(response);
+
+            //initialize all file logging (rokuDevice, debugger, etc)
+            this.fileLoggingManager.activate(this.launchConfiguration?.fileLogging, this.cwd);
+
+            this.projectManager.launchConfiguration = this.launchConfiguration;
+            this.breakpointManager.launchConfiguration = this.launchConfiguration;
+
+            this.sendEvent(new LaunchStartEvent(this.launchConfiguration));
+
+            this.logger.log('[launchRequest] Packaging and deploying to roku');
             const packageEnd = this.logger.timeStart('log', 'Packaging');
+            this.sendLaunchProgress('update', `Packaging Project${(this.launchConfiguration?.componentLibraries?.length ?? 0) > 0 ? 's' : ''}`);
             //build the main project and all component libraries at the same time
             await Promise.all([
                 this.prepareMainProject(),
-                this.prepareAndHostComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+                this.prepareComponentLibraries(this.launchConfiguration.componentLibraries)
             ]);
+
+            //all of the projects have been successfully staged.
+            this.stagingDefered.tryResolve();
+
+            //if the client supports it, let it process (inspect/modify) each project's staging dir before we package them
+            if (this.launchConfiguration.clientCapabilities?.supportsProcessStagingDir) {
+                await this.sendCustomRequest('processStagingDir', {
+                    projects: this.projectManager.getProjectStagingInfo()
+                });
+            }
+
             packageEnd();
 
             if (this.enableDebugProtocol) {
-                util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.launchConfiguration.host}:${this.launchConfiguration.controlPort}`);
+                util.log(`Connecting to Roku via the BrightScript debug protocol at ${this.deviceLabel}:${this.launchConfiguration.controlPort}`);
             } else {
-                util.log(`Connecting to Roku via telnet at ${this.launchConfiguration.host}:${this.launchConfiguration.brightScriptConsolePort}`);
+                util.log(`Connecting to Roku via telnet at ${this.deviceLabel}:${this.launchConfiguration.brightScriptConsolePort}`);
             }
 
             //activate rendezvous tracking (if enabled). Log the error and move on if it crashes, this shouldn't bring down the session.
@@ -468,15 +772,74 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 this.logger.error('Failed to initialize rendezvous tracking', e);
             }
 
+            this.sendLaunchProgress('update', 'Connecting to debug server');
             const connectAdapterEnd = this.logger.timeStart('log', 'Connect adapter');
             this.createRokuAdapter(this.rendezvousTracker);
+
+            // Manipulating complibs on-device autolaunches the dev app and often triggers compile errors,
+            // so if we have at least one installable complib, delete the dev app and any complibs to avoid all that.
+            if (this.launchConfiguration.componentLibraries?.some(x => x.install)) {
+                this.sendLaunchProgress('update', 'Removing existing dev app and component libraries');
+                await rokuDeploy.deleteAllSideloadedPlugins({
+                    device: this.launchConfiguration.device,
+                    password: this.launchConfiguration.password
+                });
+            }
+
             await this.connectRokuAdapter();
             connectAdapterEnd();
 
+            // Capabilities that depend on the adapter or device version. The exception-breakpoint
+            // FILTER LIST was surfaced in initializeRequest (VS Code only reads it from there).
+            // Everything below is read per-action in VS Code, so a CapabilitiesEvent update takes
+            // effect dynamically.
+            const supportsExceptionBreakpoints = this.rokuAdapter.supportsExceptionBreakpoints;
+            this.sendEvent(new CapabilitiesEvent({
+                supportsLogPoints: !this.enableDebugProtocol,
+                supportsExceptionFilterOptions: supportsExceptionBreakpoints,
+                supportsExceptionOptions: supportsExceptionBreakpoints,
+                supportsConditionalBreakpoints: this.rokuAdapter.supportsConditionalBreakpoints,
+                supportsHitConditionalBreakpoints: this.rokuAdapter.supportsHitConditionalBreakpoints
+            }));
+
+            this.sendLaunchProgress('update', 'Configuring breakpoints');
+
+            util.log('Done initializing');
+
+            // notify VS Code that the adapter is ready to receive configuration (breakpoints, etc.)
+            // VS Code will respond with setBreakpoints, setExceptionBreakpoints, then configurationDone
+            this.sendEvent(new InitializedEvent());
+
+            await this.initializeProfiling();
+
+        } catch (e) {
+            //if the message is anything other than compile errors, we want to display the error
+            if (!(e instanceof CompileError)) {
+                util.log('Encountered an issue during the launch process');
+                util.log((e as Error)?.stack);
+
+                //send any compile errors to the client
+                await this.rokuAdapter?.sendErrors();
+
+                const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
+                await this.shutdown(message as string, true);
+            } else {
+                this.sendLaunchProgress('end', 'Aborted (compile error)');
+            }
+        }
+        logEnd();
+    }
+
+    protected async configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
+        this.logger.log('configurationDoneRequest');
+        super.configurationDoneRequest(response, args);
+
+        let error: Error;
+        try {
             await this.runAutomaticSceneGraphCommands(this.launchConfiguration.autoRunSgDebugCommands);
 
             //press the home button to ensure we're at the home screen
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            await this.rokuDeploy.keyPress({ device: this.launchConfiguration.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
 
             //pass the log level down thought the adapter to the RendezvousTracker and ChanperfTracker
             this.rokuAdapter.setConsoleOutput(this.launchConfiguration.consoleOutput);
@@ -494,7 +857,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             this.rokuAdapter.on('device-unresponsive', async (data: { lastCommand: string }) => {
                 const stopDebuggerAction = 'Stop Debugger';
-                const message = `Roku device ${this.launchConfiguration.host} is not responding and may not recover.` +
+                const message = `Roku device ${this.deviceLabel} is not responding and may not recover.` +
                     (data.lastCommand ? `\n\nActive command:\n"${util.truncate(data.lastCommand, 30)}"` : '');
                 this.logger.log(message, data);
                 const response = await this.showPopupMessage(message, 'warn', false, [stopDebuggerAction]);
@@ -536,7 +899,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     await this.shutdown();
                 } else {
                     const message = 'App exit detected; but launchConfiguration.stopDebuggerOnAppExit is set to false, so keeping debug session running.';
-                    this.logger.log('[launchRequest]', message);
+                    this.logger.log('[configurationDoneRequest]', message);
                     this.sendEvent(new LogOutputEvent(message));
                     this.rokuAdapter.once('connected').then(async () => {
                         await this.rokuAdapter.setExceptionBreakpoints(this.exceptionBreakpoints);
@@ -546,8 +909,28 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //profiling supports connecting to the socket BEFORE a channel is published, so go ahead and connect now
             await this.tryProfilingConnectOnStart();
 
+            //all setBreakpoints requests have arrived by this point (configurationDone is the DAP signal
+            //that the client has finished sending configuration). Validate breakpoints across every project
+            //in one pass (and inject the STOPs for telnet) - validating per project would fail every other
+            //project's breakpoints. Must finish before postfixing renames the complib files.
+            await this.writeBreakpoints();
+
+            //postfix each complib's own files now (still no zips. those are sealed after cross-project
+            //references are rewritten).
+            await this.postfixComponentLibraries(this.launchConfiguration.componentLibraries);
+
+            //now that EVERY project (main + all complibs) is postfixed, rewrite cross-project `Library`
+            //references to point at the postfixed file names. Must run before any project zip is sealed.
+            await this.projectManager.applyLibraryReferencePostfixes();
+
+            //now zip the main project, also zip and upload installable complibs, and start the webserver for non-installed complibs.
+            await Promise.all([
+                this.zipMainProject(),
+                this.zipServeAndInstallComponentLibraries(this.launchConfiguration.componentLibraries, this.launchConfiguration.componentLibrariesPort)
+            ]);
+
+            this.sendLaunchProgress('update', 'Uploading to Roku');
             await this.publish();
-            
 
             //hack for certain roku devices that lock up when this event is emitted (no idea why!).
             if (this.launchConfiguration.emitChannelPublishedEvent) {
@@ -557,6 +940,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //tell the adapter adapter that the channel has been launched.
+            this.sendLaunchProgress('update', 'Waiting on application');
             await this.rokuAdapter.activate();
             if (this.rokuAdapter.isDestroyed) {
                 throw new Error('Debug session encountered an error');
@@ -564,12 +948,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             if (!error) {
                 if (this.rokuAdapter.connected) {
                     this.logger.info('Host connection was established before the main public process was completed');
-                    this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
+                    this.logger.log(`deployed to Roku@${this.deviceLabel}`);
                 } else {
                     this.logger.info('Main public process was completed but we are still waiting for a connection to the host');
                     this.rokuAdapter.on('connected', (status) => {
                         if (status) {
-                            this.logger.log(`deployed to Roku@${this.launchConfiguration.host}`);
+                            this.logger.log(`deployed to Roku@${this.deviceLabel}`);
                         }
                     });
                 }
@@ -578,13 +962,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }
 
             //at this point, the project has been deployed. If we need to use a deep link, launch it now.
-            if (this.launchConfiguration.deepLinkUrl) {
+            if (this.launchConfiguration.deepLinkUrl && !this.enableDebugProtocol) {
                 //wait until the first entry breakpoint has been hit
                 await this.firstRunDeferred.promise;
                 //if we are at a breakpoint, continue
                 await this.rokuAdapter.continue();
                 //kill the app on the roku
-                // await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                // await this.rokuDeploy.keyPress({ device: this.launchConfiguration.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
                 //convert a hostname to an ip address
                 const deepLinkUrl = await util.resolveUrl(this.launchConfiguration.deepLinkUrl);
                 //send the deep link http request
@@ -602,10 +986,10 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 const message = (e instanceof SocketConnectionInUseError) ? e.message : (e?.stack ?? e);
                 await this.shutdown(message as string, true);
+            } else {
+                this.sendLaunchProgress('end', 'Aborted (compile error)');
             }
         }
-
-        logEnd();
     }
 
     /**
@@ -615,7 +999,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         // Initialize PerfettoManager
         this.perfettoManager = new PerfettoManager({
-            host: this.launchConfiguration.host,
+            device: this.launchConfiguration.device,
             rootDir: this.launchConfiguration.rootDir,
             remotePort: this.launchConfiguration.remotePort,
             ...this.launchConfiguration.profiling?.tracing
@@ -644,13 +1028,30 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             }));
         });
 
-        //enable profiling on the device right away if tracing is enabled in the launch config (this doesn't actually start the trace, it just enables the ability to start a trace from the UI or automatically based on the config)
+        //tracing is explicitly enabled. Turn it on
         if (this.launchConfiguration.profiling?.tracing?.enable && this.supportsPerfettoTracing) {
+            this.logger.info('Enabling perfetto tracing because it is supported by the device and enabled in the launch configuration');
             try {
-                await this.perfettoManager.enableTracing();
+                await this.perfettoManager?.enableTracing?.();
             } catch (e) {
                 this.logger.error('Failed to enable perfetto tracing', e);
             }
+
+            //tracing is expicitly DISabled. turn it off
+        } else if (this.launchConfiguration.profiling?.tracing?.enable === false && this.supportsPerfettoTracing) {
+            this.logger.info('Disabling perfetto tracing because it is disabled in the launch configuration');
+            //TODO implement a way to disable perfetto tracing on the device
+
+            //tracing was requested but the device firmware does not meet the minimum requirement
+        } else if (this.launchConfiguration.profiling?.tracing?.enable && !this.supportsPerfettoTracing) {
+            const firmwareVersion = this.deviceInfo?.softwareVersion ?? 'unknown';
+            const message = `Perfetto profiling is not available: device firmware ${firmwareVersion} is below the minimum required version (15.2). The Perfetto profiling buttons will not be available during this session.`;
+            this.logger.warn(message);
+            this.showPopupMessage(message, 'warn').catch(e => this.logger.error('Failed to show Perfetto unavailable notification', e));
+
+            //profiling.tracing.enabled is set to `undefined`, which means we should do nothing
+        } else {
+            this.logger.info('Skipping perfetto initalization because `profiling.tracing.enable` is not defined in the launch configuration');
         }
     }
 
@@ -658,12 +1059,21 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * If profiling was marked "connectOnStart", try connecting right away
      */
     private async tryProfilingConnectOnStart() {
+        //tracing is off for this session, so there is nothing to connect to
+        if (!this.launchConfiguration.profiling?.tracing?.enable) {
+            return;
+        }
         if (this.launchConfiguration.profiling?.tracing?.connectOnStart && this.supportsPerfettoTracing) {
             try {
-                await this.perfettoManager.startTracing();
+                await this.perfettoManager?.startTracing?.();
             } catch (e) {
                 this.logger.error('Failed to start perfetto tracing on start', e);
             }
+        } else if (this.launchConfiguration.profiling?.tracing?.connectOnStart && !this.supportsPerfettoTracing) {
+            const firmwareVersion = this.deviceInfo?.softwareVersion ?? 'unknown';
+            const message = `Perfetto profiling is not available: device firmware ${firmwareVersion} is below the minimum required version (15.2). Tracing will not start automatically.`;
+            this.logger.warn(message);
+            this.showPopupMessage(message, 'warn').catch(e => this.logger.error('Failed to show Perfetto unavailable notification', e));
         }
     }
 
@@ -674,7 +1084,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         // launchRequest gets invoked by our restart session flow.
         // We need to clear/reset some state to avoid issues.
         this.entryBreakpointWasHandled = false;
-        this.breakpointManager.clearBreakpointLastState();
+        //reset all per-session breakpoint state (diff baseline + cached parsed ASTs) since a restart
+        //re-stages the project
+        this.breakpointManager.reset();
     }
 
     /**
@@ -741,6 +1153,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //find the first compile error (i.e. first DiagnosticSeverity.Error) if there is one
         this.compileError = diagnostics.find(x => x.severity === DiagnosticSeverity.Error);
         if (this.compileError) {
+            this.sendLaunchProgress('end', 'Aborted (compile error)');
             this.sendEvent(new StoppedEvent(
                 StoppedEventReason.exception,
                 this.COMPILE_ERROR_THREAD_ID,
@@ -751,6 +1164,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendEvent(new DiagnosticsEvent(diagnostics));
     }
 
+    private publishTimeout = 60_000;
+
     private async publish() {
         const uploadingEnd = this.logger.timeStart('log', 'Uploading zip');
         let packageIsPublished = false;
@@ -758,9 +1173,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         //delete any currently installed dev channel (if enabled to do so)
         try {
             if (this.launchConfiguration.deleteDevChannelBeforeInstall === true) {
-                await this.rokuDeploy.deleteInstalledChannel({
-                    ...this.launchConfiguration
-                } as any as RokuDeployOptions);
+                await this.rokuDeploy.deleteDevChannel({
+                    device: this.launchConfiguration.device,
+                    password: this.launchConfiguration.password,
+                    username: this.launchConfiguration.username,
+                    packagePort: this.launchConfiguration.packagePort
+                });
             }
         } catch (e) {
             const statusCode = e?.results?.response?.statusCode;
@@ -773,28 +1191,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         const isConnected = this.rokuAdapter.once('app-ready');
-        const options: RokuDeployOptions = {
-            ...this.launchConfiguration,
-            //typing fix
-            logLevel: LogLevelPriority[this.logger.logLevel],
+        const options: SideloadOptions = {
+            device: this.launchConfiguration.device,
+            password: this.launchConfiguration.password,
+            username: this.launchConfiguration.username,
+            packagePort: this.launchConfiguration.packagePort,
+            ecpPort: this.launchConfiguration.remotePort,
+            //sideload the zip that was already built from the staging folder (or supplied via packagePath)
+            zip: this.launchConfiguration.packagePath ?? util.getOutputZipPath({ outDir: this.launchConfiguration.outDir }),
             // enable the debug protocol if true
             remoteDebug: this.enableDebugProtocol,
             //necessary for capturing compile errors from the protocol (has no effect on telnet)
             remoteDebugConnectEarly: false,
             //we don't want to fail if there were compile errors...we'll let our compile error processor handle that
             failOnCompileError: true,
+            //deleting the dev channel (when enabled) was already handled at the start of this function
+            deleteDevChannel: false,
+            //the device was already sent to the home screen during configurationDone
+            close: false,
             //pass any upload form overrides the client may have configured
             packageUploadOverrides: this.launchConfiguration.packageUploadOverrides
         };
-        //if packagePath is specified, use that info instead of outDir and outFile
-        if (this.launchConfiguration.packagePath) {
-            options.outDir = path.dirname(this.launchConfiguration.packagePath);
-            options.outFile = path.basename(this.launchConfiguration.packagePath);
-        }
 
         //publish the package to the target Roku
-        const publishPromise = this.rokuDeploy.publish(options).then(() => {
+        const publishPromise = this.rokuDeploy.sideload(options).then(() => {
             packageIsPublished = true;
+            //the device is now launching THIS package but won't open the debug protocol port until the JS (Hermes)
+            //runtime stops waiting for its debugger, so tell the client now rather than after `isConnected`
+            this.sendEvent(new ChannelSideloadedEvent(
+                this.launchConfiguration
+            ));
         }).catch(async (e) => {
             const statusCode = e?.results?.response?.statusCode;
             const message = e.message as string;
@@ -810,11 +1236,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         uploadingEnd();
 
         //the channel has been deployed. Wait for the adapter to finish connecting.
-        //if it hasn't connected after 5 seconds, it probably will never connect.
+        //if it hasn't connected after 60 seconds, abort the launch.
         let didTimeOut = false;
         await Promise.race([
             isConnected,
-            util.sleep(10_000).then(() => {
+            util.sleep(this.publishTimeout).then(() => {
                 didTimeOut = true;
             })
         ]);
@@ -835,6 +1261,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param logOutput
      */
     private sendLogOutput(logOutput: string) {
+        if (this.isCrashed) {
+            return Promise.resolve();
+        }
         this.fileLoggingManager.writeRokuDeviceLog(logOutput);
 
         this.pendingSendLogPromise = this.pendingSendLogPromise.then(async () => {
@@ -968,7 +1397,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
     private async runAutomaticSceneGraphCommands(commands: string[]) {
         if (commands) {
-            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.host, this.launchConfiguration.sceneGraphDebugCommandsPort);
+            let connection = new SceneGraphDebugCommandController(this.launchConfiguration.device, this.launchConfiguration.sceneGraphDebugCommandsPort);
 
             try {
                 await connection.connect();
@@ -1040,31 +1469,36 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         //add the entry breakpoint if stopOnEntry is true
         await this.handleEntryBreakpoint();
+    }
 
+    /**
+     * Validate every breakpoint against the staged projects and (telnet only) write STOP statements into the
+     * staged .brs files. Runs after the DAP `InitializedEvent` so client-side `setBreakpoints` requests have
+     * landed before any STOPs are written. Validates the main project and every component library in ONE pass:
+     * a breakpoint is only failed when it can't be placed in any project, so validating per project would fail
+     * every other project's breakpoints. Must complete before `postfixComponentLibraries` renames the complib
+     * files so telnet STOPs are written to the original file names.
+     */
+    private async writeBreakpoints() {
         //add breakpoint lines to source files and then publish
         util.log('Adding stop statements for active breakpoints');
 
-        //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-        if (!this.enableDebugProtocol) {
+        //validate breakpoints for all debugger types (and write `stop` statements for telnet — decided internally)
+        await this.breakpointManager.validateAndWriteBreakpointsForProjects(this.projectManager.getAllProjects());
+    }
 
-            await this.breakpointManager.writeBreakpointsForProject(this.projectManager.mainProject);
-        }
-
+    /**
+     * Create the main project's zip package (or run the configured packageTask). Must run AFTER
+     * `applyLibraryReferencePostfixes` so any rewritten `Library` statements are included in the zip.
+     */
+    private async zipMainProject() {
         if (this.launchConfiguration.packageTask) {
             util.log(`Executing task '${this.launchConfiguration.packageTask}' to assemble the app`);
             await this.sendCustomRequest('executeTask', { task: this.launchConfiguration.packageTask });
 
-            const options = {
-                ...this.launchConfiguration
-            } as any as RokuDeployOptions;
-            //if packagePath is specified, use that info instead of outDir and outFile
-            if (this.launchConfiguration.packagePath) {
-                options.outDir = path.dirname(this.launchConfiguration.packagePath);
-                options.outFile = path.basename(this.launchConfiguration.packagePath);
-            }
-            const packagePath = this.launchConfiguration.packagePath ?? rokuDeploy.getOutputZipFilePath(options);
+            const packagePath = this.launchConfiguration.packagePath ?? util.getOutputZipPath({ outDir: this.launchConfiguration.outDir });
 
-            if (!fsExtra.pathExistsSync(packagePath as string)) {
+            if (!fsExtra.pathExistsSync(packagePath)) {
                 return this.shutdown(`Cancelling debug session. Package does not exist at '${packagePath}'`);
             }
         } else {
@@ -1091,11 +1525,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.emit('popupMessageEventResponse', args);
 
         } else if (command === 'captureHeapSnapshot') {
-            this.perfettoManager.captureHeapSnapshot().catch((e) => this.logger.error('Failed to capture heap snapshot', e));
+            this.perfettoManager?.captureHeapSnapshot?.().catch((e) => this.logger.error('Failed to capture heap snapshot', e));
 
         } else if (command === 'startPerfettoTracing') {
             try {
-                await this.perfettoManager.startTracing();
+                await this.perfettoManager?.startTracing?.();
             } catch (e) {
                 response.success = false;
                 response.body = { message: e?.message || String(e) };
@@ -1103,7 +1537,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
         } else if (command === 'stopPerfettoTracing') {
             try {
-                await this.perfettoManager.stopTracing();
+                await this.perfettoManager?.stopTracing?.();
             } catch (e) {
                 response.success = false;
                 response.body = { message: e?.message || String(e) };
@@ -1116,110 +1550,245 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Stores the path to the staging folder for each component library
      */
-    protected async prepareAndHostComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
-        if (componentLibraries && componentLibraries.length > 0) {
-            let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
-            //make sure this folder exists (and is empty)
-            await fsExtra.ensureDir(componentLibrariesOutDir);
-            await fsExtra.emptyDir(componentLibrariesOutDir);
-
-            //create a ComponentLibraryProject for each component library
-            for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
-                let componentLibrary = componentLibraries[libraryIndex];
-
-                this.projectManager.componentLibraryProjects.push(
-                    new ComponentLibraryProject({
-                        rootDir: componentLibrary.rootDir,
-                        files: componentLibrary.files,
-                        outDir: componentLibrariesOutDir,
-                        outFile: componentLibrary.outFile,
-                        sourceDirs: componentLibrary.sourceDirs,
-                        bsConst: componentLibrary.bsConst,
-                        install: componentLibrary.install,
-                        injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
-                        raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
-                        libraryIndex: libraryIndex,
-                        enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
-                    })
-                );
-            }
-
-            //prepare all of the libraries in parallel
-            let compLibPromises = this.projectManager.componentLibraryProjects.map(async (compLibProject) => {
-
-                await compLibProject.stage();
-
-                // Add breakpoint lines to the staging files and before publishing
-                util.log('Adding stop statements for active breakpoints in Component Libraries');
-
-                //write the `stop` statements to every file that has breakpoints (do for telnet, skip for debug protocol)
-                if (!this.enableDebugProtocol) {
-                    await this.breakpointManager.writeBreakpointsForProject(compLibProject);
-                }
-
-                await compLibProject.postfixFiles();
-
-                await compLibProject.zipPackage({ retainStagingFolder: true });
-            });
-
-            let needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
-
-            if (needToDeleteComplibs) {
-                await rokuDeploy.deleteAllComponentLibraries({
-                    host: this.launchConfiguration.host,
-                    password: this.launchConfiguration.password,
-                    username: this.launchConfiguration.username || 'rokudev'
-                });
-            }
-
-            for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
-                const compLibProject = this.projectManager.componentLibraryProjects[i];
-
-                if (compLibProject.install === true) {
-                    //wait for this complib to finish being staged and zipped
-                    await compLibPromises[i];
-
-                    if (componentLibraries[i].packageTask) {
-                        await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
-                    }
-
-                    const options: RokuDeployOptions = {
-                        host: this.launchConfiguration.host,
-                        password: this.launchConfiguration.password,
-                        username: this.launchConfiguration.username || 'rokudev',
-                        logLevel: LogLevelPriority[this.logger.logLevel],
-                        failOnCompileError: true,
-                        outDir: compLibProject.outDir,
-                        outFile: compLibProject.outFile,
-                        appType: 'dcl',
-                        packageUploadOverrides: componentLibraries[i].packageUploadOverrides || {}
-                    };
-
-                    if (componentLibraries[i].packagePath) {
-                        options.outDir = path.dirname(componentLibraries[i].packagePath);
-                        options.outFile = path.basename(componentLibraries[i].packagePath);
-                    }
-
-                    try {
-                        await rokuDeploy.publish(options);
-                    } catch (error) {
-                        this.logger.error(`Error installing component library ${i}`, error);
-                    }
-                }
-            }
-
-            let hostingPromise: Promise<any>;
-            // prepare static file hosting
-            hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
-                util.log(message);
-            });
-
-            //wait for all component libaries to finish building, and the file hosting to start up (if enabled)
-            await Promise.all([
-                ...compLibPromises,
-                hostingPromise
-            ]);
+    protected async prepareComponentLibraries(componentLibraries: ComponentLibraryConfiguration[]) {
+        if (!componentLibraries || componentLibraries.length === 0) {
+            return;
         }
+        let componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
+        //make sure this folder exists (and is empty)
+        await fsExtra.ensureDir(componentLibrariesOutDir);
+        await fsExtra.emptyDir(componentLibrariesOutDir);
+
+        //create a ComponentLibraryProject for each component library
+        for (let libraryIndex = 0; libraryIndex < componentLibraries.length; libraryIndex++) {
+            let componentLibrary = componentLibraries[libraryIndex];
+
+            this.projectManager.componentLibraryProjects.push(
+                new ComponentLibraryProject({
+                    rootDir: componentLibrary.rootDir,
+                    files: componentLibrary.files,
+                    outDir: componentLibrariesOutDir,
+                    outFile: componentLibrary.outFile,
+                    sourceDirs: componentLibrary.sourceDirs,
+                    bsConst: componentLibrary.bsConst,
+                    install: componentLibrary.install,
+                    enablePostfix: componentLibrary.enablePostfix,
+                    injectRaleTrackerTask: componentLibrary.injectRaleTrackerTask,
+                    raleTrackerTaskFileLocation: componentLibrary.raleTrackerTaskFileLocation,
+                    libraryIndex: libraryIndex,
+                    enhanceREPLCompletions: this.launchConfiguration.enhanceREPLCompletions
+                })
+            );
+        }
+
+        //stage all of the libraries in parallel
+        await Promise.all(
+            this.projectManager.componentLibraryProjects.map(compLibProject => compLibProject.stage())
+        );
+    }
+
+    /**
+     * Postfix each staged complib's own files (rename its `.brs` files with the `__lib<index>` postfix and
+     * rewrite its `uri=` references). Runs in `configurationDoneRequest` AFTER `writeBreakpoints` so any
+     * telnet STOPs have already been written to the original file names. Kept separate from zipping so the
+     * cross-project `Library` reference rewrite can run after EVERY project is postfixed but before any zip
+     * is sealed.
+     */
+    protected async postfixComponentLibraries(componentLibraries: ComponentLibraryConfiguration[]) {
+        if (!componentLibraries || componentLibraries.length === 0) {
+            return;
+        }
+
+        //postfix each complib's own files in parallel
+        await Promise.all(
+            this.projectManager.componentLibraryProjects.map(compLibProject => compLibProject.postfixFiles())
+        );
+    }
+
+    /**
+     * Seal every component library's zip, install the installable ones (in order), and start static file
+     * hosting. Must run AFTER `applyLibraryReferencePostfixes` so each zip contains the rewritten `Library`
+     * statements.
+     */
+    protected async zipServeAndInstallComponentLibraries(componentLibraries: ComponentLibraryConfiguration[], port: number) {
+        if (!componentLibraries || componentLibraries.length === 0) {
+            return;
+        }
+        const componentLibrariesOutDir = s`${this.launchConfiguration.outDir}/component-libraries`;
+
+        const needToDeleteComplibs = this.projectManager.componentLibraryProjects.some(x => x.install);
+        if (needToDeleteComplibs) {
+            //deleteAllComponentLibraries pauses compile-error reporting (to swallow deletion-induced errors) and
+            //leaves it paused. Now that deletion is done and we're about to put libraries back on the device, settle
+            //(draining any lingering deletion output) and resume reporting so real install errors are surfaced.
+            await this.deleteAllComponentLibraries();
+        }
+
+        //zip each complib in parallel
+        const packagePromises = this.projectManager.componentLibraryProjects.map(
+            compLibProject => compLibProject.zipPackage({ retainStagingFolder: true })
+        );
+
+        //install component libraries strictly in their declared order (which must be dependency order:
+        //a library may only depend on libraries declared before it). Each install is fully awaited before the
+        //next begins, and a failure aborts the launch. Installing out of order, or continuing past a failed
+        //install, leaves the device with dangling `Library` references that fail to compile.
+        for (let i = 0; i < this.projectManager.componentLibraryProjects.length; i++) {
+            const compLibProject = this.projectManager.componentLibraryProjects[i];
+
+            if (compLibProject.install === true) {
+                //wait for this complib to finish being packaged
+                await packagePromises[i];
+
+                if (componentLibraries[i].packageTask) {
+                    await this.sendCustomRequest('executeTask', { task: componentLibraries[i].packageTask });
+                }
+
+                const options: SideloadOptions = {
+                    device: this.launchConfiguration.device,
+                    password: this.launchConfiguration.password,
+                    username: this.launchConfiguration.username || 'rokudev',
+                    packagePort: this.launchConfiguration.packagePort,
+                    ecpPort: this.launchConfiguration.remotePort,
+                    zip: componentLibraries[i].packagePath ?? util.getOutputZipPath({ outDir: compLibProject.outDir, outFile: compLibProject.outFile }),
+                    failOnCompileError: true,
+                    appType: 'dcl',
+                    //installing a component library should never close or delete the sideloaded channel
+                    close: false,
+                    deleteDevChannel: false,
+                    packageUploadOverrides: componentLibraries[i].packageUploadOverrides || {}
+                };
+
+                util.log(`Installing component library ${i} (${compLibProject.outFile})`);
+                try {
+                    await rokuDeploy.sideload(options);
+                    util.log(`Installed component library ${i} (${compLibProject.outFile})`);
+                } catch (error) {
+                    //do NOT continue installing further libraries (or publishing the main app) - a failed install
+                    //here means later libraries and the main app would reference a library that isn't on the device
+                    this.logger.error(`Error installing component library ${i} (${compLibProject.outFile})`, error);
+                    throw error;
+                }
+            }
+        }
+
+        const hostingPromise = this.componentLibraryServer.startStaticFileHosting(componentLibrariesOutDir, port, (message: string) => {
+            util.log(message);
+        });
+
+        //wait for all complib packaging to finish and the file hosting to start
+        await Promise.all([
+            ...packagePromises,
+            hostingPromise
+        ]);
+    }
+
+    /**
+     * Delete every component library installed on the device.
+     *
+     * A complib can only depend on complibs the user declared BEFORE it, so the user's configured order is already
+     * dependency order. Deleting in the REVERSE of that order therefore deletes each complib before the ones it
+     * depends on, avoiding compile errors entirely. We use that reverse order as the delete priority.
+     *
+     * Anything still installed that the user did NOT configure (e.g. leftovers from a previous session) has no known
+     * order, so we fall back to compile-error tolerance for those: deleting a complib while another still references
+     * it fails with a compile error, which we ignore and retry later (after its dependent is gone). We finish when
+     * every complib is gone, and fail if the only complibs left are ones that can never be deleted.
+     */
+    private async deleteAllComponentLibraries() {
+        const deviceOptions = {
+            device: this.launchConfiguration.device,
+            password: this.launchConfiguration.password,
+            username: this.launchConfiguration.username || 'rokudev'
+        };
+
+        //The user's configured complibs, in REVERSE declaration order (dependents before their dependencies). A
+        //complib's position here is its delete priority; complibs the user didn't configure aren't in this list.
+        const deletePriority = this.projectManager.componentLibraryProjects
+            .map(complib => complib.outFile)
+            .reverse();
+        //sort key for a complib: its index in `deletePriority`, or Infinity (delete last) if it wasn't configured
+        const priorityOf = (fileName: string) => {
+            const index = deletePriority.indexOf(fileName);
+            return index === -1 ? Infinity : index;
+        };
+
+        const maxAttempts = 5;
+        //how many times we've tried to delete each complib, and the ones we've given up on after maxAttempts
+        const attempts = new Map<string, number>();
+        const failed = new Set<string>();
+
+        while (true) {
+            //re-fetch the installed complibs after each iteration: deleting one complib can cascade-delete others, so never delete a stale entry
+            const installed = (await rokuDeploy.listSideloadedPlugins(deviceOptions)).filter(x => x.appType === 'dcl');
+
+            const attemptCount = (complib: { archiveFileName: string }) => attempts.get(complib.archiveFileName) ?? 0;
+
+            //of the complibs we haven't given up on, pick the next to delete: fewest attempts first (spreads retries
+            //evenly so a dependent gets deleted before we circle back to a complib that previously failed), and among
+            //equal attempts, follow the reverse-configured delete priority (dependents before dependencies).
+            const candidates = installed.filter(complib => !failed.has(complib.archiveFileName));
+            const next = candidates.sort((a, b) =>
+                attemptCount(a) - attemptCount(b) ||
+                priorityOf(a.archiveFileName) - priorityOf(b.archiveFileName)
+            )[0];
+
+            //nothing left to try — done if the device is clear, otherwise hard-fail with whatever remains
+            if (!next) {
+                if (installed.length > 0) {
+                    throw new Error(`Failed to delete existing component libraries on device; ${installed.length} still installed: ${installed.map(x => x.archiveFileName).join(', ')}`);
+                }
+                return;
+            }
+
+            const fileName = next.archiveFileName;
+            attempts.set(fileName, (attempts.get(fileName) ?? 0) + 1);
+            try {
+                await rokuDeploy.deleteComponentLibrary({ ...deviceOptions, fileName: fileName });
+            } catch (error) {
+                //re-throw anything that isn't a dependency compile error (auth, network, etc.)
+                if (!this.isComponentLibraryDependencyCompileError(error)) {
+                    throw error;
+                }
+                //Deleting a complib that a dependent still references produces a compile error - but the delete may
+                //STILL have succeeded (the device reports both a compile error and 'Delete Succeeded'). If it actually
+                //deleted, treat it as done. Only if it did NOT succeed do we defer and retry it later.
+                if (this.wasComponentLibraryDeleteSuccessful(error)) {
+                    this.logger.trace(`Deleted '${fileName}' (device reported a compile error but the delete succeeded)`);
+                } else {
+                    //another not-yet-deleted complib still depends on this one. Give up on it once it's out of
+                    //attempts; otherwise leave it pending so we retry after its dependents are gone.
+                    if (attempts.get(fileName) >= maxAttempts) {
+                        failed.add(fileName);
+                    }
+                    this.logger.log(`Deferring delete of '${fileName}'; another component library still depends on it`);
+                }
+            }
+
+            //the Roku doesn't appreciate back-to-back deletes; give it a moment between requests
+            await util.sleep(10);
+        }
+    }
+
+    /**
+     * Is this error the device reporting a compile failure (which, during complib deletion, means another
+     * installed complib still references the one we tried to delete)?
+     */
+    private isComponentLibraryDependencyCompileError(error: any): boolean {
+        const message = `${error?.message ?? ''}`;
+        return /compile error|compilation failed/i.test(message);
+    }
+
+    /**
+     * Did the component-library delete actually succeed, even though the device also reported a compile error?
+     * When we delete a complib that a dependent still references, the device reports BOTH a compile error AND a
+     * `Delete Succeeded` message - meaning the complib really was removed. roku-deploy attaches the parsed device
+     * messages (`{ errors, infos, successes }`) to the thrown error as `rokuMessages`; we look for the success there.
+     * Absence of that success message means the delete did NOT happen, so it should be treated as a failure/retry.
+     */
+    private wasComponentLibraryDeleteSuccessful(error: any): boolean {
+        const successes: string[] = error?.rokuMessages?.successes ?? [];
+        return successes.some(message => /delete succeeded/i.test(message));
     }
 
     protected sourceRequest(response: DebugProtocol.SourceResponse, args: DebugProtocol.SourceArguments) {
@@ -1230,10 +1799,6 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.sendResponse = old;
         };
         super.sourceRequest(response, args);
-    }
-
-    protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments) {
-        this.logger.log('configurationDoneRequest');
     }
 
     /**
@@ -1249,6 +1814,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             breakpoints: sortedAndFilteredBreakpoints
         };
         this.sendResponse(response);
+
+        //ensure we've staged all the files
+        await this.stagingDefered.promise;
 
         await this.rokuAdapter?.syncBreakpoints();
     }
@@ -1274,8 +1842,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 let rokuThreads = await this.rokuAdapter.getThreads();
 
                 for (let thread of rokuThreads) {
+                    const threadName = this.getThreadName(thread as AdapterThread);
                     threads.push(
-                        new Thread(thread.threadId, `Thread ${thread.threadId}`)
+                        new Thread(thread.threadId, threadName)
                     );
                 }
 
@@ -1300,6 +1869,45 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         this.sendResponse(response);
     }
 
+    /**
+     * Get the thread name to display in the UI based on the thread info we have.
+     * This is what displays in the `call stack` region in vscode
+     * @param thread
+     * @returns
+     */
+    private getThreadName(thread: AdapterThread) {
+        let threadName = '';
+        if (thread.type || thread.name || thread.osThreadId) {
+            //build the name from only the parts that are present, so missing values don't leak into the name
+            const parts: string[] = [];
+            if (thread.type) {
+                parts.push(`[${thread.type}]`);
+            }
+            if (thread.name) {
+                parts.push(thread.name);
+            }
+            if (thread.osThreadId) {
+                parts.push(thread.osThreadId);
+            }
+            threadName = parts.join(' ');
+        }
+        //remove any extraneous whitespace to deal with missing values
+        threadName = threadName.replace(/\s+/g, ' ').trim();
+
+        if (threadName === '') {
+            threadName = `Thread ${thread.threadId}`;
+        }
+
+        if (thread.isDetached) {
+            threadName += ' [detached]';
+        }
+
+        //remove any extraneous whitespace to deal with missing values
+        threadName = threadName.replace(/\s+/g, ' ').trim();
+
+        return threadName;
+    }
+
     protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
         try {
             this.logger.log('stackTraceRequest');
@@ -1311,17 +1919,17 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     0,
                     'Compile Error',
                     new Source(path.basename(this.compileError.path), this.compileError.path),
-                    //diagnostics are 0 based, vscode expects 1 based
-                    this.compileError.range.start.line + 1,
-                    this.compileError.range.start.character + 1
+                    // range is 0-based; toClientLine/toClientColumn handle client coordinate conversion
+                    this.toClientLine(this.compileError.range.start.line),
+                    this.toClientColumn(this.compileError.range.start.character)
                 ));
             } else if (args.threadId === 1001) {
                 frames.push(new StackFrame(
                     0,
                     'ERROR: threads would not stop',
                     new Source('main.brs', s`${this.launchConfiguration.stagingDir}/manifest`),
-                    1,
-                    1
+                    this.toClientLine(0),
+                    this.toClientColumn(0)
                 ));
                 this.showPopupMessage('Unable to suspend threads. Debugger is in an unstable state, please press Continue to resume debugging', 'warn').catch((error) => {
                     this.logger.error('Error showing popup message', { error });
@@ -1332,43 +1940,51 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
                 if (this.rokuAdapter.isAtDebuggerPrompt) {
                     let stackTrace = await this.rokuAdapter.getStackTrace(args.threadId);
-
-                    for (let debugFrame of stackTrace) {
-                        let sourceLocation = await this.projectManager.getSourceLocation(debugFrame.filePath, debugFrame.lineNumber);
-
-                        //the stacktrace returns function identifiers in all lower case. Try to get the actual case
-                        //load the contents of the file and get the correct casing for the function identifier
-                        try {
-                            let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation?.filePath, debugFrame.functionIdentifier);
-                            if (functionName) {
-
-                                //search for original function name if this is an anonymous function.
-                                //anonymous function names are prefixed with $ in the stack trace (i.e. $anon_1 or $functionname_40002)
-                                if (functionName.startsWith('$')) {
-                                    functionName = this.fileManager.getFunctionNameAtPosition(
-                                        sourceLocation.filePath,
-                                        sourceLocation.lineNumber - 1,
-                                        functionName
-                                    );
-                                }
-                                debugFrame.functionIdentifier = functionName;
-                            }
-                        } catch (error) {
-                            this.logger.error('Error correcting function identifier case', { error, sourceLocation, debugFrame });
-                        }
-                        const filePath = sourceLocation?.filePath ?? debugFrame.filePath;
-
-                        const frame: DebugProtocol.StackFrame = new StackFrame(
-                            debugFrame.frameId,
-                            `${debugFrame.functionIdentifier}`,
-                            new Source(path.basename(filePath), filePath),
-                            sourceLocation?.lineNumber ?? debugFrame.lineNumber,
-                            1
-                        );
-                        if (!sourceLocation) {
-                            frame.presentationHint = 'subtle';
-                        }
+                    if (stackTrace.length === 0) {
+                        // Thread is detached or encountered an error requesting Stack Trace — show a non-interactive label so VS Code can display
+                        // the thread without letting the user navigate to a source location
+                        const frame = new StackFrame(0, '[unavailable]');
+                        frame.presentationHint = 'label';
                         frames.push(frame);
+                    } else {
+                        for (let debugFrame of stackTrace) {
+                            let sourceLocation = await this.projectManager.getSourceLocation(debugFrame.filePath, debugFrame.lineNumber);
+
+                            //the stacktrace returns function identifiers in all lower case. Try to get the actual case
+                            //load the contents of the file and get the correct casing for the function identifier
+                            try {
+                                let functionName = this.fileManager.getCorrectFunctionNameCase(sourceLocation?.filePath, debugFrame.functionIdentifier);
+                                if (functionName) {
+
+                                    //search for original function name if this is an anonymous function.
+                                    //anonymous function names are prefixed with $ in the stack trace (i.e. $anon_1 or $functionname_40002)
+                                    if (functionName.startsWith('$')) {
+                                        functionName = this.fileManager.getFunctionNameAtPosition(
+                                            sourceLocation.filePath,
+                                            sourceLocation.lineNumber - 1,
+                                            functionName
+                                        );
+                                    }
+                                    debugFrame.functionIdentifier = functionName;
+                                }
+                            } catch (error) {
+                                this.logger.error('Error correcting function identifier case', { error, sourceLocation, debugFrame });
+                            }
+                            const filePath = sourceLocation?.filePath ?? debugFrame.filePath;
+
+                            const frame: DebugProtocol.StackFrame = new StackFrame(
+                                debugFrame.frameId,
+                                `${debugFrame.functionIdentifier}`,
+                                new Source(path.basename(filePath), filePath),
+                                // lineNumber is 1-based from Roku; toClientLine expects 0-based
+                                this.toClientLine((sourceLocation?.lineNumber ?? debugFrame.lineNumber) - 1),
+                                this.toClientColumn(0)
+                            );
+                            if (!sourceLocation) {
+                                frame.presentationHint = 'subtle';
+                            }
+                            frames.push(frame);
+                        }
                     }
                 } else {
                     this.logger.log('Skipped calculating stacktrace because the RokuAdapter is not accepting input at this time');
@@ -1389,24 +2005,9 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         logger.info('begin', { args });
         try {
             const scopes = new Array<DebugProtocol.Scope>();
-            let v: AugmentedVariable;
 
             // create the locals scope
-            let localsRefId = this.getEvaluateRefId('$$locals', args.frameId);
-            if (this.variables[localsRefId]) {
-                v = this.variables[localsRefId];
-            } else {
-                v = {
-                    variablesReference: localsRefId,
-                    name: 'Locals',
-                    value: '',
-                    type: '$$Locals',
-                    frameId: args.frameId,
-                    isScope: true,
-                    childVariables: []
-                };
-                this.variables[localsRefId] = v;
-            }
+            let v = this.getOrCreateLocalsScope(args.frameId);
 
             let localScope: DebugProtocol.Scope = {
                 name: 'Local',
@@ -1456,6 +2057,26 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         } catch (error) {
             logger.error('Error getting scopes', { error, args });
         }
+    }
+
+    /**
+     * Get the locals scope container for a frame, creating an (unpopulated) one if it doesn't exist yet.
+     * The child variables are filled in lazily by `populateScopeVariables`.
+     */
+    private getOrCreateLocalsScope(frameId: number): AugmentedVariable {
+        const refId = this.getEvaluateRefId('$$locals', frameId);
+        if (!this.variables[refId]) {
+            this.variables[refId] = {
+                variablesReference: refId,
+                name: 'Locals',
+                value: '',
+                type: '$$Locals',
+                frameId: frameId,
+                isScope: true,
+                childVariables: []
+            };
+        }
+        return this.variables[refId];
     }
 
     protected async continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) {
@@ -1770,7 +2391,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             } else if (v.type === '$$Registry') {
                 // This is a special scope variable used to load registry data via an ECP call
                 // Send the registry ECP call for the `dev` app as side loaded apps are always `dev`
-                await populateVariableFromRegistryEcp({ host: this.launchConfiguration.host, remotePort: this.launchConfiguration.remotePort, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
+                await populateVariableFromRegistryEcp({ remotePort: this.launchConfiguration.remotePort, device: this.launchConfiguration.device, appId: 'dev' }, v, this.variables, this.getEvaluateRefId.bind(this));
             }
         } catch (error) {
             logger.error(`Error getting variables for scope ${v.type}`, error);
@@ -2024,6 +2645,22 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             let completions = new Map<string, DebugProtocol.CompletionItem>();
 
             let parentVariablePath = closestCompletionDetails.parentVariablePath;
+            // When set, the user is typing a string key (ex: `m["fo`) and completions should insert the
+            // key wrapped to close the access (ex: `firstName"]`) rather than appending a bare label. The
+            // value is the closing text to append (empty when a closing bracket is already present).
+            const stringKeyClosing = closestCompletionDetails.stringKeyClosing;
+
+            // The span of input each completion replaces. The client requests completions once (at the first
+            // character) and then filters the list as the user keeps typing, so without an explicit range that
+            // incremental filtering is anchored incorrectly.
+            const replaceRange = this.getCompletionReplaceRange(args);
+            // Whether the character immediately before the replaced span is a `.` (ie. the user is doing dot
+            // member access). A key that can't be dot-accessed (ex: `my key`) is rewritten as bracket access,
+            // which has to consume that `.` so `m.` becomes `m["my key"]` rather than `m.["my key"]`.
+            const lines = args.text.split('\n');
+            const targetLine = lines[this.toDebuggerLine(args.line, 0)] ?? '';
+            const precededByDot = targetLine[replaceRange.start - 1] === '.';
+
             // Get the completions if the variable path was valid
             if (parentVariablePath) {
 
@@ -2032,25 +2669,23 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     supplyLocalScopeCompletions = true;
                 }
 
-                // Look up the parent variable
-                let parentVariable = this.findVariableByPath(Object.values(this.variables), parentVariablePath, args.frameId);
-
-                if (!parentVariable || parentVariable.childVariables.length === 0) {
-                    // We did not find the parent variable, so try to look it up from the device
-                    try {
-                        let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: parentVariablePath.join('.'), frameId: args.frameId }, parentVariablePath);
-                        let result = await this.rokuAdapter.getVariable(evalArgs.expression, args.frameId);
-                        parentVariable = await this.getVariableFromResult(result, args.frameId);
-                    } catch (error) {
-                        this.logger.error('Error looking up parent completions', error, { parentVariablePath });
-                    }
-                }
+                // Look up the parent variable (in-memory first, then the device), scoped to the current frame.
+                let parentVariable = await this.resolveCompletionParentVariable(parentVariablePath, args.frameId);
 
                 // provide completions for the parent variable if one was found
                 if (parentVariable) {
-                    let possibleFieldsAndMethods: AugmentedVariable[] = [];
-                    // Filter out virtual variables
-                    possibleFieldsAndMethods = parentVariable.childVariables.filter((v) => v.presentationHint?.kind !== 'virtual');
+                    // arrays and lists are integer-indexed; their `[N]` elements aren't valid `.` or `["..."]`
+                    // completions (you can't write `arr.[0]` or `arr["0"]`), so don't offer them as members.
+                    // Only the interface methods below (Count, Push, ...) apply to these containers.
+                    const isIntegerIndexed = parentVariable.type === VariableType.Array ||
+                        parentVariable.type === VariableType.List ||
+                        parentVariable.type === 'roXMLList' ||
+                        parentVariable.type === 'roByteArray';
+
+                    const possibleFieldsAndMethods = isIntegerIndexed
+                        ? []
+                        // Filter out virtual variables and the empty-named placeholder used for empty scopes
+                        : parentVariable.childVariables.filter((child) => child.name && child.presentationHint?.kind !== 'virtual');
 
                     for (let v of possibleFieldsAndMethods) {
                         // Default completion type should be variable
@@ -2071,40 +2706,50 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                             }
                         }
 
-                        let label = v.name;
-                        if (parentVariable.type === VariableType.Array ||
-                            parentVariable.type === VariableType.List ||
-                            parentVariable.type === 'roXMLList' ||
-                            parentVariable.type === 'roByteArray'
-                        ) {
-                            label = `[${v.name}]`;
-                        }
-                        completions.set(`${completionType}-${v.name}`, {
-                            label: label,
+                        const completionItem: DebugProtocol.CompletionItem = {
+                            label: v.name,
                             type: completionType,
-                            sortText: '000000'
-                        });
+                            //rank a variable's own members/locals above everything else
+                            sortText: `${CompletionSortTier.Member}${v.name}`
+                        };
+                        if (stringKeyClosing !== undefined) {
+                            // Insert the key and close the access, ex: `firstName"]` (the replacement range is applied
+                            // below). A `"` inside the key is escaped as `""` so the inserted string literal stays valid
+                            // (ex: a key of `a"b` is inserted as `a""b`).
+                            completionItem.text = `${v.name.replace(/"/g, '""')}${stringKeyClosing}`;
+                        } else if (!supplyLocalScopeCompletions && precededByDot && !/^[a-z_][a-z0-9_]*$/i.test(v.name)) {
+                            // The key can't be dot-accessed (ex: it has a space or a quote), so rewrite the access as
+                            // bracket notation and consume the `.` before the cursor: `m.` -> `m["my key"]`. A `"` in
+                            // the key is escaped as `""` so the inserted string literal stays valid.
+                            completionItem.text = `["${v.name.replace(/"/g, '""')}"]`;
+                            completionItem.start = replaceRange.start - 1;
+                            completionItem.length = replaceRange.length + 1;
+                        }
+                        completions.set(`${completionType}-${v.name}`, completionItem);
                     }
 
-                    let parentComponentType = this.debuggerVarTypeToRoType(parentVariable.type).toLowerCase();
-                    //assemble a list of all methods on the parent component
-                    const methods = [
-                        //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
-                        ...interfaces[parentComponentType as 'ifappinfo']?.methods ?? [],
-                        //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
-                        ...components[parentComponentType as 'roappinfo']?.interfaces.map((i) => interfaces[i.name.toLowerCase() as 'ifappinfo']?.methods) ?? [],
-                        // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
-                        ...events[parentComponentType as 'roappmemorymonitorevent']?.methods ?? []
-                    ].flat();
+                    // Interface methods aren't valid string keys, so skip them when completing a string key
+                    if (stringKeyClosing === undefined) {
+                        let parentComponentType = this.debuggerVarTypeToRoType(parentVariable.type).toLowerCase();
+                        //assemble a list of all methods on the parent component
+                        const methods = [
+                            //if the parent variable is an actual interface (if applicable) Ex: `ifString` or `ifArray`
+                            ...interfaces[parentComponentType as 'ifappinfo']?.methods ?? [],
+                            //interfaces from component of this name (if applicable) Ex: `roSGNode` or `roDateTime`
+                            ...components[parentComponentType as 'roappinfo']?.interfaces.map((i) => interfaces[i.name.toLowerCase() as 'ifappinfo']?.methods) ?? [],
+                            // Add parent event function completions (if applicable) Ex: `roSGNodeEvent` or `roDeviceInfoEvent`
+                            ...events[parentComponentType as 'roappmemorymonitorevent']?.methods ?? []
+                        ].flat();
 
-                    // Based on the results of interface, component, and event looks up, add all the methods to the completions
-                    for (const method of methods) {
-                        completions.set(`method-${method.name}`, {
-                            label: method.name,
-                            type: 'method',
-                            detail: method.description ?? '',
-                            sortText: '000000'
-                        });
+                        // Based on the results of interface, component, and event looks up, add all the methods to the completions
+                        for (const method of methods) {
+                            completions.set(`method-${method.name}`, {
+                                label: method.name,
+                                type: 'method',
+                                detail: method.description ?? '',
+                                sortText: `${CompletionSortTier.Method}${method.name}`
+                            });
+                        }
                     }
 
                     // Add the global functions to the completions results
@@ -2114,7 +2759,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                                 label: globalCallable.name,
                                 type: 'function',
                                 detail: globalCallable.shortDescription ?? globalCallable.documentation ?? '',
-                                sortText: '000000'
+                                sortText: `${CompletionSortTier.Global}${globalCallable.name}`
                             });
                         }
 
@@ -2127,7 +2772,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                                     completions.set(`${scopeFunction.completionItemKind}-${scopeFunction.name.toLocaleLowerCase()}`, {
                                         label: scopeFunction.name,
                                         type: scopeFunction.completionItemKind,
-                                        sortText: '000000'
+                                        sortText: `${CompletionSortTier.ScopeFunction}${scopeFunction.name}`
                                     });
                                 }
                             }
@@ -2138,8 +2783,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 }
             }
 
-            // this.sendEvent(new LogOutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}`));
-            // this.sendEvent(new OutputEvent(`text: ${args.text} | completions: ${completions.map(v => v.label).join(', ')}\n`, 'stderr'));
+            // Apply the default replacement span to every completion that didn't already set its own (bracket
+            // rewrites above use an extended range that also consumes the preceding `.`).
+            for (const target of completions.values()) {
+                if (target.start === undefined) {
+                    target.start = replaceRange.start;
+                    target.length = replaceRange.length;
+                }
+            }
 
             response.body = {
                 targets: [...completions.values()]
@@ -2155,40 +2806,84 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     /**
      * Gets the closest completion details the incoming completion request.
      */
-    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[] } {
+    private getClosestCompletionDetails(args: DebugProtocol.CompletionsArguments): { parentVariablePath: string[]; stringKeyClosing?: string } {
         const incomingText = args.text;
         const lines = incomingText.split('\n');
         let lineNumber = this.toDebuggerLine(args.line, 0);
         let column = this.toDebuggerColumn(args.column);
 
-        const targetLine = lines[lineNumber];
-        let variablePathString = '';
+        const targetLine = lines[lineNumber] ?? '';
 
-        let i = column - 1;
+        const cursorIndex = column - 1;
         const variableChars = /[a-z0-9_\.]/i;
 
-        // If the character at immediate to the right of the cursor is a variable character, then we are not at the end of the variable path.
-        if (targetLine.length - 1 > i && variableChars.test(targetLine[i + 1])) {
+        // If the character immediately to the right of the cursor is a variable character, then we are
+        // in the middle of a token and should not supply completions yet.
+        if (cursorIndex + 1 < targetLine.length && variableChars.test(targetLine[cursorIndex + 1])) {
             return undefined;
         }
 
-        // Find the start of the variable path by looking for the first non-alphanumeric or non_underscore character before the cursor
-        while (i >= 0 && (variableChars.test(targetLine[i]))) {
-            i--;
+        // Determine where the expression we want to complete ends, and whether we are completing the
+        // members of that expression. A trailing `.` or being inside an unclosed string-key bracket
+        // (ex: `m["fo`) are both treated as member access on the parent expression.
+        let endColumn = column;
+        let isMemberAccess = false;
+        //when set (including ''), the user is completing a string key; the value is the text to append to
+        //close the access (ex: `"]`), empty when a closing bracket is already present
+        let stringKeyClosing: string;
+
+        const openBracket = this.findUnclosedOpener(targetLine, column);
+        if (openBracket?.char === '[') {
+            // find the opening quote (skipping any whitespace after the `[`)
+            let quoteIndex = openBracket.index + 1;
+            while (targetLine[quoteIndex] === ' ' || targetLine[quoteIndex] === '\t') {
+                quoteIndex++;
+            }
+            const quote = targetLine[quoteIndex];
+            if (quote === '"' || quote === `'`) {
+                // The user is typing a string key, so complete the keys of the expression before the `[`
+                endColumn = openBracket.index;
+                isMemberAccess = true;
+                // close the string and bracket only when there is nothing meaningful after the cursor
+                stringKeyClosing = targetLine.slice(column).trim() === '' ? `${quote}]` : '';
+            }
         }
 
-        // Pull the variable path string from the line
-        variablePathString = targetLine.slice(i + 1, column);
+        // Walk backwards from `endColumn` to find the start of the variable path, stepping over balanced
+        // `[...]` index access so paths like `arr[0].name` are captured as a whole.
+        let startIndex = endColumn - 1;
+        let bracketDepth = 0;
+        while (startIndex >= 0) {
+            const char = targetLine[startIndex];
+            if (char === ']') {
+                bracketDepth++;
+            } else if (char === '[') {
+                if (bracketDepth === 0) {
+                    // An unbalanced `[` means we hit the start of an index/key being typed; stop here.
+                    break;
+                }
+                bracketDepth--;
+            } else if (bracketDepth === 0 && (char === undefined || !variableChars.test(char))) {
+                break;
+            }
+            startIndex--;
+        }
 
-        // Attempted dot access something unexpected
-        // Example: `getPerson().name` where `getPerson()` is not a valid variable
-        // and results in `.name` being the variable path string
+        const variablePathString = targetLine.slice(startIndex + 1, endColumn);
+
+        // Attempted dot access on something unexpected.
+        // Example: `getPerson().name` where `getPerson()` is not a valid variable path,
+        // which leaves `.name` as the variable path string.
         if (variablePathString.startsWith('.')) {
             return undefined;
         }
 
+        if (variablePathString.endsWith('.')) {
+            isMemberAccess = true;
+        }
+
         // Get the variable path from the text
-        let variablePath: string[] = [];
+        let variablePath: string[];
         if (!variablePathString.trim()) {
             // The text was empty so assume via '' that we are looking up the local scope variables and global functions
             variablePath = [''];
@@ -2204,29 +2899,179 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             return undefined;
         }
 
-        let parentVariablePath: string[];
-        // If the last character is a period, then pull completions for the parent variable before the period
-        if (variablePathString.endsWith('.')) {
-            parentVariablePath = variablePath;
-        } else {
-            // Otherwise, pull completions for the parent variable
-            parentVariablePath = variablePath.slice(0, variablePath.length - 1);
-        }
+        // For member access we complete the members of the full expression. Otherwise we complete the
+        // siblings of the final (partial) segment, so drop it to get the parent.
+        let parentVariablePath = isMemberAccess ? variablePath : variablePath.slice(0, variablePath.length - 1);
 
-        // If the parent variable path is empty or an empty string, then we are looking up the local scope variables and global functions
+        // An empty parent path means we are looking up the local scope variables and global functions
         if (parentVariablePath.length === 0) {
             parentVariablePath = [''];
         }
 
-        return { parentVariablePath: parentVariablePath };
+        const result: { parentVariablePath: string[]; stringKeyClosing?: string } = { parentVariablePath: parentVariablePath };
+        // Only attach the string-key context when we actually resolved a parent object to complete keys on
+        if (stringKeyClosing !== undefined && !(parentVariablePath.length === 1 && parentVariablePath[0] === '')) {
+            result.stringKeyClosing = stringKeyClosing;
+        }
+        return result;
+    }
+
+    /**
+     * Compute the span of input text that a completion replaces: the run of identifier characters
+     * immediately before the cursor. This lets the client filter the list correctly as the user keeps
+     * typing past the first character.
+     *
+     * `start` is a 0-based offset into the line, NOT a client column. Per the Debug Adapter Protocol,
+     * `CompletionItem.start` is measured in UTF-16 code units and the client maps it to a position
+     * itself, so it must not be run through `toClientColumn` (unlike stack-frame, breakpoint, and scope
+     * positions). Our debugger column base is already 0-based, so the internal offset is sent as-is.
+     */
+    private getCompletionReplaceRange(args: DebugProtocol.CompletionsArguments): { start: number; length: number } {
+        const lines = args.text.split('\n');
+        const lineNumber = this.toDebuggerLine(args.line, 0);
+        const cursorOffset = this.toDebuggerColumn(args.column);
+        const targetLine = lines[lineNumber] ?? '';
+
+        const identifierChars = /[a-z0-9_]/i;
+        let wordStart = cursorOffset;
+        while (wordStart > 0 && identifierChars.test(targetLine[wordStart - 1])) {
+            wordStart--;
+        }
+        return {
+            start: wordStart,
+            length: cursorOffset - wordStart
+        };
+    }
+
+    /**
+     * Scan backwards from `column` to find the nearest opening bracket (`(`, `[`, or `{`) that has not
+     * been closed before the cursor. Returns the opener's index and character, or undefined if none.
+     */
+    private findUnclosedOpener(line: string, column: number): { index: number; char: string } {
+        let depth = 0;
+        for (let i = column - 1; i >= 0; i--) {
+            const char = line[i];
+            if (char === ')' || char === ']' || char === '}') {
+                depth++;
+            } else if (char === '(' || char === '[' || char === '{') {
+                if (depth === 0) {
+                    return { index: i, char: char };
+                }
+                depth--;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Resolve the parent variable for a completion request. Prefers the in-memory locals for the frame,
+     * then falls back to a device lookup. Device lookups are cached for the duration of the paused state
+     * (cleared by `clearState`) so repeated completion requests on the same path don't hammer the device.
+     */
+    private async resolveCompletionParentVariable(parentVariablePath: string[], frameId: number): Promise<AugmentedVariable> {
+        // For local-scope completions, make sure the frame's locals are fetched on demand. Otherwise they
+        // would only appear once the user expands the Variables panel (which is what triggers the fetch).
+        const isLocalScope = parentVariablePath.length === 1 && parentVariablePath[0] === '';
+        if (isLocalScope) {
+            const localsScope = this.getOrCreateLocalsScope(frameId);
+            if (!localsScope.isResolved) {
+                try {
+                    await this.populateScopeVariables(localsScope, { variablesReference: localsScope.variablesReference } as DebugProtocol.VariablesArguments);
+                } catch (error) {
+                    this.logger.debug('Could not populate locals for completions', error, { frameId });
+                }
+            }
+        }
+
+        const inMemory = this.findFrameVariableByPath(parentVariablePath, frameId);
+        if (inMemory && inMemory.childVariables.length > 0) {
+            return inMemory;
+        }
+
+        // Rebuild a valid accessor expression for the device lookup. Joining with `.` is wrong for indexed
+        // segments (ex: `m.services[0]` would become the invalid `m.services.0` and the index gets dropped).
+        const expression = this.buildVariableExpression(parentVariablePath);
+
+        const cacheKey = `${frameId}:${expression}`;
+        if (this.completionParentVariableCache.has(cacheKey)) {
+            return this.completionParentVariableCache.get(cacheKey);
+        }
+
+        let parentVariable: AugmentedVariable;
+        try {
+            let { evalArgs } = await this.evaluateExpressionToTempVar({ expression: expression, frameId: frameId }, parentVariablePath);
+            let result = await this.rokuAdapter.getVariable(evalArgs.expression, frameId);
+            parentVariable = await this.getVariableFromResult(result, frameId);
+        } catch (error) {
+            // A failed lookup is expected while the user is still typing an incomplete expression, so keep it quiet.
+            this.logger.debug('Could not resolve parent variable for completions', error, { parentVariablePath });
+            parentVariable = undefined;
+        }
+
+        this.completionParentVariableCache.set(cacheKey, parentVariable);
+        return parentVariable;
+    }
+
+    /**
+     * Rebuild a valid BrightScript accessor expression from a resolved variable path. String-literal keys
+     * arrive already quoted from `getVariablePath` and are emitted as `["key"]` so they stay case-sensitive
+     * on the device (Roku AAs can be set case-sensitive); numeric segments use `[index]`, and identifiers
+     * use dot access. This keeps array indices and string keys correct through the device lookup.
+     */
+    private buildVariableExpression(segments: string[]): string {
+        return segments.reduce((expression, segment, index) => {
+            if (index === 0) {
+                return segment;
+            }
+            //already-quoted string key (preserve the quotes so the device matches it case-sensitively).
+            //A lone `"` is not a quoted literal (the shortest is `""`), so require at least 2 chars.
+            if (segment.length >= 2 && segment.startsWith('"') && segment.endsWith('"')) {
+                return `${expression}[${segment}]`;
+            }
+            if (/^[0-9]+$/.test(segment)) {
+                return `${expression}[${segment}]`;
+            }
+            if (/^[a-z_][a-z0-9_]*$/i.test(segment)) {
+                return `${expression}.${segment}`;
+            }
+            return `${expression}["${segment.replace(/"/g, '""')}"]`;
+        }, '');
+    }
+
+    /**
+     * Normalize a variable path segment or variable name for matching: drop surrounding string-key quotes
+     * and lower-case it. BrightScript variables and dotted access are case-insensitive, and the device
+     * reports names lower-cased, so this lets the in-memory lookup find the parent regardless of the casing
+     * the user typed (ex: `topRef` matching the cached `topref`).
+     */
+    private normalizeVariableName(name: string): string {
+        let value = name ?? '';
+        if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+            value = value.slice(1, -1).replace(/""/g, '"');
+        }
+        return value.toLowerCase();
+    }
+
+    /**
+     * Resolve a variable path against the current frame's local scope. The first path segment is matched
+     * against the frame's locals (not the global pool of every materialized variable), then we walk down
+     * the child variables. The empty path (`['']`) resolves to the locals scope container itself.
+     */
+    private findFrameVariableByPath(path: string[], frameId: number): AugmentedVariable {
+        const localsContainer = this.variables[this.getEvaluateRefId('$$locals', frameId)];
+        if (path.length === 1 && path[0] === '') {
+            return localsContainer;
+        }
+        return this.findVariableByPath(localsContainer?.childVariables ?? [], path, frameId);
     }
 
     private findVariableByPath(variables: AugmentedVariable[], path: string[], frameId: number) {
         let current: AugmentedVariable = null;
         for (const name of path) {
-            // Find the object matching the current name in the data
+            const normalizedName = this.normalizeVariableName(name);
+            // Find the object matching the current name in the data (case-insensitive, per BrightScript)
             current = (Array.isArray(variables) ? variables : current?.childVariables)?.find(obj => {
-                return obj.name === name && obj.frameId === frameId;
+                return this.normalizeVariableName(obj.name) === normalizedName && obj.frameId === frameId;
             });
 
             // If no match is found, return null
@@ -2274,9 +3119,18 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      * @param args
      */
     protected async disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request) {
-        //return to the home screen
+        //return to the home screen — best effort. The device may already be powered off or unreachable
+        //at disconnect time; without a guard the home key press rejects (EHOSTDOWN / ECONNREFUSED / etc)
+        //and because @vscode/debugadapter dispatches this method without awaiting the returned Promise,
+        //that rejection escapes as an unhandledRejection and crashes the DAP process.
+        //See https://github.com/rokucommunity/vscode-brightscript-language/issues/807
+        //    https://github.com/rokucommunity/roku-debug/issues/332
         if (!this.enableDebugProtocol) {
-            await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+            try {
+                await this.rokuDeploy.keyPress({ device: this.launchConfiguration.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
+            } catch (e) {
+                this.logger.warn('Failed to press home button during disconnect; device may be unreachable', e);
+            }
         }
         this.sendResponse(response);
         await this.shutdown();
@@ -2299,7 +3153,11 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             await this.rokuAdapter.destroy();
             await this.ensureAppIsInactive();
             this.rokuAdapterDeferred = defer();
+            this.stagingDefered.tryResolve();
+            this.stagingDefered = defer();
         }
+        //the relaunch starts a new component library server on the same port, so free it first
+        await this.componentLibraryServer.stop();
         await this.launchRequest(response, args.arguments as LaunchConfiguration);
     }
 
@@ -2314,8 +3172,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
 
             try {
                 let appStateResult = await rokuECP.getAppState({
-                    host: this.launchConfiguration.host,
                     remotePort: this.launchConfiguration.remotePort,
+                    device: this.launchConfiguration.device,
                     appId: 'dev',
                     requestOptions: { timeout: 300 }
                 });
@@ -2328,8 +3186,8 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                     // If the app supports Instant Resume and is running in the background or the app does not support Instant Resume and is running, sending this command terminates the app.
                     // This means that we might need to send this command twice to terminate the app.
                     await rokuECP.exitApp({
-                        host: this.launchConfiguration.host,
                         remotePort: this.launchConfiguration.remotePort,
+                        device: this.launchConfiguration.device,
                         appId: 'dev',
                         requestOptions: { timeout: 300 }
                     });
@@ -2354,9 +3212,14 @@ export class BrightScriptDebugSession extends BaseDebugSession {
      */
     private async connectRokuAdapter() {
         this.rokuAdapter.on('start', () => {
+            this.sendLaunchProgress('end', 'Complete');
             if (!this.firstRunDeferred.isCompleted) {
                 this.firstRunDeferred.resolve();
             }
+        });
+
+        this.rokuAdapter.on('launch-status', (message) => {
+            this.sendLaunchProgress('update', message);
         });
 
         //when the debugger suspends (pauses for debugger input)
@@ -2422,9 +3285,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             threads.map(async (thread) => {
                 const stackTrace = await this.rokuAdapter.getStackTrace(thread.threadId);
                 const stackTraceLineNumber = stackTrace[0]?.lineNumber;
-                if (stackTraceLineNumber !== thread.lineNumber) {
+                const stackTraceFilePath = stackTrace[0]?.filePath;
+                // Only apply the line correction when we actually have valid data — never clobber
+                // thread.filePath with undefined, which would crash getSourceLocation downstream.
+                if (stackTraceLineNumber !== undefined && stackTraceLineNumber !== thread.lineNumber) {
                     this.logger.warn(`Thread ${thread.threadId} reported incorrect line (${thread.lineNumber}). Using line from stack trace instead (${stackTraceLineNumber})`, thread, stackTrace);
                     thread.lineNumber = stackTraceLineNumber;
+                    thread.filePath = stackTraceFilePath ?? thread.filePath;
                 }
             })
         );
@@ -2434,7 +3301,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
                 let sourceLocation = await this.projectManager.getSourceLocation(thread.filePath, thread.lineNumber);
                 // This stop was due to a breakpoint that we tried to delete, but couldn't.
                 // Now that we are stopped, we can delete it. We won't stop here again unless you re-add the breakpoint. You're welcome.
-                if ((bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
+                if (sourceLocation && (bp.srcPath === sourceLocation.filePath) && (bp.line === sourceLocation.lineNumber)) {
                     this.showPopupMessage(`Stopped at breakpoint that failed to delete. Deleting now, and should not cause future stops.`, 'info').catch((error) => {
                         this.logger.error('Error showing popup message', { error });
                     });
@@ -2627,6 +3494,37 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     private clearState() {
         //erase all cached variables
         this.variables = {};
+        this.completionParentVariableCache.clear();
+    }
+
+    /**
+     * Sends a launch progress event to the client if the client supports progress reporting.
+     * - `'start'`: begins a new progress bar with the given message. Assigns a new progressId.
+     * - `'update'`: updates the message on the active progress bar.
+     * - `'end'`: dismisses the active progress bar with an optional final message.
+     */
+    private sendLaunchProgress(type: 'start' | 'update' | 'end', message?: string) {
+        if (!this.initRequestArgs?.supportsProgressReporting) {
+            return;
+        }
+        if (type === 'start') {
+            this.launchProgressId = `rokudebug-launch-${this.idCounter++}`;
+            this.sendEvent(new ProgressStartEvent(this.launchProgressId, 'Launching', `${message}...`));
+        } else if (this.launchProgressId) {
+            if (type === 'update') {
+                this.sendEvent(new ProgressUpdateEvent(this.launchProgressId, `${message}...`));
+            } else {
+                const lastId = this.launchProgressId;
+                this.sendEvent(new ProgressUpdateEvent(lastId, message));
+                const endTimer = setTimeout(() => this.flushLaunchProgressEnd?.(), 1000); // add a slight delay before ending the progress to improve UX
+                this.flushLaunchProgressEnd = () => {
+                    clearTimeout(endTimer);
+                    this.flushLaunchProgressEnd = undefined;
+                    this.sendEvent(new ProgressEndEvent(lastId, message));
+                };
+                this.launchProgressId = undefined;
+            }
+        }
     }
 
     /**
@@ -2712,7 +3610,16 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     public async shutdown(errorMessage?: string, modal = false): Promise<void> {
         if (this.shutdownPromise === undefined) {
             this.logger.log('[shutdown] Beginning shutdown sequence', errorMessage);
-            this.shutdownPromise = this._shutdown(errorMessage, modal);
+            //Backstop: if the graceful shutdown hangs (e.g. a home key press against an unreachable
+            //device), force-exit anyway so we never leave an orphaned adapter running forever
+            const forceExitTimer = setTimeout(() => {
+                this.logger.error('[shutdown] graceful shutdown timed out; forcing exit');
+                this.forceExit();
+            }, this.shutdownForceExitTimeout);
+            forceExitTimer.unref?.();
+            this.shutdownPromise = this._shutdown(errorMessage, modal).finally(() => {
+                clearTimeout(forceExitTimer);
+            });
         } else {
             this.logger.log('[shutdown] Tried to call `.shutdown()` again. Returning the same promise');
         }
@@ -2720,6 +3627,13 @@ export class BrightScriptDebugSession extends BaseDebugSession {
     }
 
     private async _shutdown(errorMessage?: string, modal = false): Promise<void> {
+        // Ensure any active launch progress bar is dismissed before showing error messages or the terminated event.
+        this.sendLaunchProgress('end', 'Complete');
+        // 'end' defers its ProgressEndEvent for UX; deliver it right now (whether from the line above or from an
+        // earlier 'end' whose delay has not elapsed yet) - the adapter exits before a pending timer would fire,
+        // which would leave the client's progress notification stuck open
+        this.flushLaunchProgressEnd?.();
+
         //send the message FIRST before anything else. This improves the chances that the message will be displayed to the user
         try {
             if (errorMessage) {
@@ -2733,7 +3647,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
         // stop perfetto tracing if it's running
         try {
-            await this.perfettoManager.stopTracing();
+            await this.perfettoManager?.stopTracing?.();
         } catch (e) {
             this.logger.error('Error stopping perfetto tracing', e);
         }
@@ -2751,7 +3665,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             //press the home button to return to the home screen
             try {
                 this.logger.log('Press home button');
-                await this.rokuDeploy.pressHomeButton(this.launchConfiguration.host, this.launchConfiguration.remotePort);
+                await this.rokuDeploy.keyPress({ device: this.launchConfiguration.device, key: 'Home', ecpPort: this.launchConfiguration.remotePort });
             } catch (e) {
                 this.logger.error(e);
             }
@@ -2766,7 +3680,7 @@ export class BrightScriptDebugSession extends BaseDebugSession {
         }
 
         try {
-            this.componentLibraryServer?.stop();
+            await this.componentLibraryServer?.stop();
         } catch (e) {
             this.logger.error(e);
         }
@@ -2809,6 +3723,12 @@ export class BrightScriptDebugSession extends BaseDebugSession {
             this.logger.log('super.shutdown()');
             super.shutdown();
             this.logger.log('shutdown complete');
+        } catch (e) {
+            this.logger.error(e);
+        }
+
+        try {
+            this.teardownProcessErrorHandlers();
         } catch (e) {
             this.logger.error(e);
         }

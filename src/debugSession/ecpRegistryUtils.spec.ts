@@ -1,10 +1,9 @@
 import { expect } from 'chai';
-import type { Response } from 'request';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import type { AugmentedVariable } from './BrightScriptDebugSession';
 import { BrightScriptDebugSession } from './BrightScriptDebugSession';
 import { populateVariableFromRegistryEcp } from './ecpRegistryUtils';
-import { rokuECP } from '../RokuECP';
+import { rokuDeploy } from 'roku-deploy';
 import { createSandbox } from 'sinon';
 
 const sinon = createSandbox();
@@ -14,6 +13,7 @@ describe('ecpRegistryUtils', () => {
 
     beforeEach(() => {
         session = new BrightScriptDebugSession();
+        session['publishTimeout'] = 1_000;
     });
 
     afterEach(() => {
@@ -43,17 +43,11 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
-                    body: `
-                        <plugin-registry>
-                        <status>OK</status>
-                        <error>Plugin dev not found</error>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                } as Response));
+                sinon.stub(rokuDeploy, 'getRegistry').resolves({
+                    sections: {}
+                });
 
-                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
+                await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'sections',
@@ -70,21 +64,23 @@ describe('ecpRegistryUtils', () => {
                         childVariables: []
                     }]
                 });
-                expect(session['variables']).to.eql({ 1: {
-                    name: 'sections',
-                    namedVariables: 1,
-                    type: VariableType.AssociativeArray,
-                    value: VariableType.AssociativeArray,
-                    variablesReference: 1,
-                    childVariables: [{
-                        name: '$count',
-                        presentationHint: { kind: 'virtual' },
-                        type: VariableType.Integer,
-                        value: '0',
-                        variablesReference: 0,
-                        childVariables: []
-                    }]
-                } });
+                expect(session['variables']).to.eql({
+                    1: {
+                        name: 'sections',
+                        namedVariables: 1,
+                        type: VariableType.AssociativeArray,
+                        value: VariableType.AssociativeArray,
+                        variablesReference: 1,
+                        childVariables: [{
+                            name: '$count',
+                            presentationHint: { kind: 'virtual' },
+                            type: VariableType.Integer,
+                            value: '0',
+                            variablesReference: 0,
+                            childVariables: []
+                        }]
+                    }
+                });
             });
 
             it('handles ok response with empty sections', async () => {
@@ -96,23 +92,14 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <plugin-registry>
-                            <registry>
-                                <dev-id>12345</dev-id>
-                                <plugins>12,34,dev</plugins>
-                                <space-available>28075</space-available>
-                                <sections />
-                            </registry>
-                            <status>OK</status>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                } as Response));
+                sinon.stub(rokuDeploy, 'getRegistry').resolves({
+                    devId: '12345',
+                    plugins: ['12', '34', 'dev'],
+                    spaceAvailable: '28075',
+                    sections: {}
+                });
 
-                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
+                await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(4);
                 expect(v.childVariables[0]).to.eql({
                     name: 'devId',
@@ -188,46 +175,22 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
-                    body: `
-                        <?xml version="1.0" encoding="UTF-8" ?>
-                        <plugin-registry>
-                            <registry>
-                                <dev-id>12345</dev-id>
-                                <plugins>dev</plugins>
-                                <space-available>32590</space-available>
-                                <sections>
-                                    <section>
-                                        <name>section One</name>
-                                        <items>
-                                            <item>
-                                                <key>first key in section one</key>
-                                                <value>value one section one</value>
-                                            </item>
-                                        </items>
-                                    </section>
-                                    <section>
-                                        <name>section Two</name>
-                                        <items>
-                                            <item>
-                                                <key>first key in section two</key>
-                                                <value>value one section two</value>
-                                            </item>
-                                            <item>
-                                                <key>second key in section two</key>
-                                                <value>value two section two</value>
-                                            </item>
-                                        </items>
-                                    </section>
-                                </sections>
-                            </registry>
-                            <status>OK</status>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                } as Response));
+                sinon.stub(rokuDeploy, 'getRegistry').resolves({
+                    devId: '12345',
+                    plugins: ['dev'],
+                    spaceAvailable: '32590',
+                    sections: {
+                        'section One': {
+                            'first key in section one': 'value one section one'
+                        },
+                        'section Two': {
+                            'first key in section two': 'value one section two',
+                            'second key in section two': 'value two section two'
+                        }
+                    }
+                });
 
-                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
+                await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(4);
                 expect(v.childVariables[0]).to.eql({
                     name: 'devId',
@@ -352,21 +315,13 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
-                    body: `
-                        <plugin-registry>
-                            <status>FAILED</status>
-                            <error>Plugin dev not found</error>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                } as Response));
+                sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: Plugin dev not found'));
 
-                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
+                await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'error',
-                    value: `❌ Error: Plugin dev not found`,
+                    value: `❌ Error: Could not retrieve registry: Plugin dev not found`,
                     variablesReference: 0,
                     type: VariableType.String,
                     childVariables: []
@@ -382,21 +337,13 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
-                    body: `
-                        <plugin-registry>
-                            <status>FAILED</status>
-                            <error>Device not keyed</error>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                } as Response));
+                sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: Device not keyed'));
 
-                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
+                await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'error',
-                    value: `❌ Error: Device not keyed`,
+                    value: `❌ Error: Could not retrieve registry: Device not keyed`,
                     variablesReference: 0,
                     type: VariableType.String,
                     childVariables: []
@@ -412,20 +359,13 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
-                    body: `
-                        <plugin-registry>
-                            <status>FAILED</status>
-                        </plugin-registry>
-                    `,
-                    statusCode: 200
-                } as Response));
+                sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: Unknown error'));
 
-                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
+                await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'error',
-                    value: `❌ Error: Unknown error`,
+                    value: `❌ Error: Could not retrieve registry: Unknown error`,
                     variablesReference: 0,
                     type: VariableType.String,
                     childVariables: []
@@ -441,16 +381,16 @@ describe('ecpRegistryUtils', () => {
                     childVariables: []
                 };
 
-                sinon.stub(rokuECP as any, 'doRequest').returns(Promise.resolve({
-                    body: `ECP command not allowed in Limited mode.`,
-                    statusCode: 403
-                } as Response));
+                //roku-deploy throws an UnparsableDeviceResponseError carrying the device's
+                //plain-text explanation when the response body is not xml (a limited-mode refusal,
+                //for example), so that text still reaches the variables pane
+                sinon.stub(rokuDeploy, 'getRegistry').rejects(new Error('Could not retrieve registry: ECP command not allowed in Limited mode.'));
 
-                await populateVariableFromRegistryEcp({ host: '', appId: '' }, v, session['variables'], refFactory);
+                await populateVariableFromRegistryEcp({ device: { host: '' }, appId: '' }, v, session['variables'], refFactory);
                 expect(v.childVariables.length).to.eql(1);
                 expect(v.childVariables[0]).to.eql({
                     name: 'error',
-                    value: `❌ Error: ECP command not allowed in Limited mode.`,
+                    value: `❌ Error: Could not retrieve registry: ECP command not allowed in Limited mode.`,
                     variablesReference: 0,
                     type: VariableType.String,
                     childVariables: []

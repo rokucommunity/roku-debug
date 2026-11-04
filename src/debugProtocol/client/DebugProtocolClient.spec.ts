@@ -1,5 +1,6 @@
 /* eslint-disable no-bitwise */
 import { DebugProtocolClient } from './DebugProtocolClient';
+import { ProtocolCapabilities } from './ProtocolCapabilities';
 import { expect } from 'chai';
 import { createSandbox } from 'sinon';
 import { Command, ErrorCode, StepType, StopReason } from '../Constants';
@@ -7,7 +8,7 @@ import { DebugProtocolServer } from '../server/DebugProtocolServer';
 import { defer, util } from '../../util';
 import { HandshakeRequest } from '../events/requests/HandshakeRequest';
 import { HandshakeResponse } from '../events/responses/HandshakeResponse';
-import type { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
+import { HandshakeV3Response } from '../events/responses/HandshakeV3Response';
 import { AllThreadsStoppedUpdate } from '../events/updates/AllThreadsStoppedUpdate';
 import type { Variable } from '../events/responses/VariablesResponse';
 import { VariablesResponse, VariableType } from '../events/responses/VariablesResponse';
@@ -62,22 +63,30 @@ describe('DebugProtocolClient', () => {
         ]);
     }
 
+    /**
+     * Builds a raw v3 update packet whose update type isn't handled by `getUpdate()`, so the client
+     * treats it as unsupported and routes it through `discardNextResponseOrUpdate()`.
+     */
+    function buildUnrecognizedUpdatePacket(packetLength: number) {
+        const packetBuffer = Buffer.alloc(packetLength);
+        packetBuffer.writeUInt32LE(packetLength, 0); // packet_length
+        packetBuffer.writeUInt32LE(0, 4); // request_id (0 means this is an update)
+        packetBuffer.writeUInt32LE(ErrorCode.OK, 8); // error_code
+        packetBuffer.writeUInt32LE(999999, 12); // update_type (not a recognized UpdateTypeCode)
+        return packetBuffer;
+    }
+
     beforeEach(async () => {
         sinon.stub(console, 'log').callsFake((...args) => { });
 
-        const options = {
-            controlPort: undefined as number,
-            host: '127.0.0.1'
-        };
+        const controlPort = await util.getPort();
 
-        if (!options.controlPort) {
-            options.controlPort = await util.getPort();
-        }
-        server = new DebugProtocolServer(options);
+        //`host` is the DebugProtocolServer bind address; the client addresses its sockets by `device`
+        server = new DebugProtocolServer({ controlPort: controlPort, host: '127.0.0.1' });
         plugin = server.plugins.add(new DebugProtocolServerTestPlugin());
         await server.start();
 
-        client = new DebugProtocolClient(options);
+        client = new DebugProtocolClient({ controlPort: controlPort, device: { host: '127.0.0.1' } });
         //disable logging for tests because they clutter the test output
         client['logger'].logLevel = 'off';
     });
@@ -96,24 +105,24 @@ describe('DebugProtocolClient', () => {
 
     it('knows when to enable the thread hopping workaround', () => {
         //only supported below version 3.1.0
-        client.protocolVersion = '1.0.0';
+        client.capabilities = new ProtocolCapabilities('1.0.0');
         expect(
-            client['enableThreadHoppingWorkaround']
+            client.capabilities.enableThreadHoppingWorkaround
         ).to.be.true;
 
-        client.protocolVersion = '3.0.0';
+        client.capabilities = new ProtocolCapabilities('3.0.0');
         expect(
-            client['enableThreadHoppingWorkaround']
+            client.capabilities.enableThreadHoppingWorkaround
         ).to.be.true;
 
-        client.protocolVersion = '3.1.0';
+        client.capabilities = new ProtocolCapabilities('3.1.0');
         expect(
-            client['enableThreadHoppingWorkaround']
+            client.capabilities.enableThreadHoppingWorkaround
         ).to.be.false;
 
-        client.protocolVersion = '4.0.0';
+        client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
-            client['enableThreadHoppingWorkaround']
+            client.capabilities.enableThreadHoppingWorkaround
         ).to.be.false;
     });
 
@@ -239,6 +248,7 @@ describe('DebugProtocolClient', () => {
         function thread(extra?: Partial<ThreadInfo>) {
             return {
                 isPrimary: true,
+                isDetached: false,
                 stopReason: StopReason.Break,
                 stopReasonDetail: 'because',
                 lineNumber: 2,
@@ -271,7 +281,7 @@ describe('DebugProtocolClient', () => {
 
         it('ignores the `isPrimary` flag when threadHoppingWorkaround is enabled', async () => {
             await connect();
-            client.protocolVersion = '2.0.0';
+            client.capabilities = new ProtocolCapabilities('2.0.0');
             client.primaryThread = 0;
             plugin.pushResponse(ThreadsResponse.fromJson({
                 requestId: 1,
@@ -291,7 +301,7 @@ describe('DebugProtocolClient', () => {
 
         it('honors the `isPrimary` flag when threadHoppingWorkaround is disabled', async () => {
             await connect();
-            client.protocolVersion = '3.1.0';
+            client.capabilities = new ProtocolCapabilities('3.1.0');
             client.primaryThread = 0;
             plugin.pushResponse(ThreadsResponse.fromJson({
                 requestId: 1,
@@ -307,6 +317,45 @@ describe('DebugProtocolClient', () => {
 
             await client.threads();
             expect(client?.primaryThread).to.eql(1);
+        });
+
+        it('sets includeIdentityInfo to false when protocol version < 3.5.0', async () => {
+            await connect();
+            client.capabilities = new ProtocolCapabilities('3.4.0');
+            plugin.pushResponse(ThreadsResponse.fromJson({
+                requestId: 1,
+                threads: [thread()]
+            }));
+
+            await client.threads();
+            const request = plugin.getLatestRequest<any>();
+            expect(request.data.includeIdentityInfo).to.be.false;
+        });
+
+        it('sets includeIdentityInfo to true when protocol version >= 3.5.0', async () => {
+            await connect();
+            client.capabilities = new ProtocolCapabilities('3.5.0');
+            plugin.pushResponse(ThreadsResponse.fromJson({
+                requestId: 1,
+                threads: [thread()]
+            }));
+
+            await client.threads();
+            const request = plugin.getLatestRequest<any>();
+            expect(request.data.includeIdentityInfo).to.be.true;
+        });
+
+        it('sets includeIdentityInfo to false when capabilities is undefined', async () => {
+            await connect();
+            client.capabilities = undefined;
+            plugin.pushResponse(ThreadsResponse.fromJson({
+                requestId: 1,
+                threads: [thread()]
+            }));
+
+            await client.threads();
+            const request = plugin.getLatestRequest<any>();
+            expect(request.data.includeIdentityInfo).to.be.false;
         });
     });
 
@@ -377,7 +426,7 @@ describe('DebugProtocolClient', () => {
 
         it('sends AddBreakpointsRequest when conditional breakpoints are NOT supported', async () => {
             await connect();
-            client.protocolVersion = '2.0.0';
+            client.capabilities = new ProtocolCapabilities('2.0.0');
 
             //response structure doesn't matter, we're verifying that the request was properly built
             plugin.pushResponse(AddBreakpointsResponse.fromJson({} as any));
@@ -393,7 +442,7 @@ describe('DebugProtocolClient', () => {
 
         it('sends AddConditionalBreakpointsRequest when conditional breakpoints ARE supported', async () => {
             await connect();
-            client.protocolVersion = '3.1.0';
+            client.capabilities = new ProtocolCapabilities('3.1.0');
 
             //response structure doesn't matter, we're verifying that the request was properly built
             plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
@@ -409,7 +458,7 @@ describe('DebugProtocolClient', () => {
 
         it('includes complib prefix when supported', async () => {
             await connect();
-            client.protocolVersion = '3.1.0';
+            client.capabilities = new ProtocolCapabilities('3.1.0');
 
             //response structure doesn't matter, we're verifying that the request was properly built
             plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
@@ -424,7 +473,7 @@ describe('DebugProtocolClient', () => {
 
         it('excludes complib prefix when not supported', async () => {
             await connect();
-            client.protocolVersion = '2.0.0';
+            client.capabilities = new ProtocolCapabilities('2.0.0');
 
             //response structure doesn't matter, we're verifying that the request was properly built
             plugin.pushResponse(AddConditionalBreakpointsResponse.fromJson({} as any));
@@ -479,70 +528,98 @@ describe('DebugProtocolClient', () => {
 
     it('knows when to enable complib specific breakpoints', () => {
         //only supported on version 3.1.0 and above
-        client.protocolVersion = '1.0.0';
+        client.capabilities = new ProtocolCapabilities('1.0.0');
         expect(
-            client['enableComponentLibrarySpecificBreakpoints']
+            client.capabilities.enableComponentLibrarySpecificBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.0.0';
+        client.capabilities = new ProtocolCapabilities('3.0.0');
         expect(
-            client['enableComponentLibrarySpecificBreakpoints']
+            client.capabilities.enableComponentLibrarySpecificBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.1.0';
+        client.capabilities = new ProtocolCapabilities('3.1.0');
         expect(
-            client['enableComponentLibrarySpecificBreakpoints']
+            client.capabilities.enableComponentLibrarySpecificBreakpoints
         ).to.be.true;
 
-        client.protocolVersion = '4.0.0';
+        client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
-            client['enableComponentLibrarySpecificBreakpoints']
+            client.capabilities.enableComponentLibrarySpecificBreakpoints
         ).to.be.true;
     });
 
     it('knows when to enable conditional breakpoints', () => {
         //only supported on version 3.1.0 and above
-        client.protocolVersion = '1.0.0';
+        client.capabilities = new ProtocolCapabilities('1.0.0');
         expect(
-            client['supportsConditionalBreakpoints']
+            client.capabilities.supportsConditionalBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.0.0';
+        client.capabilities = new ProtocolCapabilities('3.0.0');
         expect(
-            client['supportsConditionalBreakpoints']
+            client.capabilities.supportsConditionalBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.1.0';
+        client.capabilities = new ProtocolCapabilities('3.1.0');
         expect(
-            client['supportsConditionalBreakpoints']
+            client.capabilities.supportsConditionalBreakpoints
         ).to.be.true;
 
-        client.protocolVersion = '4.0.0';
+        client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
-            client['supportsConditionalBreakpoints']
+            client.capabilities.supportsConditionalBreakpoints
         ).to.be.true;
     });
 
     it('knows when to enable exception breakpoint filters', () => {
         //only supported on version 3.3.0 and above
-        client.protocolVersion = '1.0.0';
+        client.capabilities = new ProtocolCapabilities('1.0.0');
         expect(
-            client['supportsExceptionBreakpoints']
+            client.capabilities.supportsExceptionBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.0.0';
+        client.capabilities = new ProtocolCapabilities('3.0.0');
         expect(
-            client['supportsExceptionBreakpoints']
+            client.capabilities.supportsExceptionBreakpoints
         ).to.be.false;
 
-        client.protocolVersion = '3.3.0';
+        client.capabilities = new ProtocolCapabilities('3.3.0');
         expect(
-            client['supportsExceptionBreakpoints']
+            client.capabilities.supportsExceptionBreakpoints
         ).to.be.true;
 
-        client.protocolVersion = '4.0.0';
+        client.capabilities = new ProtocolCapabilities('4.0.0');
         expect(
-            client['supportsExceptionBreakpoints']
+            client.capabilities.supportsExceptionBreakpoints
+        ).to.be.true;
+    });
+
+    it('knows when to enable thread identity info', () => {
+        //only supported on version 3.5.0 and above
+        client.capabilities = new ProtocolCapabilities('1.0.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
+        ).to.be.false;
+
+        client.capabilities = new ProtocolCapabilities('3.0.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
+        ).to.be.false;
+
+        client.capabilities = new ProtocolCapabilities('3.4.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
+        ).to.be.false;
+
+        client.capabilities = new ProtocolCapabilities('3.5.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
+        ).to.be.true;
+
+        client.capabilities = new ProtocolCapabilities('4.0.0');
+        expect(
+            client.capabilities.supportsThreadIdentityInfo
         ).to.be.true;
     });
 
@@ -583,6 +660,117 @@ describe('DebugProtocolClient', () => {
 
         expect(client.watchPacketLength).to.be.equal(false);
         expect(client.isHandshakeComplete).to.be.equal(true);
+    });
+
+    it('waits for the rest of a fragmented handshake instead of discarding it', async () => {
+        const handshakeBuffer = HandshakeV3Response.fromJson({
+            magic: DebugProtocolClient.DEBUGGER_MAGIC,
+            protocolVersion: '3.5.0',
+            revisionTimestamp: new Date(2022, 1, 1)
+        }).toBuffer();
+
+        //feed only the first chunk of the handshake, as if the transport split the write mid-magic/version
+        const firstChunkLength = 20;
+        client['buffer'] = handshakeBuffer.slice(0, firstChunkLength);
+        await client['process']();
+
+        //the partial handshake must not be discarded, and the handshake must not be considered complete yet
+        expect(client['buffer'].length).to.equal(firstChunkLength);
+        expect(client.isHandshakeComplete).to.be.false;
+
+        //now the rest of the handshake arrives
+        client['buffer'] = Buffer.concat([client['buffer'], handshakeBuffer.slice(firstChunkLength)] as any[]);
+        await client['process']();
+
+        expect(client.isHandshakeComplete).to.be.true;
+        expect(client.protocolVersion).to.equal('3.5.0');
+    });
+
+    it('never discards a pre-handshake buffer even when the length guard alone would allow it', async () => {
+        //first 4 bytes decode to a small little-endian packet_length that is well within the buffer's own
+        //length, so the length guard alone would let this through. only the handshake guard should stop it
+        const buffer = Buffer.alloc(12);
+        buffer.writeUInt32LE(8, 0); // would-be packet_length (requestId and errorCode default to zero)
+        client['buffer'] = buffer;
+
+        await client['process']();
+
+        expect(client['buffer'].length).to.equal(12);
+        expect(client.isHandshakeComplete).to.be.false;
+    });
+
+    it('waits for the rest of a fragmented post-handshake packet instead of discarding it', async () => {
+        //simulate a completed handshake without going through the full connect flow
+        client.watchPacketLength = true;
+        client.isHandshakeComplete = true;
+
+        const unrecognizedPacket = buildUnrecognizedUpdatePacket(40);
+        const alignedUpdate = AllThreadsStoppedUpdate.fromJson({
+            threadIndex: 5,
+            stopReason: StopReason.Break,
+            stopReasonDetail: 'aligned'
+        }).toBuffer();
+
+        //feed only the first part of the packet, fewer bytes than its packet_length
+        const firstChunkLength = 20;
+        client['buffer'] = unrecognizedPacket.slice(0, firstChunkLength);
+        await client['process']();
+
+        //there aren't enough bytes to satisfy packet_length yet, so nothing should be discarded
+        expect(client['buffer'].length).to.equal(firstChunkLength);
+
+        //the rest of the unrecognized packet arrives, immediately followed by a real update
+        client['buffer'] = Buffer.concat([
+            client['buffer'],
+            unrecognizedPacket.slice(firstChunkLength),
+            alignedUpdate
+        ] as any[]);
+
+        const receivedUpdatePromise = client.once('update');
+
+        //drain the buffer: one call discards the unrecognized packet, the next parses the aligned update
+        for (let iteration = 0; iteration < 5 && client['buffer'].length > 0; iteration++) {
+            await client['process']();
+        }
+
+        //the discard consumed exactly the unrecognized packet's bytes, so the aligned update parsed cleanly
+        expect(client['buffer'].length).to.equal(0);
+        expect((await receivedUpdatePromise).data).to.include({
+            threadIndex: 5,
+            stopReasonDetail: 'aligned'
+        });
+    });
+
+    it('parses a valid packet that arrives in the same chunk right behind a discarded unrecognized packet', async () => {
+        await client.connect();
+
+        const unrecognizedPacket = buildUnrecognizedUpdatePacket(40);
+        const alignedUpdate = AllThreadsStoppedUpdate.fromJson({
+            threadIndex: 7,
+            stopReason: StopReason.Break,
+            stopReasonDetail: 'same-chunk'
+        }).toBuffer();
+
+        const receivedUpdatePromise = client.once('update');
+
+        //emit both packets as a single 'data' event on the control socket, driving the client's real
+        //drain loop instead of calling process() ourselves, so the loop's early-exit bug can surface
+        client['controlSocket'].emit('data', Buffer.concat([unrecognizedPacket, alignedUpdate] as any[]));
+
+        expect((await receivedUpdatePromise).data).to.include({
+            threadIndex: 7,
+            stopReasonDetail: 'same-chunk'
+        });
+    });
+
+    it('discards a complete unrecognized packet in one shot', async () => {
+        client.watchPacketLength = true;
+        client.isHandshakeComplete = true;
+
+        client['buffer'] = buildUnrecognizedUpdatePacket(40);
+        await client['process']();
+
+        expect(client['buffer'].length).to.equal(0);
     });
 
     it('discards unrecognized updates', async () => {
@@ -1018,7 +1206,7 @@ describe('DebugProtocolClient', () => {
             ]);
 
             // force the protocolVersion to 2.0.0 for this test
-            client.protocolVersion = '2.0.0';
+            client.capabilities = new ProtocolCapabilities('2.0.0');
 
             plugin.pushResponse(VariablesResponse.fromJson({
                 requestId: -1, // overridden in the plugin
@@ -1050,7 +1238,7 @@ describe('DebugProtocolClient', () => {
             } as VariablesRequest['data']);
 
             // force the protocolVersion to 3.1.0 for this test
-            client.protocolVersion = '3.1.0';
+            client.capabilities = new ProtocolCapabilities('3.1.0');
 
             plugin.pushResponse(VariablesResponse.fromJson({
                 requestId: -1, // overridden in the plugin
@@ -1080,6 +1268,24 @@ describe('DebugProtocolClient', () => {
                     forceCaseInsensitive: false
                 }]
             } as VariablesRequest['data']);
+        });
+
+        it('strips surrounding quotes and un-escapes doubled quotes in string-key path entries', async () => {
+            await connect();
+
+            plugin.pushResponse(VariablesResponse.fromJson({
+                requestId: 1,
+                variables: []
+            }));
+
+            //getVariablePath yields the raw token text for string keys: `"spoof"`, `"a""b"`, and `""""`.
+            //In BrightScript a `"` inside a string is escaped as `""`, so the device must receive the
+            //un-escaped key (ex: `""""` is the single character `"`).
+            await client.getVariables(['m', '"spoof"', '"a""b"', '""""']);
+
+            expect(
+                plugin.getRequest<VariablesRequest>(-1).data.variablePathEntries.map(x => x.name)
+            ).to.eql(['m', 'spoof', 'a"b', '"']);
         });
     });
 

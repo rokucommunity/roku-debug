@@ -72,6 +72,150 @@ describe('CompileErrorProcessor', () => {
             ).to.eql([]);
         });
 
+        describe('launch-status', () => {
+            function getLaunchStatusMessages(text: string) {
+                const messages: string[] = [];
+                compiler.on('launch-status', (msg) => messages.push(msg));
+                compiler.processUnhandledLines(text);
+                clock.tick(100);
+                return messages;
+            }
+
+            it('emits "Starting" for AppLaunchInitiate', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:26.231 app  [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)`
+                )).to.eql(['Starting']);
+            });
+
+            it('emits "Compiling" for AppCompileInitiate', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:26.231 app  [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)`
+                )).to.eql(['Compiling']);
+            });
+
+            it('emits "Loading markup" for scrpt.load.mkup', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'APP_NAME'`
+                )).to.eql(['Loading markup']);
+            });
+
+            it('emits "Scripts compiled" for scrpt.ctx.cmpl.time', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'APP_NAME', id 'dev' in 155 ms (BCVer:0), thrd 6515`
+                )).to.eql(['Scripts compiled']);
+            });
+
+            it('emits "Compile complete" for AppCompileComplete', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:26.549 app  [beacon.signal] |AppCompileComplete --------> Duration(319 ms)`
+                )).to.eql(['Compile complete']);
+            });
+
+            it('emits "Showing splash screen" for AppSplashInitiate', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:26.646 app  [beacon.signal] |AppSplashInitiate ---------> TimeBase(15 ms)`
+                )).to.eql(['Showing splash screen']);
+            });
+
+            it('emits "Splash screen complete" for AppSplashComplete', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:27.389 app  [beacon.signal] |AppSplashComplete ---------> Duration(743 ms)`
+                )).to.eql(['Splash screen complete']);
+            });
+
+            it('emits "Running" for the Running banner line', () => {
+                expect(getLaunchStatusMessages(
+                    `------ Running dev 'APP_NAME' main ------`
+                )).to.eql(['Running']);
+            });
+
+            it('emits "Waiting for debugger" for plg.dbg.conn.wait', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:27.949 sdkl [plg.dbg.conn.wait] Waiting for debugging connection`
+                )).to.eql(['Waiting for debugger']);
+            });
+
+            it('emits "Debugger connected" for plg.dbg.conn.ok', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:27.979 sdkl [plg.dbg.conn.ok] remote debugger connected`
+                )).to.eql(['Debugger connected']);
+            });
+
+            it('does not emit for unrecognized lines', () => {
+                expect(getLaunchStatusMessages(
+                    `03-20 14:33:26.266 app  [scrpt.unload.mkup] Unloading markup dev 'APP_NAME'`
+                )).to.eql([]);
+            });
+
+            it('emits status messages in order for a complete successful launch sequence', () => {
+                const messages = getLaunchStatusMessages(dedent`
+                    03-20 14:33:26.231 app  [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
+                    03-20 14:33:26.231 app  [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)
+                    03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'APP_NAME'
+                    03-20 14:33:26.266 app  [scrpt.unload.mkup] Unloading markup dev 'APP_NAME'
+                    03-20 14:33:26.272 app  [scrpt.parse.mkup.time] Parsed markup dev 'APP_NAME' in 7 milliseconds
+
+                    ------ Compiling dev 'APP_NAME' ------
+                    03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'APP_NAME', id 'dev' in 155 ms (BCVer:0), thrd 6515
+                    03-20 14:33:26.549 app  [beacon.signal] |AppCompileComplete --------> Duration(319 ms)
+                    03-20 14:33:26.646 app  [beacon.signal] |AppSplashInitiate ---------> TimeBase(15 ms)
+                    03-20 14:33:27.389 app  [beacon.signal] |AppSplashComplete ---------> Duration(743 ms)
+
+                    ------ Running dev 'APP_NAME' main ------
+                    03-20 14:33:27.949 sdkl [plg.dbg.conn.wait] Waiting for debugging connection
+                    03-20 14:33:27.979 sdkl [plg.dbg.conn.ok] remote debugger connected
+                `);
+                expect(messages).to.eql([
+                    'Starting',
+                    'Compiling',
+                    'Loading markup',
+                    'Scripts compiled',
+                    'Compile complete',
+                    'Showing splash screen',
+                    'Splash screen complete',
+                    'Running',
+                    'Waiting for debugger',
+                    'Debugger connected'
+                ]);
+            });
+
+            it('emits statuses for both app and sdkl compile phases when a component library is present', () => {
+                const messages = getLaunchStatusMessages(dedent`
+                    03-20 14:33:26.231 app  [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
+                    03-20 14:33:26.231 app  [beacon.signal] |AppCompileInitiate --------> TimeBase(0 ms)
+                    03-20 14:33:26.264 app  [scrpt.load.mkup] Loading markup dev 'APP_NAME'
+                    03-20 14:33:26.427 app  [scrpt.ctx.cmpl.time] Compiled 'APP_NAME', id 'dev' in 155 ms (BCVer:0), thrd 6515
+                    03-20 14:33:26.549 app  [beacon.signal] |AppCompileComplete --------> Duration(319 ms)
+                    03-20 14:33:26.646 app  [beacon.signal] |AppSplashInitiate ---------> TimeBase(15 ms)
+                    03-20 14:33:27.389 app  [beacon.signal] |AppSplashComplete ---------> Duration(743 ms)
+                    03-20 14:33:27.567 sdkl [beacon.signal] |AppLaunchInitiate ---------> TimeBase(0 ms)
+                    03-20 14:33:27.587 sdkl [scrpt.load.mkup] Loading markup dev 'APP_NAME'
+                    03-20 14:33:27.779 sdkl [scrpt.ctx.cmpl.time] Compiled 'APP_NAME', id 'dev' in 170 ms (BCVer:0), thrd 22276
+                    03-20 14:33:27.784 sdkl [beacon.signal] |AppCompileComplete --------> Duration(314 ms)
+
+                    ------ Running dev 'APP_NAME' main ------
+                    03-20 14:33:27.949 sdkl [plg.dbg.conn.wait] Waiting for debugging connection
+                    03-20 14:33:27.979 sdkl [plg.dbg.conn.ok] remote debugger connected
+                `);
+                expect(messages).to.eql([
+                    'Starting',
+                    'Compiling',
+                    'Loading markup',
+                    'Scripts compiled',
+                    'Compile complete',
+                    'Showing splash screen',
+                    'Splash screen complete',
+                    'Starting',
+                    'Loading markup',
+                    'Scripts compiled',
+                    'Compile complete',
+                    'Running',
+                    'Waiting for debugger',
+                    'Debugger connected'
+                ]);
+            });
+        });
+
         describe('sendErrors', () => {
             it('emits the errors', async () => {
                 compiler.processUnhandledLines(dedent`

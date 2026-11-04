@@ -2,7 +2,7 @@ import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import { standardizePath as s, fileUtils } from '../FileUtils';
 import type { SourceMapManager } from './SourceMapManager';
-import * as glob from 'glob';
+import * as fastGlob from 'fast-glob';
 
 /**
  * Find original source locations based on debugger/staging locations.
@@ -114,7 +114,7 @@ export class LocationManager {
 
         //look through the sourcemaps in the staging folder for any instances of this source location
         let locations = await this.sourceMapManager.getGeneratedLocations(
-            glob.sync('**/*.map', {
+            fastGlob.sync('**/*.map', {
                 cwd: stagingDir,
                 absolute: true
             }),
@@ -196,7 +196,7 @@ export interface GetSourceLocationOptions {
      */
     sourceDirs?: string[];
     /**
-     * The result of rokuDeploy.getFilePaths(). This is passed in so it can be cached on the outside in order to improve performance
+     * The result of rokuDeploy.resolveFilesArray(). This is passed in so it can be cached on the outside in order to improve performance
      */
     fileMappings: { src: string; dest: string }[];
     /**

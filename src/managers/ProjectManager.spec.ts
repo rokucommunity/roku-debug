@@ -6,11 +6,25 @@ import { rokuDeploy } from 'roku-deploy';
 import * as sinonActual from 'sinon';
 import { fileUtils, standardizePath as s } from '../FileUtils';
 import type { ComponentLibraryConstructorParams } from './ProjectManager';
-import { Project, ComponentLibraryProject, ProjectManager } from './ProjectManager';
+import { Project, ComponentLibraryProject, ProjectManager, componentLibraryPostfix } from './ProjectManager';
 import { BreakpointManager } from './BreakpointManager';
 import { SourceMapManager } from './SourceMapManager';
 import { LocationManager } from './LocationManager';
-import * as decompress from 'decompress';
+import * as JSZip from 'jszip';
+import { undent } from 'undent';
+import { forceDeleteDir } from '../testHelpers.spec';
+
+/**
+ * Extract every file from the given zip archive into the destination directory
+ */
+async function extractZip(zipFilePath: string, destinationDir: string) {
+    const zip = await JSZip.loadAsync(fsExtra.readFileSync(zipFilePath));
+    for (const entry of Object.values(zip.files)) {
+        if (!entry.dir) {
+            fsExtra.outputFileSync(path.join(destinationDir, entry.name), await entry.async('nodebuffer'));
+        }
+    }
+}
 
 let sinon = sinonActual.createSandbox();
 let n = fileUtils.standardizePath.bind(fileUtils);
@@ -23,14 +37,14 @@ let stagingDir = s`${outDir}/stagingDir`;
 let compLibOutDir = s`${outDir}/component-libraries`;
 let compLibstagingDir = s`${rootDir}/component-libraries/CompLibA`;
 
-beforeEach(() => {
+beforeEach(async () => {
+    await forceDeleteDir(tempPath);
     fsExtra.ensureDirSync(tempPath);
-    fsExtra.emptyDirSync(tempPath);
     sinon.restore();
 });
-afterEach(() => {
+afterEach(async () => {
+    await forceDeleteDir(tempPath);
     fsExtra.ensureDirSync(tempPath);
-    fsExtra.emptyDirSync(tempPath);
 });
 
 describe('ProjectManager', () => {
@@ -58,6 +72,56 @@ describe('ProjectManager', () => {
 
     afterEach(() => {
         sinon.restore();
+    });
+
+    describe('getProjectStagingInfo', () => {
+        function makeMainProject() {
+            return new Project({ rootDir: rootDir, outDir: outDir, files: [], stagingDir: stagingDir, enhanceREPLCompletions: false });
+        }
+        function makeComponentLibraryProject(libraryIndex: number) {
+            return new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib${libraryIndex}-staging`,
+                libraryIndex: libraryIndex,
+                outFile: `complib${libraryIndex}.zip`,
+                enhanceREPLCompletions: false
+            });
+        }
+
+        it('always lists the main project first, even when component libraries are assigned first', () => {
+            const mainProject = makeMainProject();
+            const complib0 = makeComponentLibraryProject(0);
+            const complib1 = makeComponentLibraryProject(1);
+
+            //deliberately assign component libraries before the main project to prove the ordering is
+            //enforced by getProjectStagingInfo and not just an artifact of assignment order
+            manager.componentLibraryProjects = [complib0, complib1];
+            manager.mainProject = mainProject;
+
+            const info = manager.getProjectStagingInfo();
+
+            //contract: the main project is always first and typed as 'main'
+            expect(info[0]).to.eql({ type: 'main', stagingDir: mainProject.stagingDir });
+            //component libraries follow, in order, typed as 'componentLibrary'
+            expect(info.map(x => x.type)).to.eql(['main', 'componentLibrary', 'componentLibrary']);
+            expect(info.map(x => x.stagingDir)).to.eql([
+                mainProject.stagingDir,
+                complib0.stagingDir,
+                complib1.stagingDir
+            ]);
+        });
+
+        it('returns only the main project when there are no component libraries', () => {
+            const mainProject = makeMainProject();
+            manager.componentLibraryProjects = [];
+            manager.mainProject = mainProject;
+
+            expect(manager.getProjectStagingInfo()).to.eql([
+                { type: 'main', stagingDir: mainProject.stagingDir }
+            ]);
+        });
     });
 
     describe('getLineNumberOffsetByBreakpoints', () => {
@@ -221,9 +285,228 @@ describe('ProjectManager', () => {
 
             expect(stub.called).to.be.true;
         });
+
+        it('falls back to a postfix-disabled component library when the file is not in the main project', async () => {
+            const disabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            //the file exists only in the disabled library's staging dir (not the main project)
+            fsExtra.outputFileSync(s`${disabledLib.stagingDir}/source/main.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/main.brs');
+            expect(info).to.include({
+                absolutePath: s`${disabledLib.stagingDir}/source/main.brs`,
+                relativePath: s`source/main.brs`
+            });
+            expect(info.project).to.equal(disabledLib);
+        });
+
+        it('prefers the main project over a postfix-disabled component library when both have the file', async () => {
+            const disabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${stagingDir}/source/main.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${disabledLib.stagingDir}/source/main.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/main.brs');
+            expect(info.absolutePath).to.equal(s`${stagingDir}/source/main.brs`);
+            expect(info.project).to.equal(manager.mainProject);
+        });
+
+        it('does not fall back to a component library that still has postfixing enabled', async () => {
+            const enabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [enabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            //even though an un-postfixed file is present in the enabled library, it must not be used as a fallback
+            fsExtra.outputFileSync(s`${enabledLib.stagingDir}/source/main.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/main.brs');
+            //resolves to the main project (prior behavior preserved), not the postfix-enabled library
+            expect(info.project).to.equal(manager.mainProject);
+            expect(info.absolutePath).to.equal(s`${stagingDir}/source/main.brs`);
+        });
+
+        it('when two postfix-disabled component libraries contain the same file, uses component library order', async () => {
+            const disabledLib0 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            const disabledLib1 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib1, disabledLib0];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${disabledLib0.stagingDir}/source/shared.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${disabledLib1.stagingDir}/source/shared.brs`, 'sub main()\nend sub');
+
+            const info = await manager.getStagingFileInfo('pkg:/source/shared.brs');
+            expect(info.project).to.equal(disabledLib1);
+            expect(info.absolutePath).to.equal(s`${disabledLib1.stagingDir}/source/shared.brs`);
+        });
+
+        it('when two postfixed component libraries contain the same source file, resolves each postfix to the matching library', async () => {
+            const enabledLib0 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enhanceREPLCompletions: false
+            });
+            const enabledLib1 = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [enabledLib1, enabledLib0];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${enabledLib0.stagingDir}/source/shared__lib0.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${enabledLib1.stagingDir}/source/shared__lib1.brs`, 'sub main()\nend sub');
+
+            const lib0Info = await manager.getStagingFileInfo('pkg:/source/shared__lib0.brs');
+            expect(lib0Info.project).to.equal(enabledLib0);
+            expect(lib0Info.absolutePath).to.equal(s`${enabledLib0.stagingDir}/source/shared__lib0.brs`);
+
+            const lib1Info = await manager.getStagingFileInfo('pkg:/source/shared__lib1.brs');
+            expect(lib1Info.project).to.equal(enabledLib1);
+            expect(lib1Info.absolutePath).to.equal(s`${enabledLib1.stagingDir}/source/shared__lib1.brs`);
+        });
+
+        it('resolves both mixed postfixed and non-postfixed duplicate filenames', async () => {
+            const disabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib0-staging`,
+                libraryIndex: 0,
+                outFile: 'complib0.zip',
+                enablePostfix: false,
+                enhanceREPLCompletions: false
+            });
+            const enabledLib = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: compLibOutDir,
+                files: [],
+                stagingDir: s`${compLibOutDir}/complib1-staging`,
+                libraryIndex: 1,
+                outFile: 'complib1.zip',
+                enhanceREPLCompletions: false
+            });
+            manager.componentLibraryProjects = [disabledLib, enabledLib];
+            manager.mainProject = <any>{ stagingDir: stagingDir };
+
+            fsExtra.outputFileSync(s`${disabledLib.stagingDir}/source/mixed.brs`, 'sub main()\nend sub');
+            fsExtra.outputFileSync(s`${enabledLib.stagingDir}/source/mixed__lib1.brs`, 'sub main()\nend sub');
+
+            const nonPostfixedInfo = await manager.getStagingFileInfo('pkg:/source/mixed.brs');
+            expect(nonPostfixedInfo.project).to.equal(disabledLib);
+            expect(nonPostfixedInfo.absolutePath).to.equal(s`${disabledLib.stagingDir}/source/mixed.brs`);
+
+            const postfixedInfo = await manager.getStagingFileInfo('pkg:/source/mixed__lib1.brs');
+            expect(postfixedInfo.project).to.equal(enabledLib);
+            expect(postfixedInfo.absolutePath).to.equal(s`${enabledLib.stagingDir}/source/mixed__lib1.brs`);
+        });
     });
 
     describe('getSourceLocation', () => {
+        it('resolves a pkg path back to the original rootDir source file via a relative sourcemap', async () => {
+            // Simulate the full flow:
+            // 1. compiler produces MainScene.brs + MainScene.brs.map in srcDir, with sources relative to srcDir
+            // 2. prepublishToStaging copies them to stagingDir (recorded in fileMappings)
+            // 3. preprocessStagingFiles rewrites the map's sources to be relative to stagingDir
+            // 4. getSourceLocation('pkg:/source/MainScene.brs', 1) resolves back to rootDir/source/MainScene.bs
+
+            const srcDir = s`${tempPath}/srcDir/source`;
+            const originalBsFile = s`${rootDir}/source/MainScene.bs`;
+            const originalMapPath = s`${srcDir}/MainScene.brs.map`;
+            const stagingBrsPath = s`${stagingDir}/source/MainScene.brs`;
+            const stagingMapPath = s`${stagingDir}/source/MainScene.brs.map`;
+
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+            fsExtra.ensureDirSync(path.dirname(originalBsFile));
+            fsExtra.writeFileSync(originalBsFile, `sub main()\n    print "hello"\nend sub`);
+            fsExtra.writeFileSync(stagingBrsPath, `sub main()\n    print "hello"\nend sub`);
+
+            // Source map produced by compiler in srcDir — source is relative from srcDir back to rootDir
+            const { SourceMapGenerator } = await import('source-map');
+            const gen = new SourceMapGenerator({ file: 'MainScene.brs' });
+            gen.addMapping({
+                generated: { line: 1, column: 0 },
+                original: { line: 1, column: 0 },
+                source: path.relative(srcDir, originalBsFile)
+            });
+            fsExtra.writeFileSync(originalMapPath, gen.toString());
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            // fileMappings records the src->dest move that prepublishToStaging performed
+            const fileMappings = [
+                { src: originalBsFile, dest: stagingBrsPath },
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            // preprocessStagingFiles rewrites the on-disk map to use paths relative to stagingDir
+            const project = new Project({ rootDir: rootDir, outDir: outDir, files: [], stagingDir: stagingDir, enhanceREPLCompletions: false });
+            project.fileMappings = fileMappings;
+            await project['preprocessStagingFiles']();
+
+            // Point the manager's mainProject at this project
+            manager.mainProject = project as any;
+
+            const sourceLocation = await manager.getSourceLocation('pkg:/source/MainScene.brs', 1);
+            expect(n(sourceLocation.filePath)).to.equal(n(originalBsFile));
+            expect(sourceLocation.lineNumber).to.equal(1);
+        });
+
         it(`does not crash when file is missing`, async () => {
             manager.mainProject.fileMappings = [];
             let sourceLocation = await manager.getSourceLocation('pkg:/source/file-we-dont-know-about.brs', 1);
@@ -331,9 +614,9 @@ describe('Project', () => {
     });
 
     describe('stage', () => {
-        afterEach(() => {
+        afterEach(async () => {
             try {
-                fsExtra.removeSync(tempPath);
+                await forceDeleteDir(tempPath);
             } catch (e) { }
         });
         it('actually stages the project', async () => {
@@ -351,6 +634,964 @@ describe('Project', () => {
             ];
             await project.stage();
             expect(fsExtra.pathExistsSync(`${stagingDir}/manifest`)).to.be.true;
+        });
+    });
+
+    describe('getSourceMapComment', () => {
+        const call = (contents: string) => Project.getSourceMapComment(contents);
+
+        it('returns undefined when no sourceMappingURL comment is present', () => {
+            expect(call(`sub main()\nend sub`)).to.be.undefined;
+            expect(call(``)).to.be.undefined;
+        });
+
+        it('returns the correct named fields for a standard brs comment', () => {
+            const result = call(`sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`);
+            expect(result).to.exist;
+            expect(result.fullMatch).to.equal(`'//# sourceMappingURL=main.brs.map`);
+            expect(result.leadingInfo).to.equal(`'`);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.brs.map`);
+            expect(result.mapPath).to.equal(`main.brs.map`);
+        });
+
+        it('returns the correct named fields for a standard xml comment', () => {
+            const result = call(`<component>\n</component>\n<!--//# sourceMappingURL=main.xml.map -->`);
+            expect(result).to.exist;
+            // fullMatch does not include the trailing ' -->' (it's consumed by the non-capturing (?:|-->) group)
+            expect(result.fullMatch).to.equal(`<!--//# sourceMappingURL=main.xml.map`);
+            expect(result.leadingInfo).to.equal(`<!--`);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.xml.map`);
+            expect(result.mapPath).to.equal(`main.xml.map`);
+        });
+
+        it('returns the correct named fields for a standard js-style comment', () => {
+            const result = call(`//# sourceMappingURL=main.js.map`);
+            expect(result).to.exist;
+            expect(result.fullMatch).to.equal(`//# sourceMappingURL=main.js.map`);
+            expect(result.leadingInfo).to.equal(``);
+            expect(result.wholeComment).to.equal(`//# sourceMappingURL=main.js.map`);
+            expect(result.mapPath).to.equal(`main.js.map`);
+        });
+
+        it('returns the last comment when multiple are present', () => {
+            const result = call(`'//# sourceMappingURL=first.brs.map\ncode\n'//# sourceMappingURL=last.brs.map`);
+            expect(result?.mapPath).to.equal(`last.brs.map`);
+        });
+
+        it('captures an absolute path in mapPath', () => {
+            const result = call(`'//# sourceMappingURL=/absolute/path/to/main.brs.map`);
+            expect(result?.mapPath).to.equal(`/absolute/path/to/main.brs.map`);
+        });
+
+        it('captures a relative path with directory traversal in mapPath', () => {
+            const result = call(`'//# sourceMappingURL=../../maps/main.brs.map`);
+            expect(result?.mapPath).to.equal(`../../maps/main.brs.map`);
+        });
+
+        it('leadingInfo preserves whitespace before the comment character', () => {
+            const result = call(`  '//# sourceMappingURL=main.brs.map`);
+            expect(result?.leadingInfo).to.equal(`  '`);
+        });
+
+        describe('legacy and variant forms', () => {
+            it('brs: legacy @ form', () => {
+                const result = call(`'//@ sourceMappingURL=main.brs.map`);
+                expect(result?.fullMatch).to.equal(`'//@ sourceMappingURL=main.brs.map`);
+                expect(result?.leadingInfo).to.equal(`'`);
+                expect(result?.mapPath).to.equal(`main.brs.map`);
+            });
+
+            it('brs: // omitted', () => {
+                expect(call(`'# sourceMappingURL=main.brs.map`)?.mapPath).to.equal(`main.brs.map`);
+            });
+
+            it('xml: // omitted', () => {
+                const result = call(`<!--# sourceMappingURL=main.xml.map -->`);
+                expect(result?.leadingInfo).to.equal(`<!--`);
+                expect(result?.mapPath).to.equal(`main.xml.map`);
+            });
+
+            it('xml: whitespace between <!-- and //#', () => {
+                const result = call(`<!--  //# sourceMappingURL=main.xml.map -->`);
+                expect(result?.leadingInfo).to.equal(`<!--  `);
+                expect(result?.mapPath).to.equal(`main.xml.map`);
+            });
+
+            it('no space between # and sourceMappingURL', () => {
+                expect(call(`'//# sourceMappingURL=main.brs.map`)?.mapPath).to.equal(`main.brs.map`);
+            });
+        });
+    });
+
+    describe('preprocessStagingFiles', () => {
+        afterEach(async () => {
+            try {
+                await forceDeleteDir(tempPath);
+            } catch (e) { }
+        });
+
+        it('rewrites sources paths in map files that were moved to staging', async () => {
+            // Simulate a .map file that was compiled in a source dir, then copied to a different stagingDir
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            // The map's original location is in srcDir
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // The original .bs file is one level up from the map file
+            const originalSourceMap = {
+                version: 3,
+                sources: ['../../rootDir/source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            // Copy to staging (simulating what prepublishToStaging does)
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            // Set up fileMappings to record the move
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            // Resolve what the source path should be after rewriting
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../rootDir/source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('does not modify a map file that is not in fileMappings (generated in staging)', async () => {
+            fsExtra.ensureDirSync(stagingDir);
+            const mapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(mapPath));
+            const originalSourceMap = { version: 3, sources: ['../source/main.bs'], mappings: '' };
+            fsExtra.writeJsonSync(mapPath, originalSourceMap);
+
+            // fileMappings does NOT include this map file
+            project.fileMappings = [];
+
+            await project['preprocessStagingFiles']();
+
+            const unchanged = fsExtra.readJsonSync(mapPath);
+            expect(unchanged.sources[0]).to.equal('../source/main.bs');
+        });
+
+        it('rewrites sources correctly when sourceRoot is omitted', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // No sourceRoot — sources are relative to the map file's directory
+            const originalSourceMap = {
+                version: 3,
+                sources: ['../../rootDir/source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../rootDir/source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites sources correctly when sourceRoot is a relative path', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            // sourceRoot is relative to the map file's directory; sources are relative to sourceRoot
+            const originalSourceMap = {
+                version: 3,
+                sourceRoot: '../rootDir',
+                sources: ['source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../rootDir', 'source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites sources correctly when sourceRoot is an absolute path', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            const absoluteSourceRoot = s`${tempPath}/rootDir`;
+            // sourceRoot is absolute; sources are relative to sourceRoot
+            const originalSourceMap = {
+                version: 3,
+                sourceRoot: absoluteSourceRoot,
+                sources: ['source/main.bs'],
+                mappings: ''
+            };
+            fsExtra.writeJsonSync(originalMapPath, originalSourceMap);
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [
+                { src: originalMapPath, dest: stagingMapPath }
+            ];
+
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(absoluteSourceRoot, 'source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites all sources in a map with multiple sources', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            fsExtra.writeJsonSync(originalMapPath, {
+                version: 3,
+                sources: ['../../rootDir/source/a.bs', '../../rootDir/source/b.bs'],
+                mappings: ''
+            });
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [{ src: originalMapPath, dest: stagingMapPath }];
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const stagingMapDir = path.dirname(stagingMapPath);
+            const originalMapDir = path.dirname(originalMapPath);
+            expect(updated.sources[0]).to.equal(s`${path.relative(stagingMapDir, path.resolve(originalMapDir, '../../rootDir/source/a.bs'))}`);
+            expect(updated.sources[1]).to.equal(s`${path.relative(stagingMapDir, path.resolve(originalMapDir, '../../rootDir/source/b.bs'))}`);
+        });
+
+        it('treats an empty string sourceRoot the same as omitted', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            fsExtra.writeJsonSync(originalMapPath, {
+                version: 3,
+                sourceRoot: '',
+                sources: ['../../rootDir/source/main.bs'],
+                mappings: ''
+            });
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [{ src: originalMapPath, dest: stagingMapPath }];
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../rootDir/source/main.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites sources correctly for a map nested deep in a subdirectory', async () => {
+            const srcDir = s`${tempPath}/srcDir/components/views/details`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/Details.brs.map`;
+            fsExtra.writeJsonSync(originalMapPath, {
+                version: 3,
+                sources: ['../../../../src/components/views/details/Details.bs'],
+                mappings: ''
+            });
+
+            const stagingMapPath = s`${stagingDir}/components/views/details/Details.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [{ src: originalMapPath, dest: stagingMapPath }];
+            await project['preprocessStagingFiles']();
+
+            const updated = fsExtra.readJsonSync(stagingMapPath);
+            const absoluteSource = path.resolve(path.dirname(originalMapPath), '../../../../src/components/views/details/Details.bs');
+            const expectedRelative = s`${path.relative(path.dirname(stagingMapPath), absoluteSource)}`;
+            expect(updated.sources[0]).to.equal(expectedRelative);
+            expect(updated.sourceRoot).to.be.undefined;
+        });
+
+        it('rewrites multiple map files in a single pass', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPathA = s`${srcDir}/a.brs.map`;
+            const originalMapPathB = s`${srcDir}/b.brs.map`;
+            fsExtra.writeJsonSync(originalMapPathA, { version: 3, sources: ['../../rootDir/a.bs'], mappings: '' });
+            fsExtra.writeJsonSync(originalMapPathB, { version: 3, sources: ['../../rootDir/b.bs'], mappings: '' });
+
+            const stagingMapPathA = s`${stagingDir}/source/a.brs.map`;
+            const stagingMapPathB = s`${stagingDir}/source/b.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPathA));
+            fsExtra.copySync(originalMapPathA, stagingMapPathA);
+            fsExtra.copySync(originalMapPathB, stagingMapPathB);
+
+            project.fileMappings = [
+                { src: originalMapPathA, dest: stagingMapPathA },
+                { src: originalMapPathB, dest: stagingMapPathB }
+            ];
+            await project['preprocessStagingFiles']();
+
+            const stagingMapDir = path.dirname(stagingMapPathA);
+            const originalMapDir = path.dirname(originalMapPathA);
+            const updatedA = fsExtra.readJsonSync(stagingMapPathA);
+            const updatedB = fsExtra.readJsonSync(stagingMapPathB);
+            expect(updatedA.sources[0]).to.equal(s`${path.relative(stagingMapDir, path.resolve(originalMapDir, '../../rootDir/a.bs'))}`);
+            expect(updatedB.sources[0]).to.equal(s`${path.relative(stagingMapDir, path.resolve(originalMapDir, '../../rootDir/b.bs'))}`);
+        });
+
+        it('does not crash when map has no sources field', async () => {
+            const srcDir = s`${tempPath}/srcDir/source`;
+            fsExtra.ensureDirSync(srcDir);
+            fsExtra.ensureDirSync(stagingDir);
+
+            const originalMapPath = s`${srcDir}/main.brs.map`;
+            fsExtra.writeJsonSync(originalMapPath, { version: 3, mappings: '' });
+
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.copySync(originalMapPath, stagingMapPath);
+
+            project.fileMappings = [{ src: originalMapPath, dest: stagingMapPath }];
+
+            // should not throw
+            await project['preprocessStagingFiles']();
+
+            // file should be unchanged
+            const unchanged = fsExtra.readJsonSync(stagingMapPath);
+            expect(unchanged.sources).to.be.undefined;
+        });
+
+        it('does not crash when map contains invalid JSON', async () => {
+            fsExtra.ensureDirSync(stagingDir);
+            const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+            fsExtra.ensureDirSync(path.dirname(stagingMapPath));
+            fsExtra.writeFileSync(stagingMapPath, 'not-valid-json');
+
+            project.fileMappings = [{ src: s`${tempPath}/srcDir/main.brs.map`, dest: stagingMapPath }];
+
+            // should not throw
+            await project['preprocessStagingFiles']();
+        });
+
+        describe('concurrent staging-map write race regression', () => {
+            /**
+             * The .map branch and the colocateSourceMap step of the .brs branch can both target the
+             * same staging map path (the typical bsc transpile case: main.brs and main.brs.map land
+             * in the same staging folder). Writes to that path must be serialized so the resulting
+             * file is valid JSON. We don't care whether the work runs once or twice — only that the
+             * end state is uncorrupted.
+             */
+            it('produces a valid staging .map when .brs comment and staged .map target the same staging map path', async () => {
+                const srcDir = s`${tempPath}/srcDir/source`;
+                fsExtra.ensureDirSync(srcDir);
+                const stagingBrsDir = s`${stagingDir}/source`;
+                fsExtra.ensureDirSync(stagingBrsDir);
+
+                const originalBrsPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+                const stagingBrsPath = s`${stagingBrsDir}/main.brs`;
+                const stagingMapPath = s`${stagingBrsDir}/main.brs.map`;
+
+                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: ['main.bs'], mappings: '' });
+
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+                fsExtra.copySync(originalMapPath, stagingMapPath);
+
+                project.fileMappings = [
+                    { src: originalBrsPath, dest: stagingBrsPath },
+                    { src: originalMapPath, dest: stagingMapPath }
+                ];
+
+                await project['preprocessStagingFiles']();
+
+                //the resulting .map must still parse as valid JSON — concurrent writes
+                //serialized by the lock should not have torn the file
+                expect(() => fsExtra.readJsonSync(stagingMapPath)).to.not.throw();
+            });
+
+            /**
+             * When the .map is staged to a different folder than the .brs, the colocate path writes
+             * to a separate file. Both writes happen, but they target different paths, so there is
+             * no conflict and dedup correctly does NOT merge them.
+             */
+            it('runs fixSourceMapSources for each unique staging map path when .map and colocate target different folders', async () => {
+                const srcDir = s`${tempPath}/srcDir/source`;
+                const srcMapDir = s`${tempPath}/srcDir/maps`;
+                fsExtra.ensureDirSync(srcDir);
+                fsExtra.ensureDirSync(srcMapDir);
+                const stagingBrsDir = s`${stagingDir}/source`;
+                const stagingMapsDir = s`${stagingDir}/maps`;
+                fsExtra.ensureDirSync(stagingBrsDir);
+                fsExtra.ensureDirSync(stagingMapsDir);
+
+                const originalBrsPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcMapDir}/main.brs.map`;
+                const stagingBrsPath = s`${stagingBrsDir}/main.brs`;
+                //map gets staged to a separate folder
+                const stagedMapAtMapsDir = s`${stagingMapsDir}/main.brs.map`;
+                //colocate will write here (next to the .brs)
+                const colocatedMapPath = s`${stagingBrsDir}/main.brs.map`;
+
+                fsExtra.writeFileSync(originalBrsPath, `sub main()\nend sub\n'//# sourceMappingURL=../maps/main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: ['main.bs'], mappings: '' });
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+                fsExtra.copySync(originalMapPath, stagedMapAtMapsDir);
+
+                project.fileMappings = [
+                    { src: originalBrsPath, dest: stagingBrsPath },
+                    { src: originalMapPath, dest: stagedMapAtMapsDir }
+                ];
+
+                const spy = sinon.spy(project as any, 'fixSourceMapSources');
+
+                await project['preprocessStagingFiles']();
+
+                const paths = spy.getCalls().map(call => {
+                    const arg = call.args[0] as { stagingMapPath: string };
+                    return fileUtils.standardizePath(arg.stagingMapPath).toLowerCase();
+                });
+                expect(paths).to.include(fileUtils.standardizePath(stagedMapAtMapsDir).toLowerCase());
+                expect(paths).to.include(fileUtils.standardizePath(colocatedMapPath).toLowerCase());
+
+                //both .map files exist on disk and are valid JSON
+                expect(() => fsExtra.readJsonSync(stagedMapAtMapsDir)).to.not.throw();
+                expect(() => fsExtra.readJsonSync(colocatedMapPath)).to.not.throw();
+            });
+        });
+
+        describe('fixSourceMapComment', () => {
+            /**
+             * Stage a source file (with a sourceMappingURL comment) and its map, run
+             * preprocessStagingFiles, and return the updated staged file contents.
+             *
+             * originalDir/main<ext> has the comment pointing at originalMapDir/main<ext>.map.
+             * The source file is always staged to stagingDir/source/main<ext>.
+             * The map is staged to stagingMapDest (default: stagingDir/source/main<ext>.map).
+             */
+            async function stageFileWithComment(ext: string, commentLine: string, opts: {
+                originalDir?: string;
+                originalMapDir?: string;
+                stageMap?: boolean;
+                stagingMapDest?: string;
+            } = {}) {
+                const {
+                    originalDir = s`${tempPath}/src/components/views`,
+                    originalMapDir = s`${tempPath}/src/components/maps`,
+                    stageMap = true,
+                    stagingMapDest = s`${stagingDir}/source/main${ext}.map`
+                } = opts;
+                const originalPath = s`${originalDir}/main${ext}`;
+                const originalMapPath = s`${originalMapDir}/main${ext}.map`;
+                const stagingPath = s`${stagingDir}/source/main${ext}`;
+
+                fsExtra.ensureDirSync(path.dirname(originalPath));
+                fsExtra.ensureDirSync(path.dirname(originalMapPath));
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+
+                fsExtra.writeFileSync(originalPath, `content\n${commentLine}`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+
+                if (stageMap) {
+                    fsExtra.ensureDirSync(path.dirname(stagingMapDest));
+                    fsExtra.copySync(originalMapPath, stagingMapDest);
+                    project.fileMappings = [
+                        { src: originalPath, dest: stagingPath },
+                        { src: originalMapPath, dest: stagingMapDest }
+                    ];
+                } else {
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+                }
+
+                await project['preprocessStagingFiles']();
+                return fsExtra.readFileSync(stagingPath, 'utf8');
+            }
+
+            /**
+             * Stage a source file with NO sourceMappingURL comment but with a colocated .map
+             * next to the original, run preprocessStagingFiles, and return the staged file contents.
+             *
+             * When stageMap is true the map is staged to stagingMapDest
+             * (default: right next to the source file, i.e. stagingDir/source/main<ext>.map).
+             */
+            async function stageFileWithColocatedMap(ext: string, opts: {
+                stageMap?: boolean;
+                stagingMapDest?: string;
+                crlf?: boolean;
+            } = {}) {
+                const srcDir = s`${tempPath}/rootDir/source`;
+                const originalPath = s`${srcDir}/main${ext}`;
+                const originalMapPath = s`${srcDir}/main${ext}.map`;
+                const stagingPath = s`${stagingDir}/source/main${ext}`;
+                const {
+                    stageMap = false,
+                    stagingMapDest = s`${stagingDir}/source/main${ext}.map`,
+                    crlf = false
+                } = opts;
+
+                fsExtra.ensureDirSync(srcDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+
+                fsExtra.writeFileSync(originalPath, crlf ? `sub main()\r\nend sub` : `sub main()\nend sub`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+
+                if (stageMap) {
+                    fsExtra.ensureDirSync(path.dirname(stagingMapDest));
+                    fsExtra.copySync(originalMapPath, stagingMapDest);
+                    project.fileMappings = [
+                        { src: originalPath, dest: stagingPath },
+                        { src: originalMapPath, dest: stagingMapDest }
+                    ];
+                } else {
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+                }
+
+                await project['preprocessStagingFiles']();
+                return fsExtra.readFileSync(stagingPath, 'utf8');
+            }
+
+            // ── comment rewrite: map not in fileMappings ─────────────────────────────
+            it('rewrites the comment to point at the colocated map even when the map was not in fileMappings', async () => {
+                const rootDirSource = s`${tempPath}/alpha/beta/charlie/rootDir/source`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                const originalRelative = s`${path.relative(rootDirSource, s`${tempPath}/alpha/maps/main.brs.map`)}`;
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${originalRelative}`, {
+                    originalDir: rootDirSource,
+                    originalMapDir: s`${tempPath}/alpha/maps`,
+                    stageMap: false
+                });
+
+                // The map should have been copied right next to the staging file
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been colocated next to the staging file').to.be.true;
+                // The comment should now point at the colocated copy
+                const commentMatch = /'\/\/# sourceMappingURL=(.+)$/.exec(result);
+                expect(commentMatch, 'sourceMappingURL comment should still be present').to.exist;
+                expect(fileUtils.standardizePath(path.resolve(path.dirname(stagingBrsPath), commentMatch[1]))).to.equal(stagingMapPath);
+            });
+
+            // ── comment rewrite: map staged ───────────────────────────────────────────
+            it('rewrites the brs comment to point at the staged map', async () => {
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=../maps/main.brs.map`);
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+            });
+
+            it('rewrites the xml comment to point at the staged map', async () => {
+                const result = await stageFileWithComment('.xml', `<!--//# sourceMappingURL=../maps/main.xml.map -->`);
+                expect(result).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+            });
+
+            it('rewrites the comment in an arbitrary text-based file format', async () => {
+                const result = await stageFileWithComment('.md', `//# sourceMappingURL=../maps/main.md.map`);
+                expect(result).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+            });
+
+            it('keeps the correct path when brs and map are siblings in both source and staging', async () => {
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=main.brs.map`, {
+                    originalDir: s`${tempPath}/src/source`,
+                    originalMapDir: s`${tempPath}/src/source`
+                });
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+            });
+
+            it('rewrites an absolute comment path to point at the colocated map in staging', async () => {
+                const absoluteMapPath = s`${tempPath}/src/source/main.brs.map`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+                const result = await stageFileWithComment('.brs', `'//# sourceMappingURL=${absoluteMapPath}`, {
+                    originalDir: s`${tempPath}/src/source`,
+                    originalMapDir: s`${tempPath}/src/source`,
+                    stageMap: false
+                });
+                // Map should be colocated next to the staging file
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been colocated').to.be.true;
+                // Comment should point at the colocated copy (relative path = 'main.brs.map')
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+            });
+
+            it('uses the last comment when multiple sourceMappingURL comments exist in one file', async () => {
+                // Only the last comment should be rewritten; the first should be left as-is.
+                const originalDir = s`${tempPath}/src/source`;
+                const originalMapDir = s`${tempPath}/src/source`;
+                const originalPath = s`${originalDir}/main.brs`;
+                const originalMapPath = s`${originalMapDir}/main.brs.map`;
+                const stagingPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                fsExtra.ensureDirSync(originalDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+                fsExtra.writeFileSync(originalPath, `line1\n'//# sourceMappingURL=first.brs.map\nline2\n'//# sourceMappingURL=main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+                fsExtra.copySync(originalMapPath, stagingMapPath);
+                project.fileMappings = [
+                    { src: originalPath, dest: stagingPath },
+                    { src: originalMapPath, dest: stagingMapPath }
+                ];
+
+                await project['preprocessStagingFiles']();
+                const result = fsExtra.readFileSync(stagingPath, 'utf8');
+                expect(result).to.equal(`line1\n'//# sourceMappingURL=first.brs.map\nline2\n'//# sourceMappingURL=main.brs.map`);
+            });
+
+            // ── colocated map (no comment) ────────────────────────────────────────────
+            it('does not modify the file when there is no comment but a colocated .map exists — copies the map next to the staging file instead', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                const result = await stageFileWithColocatedMap('.brs');
+
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+
+            it('copies the colocated map next to the staging file for xml files', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingXmlPath = s`${stagingDir}/source/main.xml`;
+                const stagingMapPath = s`${stagingDir}/source/main.xml.map`;
+
+                const result = await stageFileWithColocatedMap('.xml');
+
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+
+            it('copies the colocated map next to the staging file for other file types', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingMapPath = s`${stagingDir}/source/main.md.map`;
+
+                const result = await stageFileWithColocatedMap('.md');
+
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+
+            it('does not modify the file when the colocated .map was already staged right next to the source file', async () => {
+                const original = `sub main()\nend sub`;
+                const result = await stageFileWithColocatedMap('.brs', { stageMap: true });
+                expect(result).to.equal(original);
+            });
+
+            it('does not modify the file when the colocated .map was staged at a different location — colocates the map next to the staging file', async () => {
+                const originalContent = `sub main()\nend sub`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+                const mapStagedElsewhere = s`${stagingDir}/maps/main.brs.map`;
+
+                const result = await stageFileWithColocatedMap('.brs', { stageMap: true, stagingMapDest: mapStagedElsewhere });
+
+                expect(result).to.equal(originalContent);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+
+            // ── no comment, no colocated map ──────────────────────────────────────────
+            it('leaves the file untouched when there is no comment and no colocated map', async () => {
+                const originalBrsPath = s`${tempPath}/src/source/main.brs`;
+                const stagingBrsPath = s`${stagingDir}/source/main.brs`;
+
+                fsExtra.ensureDirSync(path.dirname(originalBrsPath));
+                fsExtra.ensureDirSync(path.dirname(stagingBrsPath));
+
+                const originalContents = `sub main()\nend sub\n`;
+                fsExtra.writeFileSync(originalBrsPath, originalContents);
+                fsExtra.copySync(originalBrsPath, stagingBrsPath);
+                project.fileMappings = [{ src: originalBrsPath, dest: stagingBrsPath }];
+
+                await project['preprocessStagingFiles']();
+
+                expect(fsExtra.readFileSync(stagingBrsPath, 'utf8')).to.equal(originalContents);
+            });
+
+            // ── binary files ──────────────────────────────────────────────────────────
+            it('skips binary files without modifying them', async () => {
+                for (const ext of Project.binaryExtensions) {
+                    const originalPath = s`${tempPath}/src/source/file${ext}`;
+                    const stagingPath = s`${stagingDir}/source/file${ext}`;
+
+                    fsExtra.ensureDirSync(path.dirname(originalPath));
+                    fsExtra.ensureDirSync(path.dirname(stagingPath));
+
+                    const binaryContents = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+                    fsExtra.writeFileSync(originalPath, binaryContents);
+                    fsExtra.copySync(originalPath, stagingPath);
+
+                    project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+                    await project['preprocessStagingFiles']();
+
+                    expect(Buffer.compare(fsExtra.readFileSync(stagingPath), binaryContents)).to.equal(0, `${ext} file should be untouched`);
+                }
+            });
+
+            // ── legacy and variant comment forms ──────────────────────────────────────
+            describe('legacy and variant comment forms', () => {
+                // brs variants
+                it('brs: rewrites legacy @ form', async () => {
+                    expect(await stageFileWithComment('.brs', `'//@ sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it(`brs: rewrites when // is omitted  ('# sourceMappingURL=...)`, async () => {
+                    expect(await stageFileWithComment('.brs', `'# sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it(`brs: rewrites when // is omitted with legacy @  ('@ sourceMappingURL=...)`, async () => {
+                    expect(await stageFileWithComment('.brs', `'@ sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it(`brs: rewrites with whitespace between ' and //# ('  //# sourceMappingURL=...)`, async () => {
+                    expect(await stageFileWithComment('.brs', `'  //# sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it(`brs: rewrites with whitespace and no // ('  # sourceMappingURL=...)`, async () => {
+                    expect(await stageFileWithComment('.brs', `'  # sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.brs', `'//#sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+                it('brs: no space between @ and sourceMappingURL (legacy)', async () => {
+                    expect(await stageFileWithComment('.brs', `'//@sourceMappingURL=../maps/main.brs.map`)).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                });
+
+                // xml variants
+                it('xml: rewrites legacy @ form  (<!--//@ sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--//@ sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites when // is omitted  (<!--# sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--# sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites with whitespace between <!-- and //# (<!--  //# sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--  //# sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: rewrites with whitespace and no // (<!--  # sourceMappingURL=... -->)', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--  # sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+                it('xml: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.xml', `<!--//#sourceMappingURL=../maps/main.xml.map -->`)).to.equal(`content\n<!--//# sourceMappingURL=main.xml.map -->`);
+                });
+
+                // other (markdown) variants
+                it('other: rewrites legacy @ form  (//@ sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//@ sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: rewrites with whitespace between // and # (//  # sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//  # sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: rewrites with whitespace between // and @ (//  @ sourceMappingURL=...)', async () => {
+                    expect(await stageFileWithComment('.md', `//  @ sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+                it('other: no space between # and sourceMappingURL', async () => {
+                    expect(await stageFileWithComment('.md', `//#sourceMappingURL=../maps/main.md.map`)).to.equal(`content\n//# sourceMappingURL=main.md.map`);
+                });
+            });
+
+            // ── map file lifecycle ────────────────────────────────────────────────────
+            it('leaves the original map in place when a comment references it', async () => {
+                const originalMapDir = s`${tempPath}/src/components/maps`;
+                const originalMapPath = s`${originalMapDir}/main.brs.map`;
+
+                await stageFileWithComment('.brs', `'//# sourceMappingURL=../maps/main.brs.map`, {
+                    originalMapDir: originalMapDir
+                });
+
+                //BreakpointManager.writeBreakpointsToFile relies on the original map still existing
+                //so the sourcemap chain walk can resolve back to the .bs source.
+                expect(fsExtra.pathExistsSync(originalMapPath), 'original map must be left in place so the chain walk in LocationManager can still resolve through it').to.be.true;
+            });
+
+            it('leaves the original colocated map in place', async () => {
+                const srcDir = s`${tempPath}/rootDir/source`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+
+                await stageFileWithColocatedMap('.brs');
+
+                expect(fsExtra.pathExistsSync(originalMapPath), 'original colocated map must be left in place so the chain walk in LocationManager can still resolve through it').to.be.true;
+            });
+
+            it('copies the map file to staging and it is valid JSON', async () => {
+                const mapContent = { version: 3, sources: ['main.brs'], mappings: 'AAAA' };
+                const srcDir = s`${tempPath}/rootDir/source`;
+                const originalPath = s`${srcDir}/main.brs`;
+                const originalMapPath = s`${srcDir}/main.brs.map`;
+                const stagingPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                fsExtra.ensureDirSync(srcDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+                fsExtra.writeFileSync(originalPath, `sub main()\nend sub`);
+                fsExtra.writeJsonSync(originalMapPath, mapContent);
+                fsExtra.copySync(originalPath, stagingPath);
+                project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+
+                await project['preprocessStagingFiles']();
+
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied to staging').to.be.true;
+                const copiedMap = fsExtra.readJsonSync(stagingMapPath);
+                // version is preserved; sources are rewritten by fixSourceMapSources (which is expected)
+                expect(copiedMap.version).to.equal(mapContent.version);
+                expect(copiedMap.mappings).to.equal(mapContent.mappings);
+            });
+
+            it('rewrites the comment and copies the map even when the map was not listed in fileMappings', async () => {
+                // The map exists on disk but was not staged through fileMappings — colocateSourceMap
+                // should still copy it next to the staging file and the comment should point at it.
+                const originalDir = s`${tempPath}/src/source`;
+                const originalMapDir = s`${tempPath}/src/source`;
+                const originalPath = s`${originalDir}/main.brs`;
+                const originalMapPath = s`${originalMapDir}/main.brs.map`;
+                const stagingPath = s`${stagingDir}/source/main.brs`;
+                const stagingMapPath = s`${stagingDir}/source/main.brs.map`;
+
+                fsExtra.ensureDirSync(originalDir);
+                fsExtra.ensureDirSync(path.dirname(stagingPath));
+                fsExtra.writeFileSync(originalPath, `content\n'//# sourceMappingURL=main.brs.map`);
+                fsExtra.writeJsonSync(originalMapPath, { version: 3, sources: [], mappings: '' });
+                fsExtra.copySync(originalPath, stagingPath);
+                // Only stage the source file, not the map
+                project.fileMappings = [{ src: originalPath, dest: stagingPath }];
+
+                await project['preprocessStagingFiles']();
+
+                const result = fsExtra.readFileSync(stagingPath, 'utf8');
+                expect(result).to.equal(`content\n'//# sourceMappingURL=main.brs.map`);
+                expect(fsExtra.pathExistsSync(stagingMapPath), 'map should have been copied next to the staging file').to.be.true;
+            });
+        });
+    });
+
+    describe('scriptReferencedFiles', () => {
+        afterEach(async () => {
+            try {
+                await forceDeleteDir(tempPath);
+            } catch (e) { }
+        });
+
+        async function stageXml(xmlRelPath: string, xmlContents: string) {
+            project.stagingDir = stagingDir;
+            const xmlStagingPath = s`${stagingDir}/${xmlRelPath}`;
+            fsExtra.outputFileSync(xmlStagingPath, xmlContents);
+            //the xml file isn't required to be in fileMappings — script scanning happens for all staged xml
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+        }
+
+        it('collects pkg:/ script uris resolved from the staging root', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="pkg:/source/helper.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/helper.brs`);
+        });
+
+        it('collects libpkg:/ script uris resolved from the staging root', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="libpkg:/source/lib.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/lib.brs`);
+        });
+
+        it('collects relative script uris resolved from the xml file directory', async () => {
+            await stageXml('components/MyComp.xml', `
+                <component name="MyComp">
+                    <script type="text/brightscript" uri="sibling.brs"/>
+                </component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/components/sibling.brs`);
+        });
+
+        it('collects multiple script tags across multiple xml files', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/components/A.xml`, `
+                <component name="A">
+                    <script uri="pkg:/source/a1.brs"/>
+                    <script uri="pkg:/source/a2.brs"/>
+                </component>
+            `);
+            fsExtra.outputFileSync(s`${stagingDir}/components/B.xml`, `
+                <component name="B">
+                    <script uri="pkg:/source/b1.brs"/>
+                </component>
+            `);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+
+            expect([...project.scriptReferencedFiles].sort()).to.eql([
+                s`${stagingDir}/source/a1.brs`,
+                s`${stagingDir}/source/a2.brs`,
+                s`${stagingDir}/source/b1.brs`
+            ].sort());
+        });
+
+        it('resets the set on each preprocess so a re-stage does not accumulate stale entries', async () => {
+            await stageXml('components/First.xml', `
+                <component name="First"><script uri="pkg:/source/first.brs"/></component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/first.brs`);
+
+            //remove the first xml and stage a different one — the old entry must not survive
+            fsExtra.removeSync(s`${stagingDir}/components/First.xml`);
+            await stageXml('components/Second.xml', `
+                <component name="Second"><script uri="pkg:/source/second.brs"/></component>
+            `);
+            expect([...project.scriptReferencedFiles]).to.include(s`${stagingDir}/source/second.brs`);
+            expect([...project.scriptReferencedFiles]).to.not.include(s`${stagingDir}/source/first.brs`);
+        });
+
+        it('is empty when there are no xml files', async () => {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/source/main.brs`, `sub main()\nend sub`);
+            project.fileMappings = [];
+            await project['preprocessStagingFiles']();
+            expect(project.scriptReferencedFiles.size).to.equal(0);
         });
     });
 
@@ -425,22 +1666,73 @@ describe('Project', () => {
         });
     });
 
+    describe('loadRequiredLibraryNames', () => {
+        /**
+         * Write the given `manifestContents` to the project's staged manifest, run the loader, and return
+         * both parsed required-library lists.
+         */
+        async function loadFrom(manifestContents: string) {
+            project.stagingDir = stagingDir;
+            fsExtra.outputFileSync(s`${stagingDir}/manifest`, manifestContents);
+            await project['loadRequiredLibraryNames']();
+            return {
+                bs: project.bsLibsRequired,
+                sg: project.sgComponentLibsRequired
+            };
+        }
+
+        it('parses a comma-delimited bs_libs_required list, trimming whitespace', async () => {
+            expect(await loadFrom(`bs_libs_required=LibAlpha, LibBeta ,LibCharlie`)).to.eql({
+                bs: ['LibAlpha', 'LibBeta', 'LibCharlie'],
+                sg: []
+            });
+        });
+
+        it('parses a comma-delimited sg_component_libs_required list, trimming whitespace', async () => {
+            expect(await loadFrom(`sg_component_libs_required=LibAlpha, LibBeta ,LibCharlie`)).to.eql({
+                bs: [],
+                sg: ['LibAlpha', 'LibBeta', 'LibCharlie']
+            });
+        });
+
+        it('parses both required lists independently when both are present', async () => {
+            expect(await loadFrom(undent`
+                bs_libs_required=BsOne,BsTwo
+                sg_component_libs_required=SgOne,SgTwo
+            `)).to.eql({
+                bs: ['BsOne', 'BsTwo'],
+                sg: ['SgOne', 'SgTwo']
+            });
+        });
+
+        it('returns empty arrays when neither required key is present', async () => {
+            expect(await loadFrom(`title=NoLibsHere`)).to.eql({ bs: [], sg: [] });
+        });
+
+        it('returns empty arrays when the manifest does not exist', async () => {
+            project.stagingDir = s`${tempPath}/does-not-exist`;
+            await project['loadRequiredLibraryNames']();
+            expect(project.bsLibsRequired).to.eql([]);
+            expect(project.sgComponentLibsRequired).to.eql([]);
+        });
+    });
+
     describe('copyAndTransformRaleTrackerTask', () => {
         let raleTrackerTaskFileLocation = s`${cwd}/TrackerTask.xml`;
         before(() => {
             fsExtra.writeFileSync(raleTrackerTaskFileLocation, `<!--dummy contents-->`);
         });
-        after(() => {
-            fsExtra.removeSync(tempPath);
+        after(async () => {
+            await forceDeleteDir(tempPath);
             fsExtra.removeSync(raleTrackerTaskFileLocation);
         });
-        afterEach(() => {
-            fsExtra.emptyDirSync(tempPath);
-            fsExtra.rmdirSync(tempPath);
+        afterEach(async () => {
+            await forceDeleteDir(tempPath);
         });
 
         async function doTest(fileContents: string, expectedContents: string, fileExt = 'brs') {
-            fsExtra.emptyDirSync(tempPath);
+            await forceDeleteDir(tempPath);
+            fsExtra.ensureDirSync(tempPath);
             let folder = s`${tempPath}/findMainFunctionTests/`;
             fsExtra.mkdirSync(folder);
 
@@ -542,18 +1834,18 @@ describe('Project', () => {
             fsExtra.mkdirSync(path.dirname(componentsFilePath), { recursive: true });
             fsExtra.writeFileSync(componentsFilePath, `' ${componentsFilePath}`);
         });
-        after(() => {
-            fsExtra.removeSync(tempPath);
+        after(async () => {
+            await forceDeleteDir(tempPath);
             fsExtra.emptyDirSync(rdbFilesBasePath);
             fsExtra.rmdirSync(rdbFilesBasePath);
         });
-        afterEach(() => {
-            fsExtra.emptyDirSync(tempPath);
-            fsExtra.rmdirSync(tempPath);
+        afterEach(async () => {
+            await forceDeleteDir(tempPath);
         });
 
         async function doTest(fileContents: string, expectedContents: string, fileExt = 'brs', injectRdbOnDeviceComponent = true) {
-            fsExtra.emptyDirSync(tempPath);
+            await forceDeleteDir(tempPath);
+            fsExtra.ensureDirSync(tempPath);
             let folder = s`${tempPath}/findMainFunctionTests/`;
             fsExtra.mkdirSync(folder);
 
@@ -573,6 +1865,74 @@ describe('Project', () => {
             await doTest(`sub main()\nend sub`, `sub main()\nend sub`);
             expect(fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`), `${sourceFileRelativePath} was not copied to staging`).to.be.true;
             expect(fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`), `${componentsFileRelativePath} was not copied to staging`).to.be.true;
+        });
+
+        //regression: on Windows, an absolute rdbFilesBasePath contains backslashes,
+        //which fast-glob treats as escape characters. Without normalization, the glob
+        //matches nothing and no files get copied.
+        it('copies the RDB files when rdbFilesBasePath is an absolute path with native separators', async () => {
+            await forceDeleteDir(tempPath);
+            fsExtra.ensureDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = true;
+            project.rdbFilesBasePath = path.resolve(rdbFilesBasePath);
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} was not copied to staging from absolute path ${project.rdbFilesBasePath}`
+            ).to.be.true;
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`),
+                `${componentsFileRelativePath} was not copied to staging from absolute path ${project.rdbFilesBasePath}`
+            ).to.be.true;
+        });
+
+        it('does not copy files when injectRdbOnDeviceComponent is false', async () => {
+            await forceDeleteDir(tempPath);
+            fsExtra.ensureDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = false;
+            project.rdbFilesBasePath = rdbFilesBasePath;
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${componentsFileRelativePath}`),
+                `${componentsFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
+        });
+
+        it('does not copy files when rdbFilesBasePath is not set', async () => {
+            await forceDeleteDir(tempPath);
+            fsExtra.ensureDirSync(tempPath);
+            let folder = s`${tempPath}/copyAndTransformRDBTests/`;
+            fsExtra.mkdirSync(folder);
+            let filePath = s`${folder}/main.brs`;
+            fsExtra.writeFileSync(filePath, `sub main()\nend sub`);
+
+            project.stagingDir = folder;
+            project.injectRdbOnDeviceComponent = true;
+            project.rdbFilesBasePath = undefined;
+            await project.copyAndTransformRDB();
+
+            expect(
+                fsExtra.pathExistsSync(s`${project.stagingDir}/${sourceFileRelativePath}`),
+                `${sourceFileRelativePath} should not have been copied to staging`
+            ).to.be.false;
         });
 
         it('works for inline comments brs files', async () => {
@@ -665,7 +2025,7 @@ describe('Project', () => {
                 fsExtra.readdirSync(project.outDir).find(x => x?.toLowerCase().endsWith('.zip'))
             );
 
-            await decompress(zipPath, `${tempPath}/extracted`);
+            await extractZip(zipPath, `${tempPath}/extracted`);
             expect(fsExtra.pathExistsSync(`${tempPath}/extracted/manifest`)).to.be.true;
             expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs`)).to.be.true;
             expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs.map`)).to.be.false;
@@ -677,7 +2037,7 @@ describe('Project', () => {
             project.packagePath = s`${tempPath}/package/path.zip`;
             await project.zipPackage({ retainStagingFolder: true });
 
-            await decompress(project.packagePath, `${tempPath}/extracted`);
+            await extractZip(project.packagePath, `${tempPath}/extracted`);
             expect(fsExtra.pathExistsSync(`${tempPath}/extracted/manifest`)).to.be.true;
             expect(fsExtra.pathExistsSync(`${tempPath}/extracted/source/main.brs`)).to.be.true;
         });
@@ -709,6 +2069,42 @@ describe('ComponentLibraryProject', () => {
             expect(project.outFile).to.equal('PrettyComponent.zip');
             (project as any).computeOutFileName();
             expect(project.outFile).to.equal('PrettyComponent.zip');
+        });
+    });
+
+    describe('postfix', () => {
+        it('defaults enablePostfix to true and includes the library index in the postfix', () => {
+            params.libraryIndex = 2;
+            let project = new ComponentLibraryProject(params);
+            expect(project.enablePostfix).to.be.true;
+            expect(project.postfix).to.equal('__lib2');
+        });
+
+        it('returns an empty postfix when postfixing is disabled', () => {
+            params.libraryIndex = 2;
+            params.enablePostfix = false;
+            let project = new ComponentLibraryProject(params);
+            expect(project.enablePostfix).to.be.false;
+            expect(project.postfix).to.equal('');
+        });
+
+        it('leaves files untouched when postfixing is disabled', async () => {
+            params.enablePostfix = false;
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, '');
+            fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="CustomComponent.brs"/>
+                </component>
+            `);
+            await project.postfixFiles();
+            //the file was not renamed
+            expect(fsExtra.pathExistsSync(`${params.stagingDir}/source/main.brs`)).to.be.true;
+            //the uri reference was not rewritten
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/components/Component1.xml`).toString()
+            ).to.include('uri="CustomComponent.brs"');
         });
     });
 
@@ -762,6 +2158,40 @@ describe('ComponentLibraryProject', () => {
                 </component>
             `);
         });
+
+        it('does not crash when the library has no .brs files (only .xml)', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            //only an xml file exists in staging - the `**/*.brs` glob will match zero files
+            fsExtra.outputFileSync(`${params.stagingDir}/components/Component1.xml`, `
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="CustomComponent.brs"/>
+                </component>
+            `);
+            //should not throw "No files match the pattern"
+            await project.postfixFiles();
+            //the xml reference should still get postfixed
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/components/Component1.xml`).toString()
+            ).to.eql(`
+                <component name="CustomComponent" extends="Rectangle">
+                    <script type="text/brightscript" uri="CustomComponent__lib0.brs"/>
+                </component>
+            `);
+        });
+
+        it('does not crash when the library has no .xml files (only .brs)', async () => {
+            let project = new ComponentLibraryProject(params);
+            project.fileMappings = [];
+            //only a brs file exists in staging - the `**/*.xml` glob will match zero files
+            fsExtra.outputFileSync(`${params.stagingDir}/source/main.brs`, `sub main()\nend sub`);
+            //should not throw "No files match the pattern"
+            await project.postfixFiles();
+            //the brs file should be untouched (no uri references to rewrite)
+            expect(
+                fsExtra.readFileSync(`${params.stagingDir}/source/main.brs`).toString()
+            ).to.eql(`sub main()\nend sub`);
+        });
     });
 
     describe('stage', () => {
@@ -769,8 +2199,9 @@ describe('ComponentLibraryProject', () => {
             delete params.stagingDir;
             let project = new ComponentLibraryProject(params);
 
-            sinon.stub(rokuDeploy, 'getFilePaths').returns(Promise.resolve([
-                { src: s`${rootDir}/manifest`, dest: s`manifest` },
+            //roku-deploy returns staging-relative dest paths; getFileMappings makes them absolute
+            sinon.stub(rokuDeploy, 'resolveFilesArray').returns(Promise.resolve([
+                { src: s`${rootDir}/manifest`, dest: 'manifest' },
                 { src: s`${rootDir}/source/main.brs`, dest: s`source/main.brs` }
             ]));
             sinon.stub(Project.prototype, 'stage').returns(Promise.resolve());
@@ -816,6 +2247,759 @@ describe('ComponentLibraryProject', () => {
                 await testManifestRead('manifest.test');
                 await testManifestRead('test.manifest');
                 await testManifestRead('not_even_close');
+            });
+        });
+
+        it('uses sg_component_libs_provided from manifest when present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nsg_component_libs_provided=MyLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('MyLibrary');
+        });
+
+        it('uses bs_libs_provided from manifest when sg_component_libs_provided is not present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nbs_libs_provided=MyBSLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('MyBSLibrary');
+        });
+
+        it('prioritizes sg_component_libs_provided over bs_libs_provided when both are present', async () => {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, `title=TestLib\nsg_component_libs_provided=SGLibrary\nbs_libs_provided=BSLibrary`);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            expect(project.name).to.equal('SGLibrary');
+        });
+
+        /**
+         * Stage a component library whose manifest is exactly `manifestContents`, and return the two
+         * parsed `provided` library-name lists.
+         */
+        async function loadProvidedFrom(manifestContents: string) {
+            fsExtra.outputFileSync(`${rootDir}/manifest`, manifestContents);
+            params.bsConst = undefined;
+            const project = new ComponentLibraryProject({
+                rootDir: rootDir,
+                outDir: `${outDir}/component-libraries`,
+                files: [
+                    { src: 'manifest', dest: 'manifest' }
+                ],
+                stagingDir: s`${outDir}/complib1-staging`,
+                libraryIndex: 0,
+                outFile: 'test.zip',
+                enhanceREPLCompletions: false
+            });
+            await project.stage();
+            return {
+                bs: project.bsLibsProvided,
+                sg: project.sgComponentLibsProvided
+            };
+        }
+
+        it('tracks bs_libs_provided and sg_component_libs_provided in separate lists', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                sg_component_libs_provided=SGLibrary
+                bs_libs_provided=BSLibrary
+            `)).to.eql({
+                bs: ['BSLibrary'],
+                sg: ['SGLibrary']
+            });
+        });
+
+        it('leaves the sg provided list empty when only bs_libs_provided is present', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                bs_libs_provided=BSLibrary
+            `)).to.eql({
+                bs: ['BSLibrary'],
+                sg: []
+            });
+        });
+
+        it('leaves the bs provided list empty when only sg_component_libs_provided is present', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                sg_component_libs_provided=SGLibrary
+            `)).to.eql({
+                bs: [],
+                sg: ['SGLibrary']
+            });
+        });
+
+        it('parses a comma-delimited provided list, trimming whitespace', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                bs_libs_provided=One, Two ,Three
+            `)).to.eql({
+                bs: ['One', 'Two', 'Three'],
+                sg: []
+            });
+        });
+
+        it('supports a library that broadcasts the SAME name under both mechanisms', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+                sg_component_libs_provided=SharedName
+                bs_libs_provided=SharedName
+            `)).to.eql({
+                bs: ['SharedName'],
+                sg: ['SharedName']
+            });
+        });
+
+        it('leaves both provided lists empty when neither key is present', async () => {
+            expect(await loadProvidedFrom(undent`
+                title=TestLib
+            `)).to.eql({ bs: [], sg: [] });
+        });
+    });
+
+    describe('applyLibraryReferencePostfixes', () => {
+        /**
+         * A compact description of a single project (the main app or a component library) in a test world.
+         */
+        interface ProjectSpec {
+            /** the library name(s) this project exports via `bs_libs_provided` (omit for the main project) */
+            bsLibsProvided?: string | string[];
+            /** the library names this project imports via `bs_libs_required` (comma-delimited in the real manifest) */
+            bsLibsRequired?: string[];
+            /** the library name(s) this project exports via `sg_component_libs_provided` */
+            sgComponentLibsProvided?: string | string[];
+            /** the library names this project imports via `sg_component_libs_required` */
+            sgComponentLibsRequired?: string[];
+            /** the staged files this project ships, by relative path (e.g. `libsource/Alpha.brs`, `components/Widget.brs`).
+             *  Only files under `libsource` count as library exports - that's what production decides from the path. */
+            files?: string[];
+            /** the `.brs` source files this project contains, keyed by relative path (these hold the `Library` statements) */
+            source?: Record<string, string>;
+        }
+
+        /**
+         * Build a world of projects from `specs` (the FIRST spec is the main project, the rest are component
+         * libraries), wire up each library's name/required-names/exported-files/postfix, run the manager's
+         * library-reference fixer, then return every project's rewritten source keyed by `name/relativePath`.
+         *
+         * This lets each test read as "given these libraries and these Library statements, here's what they become"
+         * without any per-test staging/manifest boilerplate.
+         */
+        /** every message the manager logged via `logger.warn` during the most recent `doTest` call */
+        let warnings: string[] = [];
+        /**
+         * How many times a `Library` statement was resolved during the most recent `doTest` call.
+         * `getExportedLibraryFileNames` is only reached from inside the `replaceInFile` callback, so a count of
+         * zero proves we never walked/rewrote any files.
+         */
+        let resolveCount = 0;
+
+        beforeEach(() => {
+            warnings = [];
+            resolveCount = 0;
+        });
+
+        async function doTest(specs: Record<string, ProjectSpec>) {
+            let sourceMapManager = new SourceMapManager();
+            let locationManager = new LocationManager(sourceMapManager);
+            let breakpointManager = new BreakpointManager(sourceMapManager, locationManager);
+            let manager = new ProjectManager({ locationManager: locationManager, breakpointManager: breakpointManager });
+
+            //capture warnings so tests can assert that the collision guard fired
+            sinon.stub(manager.logger, 'warn').callsFake((...args) => {
+                warnings.push(args.join(' '));
+                return undefined;
+            });
+
+            const names = Object.keys(specs);
+            const projectsByName: Record<string, any> = {};
+
+            names.forEach((name, index) => {
+                const spec = specs[name];
+                const projectStagingDir = s`${tempPath}/${name}-staging`;
+
+                const postfix = index === 0 ? '' : `${componentLibraryPostfix}${index - 1}`;
+                //fileMappings hold each staged file at its real (pre-postfix) relative path - postfixFiles renames
+                //files on disk but does not mutate fileMapping.dest, and production decides which files are library
+                //exports by whether the path is under `libsource`. The postfix comes from the project's `postfix` getter.
+                const fileMappings = (spec.files ?? []).map(relativePath => ({
+                    src: s`${tempPath}/${name}-root/${relativePath}`,
+                    dest: s`${projectStagingDir}/${relativePath}`
+                }));
+
+                //write this project's brs source files (the ones containing `Library` statements)
+                for (const [relativePath, contents] of Object.entries(spec.source ?? {})) {
+                    fsExtra.outputFileSync(s`${projectStagingDir}/${relativePath}`, contents);
+                }
+
+                //a bare string in the spec means a single provided library name
+                const toArray = (value: string | string[] | undefined) => (value === undefined ? [] : [value].flat());
+
+                const project: any = {
+                    name: spec.bsLibsProvided ?? spec.sgComponentLibsProvided,
+                    bsLibsProvided: toArray(spec.bsLibsProvided),
+                    sgComponentLibsProvided: toArray(spec.sgComponentLibsProvided),
+                    bsLibsRequired: spec.bsLibsRequired ?? [],
+                    sgComponentLibsRequired: spec.sgComponentLibsRequired ?? [],
+                    fileMappings: fileMappings,
+                    stagingDir: projectStagingDir,
+                    postfix: postfix,
+                    //use the real implementation so the helper exercises production logic instead of reimplementing it,
+                    //but count the calls so tests can prove whether we resolved any `Library` statement at all
+                    getExportedLibraryFileNames: function () {
+                        resolveCount++;
+                        return ComponentLibraryProject.prototype.getExportedLibraryFileNames.call(this);
+                    }
+                };
+                projectsByName[name] = { project, spec, stagingDir: projectStagingDir };
+
+                if (index === 0) {
+                    manager.mainProject = project;
+                } else {
+                    manager.componentLibraryProjects.push(project);
+                }
+            });
+
+            await manager.applyLibraryReferencePostfixes();
+
+            //read back every project's source so tests can assert the rewritten `Library` statements
+            const result: Record<string, string> = {};
+            for (const name of names) {
+                const { spec, stagingDir } = projectsByName[name];
+                for (const relativePath of Object.keys(spec.source ?? {})) {
+                    result[`${name}/${relativePath}`] = fsExtra.readFileSync(s`${stagingDir}/${relativePath}`).toString();
+                }
+            }
+            return result;
+        }
+
+        it('rewrites a Library statement for a file exported by a required library', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+        });
+
+        it('does NOT rewrite a Library statement when the consumer does not require any library', async () => {
+            const result = await doTest({
+                main: { source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            //Alpha is exported by lib1, but main never declared `bs_libs_required=LibOne`, so leave it alone
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+        });
+
+        it('does NOT rewrite when the required library does not export the referenced file', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Missing.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Missing.brs"`);
+        });
+
+        it('does NOT rewrite a reference to a library .brs file that lives OUTSIDE libsource', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Widget.brs"` } },
+                //Widget.brs is staged by lib1 but lives in components/, not libsource/, so it is not a library export
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs', 'components/Widget.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Widget.brs"`);
+        });
+
+        it('silently skips a required library name that no loaded library provides', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['DoesNotExist'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+        });
+
+        it('resolves an overlapping file name to the REQUIRED library, not another library that also exports it', async () => {
+            const result = await doTest({
+                main: { source: {} },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs', 'libsource/Beta.brs', 'libsource/Charlie.brs'] },
+                lib2: { bsLibsProvided: 'LibTwo', files: ['libsource/Alpha.brs', 'libsource/Beta.brs', 'libsource/Delta.brs'] },
+                //lib3 requires ONLY lib1, and references Alpha (in both libs), Charlie (lib1 only), and Delta (lib2 only)
+                lib3: {
+                    bsLibsProvided: 'LibThree', bsLibsRequired: ['LibOne'], source: {
+                        'source/lib3.brs': undent`
+                            Library "Alpha.brs"
+                            Library "Charlie.brs"
+                            Library "Delta.brs"
+                        `
+                    }
+                }
+            });
+            //Alpha -> lib1's postfix (NOT lib2's, even though lib2 also exports Alpha) because lib3 only requires LibOne
+            //Charlie -> lib1's postfix (unique to lib1)
+            //Delta -> UNCHANGED (only lib2 exports it, and lib3 does not require lib2)
+            expect(result['lib3/source/lib3.brs']).to.equal(undent`
+                Library "Alpha__lib0.brs"
+                Library "Charlie__lib0.brs"
+                Library "Delta.brs"
+            `);
+        });
+
+        it('rewrites references in a transitive chain (LibAlpha->LibBeta, LibCharlie->LibAlpha+LibBeta)', async () => {
+            const result = await doTest({
+                main: { source: {} },
+                libAlpha: { bsLibsProvided: 'LibAlpha', bsLibsRequired: ['LibBeta'], files: ['libsource/AlphaUtil.brs'], source: { 'source/alpha.brs': `Library "BetaUtil.brs"` } },
+                libBeta: { bsLibsProvided: 'LibBeta', files: ['libsource/BetaUtil.brs'] },
+                libCharlie: {
+                    bsLibsProvided: 'LibCharlie', bsLibsRequired: ['LibAlpha', 'LibBeta'], source: {
+                        'source/charlie.brs': undent`
+                            Library "AlphaUtil.brs"
+                            Library "BetaUtil.brs"
+                        `
+                    }
+                }
+            });
+            //libAlpha requires libBeta -> its reference to BetaUtil is postfixed with libBeta's postfix (index 2 -> __lib1)
+            expect(result['libAlpha/source/alpha.brs']).to.equal(`Library "BetaUtil__lib1.brs"`);
+            //libCharlie requires both -> AlphaUtil gets libAlpha's postfix (__lib0), BetaUtil gets libBeta's (__lib1)
+            expect(result['libCharlie/source/charlie.brs']).to.equal(undent`
+                Library "AlphaUtil__lib0.brs"
+                Library "BetaUtil__lib1.brs"
+            `);
+        });
+
+        it('rewrites references in the main project the same as in libraries', async () => {
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+        });
+
+        it('does NOT rewrite a main project reference to a file from a library the main project does not require', async () => {
+            const result = await doTest({
+                //main requires ONLY lib1, but references files from both lib1 and lib2
+                main: {
+                    bsLibsRequired: ['LibOne'], source: {
+                        'source/main.brs': undent`
+                            Library "Alpha.brs"
+                            Library "Delta.brs"
+                        `
+                    }
+                },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] },
+                lib2: { bsLibsProvided: 'LibTwo', files: ['libsource/Delta.brs'] }
+            });
+            //Alpha -> lib1's postfix (main requires LibOne); Delta -> UNCHANGED (only lib2 has it, main does not require lib2)
+            expect(result['main/source/main.brs']).to.equal(undent`
+                Library "Alpha__lib0.brs"
+                Library "Delta.brs"
+            `);
+        });
+
+        it('resolves an overlapping file name in the main project to the REQUIRED library', async () => {
+            const result = await doTest({
+                //main requires ONLY lib2; both libs export Alpha, so Alpha must resolve to lib2's postfix (not lib1's)
+                main: { bsLibsRequired: ['LibTwo'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] },
+                lib2: { bsLibsProvided: 'LibTwo', files: ['libsource/Alpha.brs'] }
+            });
+            //lib1 is index 1 (__lib0), lib2 is index 2 (__lib1) -> Alpha resolves to lib2's __lib1
+            expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib1.brs"`);
+        });
+
+        it('rewrites a lowercase `library` statement and preserves the keyword casing', async () => {
+            //libraries in the wild use a lowercase `library` keyword; only the file name should change
+            const result = await doTest({
+                main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `library "Alpha.brs"` } },
+                lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+            });
+            expect(result['main/source/main.brs']).to.equal(`library "Alpha__lib0.brs"`);
+        });
+
+        it('handles a full dependency graph the same way the real sample does (app + 3 libs, mixed keyword casing)', async () => {
+            //mirrors the private-samples/code-library project: libs are declared leaf-first so postfix indexes line up,
+            //the app requires all 3 and references each, and libs reference their own dependencies with a lowercase keyword
+            const result = await doTest({
+                //app: requires all three, references one file from each
+                app: {
+                    bsLibsRequired: ['LibCharlie', 'LibBeta', 'LibAlpha'],
+                    source: {
+                        'source/main.brs': undent`
+                            Library "LibCharlie.brs"
+                            Library "LibBeta.brs"
+                            Library "LibAlpha.brs"
+                        `
+                    }
+                },
+                //LibCharlie: leaf dependency, requires nothing (index 1 -> __lib0)
+                LibCharlie: { bsLibsProvided: 'LibCharlie', files: ['libsource/LibCharlie.brs'] },
+                //LibBeta: requires LibCharlie (index 2 -> __lib1)
+                LibBeta: {
+                    bsLibsProvided: 'LibBeta', bsLibsRequired: ['LibCharlie'], files: ['libsource/LibBeta.brs'],
+                    source: { 'libsource/LibBeta.brs': `library "LibCharlie.brs"` }
+                },
+                //LibAlpha: requires LibBeta and LibCharlie (index 3 -> __lib2)
+                LibAlpha: {
+                    bsLibsProvided: 'LibAlpha', bsLibsRequired: ['LibBeta', 'LibCharlie'], files: ['libsource/LibAlpha.brs'],
+                    source: {
+                        'libsource/LibAlpha.brs': undent`
+                            library "LibBeta.brs"
+                            library "LibCharlie.brs"
+                        `
+                    }
+                }
+            });
+            //the app's references each resolve to the providing library's own index
+            expect(result['app/source/main.brs']).to.equal(undent`
+                Library "LibCharlie__lib0.brs"
+                Library "LibBeta__lib1.brs"
+                Library "LibAlpha__lib2.brs"
+            `);
+            //LibBeta references LibCharlie's file -> LibCharlie's index (__lib0), keyword stays lowercase
+            expect(result['LibBeta/libsource/LibBeta.brs']).to.equal(`library "LibCharlie__lib0.brs"`);
+            //LibAlpha references both of its dependencies -> each resolves to that dependency's index
+            expect(result['LibAlpha/libsource/LibAlpha.brs']).to.equal(undent`
+                library "LibBeta__lib1.brs"
+                library "LibCharlie__lib0.brs"
+            `);
+        });
+
+        describe('sg_component_libs vs bs_libs (the two mechanisms must never mix)', () => {
+            it('rewrites a Library statement for a file exported by a required sg component library', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['SgLibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SgLibOne', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+            });
+
+            it('does NOT satisfy bs_libs_required with an sg_component_libs_provided library', async () => {
+                const result = await doTest({
+                    //main declares `bs_libs_required=LibOne`, but lib1 only broadcasts LibOne via `sg_component_libs_provided`
+                    main: { bsLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+            });
+
+            it('does NOT satisfy sg_component_libs_required with a bs_libs_provided library', async () => {
+                const result = await doTest({
+                    //main declares `sg_component_libs_required=LibOne`, but lib1 only broadcasts LibOne via `bs_libs_provided`
+                    main: { sgComponentLibsRequired: ['LibOne'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'LibOne', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+            });
+
+            it('resolves a library that broadcasts the same name under BOTH mechanisms, from either required list', async () => {
+                //lib1 declares both `bs_libs_provided=Shared` and `sg_component_libs_provided=Shared`, so a consumer
+                //using either `required` key resolves to it
+                const viaBs = await doTest({
+                    main: { bsLibsRequired: ['Shared'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'Shared', sgComponentLibsProvided: 'Shared', files: ['libsource/Alpha.brs'] }
+                });
+                expect(viaBs['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+
+                const viaSg = await doTest({
+                    main: { sgComponentLibsRequired: ['Shared'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'Shared', sgComponentLibsProvided: 'Shared', files: ['libsource/Alpha.brs'] }
+                });
+                expect(viaSg['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+            });
+
+            it('resolves a library that broadcasts DIFFERENT names under each mechanism, by the matching name only', async () => {
+                const result = await doTest({
+                    //lib1 is `BsName` to bs consumers and `SgName` to sg consumers
+                    main: {
+                        bsLibsRequired: ['BsName'], source: { 'source/main.brs': `Library "Alpha.brs"` }
+                    },
+                    lib1: { bsLibsProvided: 'BsName', sgComponentLibsProvided: 'SgName', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+
+                //the same name used through the WRONG mechanism does not resolve
+                const crossed = await doTest({
+                    main: { sgComponentLibsRequired: ['BsName'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsName', sgComponentLibsProvided: 'SgName', files: ['libsource/Alpha.brs'] }
+                });
+                expect(crossed['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+            });
+
+            it('resolves each required list against its own providers when two libraries share a provided name across mechanisms', async () => {
+                const result = await doTest({
+                    //main requires `Shared` under BOTH mechanisms; lib1 provides `Shared` via bs (and exports BsFile),
+                    //lib2 provides `Shared` via sg (and exports SgFile). Each file must resolve to its own library.
+                    main: {
+                        bsLibsRequired: ['Shared'],
+                        sgComponentLibsRequired: ['Shared'],
+                        source: {
+                            'source/main.brs': undent`
+                                Library "BsFile.brs"
+                                Library "SgFile.brs"
+                            `
+                        }
+                    },
+                    lib1: { bsLibsProvided: 'Shared', files: ['libsource/BsFile.brs'] },
+                    lib2: { sgComponentLibsProvided: 'Shared', files: ['libsource/SgFile.brs'] }
+                });
+                //lib1 is index 1 (__lib0), lib2 is index 2 (__lib1)
+                expect(result['main/source/main.brs']).to.equal(undent`
+                    Library "BsFile__lib0.brs"
+                    Library "SgFile__lib1.brs"
+                `);
+            });
+
+            it('does NOT rewrite when the consumer requires under the wrong mechanism even though the file name matches', async () => {
+                const result = await doTest({
+                    //main requires SgOne via bs_libs_required (wrong mechanism) and BsOne via sg_component_libs_required (also wrong)
+                    main: {
+                        bsLibsRequired: ['SgOne'],
+                        sgComponentLibsRequired: ['BsOne'],
+                        source: {
+                            'source/main.brs': undent`
+                                Library "SgFile.brs"
+                                Library "BsFile.brs"
+                            `
+                        }
+                    },
+                    lib1: { bsLibsProvided: 'BsOne', files: ['libsource/BsFile.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgOne', files: ['libsource/SgFile.brs'] }
+                });
+                //neither reference resolves, because each required name was declared under the other mechanism
+                expect(result['main/source/main.brs']).to.equal(undent`
+                    Library "SgFile.brs"
+                    Library "BsFile.brs"
+                `);
+            });
+
+            it('rewrites references from a mix of bs-required and sg-required libraries in the same project', async () => {
+                const result = await doTest({
+                    main: {
+                        bsLibsRequired: ['BsOne'],
+                        sgComponentLibsRequired: ['SgOne'],
+                        source: {
+                            'source/main.brs': undent`
+                                Library "BsFile.brs"
+                                Library "SgFile.brs"
+                            `
+                        }
+                    },
+                    lib1: { bsLibsProvided: 'BsOne', files: ['libsource/BsFile.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgOne', files: ['libsource/SgFile.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(undent`
+                    Library "BsFile__lib0.brs"
+                    Library "SgFile__lib1.brs"
+                `);
+            });
+
+            it('still requires the file to live under libsource for an sg component library', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['SgLibOne'], source: { 'source/main.brs': `Library "Widget.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SgLibOne', files: ['libsource/Alpha.brs', 'components/Widget.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Widget.brs"`);
+            });
+
+            it('silently skips an sg required library name that no loaded library provides', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['DoesNotExist'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SgLibOne', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+            });
+
+            it('resolves a library that provides MULTIPLE names under one mechanism', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['SecondName'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    //lib1 broadcasts two names via `sg_component_libs_provided=FirstName,SecondName`
+                    lib1: { sgComponentLibsProvided: ['FirstName', 'SecondName'], files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+            });
+
+            it('skips the file walk entirely when there are no component libraries at all', async () => {
+                const result = await doTest({
+                    main: { source: { 'source/main.brs': `Library "Alpha.brs"` } }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('skips the file walk when a library exists but the consumer requires nothing', async () => {
+                const result = await doTest({
+                    main: { source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('skips the file walk when the consumer requires a bs lib that nothing provides', async () => {
+                const result = await doTest({
+                    main: { bsLibsRequired: ['Nope'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('skips the file walk when the consumer requires an sg complib that nothing provides', async () => {
+                const result = await doTest({
+                    main: { sgComponentLibsRequired: ['Nope'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('skips the file walk when the required name is only provided under the OTHER mechanism', async () => {
+                const result = await doTest({
+                    //main requires `SharedName` via bs, but the only library providing `SharedName` does so via sg -
+                    //so nothing is resolvable and we must not walk the files
+                    main: { bsLibsRequired: ['SharedName'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { sgComponentLibsProvided: 'SharedName', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha.brs"`);
+                expect(resolveCount).to.equal(0);
+            });
+
+            it('DOES walk the files when at least one required library is provided', async () => {
+                const result = await doTest({
+                    main: { bsLibsRequired: ['BsLib'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] }
+                });
+                //sanity check that resolveCount actually moves - otherwise the skip assertions above prove nothing
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+                expect(resolveCount).to.be.greaterThan(0);
+            });
+
+            it('prefers the bs lib and warns when a file name is exported through BOTH mechanisms', async () => {
+                const result = await doTest({
+                    //main requires `BsLib` via bs and `SgLib` via sg; both providers export a file named `Alpha.brs`,
+                    //so we can't know which one the device would load
+                    main: {
+                        bsLibsRequired: ['BsLib'],
+                        sgComponentLibsRequired: ['SgLib'],
+                        source: { 'source/main.brs': `Library "Alpha.brs"` }
+                    },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs'] }
+                });
+                //educated guess: the bs lib (lib1, __lib0) wins over the sg complib (lib2, __lib1)
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+                expect(warnings).to.have.lengthOf(1);
+                expect(warnings[0]).to.include('Alpha.brs');
+                expect(warnings[0]).to.include('BsLib');
+                expect(warnings[0]).to.include('SgLib');
+            });
+
+            it('prefers the bs lib regardless of which library was registered first', async () => {
+                const result = await doTest({
+                    //same as above, but the sg complib is registered BEFORE the bs lib, so a "first match wins"
+                    //implementation would pick the sg one. The bs lib must still win.
+                    main: {
+                        bsLibsRequired: ['BsLib'],
+                        sgComponentLibsRequired: ['SgLib'],
+                        source: { 'source/main.brs': `Library "Alpha.brs"` }
+                    },
+                    lib1: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs'] },
+                    lib2: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] }
+                });
+                //lib2 is the bs provider (index 2 -> __lib1), and it wins despite being registered second
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib1.brs"`);
+                expect(warnings).to.have.lengthOf(1);
+            });
+
+            it('postfixes the unambiguous files normally when one file name collides across mechanisms', async () => {
+                const result = await doTest({
+                    main: {
+                        bsLibsRequired: ['BsLib'],
+                        sgComponentLibsRequired: ['SgLib'],
+                        source: {
+                            'source/main.brs': undent`
+                                Library "Alpha.brs"
+                                Library "BsOnly.brs"
+                                Library "SgOnly.brs"
+                            `
+                        }
+                    },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs', 'libsource/BsOnly.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs', 'libsource/SgOnly.brs'] }
+                });
+                //the ambiguous `Alpha.brs` resolves to the bs lib; the rest resolve to their own library
+                expect(result['main/source/main.brs']).to.equal(undent`
+                    Library "Alpha__lib0.brs"
+                    Library "BsOnly__lib0.brs"
+                    Library "SgOnly__lib1.brs"
+                `);
+                expect(warnings).to.have.lengthOf(1);
+            });
+
+            it('does NOT warn when the same file name is provided by libraries the consumer requires under only ONE mechanism', async () => {
+                const result = await doTest({
+                    //both libs export `Alpha.brs`, but main only requires lib2 (via sg), so there's no ambiguity
+                    main: { sgComponentLibsRequired: ['SgLib'], source: { 'source/main.brs': `Library "Alpha.brs"` } },
+                    lib1: { bsLibsProvided: 'BsLib', files: ['libsource/Alpha.brs'] },
+                    lib2: { sgComponentLibsProvided: 'SgLib', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib1.brs"`);
+                expect(warnings).to.be.empty;
+            });
+
+            it('does NOT warn when a single library provides the same file under both mechanisms', async () => {
+                const result = await doTest({
+                    //one library broadcasting both keys is legitimate - the postfix is the same either way
+                    main: {
+                        bsLibsRequired: ['Shared'],
+                        sgComponentLibsRequired: ['Shared'],
+                        source: { 'source/main.brs': `Library "Alpha.brs"` }
+                    },
+                    lib1: { bsLibsProvided: 'Shared', sgComponentLibsProvided: 'Shared', files: ['libsource/Alpha.brs'] }
+                });
+                expect(result['main/source/main.brs']).to.equal(`Library "Alpha__lib0.brs"`);
+                expect(warnings).to.be.empty;
+            });
+
+            it('rewrites sg-required references between component libraries (not just the main project)', async () => {
+                const result = await doTest({
+                    main: { source: {} },
+                    libBeta: { sgComponentLibsProvided: 'SgBeta', files: ['libsource/BetaUtil.brs'] },
+                    libAlpha: {
+                        sgComponentLibsProvided: 'SgAlpha', sgComponentLibsRequired: ['SgBeta'],
+                        source: { 'source/alpha.brs': `Library "BetaUtil.brs"` }
+                    }
+                });
+                //libBeta is index 1 -> __lib0
+                expect(result['libAlpha/source/alpha.brs']).to.equal(`Library "BetaUtil__lib0.brs"`);
             });
         });
     });

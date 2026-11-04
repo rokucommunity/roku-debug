@@ -1,133 +1,79 @@
-import { util } from './util';
-import type * as requestType from 'request';
-import type { Response } from 'request';
+import type { HttpRequestOptions } from './util';
+import { rokuDeploy } from 'roku-deploy';
+import type { DeviceConfig } from 'roku-deploy';
 
 export class RokuECP {
-    private async doRequest(route: string, options: BaseOptions, method: 'post' | 'get' = 'get'): Promise<Response> {
-        const url = `http://${options.host}:${options.remotePort ?? 8060}/${route.replace(/^\//, '')}`;
-        if (method === 'post') {
-            return util.httpPost(url, options.requestOptions);
-        } else {
-            return util.httpGet(url, options.requestOptions);
-        }
-    }
-
     /**
      * Enables perfetto tracing for the specified channel
-     * @param channelID
-     * @returns
      */
-    public async enablePerfettoTracing(options: BaseOptions & { channelId: string }) {
-        const response = await this.doRequest(`/perfetto/enable/${options.channelId}`, options, 'post');
-
-        return this.parseResponse(response, 'perfetto-enable', (parsed: PerfettoEnableAsJson, status): EcpPerfettoEnableData => {
-            return {
-                enabledChannels: parsed?.['enabled-channels']?.[0]?.channel ?? [],
-                timestamp: Number(parsed?.timestamp?.[0]),
-                timestampEnd: Number(parsed?.['timestamp-end']?.[0]),
-                status: status
-            };
+    public async enablePerfettoTracing(options: BaseOptions & { appId: string }): Promise<EcpPerfettoEnableData> {
+        const result = await rokuDeploy.enablePerfettoTracing({
+            device: options.device,
+            appId: options.appId,
+            ecpPort: options.remotePort
         });
+        return {
+            enabledChannels: result.enabledChannels,
+            timestamp: result.timestamp,
+            timestampEnd: result.timestampEnd,
+            status: EcpStatus.ok
+        };
     }
 
     /**
-     * capture a heap snapshot. This doesn't return it, but instead will cause it to be written to the already-connected perfetto websocket.
-     * @param channelId
-     * @returns
+     * Trigger a heap snapshot capture. This doesn't return it, but instead will cause it to be written to the already-connected perfetto websocket.
      */
-    public async captureHeapSnapshot(options: BaseOptions & { channelId: string }) {
-        const response = await this.doRequest(`/perfetto/heapgraph/trigger/${options.channelId}`, options, 'post');
-        return this.parseResponse(response, 'perfetto-heapgraph-trigger', (parsed: HeapSnapshotAsJson, status): EcpHeapSnapshotData => {
-            return {
-                timestamp: Number(parsed?.timestamp?.[0]),
-                timestampEnd: Number(parsed?.['timestamp-end']?.[0]),
-                status: status
-            };
+    public async triggerHeapSnapshot(options: BaseOptions & { appId: string }): Promise<EcpHeapSnapshotData> {
+        const result = await rokuDeploy.triggerHeapSnapshot({
+            device: options.device,
+            appId: options.appId,
+            ecpPort: options.remotePort
         });
+        return {
+            timestamp: result.timestamp,
+            timestampEnd: result.timestampEnd,
+            status: EcpStatus.ok
+        };
     }
 
-    private getEcpStatus(response: ParsedEcpRoot, rootKey: string): EcpStatus {
-        return EcpStatus[response?.[rootKey]?.status?.[0]?.toLowerCase()] ?? EcpStatus.failed;
-    }
-
-    private async parseResponse<R>(response: Response, rootKey: string, callback: (parsed: any, status: EcpStatus) => R): Promise<R> {
-        if (typeof response.body === 'string') {
-            let parsed: ParsedEcpRoot;
-            try {
-                parsed = await util.parseXml<ParsedEcpRoot>(response.body);
-            } catch {
-                //if the response is not xml, just return the body as-is
-                throw new Error(response.body ?? 'Unknown error');
-            }
-
-            const status = this.getEcpStatus(parsed, rootKey);
-            if (status === EcpStatus.ok) {
-                return callback(parsed?.[rootKey], status);
-            } else {
-                throw new Error(parsed?.[rootKey]?.error?.[0] ?? 'Unknown error');
-            }
-        }
-    }
-
-    public async getRegistry(options: BaseOptions & { appId: string }) {
-        let result = await this.doRequest(`query/registry/${options.appId}`, options);
-        return this.processRegistry(result);
-    }
-
-    private async processRegistry(response: Response) {
-        return this.parseResponse(response, 'plugin-registry', (parsed: RegistryAsJson, status): EcpRegistryData => {
-            const registry = parsed?.registry?.[0];
-            let sections: EcpRegistryData['sections'] = {};
-
-            for (const section of registry?.sections?.[0]?.section ?? []) {
-                if (typeof section === 'string') {
-                    continue;
-                }
-                let sectionName = section.name[0];
-                for (const item of section.items[0].item) {
-                    sections[sectionName] ??= {};
-                    sections[sectionName][item.key[0]] = item.value[0];
-                }
-            }
-
-            return {
-                devId: registry?.['dev-id']?.[0],
-                plugins: registry?.plugins?.[0]?.split(','),
-                sections: sections,
-                spaceAvailable: registry?.['space-available']?.[0],
-                status: status
-            };
+    public async getRegistry(options: BaseOptions & { appId: string }): Promise<EcpRegistryData> {
+        const registry = await rokuDeploy.getRegistry({
+            device: options.device,
+            appId: options.appId,
+            ecpPort: options.remotePort
         });
+        return {
+            devId: registry.devId,
+            plugins: registry.plugins,
+            sections: registry.sections,
+            spaceAvailable: registry.spaceAvailable,
+            status: EcpStatus.ok
+        };
     }
 
-    public async getAppState(options: BaseOptions & { appId: string }) {
-        let result = await this.doRequest(`query/app-state/${options.appId}`, options);
-        return this.processAppState(result);
-    }
-
-    private async processAppState(response: Response) {
-        return this.parseResponse(response, 'app-state', (parsed: AppStateAsJson, status): EcpAppStateData => {
-            const state = AppState[parsed.state?.[0]?.toLowerCase()] ?? AppState.unknown;
-            return {
-                appId: parsed['app-id']?.[0],
-                appDevId: parsed['app-dev-id']?.[0],
-                appTitle: parsed['app-title']?.[0],
-                appVersion: parsed['app-version']?.[0],
-                state: state,
-                status: status
-            };
+    public async getAppState(options: BaseOptions & { appId: string }): Promise<EcpAppStateData> {
+        const appState = await rokuDeploy.getAppState({
+            device: options.device,
+            appId: options.appId,
+            ecpPort: options.remotePort
         });
+        return {
+            appId: appState.appId,
+            appDevId: appState.appDevId,
+            appTitle: appState.appTitle,
+            appVersion: appState.appVersion,
+            state: AppState[appState.state] ?? AppState.unknown,
+            status: EcpStatus.ok
+        };
     }
 
     public async exitApp(options: BaseOptions & { appId: string }): Promise<EcpExitAppData> {
-        let result = await this.doRequest(`exit-app/${options.appId}`, options, 'post');
-        return this.processExitApp(result);
-    }
-
-    private async processExitApp(response: Response): Promise<EcpExitAppData> {
-        return this.parseResponse(response, 'exit-app', (parsed: ExitAppAsJson, status): EcpExitAppData => {
-            return { status: status };
+        await rokuDeploy.exitApp({
+            device: options.device,
+            appId: options.appId,
+            ecpPort: options.remotePort
         });
+        return { status: EcpStatus.ok };
     }
 }
 
@@ -136,9 +82,14 @@ export enum EcpStatus {
     failed = 'failed'
 }
 interface BaseOptions {
-    host: string;
     remotePort?: number;
-    requestOptions?: requestType.CoreOptions;
+    requestOptions?: HttpRequestOptions;
+    /**
+     * The roku-deploy device config for the target device. When this is an RCE device config,
+     * roku-deploy routes the request through the instance's ECP proxy instead of the local HTTP
+     * ECP endpoint.
+     */
+    device: DeviceConfig;
 }
 
 interface BaseEcpResponse {
@@ -148,34 +99,6 @@ interface BaseEcpResponse {
 
 export type RokuEcpParam<T extends keyof RokuECP> = Parameters<RokuECP[T]>[0];
 
-export type ParsedEcpRoot<T1 extends string = string, T2 extends ParsedEcpBase = ParsedEcpBase> = {
-    [key in T1]: T2;
-};
-
-interface ParsedEcpBase {
-    status?: [string];
-    error?: [string];
-}
-
-interface RegistryAsJson extends ParsedEcpBase {
-    registry: [{
-        'dev-id': [string];
-        plugins: [string];
-        sections: [{
-            section: [{
-                items: [{
-                    item: [{
-                        key: [string];
-                        value: [string];
-                    }];
-                }];
-                name: [string];
-            } | string];
-        }];
-        'space-available': [string];
-    }];
-}
-
 export interface EcpRegistryData extends BaseEcpResponse {
     devId?: string;
     plugins?: Array<string>;
@@ -183,14 +106,6 @@ export interface EcpRegistryData extends BaseEcpResponse {
     spaceAvailable?: string;
     state?: string;
 }
-interface AppStateAsJson extends ParsedEcpBase {
-    'app-id': [string];
-    'app-title': [string];
-    'app-version': [string];
-    'app-dev-id': [string];
-    state: ['active' | 'background' | 'inactive'];
-}
-
 export enum AppState {
     active = 'active',
     background = 'background',
@@ -208,34 +123,20 @@ export interface EcpAppStateData {
     errorMessage?: string;
 }
 
-interface PerfettoEnableAsJson extends ParsedEcpBase {
-    'enabled-channels': [{ channel: string[] }];
-    timestamp: [string];
-    'timestamp-end': [string];
-}
-
 export interface EcpPerfettoEnableData extends BaseEcpResponse {
     enabledChannels: string[];
     timestamp?: number;
     timestampEnd?: number;
 }
 
-type ExitAppAsJson = ParsedEcpBase;
-
 export interface EcpExitAppData {
     status: EcpStatus;
     errorMessage?: string;
 }
 
-interface HeapSnapshotAsJson extends ParsedEcpBase {
-    timestamp: [string];
-    'timestamp-end': [string];
-}
-
 export interface EcpHeapSnapshotData extends BaseEcpResponse {
-    timestamp: number;
-    timestampEnd: number;
+    timestamp?: number;
+    timestampEnd?: number;
 }
-
 
 export const rokuECP = new RokuECP();

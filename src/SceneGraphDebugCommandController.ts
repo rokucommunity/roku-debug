@@ -1,11 +1,19 @@
+import { createRokuDeploySocket } from 'roku-deploy';
+import type { DeviceConfig, RokuDeploySocket, SocketOptions } from 'roku-deploy';
 import { logger } from './logging';
 // eslint-disable-next-line
 const Telnet = require('telnet-client');
 
 export class SceneGraphDebugCommandController {
-    constructor(public host: string, port?: number) {
+    constructor(device: DeviceConfig, port?: number) {
+        this.device = device;
         this.port = port ?? 8080;
     }
+
+    /**
+     * The roku-deploy device config for the target device
+     */
+    private device: DeviceConfig;
 
     private connection: typeof Telnet;
 
@@ -17,10 +25,38 @@ export class SceneGraphDebugCommandController {
     private maxBufferLength = 5242880;
     private logger = logger.createLogger(`[${SceneGraphDebugCommandController.name}]`);
 
+    /**
+     * Create the transport used to reach the SceneGraph debug server. Extracted to a protected
+     * method so tests can substitute a fake socket.
+     */
+    protected createRokuDeploySocket(options: SocketOptions): RokuDeploySocket {
+        return createRokuDeploySocket(options);
+    }
+
     public async connect(options: { execTimeout?: number; timeout?: number } = {}) {
         this.removeConnection();
 
+        const timeoutMs = options.timeout ?? this.timeout;
+
+        let socket: RokuDeploySocket | undefined;
         try {
+            socket = this.createRokuDeploySocket({
+                device: this.device,
+                port: this.port
+            });
+            //keep an error listener attached for the socket's whole life: waitForConnectPrompt and
+            //telnet-client each remove or narrow theirs at various points, and a socket 'error'
+            //emitted while no listener is attached would crash the whole process
+            socket.on('error', (error: Error) => {
+                this.logger.debug('SceneGraph debug server socket error', error);
+            });
+
+            await this.waitForSocketConnect(socket, timeoutMs);
+            //an injected sock skips telnet-client's own prompt wait entirely (see the comment on
+            //waitForConnectPrompt below), so the greeting has to be consumed here first or it would
+            //otherwise arrive mid-exec and prematurely terminate the first command's response
+            await this.waitForConnectPrompt(socket, timeoutMs);
+
             // Make a new telnet connections object
             let connection = new Telnet();
 
@@ -28,21 +64,95 @@ export class SceneGraphDebugCommandController {
                 this.removeConnection();
             });
             const config = {
-                host: this.host,
                 port: this.port,
                 shellPrompt: this.shellPrompt,
                 echoLines: this.echoLines,
                 timeout: this.timeout,
                 execTimeout: this.execTimeout,
                 maxBufferLength: this.maxBufferLength,
-                ...options
+                ...options,
+                sock: socket
             };
             this.logger.debug('Establishing telnet connection', config);
             await connection.connect(config);
             this.connection = connection;
         } catch (e) {
+            //the socket was created but never became the live connection, so nothing else will ever
+            //destroy it. Leaving it dangling would leak an open socket or websocket.
+            socket?.destroy();
             throw new Error((e as Error).message);
         }
+    }
+
+    /**
+     * Waits for the transport-level connection to establish (the tcp handshake for a local device,
+     * or the websocket handshake for an RCE device), racing its 'connect' event against 'error' and
+     * a manual timeout. An injected sock bypasses telnet-client's own connect timeout entirely
+     * (telnet-client resolves immediately for an injected sock, before its timeout is even armed),
+     * so this is the only thing enforcing one here.
+     */
+    private waitForSocketConnect(socket: RokuDeploySocket, timeoutMs: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const cleanup = () => {
+                clearTimeout(timeoutHandle);
+                socket.removeListener('connect', onConnect);
+                socket.removeListener('error', onError);
+            };
+            const onConnect = () => {
+                cleanup();
+                resolve();
+            };
+            const onError = (error: Error) => {
+                cleanup();
+                reject(error);
+            };
+            const timeoutHandle = setTimeout(() => {
+                cleanup();
+                reject(new Error(`Timed out connecting to the SceneGraph debug server after ${timeoutMs}ms`));
+            }, timeoutMs);
+
+            socket.once('connect', onConnect);
+            socket.once('error', onError);
+            socket.connect();
+        });
+    }
+
+    /**
+     * Waits for the connection greeting (a bare `>` shell prompt) to arrive and consumes it before
+     * the socket is handed to telnet-client. This mirrors the prompt wait telnet-client performs
+     * when it owns the socket, which it skips entirely for an injected sock (it treats one as
+     * already `'ready'`); without it the greeting would instead arrive mid-exec, where its prompt
+     * would prematurely terminate the first command's response. Rejects if the prompt does not
+     * arrive within `timeoutMs`.
+     */
+    private waitForConnectPrompt(socket: RokuDeploySocket, timeoutMs: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            let accumulatedText = '';
+            //a fresh non-global copy avoids a stateful lastIndex across calls, since
+            //this.shellPrompt carries the 'g' flag
+            const nonGlobalShellPrompt = new RegExp(this.shellPrompt.source, this.shellPrompt.flags.replace('g', ''));
+
+            const finish = (error?: Error) => {
+                socket.removeListener('data', onData);
+                clearTimeout(timeoutHandle);
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve();
+                }
+            };
+            const onData = (chunk: Buffer) => {
+                accumulatedText += chunk.toString('utf8');
+                if (nonGlobalShellPrompt.test(accumulatedText)) {
+                    finish();
+                }
+            };
+            const timeoutHandle = setTimeout(() => {
+                finish(new Error(`Timed out after ${timeoutMs}ms waiting for the SceneGraph debug server's shell prompt`));
+            }, timeoutMs);
+
+            socket.on('data', onData);
+        });
     }
 
     private removeConnection() {

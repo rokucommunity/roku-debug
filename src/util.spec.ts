@@ -18,6 +18,60 @@ beforeEach(() => {
 
 describe('Util', () => {
 
+    describe('hydrateRceTokenFromEnv', () => {
+        let originalEnvToken: string | undefined;
+
+        beforeEach(() => {
+            originalEnvToken = process.env.ROKU_RCE_TOKEN;
+        });
+
+        afterEach(() => {
+            if (originalEnvToken === undefined) {
+                delete process.env.ROKU_RCE_TOKEN;
+            } else {
+                process.env.ROKU_RCE_TOKEN = originalEnvToken;
+            }
+        });
+
+        it('hydrates the token onto a tokenless RCE device option', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            expect(util.hydrateRceTokenFromEnv({ instanceUrl: 'https://device.rce.roku.com/instance/abc' })).to.eql({
+                instanceUrl: 'https://device.rce.roku.com/instance/abc',
+                rceToken: 'env-token'
+            });
+        });
+
+        it('a token already on the device option wins over the env var', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            expect(util.hydrateRceTokenFromEnv({ id: 83, rceToken: 'config-token' })).to.eql({
+                id: 83,
+                rceToken: 'config-token'
+            });
+        });
+
+        it('returns a tokenless RCE device option unchanged when the env var is not set', () => {
+            delete process.env.ROKU_RCE_TOKEN;
+            const device = { esn: 'esn-value' };
+            expect(util.hydrateRceTokenFromEnv(device)).to.equal(device);
+        });
+
+        it('leaves local device configs untouched', () => {
+            process.env.ROKU_RCE_TOKEN = 'env-token';
+            const localDevice = { host: '1.2.3.4' };
+            expect(util.hydrateRceTokenFromEnv(localDevice)).to.equal(localDevice);
+        });
+    });
+
+    describe('getDeviceLabel', () => {
+        it('identifies each device addressing scheme without leaking credentials', () => {
+            expect(util.getDeviceLabel({ host: '1.2.3.4' })).to.equal('1.2.3.4');
+            expect(util.getDeviceLabel({ instanceUrl: 'https://device.rce.roku.com/instance/abc', rceToken: 'secret' })).to.equal('https://device.rce.roku.com/instance/abc');
+            expect(util.getDeviceLabel({ id: 83, rceToken: 'secret' })).to.equal('83');
+            expect(util.getDeviceLabel({ esn: 'esn-value', rceToken: 'secret' })).to.equal('esn-value');
+            expect(util.getDeviceLabel(undefined)).to.equal(undefined);
+        });
+    });
+
     describe('hasNonNullishProperty', () => {
         it('detects objects with only nullish props or no props at all', () => {
             expect(util.hasNonNullishProperty({})).to.be.false;
@@ -125,6 +179,26 @@ describe('Util', () => {
 
         it('should support file schemes with underscores', () => {
             assert.equal(util.getFileScheme('thing_with_underscores:/source/lib.brs'), 'thing_with_underscores:');
+        });
+    });
+
+    describe('splitAndTrim', () => {
+        it('returns an empty array for a missing or blank value', () => {
+            expect(util.splitAndTrim(undefined)).to.eql([]);
+            expect(util.splitAndTrim('')).to.eql([]);
+            expect(util.splitAndTrim('   ')).to.eql([]);
+        });
+
+        it('splits on commas and trims whitespace', () => {
+            expect(util.splitAndTrim('LibAlpha, LibBeta ,LibCharlie')).to.eql(['LibAlpha', 'LibBeta', 'LibCharlie']);
+        });
+
+        it('handles a single entry', () => {
+            expect(util.splitAndTrim('LibAlpha')).to.eql(['LibAlpha']);
+        });
+
+        it('drops empty entries from trailing or doubled commas', () => {
+            expect(util.splitAndTrim('LibAlpha,,LibBeta,')).to.eql(['LibAlpha', 'LibBeta']);
         });
     });
 
@@ -486,6 +560,62 @@ describe('Util', () => {
             expect(
                 util.endsWithThreadAttachedText('Thread attached: ...Modules/MainMenu/MainMenu.brs(309)   renderTracking = m.top.renderTracking\r\n\r\n')
             ).to.be.true;
+        });
+    });
+
+    describe('stringReplaceInsensitive', () => {
+        it('replaces the first case-insensitive occurrence', () => {
+            expect(util.stringReplaceInsensitive('Hello World', 'WORLD', 'There')).to.equal('Hello There');
+            expect(util.stringReplaceInsensitive('/PROJECT/source/main.brs', '/project', '')).to.equal('/source/main.brs');
+        });
+
+        it('returns the subject unchanged when not found', () => {
+            expect(util.stringReplaceInsensitive('Hello World', 'Missing', 'There')).to.equal('Hello World');
+        });
+    });
+
+    describe('fileExistsCaseInsensitive', () => {
+        let folder: string;
+        let filePath: string;
+
+        beforeEach(() => {
+            fsExtra.emptyDirSync('./.tmp');
+            folder = path.resolve('./.tmp/findMainFunctionTests/');
+            fsExtra.mkdirSync(folder);
+
+            filePath = path.resolve(`${folder}/testFile`);
+        });
+
+        afterEach(() => {
+            fsExtra.emptyDirSync('./.tmp');
+            fsExtra.rmdirSync('./.tmp');
+        });
+
+        it('returns true when the file exists with matching case', async () => {
+            fsExtra.writeFileSync(filePath, '');
+            expect(await util.fileExistsCaseInsensitive(filePath)).to.be.true;
+        });
+
+        it('returns true when the file exists with different case', async () => {
+            fsExtra.writeFileSync(filePath, '');
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/TESTFILE`))).to.be.true;
+        });
+
+        it('returns false when the parent directory does not exist', async () => {
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/missingFolder/testFile`))).to.be.false;
+        });
+
+        it('returns false when the file does not exist inside a directory that does exist', async () => {
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/not-there`))).to.be.false;
+        });
+
+        it('finds the file in a directory with multiple files', async () => {
+            fsExtra.outputFileSync(path.resolve(`${folder}/aaa.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/bbb.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/target.txt`), 'content');
+            fsExtra.outputFileSync(path.resolve(`${folder}/zzz.txt`), 'content');
+
+            expect(await util.fileExistsCaseInsensitive(path.resolve(`${folder}/target.txt`))).to.be.true;
         });
     });
 

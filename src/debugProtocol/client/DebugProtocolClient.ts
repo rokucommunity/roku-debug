@@ -1,4 +1,3 @@
-import * as Net from 'net';
 import * as debounce from 'debounce';
 import * as EventEmitter from 'eventemitter3';
 import * as semver from 'semver';
@@ -9,6 +8,7 @@ import { ListBreakpointsResponse } from '../events/responses/ListBreakpointsResp
 import { AddBreakpointsResponse } from '../events/responses/AddBreakpointsResponse';
 import { RemoveBreakpointsResponse } from '../events/responses/RemoveBreakpointsResponse';
 import { defer, util } from '../../util';
+import { ProtocolCapabilities } from './ProtocolCapabilities';
 import { BreakpointErrorUpdate } from '../events/updates/BreakpointErrorUpdate';
 import { ContinueRequest } from '../events/requests/ContinueRequest';
 import { StopRequest } from '../events/requests/StopRequest';
@@ -47,23 +47,24 @@ import type { VerifiedBreakpoint } from '../events/updates/BreakpointVerifiedUpd
 import { BreakpointVerifiedUpdate } from '../events/updates/BreakpointVerifiedUpdate';
 import type { AddConditionalBreakpointsResponse } from '../events/responses/AddConditionalBreakpointsResponse';
 import { ExceptionBreakpointErrorUpdate } from '../events/updates/ExceptionBreakpointErrorUpdate';
+import { createRokuDeploySocket } from 'roku-deploy';
+import type { DeviceConfig, RokuDeploySocket, SocketOptions } from 'roku-deploy';
 
 export class DebugProtocolClient {
 
     public logger = logger.createLogger(`[dpclient]`);
 
     // The highest tested version of the protocol we support.
-    public supportedVersionRange = '<=3.2.0';
+    public supportedVersionRange = '<=3.5.0';
 
     constructor(
         options?: ConstructorOptions
     ) {
         this.options = {
             controlPort: 8081,
-            host: undefined,
             //override the defaults with the options from parameters
             ...options ?? {}
-        };
+        } as ConstructorOptions;
 
         //add the internal plugin last, so it's the final plugin to handle the events
         this.addCorePlugin();
@@ -87,7 +88,19 @@ export class DebugProtocolClient {
      * This field indicates whether we should be looking for packet_length or not in the responses we get from the device
      */
     public watchPacketLength = false;
-    public protocolVersion: string;
+    /**
+     * Capability flags derived from the negotiated protocol version. Undefined until the
+     * handshake completes, then assigned a fresh `ProtocolCapabilities` keyed off the version
+     * the device reported.
+     */
+    public capabilities: ProtocolCapabilities | undefined;
+    /**
+     * The protocol version negotiated with the device during the handshake. Undefined until
+     * the handshake has completed.
+     */
+    public get protocolVersion(): string | undefined {
+        return this.capabilities?.protocolVersion;
+    }
     public primaryThread: number;
     public stackFrameIndex: number;
 
@@ -100,7 +113,7 @@ export class DebugProtocolClient {
     /**
      * The primary socket for this session. It's used to communicate with the debugger by sending commands and receives responses or updates
      */
-    private controlSocket: Net.Socket;
+    private controlSocket: RokuDeploySocket;
     /**
      * Promise that is resolved when the control socket is closed
      */
@@ -108,7 +121,7 @@ export class DebugProtocolClient {
     /**
      * A socket where the debug server will send stdio
      */
-    private ioSocket: Net.Socket;
+    private ioSocket: RokuDeploySocket;
     /**
      * Resolves when the ioSocket has closed
      */
@@ -124,45 +137,6 @@ export class DebugProtocolClient {
     private requestIdSequence = 1;
     private activeRequests = new Map<number, ProtocolRequest>();
     private options: ConstructorOptions;
-
-    /**
-     * Prior to protocol v3.1.0, the Roku device would regularly set the wrong thread as "active",
-     * so this flag lets us know if we should use our better-than-nothing workaround
-     */
-    private get enableThreadHoppingWorkaround() {
-        return semver.satisfies(this.protocolVersion, '<3.1.0');
-    }
-
-    /**
-     * Starting in protocol v3.1.0, component libary breakpoints must be added in the format `lib:/<library_name>/<filepath>`, but prior they didn't require this.
-     * So this flag tells us which format to support
-     */
-    private get enableComponentLibrarySpecificBreakpoints() {
-        return semver.satisfies(this.protocolVersion, '>=3.1.0');
-    }
-
-    /**
-     * Starting in protocol v3.1.0, breakpoints can support conditional expressions. This flag indicates whether the current sessuion supports that functionality.
-     */
-    private get supportsConditionalBreakpoints() {
-        return semver.satisfies(this.protocolVersion, '>=3.1.0');
-    }
-
-    public get supportsBreakpointRegistrationWhileRunning() {
-        return semver.satisfies(this.protocolVersion, '>=3.2.0');
-    }
-
-    public get supportsBreakpointVerification() {
-        return semver.satisfies(this.protocolVersion, '>=3.2.0');
-    }
-
-    public get supportsVirtualVariables() {
-        return semver.satisfies(this.protocolVersion, '>=3.3.0');
-    }
-
-    public get supportsExceptionBreakpoints() {
-        return semver.satisfies(this.protocolVersion, '>=3.3.0');
-    }
 
     /**
      * Get a promise that resolves after an event occurs exactly once
@@ -222,17 +196,28 @@ export class DebugProtocolClient {
     }
 
     /**
+     * Create the transport used to reach one of the device's debug protocol ports (the control port
+     * or the io port): a raw tcp socket for a local device, or the RCE instance api's
+     * `/api/v0/ports/<port>` WebSocket for a cloud device. Extracted to a protected method so tests
+     * can substitute a fake socket.
+     */
+    protected createRokuDeploySocket(options: SocketOptions): RokuDeploySocket {
+        return createRokuDeploySocket(options);
+    }
+
+    /**
      * A collection of sockets created when trying to connect to the debug protocol's control socket. We keep these around for quicker tear-down
      * whenever there is an early-terminated debug session
      */
     private async establishControlConnection() {
-        const connection = await new Promise<Net.Socket>((resolve) => {
-            const socket = new Net.Socket({
-                allowHalfOpen: false
+        const connection = await new Promise<RokuDeploySocket>((resolve) => {
+            const socket = this.createRokuDeploySocket({
+                device: this.options.device,
+                port: this.options.controlPort
             });
             util.registerSocketLogging(socket, this.logger, 'ControlSocket');
 
-            socket.connect({ port: this.options.controlPort, host: this.options.host }, () => {
+            socket.connect(() => {
                 resolve(socket);
             });
         });
@@ -258,7 +243,7 @@ export class DebugProtocolClient {
         // If there is no error, the server has accepted the request and created a new dedicated control socket
         this.controlSocket = await this.establishControlConnection();
 
-        this.controlSocket.on('data', (data) => {
+        this.controlSocket.on('data', (data: Buffer) => {
             this.writeToBufferLog('server-to-client', data);
             this.emit('data', data);
             //queue up processing the new data, chunk by chunk
@@ -414,18 +399,21 @@ export class DebugProtocolClient {
     public async threads() {
         const result = await this.processThreadsRequest(
             ThreadsRequest.fromJson({
-                requestId: this.requestIdSequence++
+                requestId: this.requestIdSequence++,
+                //only ask the device for per-thread identity info on firmware that supports it
+                includeIdentityInfo: this.capabilities?.supportsThreadIdentityInfo
             })
         );
         return result;
     }
+
     public async processThreadsRequest(request: ThreadsRequest) {
         if (this.isStopped) {
             let result = await this.sendRequest<ThreadsResponse>(request);
 
             if (result.data.errorCode === ErrorCode.OK) {
                 //older versions of the debug protocol had issues with maintaining the active thread, so our workaround is to keep track of it elsewhere
-                if (this.enableThreadHoppingWorkaround) {
+                if (this.capabilities?.enableThreadHoppingWorkaround) {
                     //ignore the `isPrimary` flag on threads
                     this.logger.debug(`Ignoring the 'isPrimary' flag from threads because protocol version 3.0.0 and lower has a bug`);
                 } else {
@@ -494,10 +482,13 @@ export class DebugProtocolClient {
                 threadIndex: threadIndex,
                 stackFrameIndex: stackFrameIndex,
                 getChildKeys: true,
-                getVirtualKeys: this.supportsVirtualVariables,
+                getVirtualKeys: this.capabilities?.supportsVirtualVariables,
                 variablePathEntries: variablePathEntries.map(x => ({
-                    //remove leading and trailing quotes
-                    name: x.replace(/^"/, '').replace(/"$/, ''),
+                    //strip the surrounding quotes from a string key and un-escape doubled quotes (`""` -> `"`).
+                    //BrightScript escapes a `"` inside a string as `""`, so the key `"` arrives as the token `""""`.
+                    name: x.length >= 2 && x.startsWith('"') && x.endsWith('"')
+                        ? x.slice(1, -1).replace(/""/g, '"')
+                        : x.replace(/^"/, '').replace(/"$/, ''),
                     forceCaseInsensitive: !x.startsWith('"') && !x.endsWith('"'),
                     //vars that start with `'$'` are virtual (AA keys will wrapped in quotes so would start with `"$`
                     isVirtual: x.startsWith('$') // || x.startsWith('"$')
@@ -643,7 +634,7 @@ export class DebugProtocolClient {
     }
 
     public async addBreakpoints(breakpoints: Array<BreakpointSpec & { componentLibraryName?: string }>): Promise<AddBreakpointsResponse> {
-        const { enableComponentLibrarySpecificBreakpoints } = this;
+        const enableComponentLibrarySpecificBreakpoints = this.capabilities?.enableComponentLibrarySpecificBreakpoints;
         if (breakpoints?.length > 0) {
             const json = {
                 requestId: this.requestIdSequence++,
@@ -661,7 +652,7 @@ export class DebugProtocolClient {
 
             const useConditionalBreakpoints = (
                 //does this protocol version support conditional breakpoints?
-                this.supportsConditionalBreakpoints &&
+                this.capabilities?.supportsConditionalBreakpoints &&
                 //is there at least one conditional breakpoint present?
                 !!breakpoints.find(x => !!x?.conditionalExpression?.trim())
             );
@@ -678,7 +669,7 @@ export class DebugProtocolClient {
             }
 
             //if the device does not support breakpoint verification, then auto-mark all of these as verified
-            if (!this.supportsBreakpointVerification) {
+            if (!this.capabilities?.supportsBreakpointVerification) {
                 this.emit('breakpoints-verified', {
                     breakpoints: response.data.breakpoints
                 });
@@ -805,16 +796,24 @@ export class DebugProtocolClient {
     /**
      * Sometimes a request arrives that we don't understand. If that's the case, this function can be used
      * to discard that entire response by discarding `packet_length` number of bytes
+     * @returns true if bytes were actually discarded, false if the buffer was left untouched
      */
-    private discardNextResponseOrUpdate() {
+    private discardNextResponseOrUpdate(): boolean {
+        //an unparseable pre-handshake buffer is a fragmented handshake still accumulating, not an
+        //unknown message, so there's no packet length to recover with yet. never discard here
+        if (!this.isHandshakeComplete) {
+            return false;
+        }
         const response = GenericV3Response.fromBuffer(this.buffer);
-        if (response.success && response.data.packetLength > 0) {
+        if (response.success && response.data.packetLength > 0 && response.data.packetLength <= this.buffer.length) {
             this.logger.warn(`Unsupported response or updated encountered. Discarding ${response.data.packetLength} bytes:`, JSON.stringify(
                 this.buffer.slice(0, response.data.packetLength + 1).toJSON().data
             ));
             //we have a valid event. Clear the buffer of this data
             this.buffer = this.buffer.slice(response.data.packetLength);
+            return true;
         }
+        return false;
     }
 
     /**
@@ -854,9 +853,9 @@ export class DebugProtocolClient {
             //if the event failed to parse, or the buffer doesn't have enough bytes to satisfy the packetLength, exit here (new data will re-trigger this function)
             if (!responseOrUpdate) {
                 this.logger.info('Unable to convert buffer into anything meaningful', this.buffer);
-                //if we have packet length, and we have at least that many bytes, throw out this message so we can hopefully recover
-                this.discardNextResponseOrUpdate();
-                return false;
+                //if we have packet length, and we have at least that many bytes, throw out this message so we can hopefully recover.
+                //if we actually discarded bytes, there may be another full message right behind it in the same buffer, so keep looping
+                return this.discardNextResponseOrUpdate();
             }
             if (!responseOrUpdate.success || responseOrUpdate.data.packetLength > this.buffer.length) {
                 this.logger.log(`event parse failed. ${responseOrUpdate?.data?.packetLength} bytes required, ${this.buffer.length} bytes available`);
@@ -1054,7 +1053,7 @@ export class DebugProtocolClient {
         if (DebugProtocolClient.DEBUGGER_MAGIC === response.data.magic) {
             this.logger.log('Magic is valid.');
 
-            this.protocolVersion = response.data.protocolVersion;
+            this.capabilities = new ProtocolCapabilities(response.data.protocolVersion);
             this.logger.log('Protocol Version:', this.protocolVersion);
 
             this.watchPacketLength = semver.satisfies(this.protocolVersion, '>=3.0.0');
@@ -1099,27 +1098,25 @@ export class DebugProtocolClient {
      */
     private connectToIoPort(update: IOPortOpenedUpdate) {
         if (update.success) {
-            // Create a new TCP client.
-            this.ioSocket = new Net.Socket({
-                allowHalfOpen: false
+            // Create a new client socket to the io port the device just opened
+            this.ioSocket = this.createRokuDeploySocket({
+                device: this.options.device,
+                port: update.data.port
             });
             util.registerSocketLogging(this.ioSocket, this.logger, 'IoSocket');
 
             // Send a connection request to the server.
-            this.logger.log(`Connect to IO Port ${this.options.host}:${update.data.port}`);
+            this.logger.log(`Connect to IO Port ${update.data.port}`);
 
             //sometimes the server shuts down before we had a chance to connect, so recover more gracefully
             try {
-                this.ioSocket.connect({
-                    port: update.data.port,
-                    host: this.options.host
-                }, () => {
+                this.ioSocket.connect(() => {
                     // If there is no error, the server has accepted the request
                     this.logger.log('TCP connection established with the IO Port.');
                     this.connectedToIoPort = true;
 
                     let lastPartialLine = '';
-                    this.ioSocket.on('data', (buffer) => {
+                    this.ioSocket.on('data', (buffer: Buffer) => {
                         this.writeToBufferLog('io', buffer);
                         let logResult = util.handleLogFragments(lastPartialLine, buffer.toString());
 
@@ -1146,7 +1143,7 @@ export class DebugProtocolClient {
                 });
                 return true;
             } catch (e) {
-                this.logger.error(`Failed to connect to IO socket at ${this.options.host}:${update.data.port}`, e);
+                this.logger.error(`Failed to connect to IO socket at port ${update.data.port}`, e);
                 this.emit('app-exit');
             }
         }
@@ -1294,9 +1291,12 @@ export interface BreakpointSpec {
 
 export interface ConstructorOptions {
     /**
-     * The host/ip address of the Roku
+     * The roku-deploy device config for the target device. This is the only way this client
+     * addresses the device: a local device connects raw tcp sockets to its debug protocol ports,
+     * and a Roku Cloud Emulator device reaches the same ports through its instance api's
+     * `/api/v0/ports/<port>` WebSocket routes.
      */
-    host: string;
+    device: DeviceConfig;
     /**
      * The port number used to send all debugger commands. This is static/unchanging for Roku devices,
      * but is configurable here to support unit testing or alternate runtimes (i.e. https://www.npmjs.com/package/brs)

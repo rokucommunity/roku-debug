@@ -85,7 +85,7 @@ export class DebugProtocolClientReplaySession {
     private createClient(controlPort: number) {
         this.client = new DebugProtocolClient({
             controlPort: controlPort,
-            host: 'localhost'
+            device: { host: 'localhost' }
         });
 
         //store the responses in the result

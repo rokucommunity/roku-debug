@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import * as yargs from 'yargs';
 import { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
-import defaultLogger from '@rokucommunity/logger';
-import { logger, removeConsoleLogger } from './logging';
+import { redirectConsoleToStderr } from './logging';
 
 let options = yargs
     .usage('$0', 'roku-debug, support for debugging Roku devices via telnet or debug protocol')
@@ -12,15 +11,8 @@ let options = yargs
 
 (function main() {
     if (options.dap) {
-        removeConsoleLogger()
-        //pipe all log messages to stderror when in DAP mode, since stdout is used for DAP communication
-        defaultLogger.transports.unshift({
-            pipe(message) {
-                const text = message.logger.formatMessage(message);
-                process.stderr.write(text + '\n');
-            }
-        });
-
+        //stdout is reserved for DAP messages, so send all console output (logs, third-party noise, etc.) to stderr instead
+        redirectConsoleToStderr();
         BrightScriptDebugSession.run(BrightScriptDebugSession);
     } else {
         throw new Error('Not supported');

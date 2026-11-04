@@ -4,17 +4,88 @@ import * as fsExtra from 'fs-extra';
 import { SmartBuffer } from 'smart-buffer';
 import { bscProjectWorkerPool } from './bsc/threading/BscProjectWorkerPool';
 import { DisallowedFunctionIdentifiersText, standardizePath as s } from 'brighterscript';
+import { util } from './util';
 
 export const tempDir = s`${__dirname}/../.tmp`;
 export const rootDir = s`${tempDir}/rootDir`;
 export const stagingDir = s`${tempDir}/stagingDir`;
 
-beforeEach(() => {
-    fsExtra.emptyDirSync(tempDir);
+/**
+ * List every path remaining inside `dir` (recursively), sorted. Used to show what is still present
+ * when a directory delete fails.
+ */
+function listDirContents(dir: string): string[] {
+    const result: string[] = [];
+    const walk = (current: string) => {
+        let entries: string[];
+        try {
+            entries = fsExtra.readdirSync(current);
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            const fullPath = `${current}/${entry}`;
+            result.push(fullPath);
+            try {
+                if (fsExtra.statSync(fullPath).isDirectory()) {
+                    walk(fullPath);
+                }
+            } catch {
+                //entry may have been removed concurrently; ignore
+            }
+        }
+    };
+    walk(dir);
+    return result.sort();
+}
+
+/**
+ * Delete a directory, retrying to get past transient locks. When an earlier test leaves a file handle
+ * open, Windows keeps the directory entry around until that handle closes, which surfaces as
+ * ENOTEMPTY/EBUSY/EPERM on rmdir; waiting and retrying gives the handle time to close and the OS time to
+ * release it. If every attempt still fails, log the paths still present along with the error message and
+ * stack trace so CI shows which leftovers blocked the delete, then re-throw the final error.
+ * @param dir the directory to delete
+ * @param options.retryCount how many times to attempt the delete before giving up (defaults to 10)
+ * @param options.retryDelay milliseconds to wait between attempts, scaled by the attempt number (defaults to 100)
+ * @param options.label optional label included in the diagnostic output to identify the calling teardown
+ */
+export async function forceDeleteDir(dir: string, options?: { retryCount?: number; retryDelay?: number; label?: string }) {
+    const retryCount = options?.retryCount ?? 10;
+    const retryDelay = options?.retryDelay ?? 100;
+    let lastError: Error;
+    for (let attempt = 1; attempt <= retryCount; attempt++) {
+        try {
+            await fsExtra.remove(dir);
+            return;
+        } catch (error) {
+            lastError = error as Error;
+            //wait a bit longer each attempt to give any lingering handle time to close
+            if (attempt < retryCount) {
+                await util.sleep(attempt * retryDelay);
+            }
+        }
+    }
+    const prefix = options?.label ? `[forceDeleteDir ${options.label}]` : '[forceDeleteDir]';
+    const leftovers = listDirContents(dir);
+    console.error(`${prefix} failed to delete '${dir}' after ${retryCount} attempt(s); ${leftovers.length} path(s) still present:`);
+    for (const leftover of leftovers) {
+        console.error(`${prefix}   ${leftover}`);
+    }
+    console.error(`${prefix} ${lastError.message}`);
+    if (lastError.stack) {
+        console.error(lastError.stack);
+    }
+    throw lastError;
+}
+
+beforeEach(async () => {
+    await forceDeleteDir(tempDir);
+    fsExtra.ensureDirSync(tempDir);
 });
 
-afterEach(() => {
-    fsExtra.removeSync(tempDir);
+afterEach(async () => {
+    await forceDeleteDir(tempDir);
 });
 
 /**

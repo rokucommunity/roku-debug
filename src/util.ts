@@ -1,25 +1,47 @@
 import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
+import * as path from 'path';
 import * as net from 'net';
 import * as portfinder from 'portfinder';
 import type { BrightScriptDebugSession } from './debugSession/BrightScriptDebugSession';
 import { LogOutputEvent } from './debugSession/Events';
 import type { AssignmentStatement, Position, Range } from 'brighterscript';
 import { isDottedSetStatement, isIndexedSetStatement, Expression, DiagnosticSeverity, isAssignmentStatement, isDottedGetExpression, isIndexedGetExpression, isLiteralExpression, isVariableExpression, Parser } from 'brighterscript';
-import { serializeError } from 'serialize-error';
+import { serializeError } from './formatUtils';
+import { fileUtils } from './FileUtils';
 import * as dns from 'dns';
 import type { AdapterOptions, DisposableLike } from './interfaces';
-import * as r from 'postman-request';
-import type { Response } from 'request';
-import type * as requestType from 'request';
+import * as needle from 'needle';
 import { OutputEvent } from '@vscode/debugadapter';
-import * as xml2js from 'xml2js';
 import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
+import type { DeviceConfig, RokuDeploySocket } from 'roku-deploy';
+import { isRceDeviceConfigById, isRceDeviceConfigByUrl, isRceDeviceConfig } from 'roku-deploy';
 import { logger } from './logging';
-const request = r as typeof requestType;
 
 class Util {
+    /**
+     * Resolve a project's staging folder the same way roku-deploy's `stage()` does: the default
+     * staging folder name inside `outDir`. roku-deploy does not expose this resolution, so it is
+     * rolled here and must stay in step with roku-deploy's own defaults.
+     */
+    public getStagingDir(options: { outDir?: string; cwd?: string }): string {
+        return path.resolve(options.cwd ?? process.cwd(), options.outDir ?? './out', '.roku-deploy-staging');
+    }
+
+    /**
+     * Resolve a project's output zip path the same way roku-deploy's `zip()` does: `outFile`
+     * inside `outDir`, with a `.zip` extension enforced. roku-deploy does not expose this
+     * resolution, so it is rolled here and must stay in step with roku-deploy's own defaults.
+     */
+    public getOutputZipPath(options: { outDir?: string; outFile?: string; cwd?: string }): string {
+        let out = path.resolve(options.cwd ?? process.cwd(), options.outDir ?? './out', options.outFile ?? 'roku-deploy.zip');
+        if (!out.toLowerCase().endsWith('.zip')) {
+            out += '.zip';
+        }
+        return out;
+    }
+
     /**
      * If the path does not have a trailing slash, one is appended to it
      * @param dirPath
@@ -36,6 +58,33 @@ class Util {
         return new Promise((resolve) => {
             fsExtra.exists(filePath, resolve);
         });
+    }
+
+    /**
+     * Determine if a file exists, comparing its name case insensitively against the entries of its
+     * parent directory. The parent directory path itself must exist as given (on a case-sensitive
+     * filesystem that means with matching case); returns false when it does not.
+     * @param filePath
+     */
+    public async fileExistsCaseInsensitive(filePath: string): Promise<boolean> {
+        filePath = fileUtils.standardizePath(filePath);
+        const lowerFilePath = filePath.toLowerCase();
+
+        const parentDirectoryPath = path.dirname(filePath);
+
+        //the file can't exist if its parent directory doesn't exist
+        if (await fsExtra.pathExists(parentDirectoryPath) === false) {
+            return false;
+        }
+
+        const filesInDirectory = await fsExtra.readdir(parentDirectoryPath);
+        for (const fileName of filesInDirectory) {
+            const fileInDirectoryPath = fileUtils.standardizePath(`${parentDirectoryPath}/${fileName}`);
+            if (fileInDirectoryPath.toLowerCase() === lowerFilePath) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -104,6 +153,34 @@ class Util {
             }
 
             return manifestValues;
+        }
+    }
+
+    /**
+     * Split a comma-delimited string into trimmed, non-empty entries. Returns an empty array when the
+     * value is missing or blank.
+     * @param value the raw string to split (may be undefined)
+     */
+    public splitAndTrim(value: string | undefined): string[] {
+        return (value ?? '')
+            .split(',')
+            .map(entry => entry.trim())
+            .filter(entry => entry.length > 0);
+    }
+
+    /**
+     * Replace the first case-insensitive occurrence of `search` in `subject` with `replace`.
+     * Returns `subject` unchanged when `search` is not found.
+     * @param subject the string that will have its contents replaced
+     * @param search the search text to find in `subject`
+     * @param replace the text to replace `search` with in `subject`
+     */
+    public stringReplaceInsensitive(subject: string, search: string, replace: string): string {
+        const matchIndex = subject.toLowerCase().indexOf(search.toLowerCase());
+        if (matchIndex > -1) {
+            return subject.substring(0, matchIndex) + replace + subject.substring(matchIndex + search.length);
+        } else {
+            return subject;
         }
     }
 
@@ -426,12 +503,56 @@ class Util {
     }
 
     /**
+     * Translate our request options into the needle options we want for talking to a Roku.
+     */
+    private buildNeedleOptions(options?: HttpRequestOptions): needle.NeedleOptions {
+        return {
+            //Roku responses are HTML/XML that we parse by hand; never let needle auto-parse them
+            'parse_response': false,
+            //never let needle charset-decode a response: a body served with a charset in its
+            //content-type would get every non-utf8 byte replaced with U+FFFD
+            'decode_response': false,
+            //`timeout` bounds the connection and the time to the first response byte. Deliberately do
+            //NOT set `read_timeout`: its per-chunk re-armed timer can be left running after a request
+            //completes, later firing a spurious `request.destroy()` and keeping the event loop alive.
+            'open_timeout': options?.timeout,
+            'response_timeout': options?.timeout,
+            headers: options?.headers,
+            //needle does not send `Connection: close` on modern Node, so the socket to the Roku stays
+            //open after the response and keeps the event loop alive. `agent: false` is also required:
+            //the header alone does not stop Node's pooling `http.globalAgent` from handing back a
+            //keep-alive socket the Roku already closed (an instant ECONNRESET).
+            connection: 'close',
+            agent: false
+        };
+    }
+
+    /**
+     * Build our own `HttpResponse` from needle's response.
+     */
+    private buildHttpResponse(response: needle.NeedleResponse): HttpResponse {
+        return {
+            statusCode: response.statusCode,
+            statusMessage: response.statusMessage,
+            headers: response.headers ?? {},
+            //with `parse_response`/`decode_response` disabled, needle hands back a Buffer
+            body: response.body === undefined || response.body === null ? '' : response.body.toString()
+        };
+    }
+
+    /**
      * Do an http GET request
      */
-    public httpGet(url: string, options?: requestType.CoreOptions) {
-        return new Promise<Response>((resolve, reject) => {
-            request.get(url, options, (err, response) => {
-                return err ? reject(err) : resolve(response);
+    public httpGet(url: string, options?: HttpRequestOptions) {
+        return new Promise<HttpResponse>((resolve, reject) => {
+            needle.get(url, this.buildNeedleOptions(options), (error, response) => {
+                if (error) {
+                    return reject(error);
+                }
+                if (!response) {
+                    return reject(new Error(`No response received from ${url}`));
+                }
+                resolve(this.buildHttpResponse(response));
             });
         });
     }
@@ -439,10 +560,16 @@ class Util {
     /**
      * Do an http POST request
      */
-    public httpPost(url: string, options?: requestType.CoreOptions) {
-        return new Promise<Response>((resolve, reject) => {
-            request.post(url, options, (err, response) => {
-                return err ? reject(err) : resolve(response);
+    public httpPost(url: string, options?: HttpRequestOptions) {
+        return new Promise<HttpResponse>((resolve, reject) => {
+            needle.post(url, options?.body ?? null, this.buildNeedleOptions(options), (error, response) => {
+                if (error) {
+                    return reject(error);
+                }
+                if (!response) {
+                    return reject(new Error(`No response received from ${url}`));
+                }
+                resolve(this.buildHttpResponse(response));
             });
         });
     }
@@ -456,7 +583,7 @@ class Util {
         ).some(x => !this.isNullish(x));
     }
 
-    private minPort = 1;
+    private minPort = 1024;
 
     public async getPort() {
         let port: number;
@@ -466,7 +593,7 @@ class Util {
                 port: this.minPort
             });
         } catch {
-            this.minPort = 1;
+            this.minPort = 1024;
             port = await portfinder.getPortPromise({
                 //startPort
                 port: this.minPort
@@ -529,27 +656,49 @@ class Util {
     }
 
     /**
-     * Parse an xml file and get back a javascript object containing its results
+     * Hydrate the Cloud Emulator api token onto an RCE device option from the `ROKU_RCE_TOKEN`
+     * environment variable when the option does not already carry one. The VS Code extension
+     * injects that variable into the debug adapter process so the token does not have to travel
+     * through the launch config (where it would end up in DAP traffic and logs); a token supplied
+     * directly on the device option always wins. Anything that is not a tokenless RCE device
+     * config is returned unchanged.
      */
-    public parseXml<T = any>(text: string): Promise<T> {
-        return new Promise<any>((resolve, reject) => {
-            xml2js.parseString(text, (err, data) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(data);
-                }
-            });
-        });
+    public hydrateRceTokenFromEnv<T extends DeviceConfig>(device: T): T {
+        if (device && isRceDeviceConfig(device) && !device.rceToken && process.env.ROKU_RCE_TOKEN) {
+            return { ...device, rceToken: process.env.ROKU_RCE_TOKEN } as T;
+        }
+        return device;
+    }
+
+    /**
+     * A short human-readable identifier for a device, safe for log and error messages (never
+     * includes credentials like the rceToken). A local device is identified by its host and an RCE
+     * device by its instanceUrl, id, or esn.
+     */
+    public getDeviceLabel(device: DeviceConfig): string {
+        //a device may legitimately be absent on early error paths (before a session is configured)
+        if (!device) {
+            return undefined;
+        }
+        if (isRceDeviceConfig(device)) {
+            if (isRceDeviceConfigByUrl(device)) {
+                return device.instanceUrl;
+            }
+            return isRceDeviceConfigById(device) ? String(device.id) : device.esn;
+        }
+        return device.host;
     }
 
     /**
      * Register the socket events for logging
-     * @param socket - the socket to listen to for events
+     * @param socket - the socket to listen to for events. Accepts a real `net.Socket` as well as
+     * roku-deploy's `RokuDeploySocket` (an RCE device's telnet socket is not a real tcp socket, so its
+     * address-related fields are always undefined; the events below that never fire for it are
+     * harmless no-ops)
      * @param logger - the logger to use for logging
      * @param socketType - the type of socket (e.g. "client", "server")
      */
-    public registerSocketLogging(socket: net.Socket, logger: Logger, socketType: string) {
+    public registerSocketLogging(socket: net.Socket | RokuDeploySocket, logger: Logger, socketType: string) {
         // create a new child logger for the socket events
         let socketLogger = logger.createLogger(`[${socketType}]`);
 
@@ -602,7 +751,7 @@ class Util {
         });
     }
 
-    private getSocketAddressForLogs(socket: net.Socket, ip?: string, port?: number, family?: number): string {
+    private getSocketAddressForLogs(socket: net.Socket | RokuDeploySocket, ip?: string, port?: number, family?: number): string {
         let familyString: string;
         if (typeof family === 'number') {
             familyString = `IPv${family}`;
@@ -697,4 +846,31 @@ export interface Deferred<T> {
     promise: Promise<T>;
     resolve(value?: T);
     reject(error?: any);
+}
+
+/**
+ * The subset of request options this library actually supports. Previously this was
+ * `CoreOptions` from `@types/request`; it was narrowed to drop the `postman-request`
+ * dependency, which carried vulnerable transitive deps.
+ */
+export interface HttpRequestOptions {
+    /**
+     * Milliseconds to wait for the connection to open and for the first response byte.
+     */
+    timeout?: number;
+    headers?: Record<string, string>;
+    body?: string;
+}
+
+/**
+ * The response shape returned by `util.httpPost()`. Deliberately our own type rather than needle's,
+ * so `@types/needle` stays a devDependency and needle is not part of this package's public surface.
+ */
+export interface HttpResponse {
+    statusCode: number;
+    statusMessage?: string;
+    /** Response headers, lower-cased names. */
+    headers: Record<string, any>;
+    /** The response body, decoded as a utf8 string (empty string for bodyless responses). */
+    body: string;
 }

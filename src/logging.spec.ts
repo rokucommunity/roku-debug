@@ -3,10 +3,48 @@ import * as fsExtra from 'fs-extra';
 import * as sinonActual from 'sinon';
 import type { LaunchConfiguration } from './LaunchConfiguration';
 import { standardizePath as s } from 'brighterscript';
-import { FileLoggingManager, fileTransport } from './logging';
+import { FileLoggingManager, fileTransport, redirectConsoleToStderr } from './logging';
+import { Writable } from 'stream';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
+
+describe('redirectConsoleToStderr', () => {
+    let restore: () => void;
+    afterEach(() => {
+        restore?.();
+        restore = undefined;
+    });
+
+    it('routes stdout-bound console methods to the given stream', () => {
+        let captured = '';
+        const stream = new Writable({
+            write(chunk, encoding, callback) {
+                captured += chunk.toString();
+                callback();
+            }
+        });
+        const stdoutWrite = sinon.spy(process.stdout, 'write');
+        try {
+            restore = redirectConsoleToStderr(stream);
+            console.log('from-log');
+            console.info('from-info');
+            console.debug('from-debug');
+        } finally {
+            stdoutWrite.restore();
+        }
+        expect(stdoutWrite.called).to.be.false;
+        expect(captured).to.include('from-log');
+        expect(captured).to.include('from-info');
+        expect(captured).to.include('from-debug');
+    });
+
+    it('restores the original console methods', () => {
+        const originalLog = console.log;
+        redirectConsoleToStderr(new Writable({ write: (c, e, cb) => cb() }))();
+        expect(console.log).to.equal(originalLog);
+    });
+});
 
 describe('LoggingManager', () => {
     let manager: FileLoggingManager;

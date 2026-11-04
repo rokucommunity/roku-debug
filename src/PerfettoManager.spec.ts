@@ -8,7 +8,8 @@ import { EventEmitter } from 'events';
 import { rootDir, tempDir } from './testHelpers.spec';
 import { createSandbox } from 'sinon';
 import { standardizePath as s } from 'brighterscript';
-import { EcpStatus } from './RokuECP';
+import { EcpStatus, rokuECP } from './RokuECP';
+import { rokuDeploy } from 'roku-deploy';
 const sinon = createSandbox();
 
 describe('PerfettoManager', () => {
@@ -18,7 +19,7 @@ describe('PerfettoManager', () => {
 
     beforeEach(() => {
         perfettoManager = new PerfettoManager({
-            host: '192.168.1.100',
+            device: { host: '192.168.1.100' },
             enabled: true,
             dir: s`${tempDir}/profiling`,
             filename: 'test_${timestamp}.perfetto-trace',
@@ -35,12 +36,16 @@ describe('PerfettoManager', () => {
             // Simulate async close behavior with proper code and reason arguments
             process.nextTick(() => mockSocket.emit('close', 1000, Buffer.from('')));
         });
+        mockSocket.terminate = sinon.stub().callsFake(() => {
+            mockSocket.readyState = WebSocket.CLOSED;
+            process.nextTick(() => mockSocket.emit('close', 1006, Buffer.from('')));
+        });
         mockSocket.ping = sinon.stub();
         mockSocket.pause = sinon.stub();
         mockSocket.resume = sinon.stub();
         sinon.stub(perfettoManager as any, 'createWebSocket').callsFake(function(this: any) {
             this.socket = mockSocket;
-            return mockSocket;
+            return Promise.resolve(mockSocket);
         });
 
         // Create mock WriteStream
@@ -64,7 +69,7 @@ describe('PerfettoManager', () => {
     describe('constructor', () => {
         it('uses default values when not specified', () => {
             perfettoManager = new PerfettoManager({
-                host: '192.168.1.100',
+                device: { host: '192.168.1.100' },
                 enabled: true,
                 rootDir: rootDir
             });
@@ -77,15 +82,15 @@ describe('PerfettoManager', () => {
 
         it('uses provided values over defaults', () => {
             perfettoManager = new PerfettoManager({
-                host: '10.0.0.1',
+                device: { host: '10.0.0.1' },
                 enabled: true,
                 dir: '/custom/dir',
                 channelId: 'prod',
                 remotePort: 9090,
                 rootDir: rootDir
             });
+            expect((perfettoManager as any).config.device).to.eql({ host: '10.0.0.1' });
             expect((perfettoManager as any).config).to.include({
-                host: '10.0.0.1',
                 dir: '/custom/dir',
                 channelId: 'prod',
                 remotePort: 9090
@@ -122,9 +127,9 @@ describe('PerfettoManager', () => {
     });
 
     describe('startTracing', () => {
-        it('throws when no host is configured', async () => {
+        it('throws when no device is configured', async () => {
             perfettoManager = new PerfettoManager({
-                host: undefined as any,
+                device: undefined as any,
                 enabled: true,
                 rootDir: rootDir
             });
@@ -136,7 +141,7 @@ describe('PerfettoManager', () => {
                 await perfettoManager.startTracing();
                 expect.fail('Should have thrown an error');
             } catch (error) {
-                expect((error as Error).message).to.include('No host configured');
+                expect((error as Error).message).to.include('Perfetto tracing requires a device');
             }
 
             // Should also emit error event
@@ -154,7 +159,7 @@ describe('PerfettoManager', () => {
         it('creates trace directory if it does not exist', async () => {
             // Stub createWriteStream to prevent actual file operations but still allow directory creation
             sinon.stub(perfettoManager as any, 'createWriteStream').rejects(new Error('Test abort'));
-            
+
             try {
                 await perfettoManager.startTracing();
             } catch {
@@ -179,6 +184,67 @@ describe('PerfettoManager', () => {
             }
 
             expect(errorSpy.firstCall.args[0].error.message).to.include('Error starting Perfetto tracing');
+        });
+
+        it('tears down the write stream and leaves no dangling state when the socket handshake fails', async () => {
+            const errorSpy = sinon.spy();
+            perfettoManager.on('error', errorSpy);
+
+            sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
+            (perfettoManager as any).createWebSocket.restore();
+            sinon.stub(rokuDeploy, 'startPerfettoSession').rejects(new Error('Connection refused'));
+
+            try {
+                await perfettoManager.startTracing();
+                expect.fail('Should have thrown an error');
+            } catch (error) {
+                expect((error as Error).message).to.include('Error starting Perfetto tracing');
+            }
+
+            expect(errorSpy.calledOnce).to.be.true;
+            expect(mockWriteStream.end.called, 'write stream should have been ended').to.be.true;
+            expect((perfettoManager as any).writeStream).to.be.null;
+            expect((perfettoManager as any).filePath).to.be.undefined;
+        });
+
+        it('awaits the in-flight attempt instead of opening a second socket when called again during the handshake', async () => {
+            sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
+            (perfettoManager as any).createWebSocket.restore();
+
+            let resolveSession: (socket: any) => void;
+            const sessionPromise = new Promise(resolve => {
+                resolveSession = resolve;
+            });
+            const startPerfettoSessionStub = sinon.stub(rokuDeploy, 'startPerfettoSession').returns(sessionPromise as any);
+
+            const firstStartPromise = perfettoManager.startTracing();
+            // let the first call's microtasks run so it reaches the awaited createWebSocket before we call again
+            await Promise.resolve();
+            await Promise.resolve();
+            const secondStartPromise = perfettoManager.startTracing();
+
+            resolveSession(mockSocket);
+            await Promise.all([firstStartPromise, secondStartPromise]);
+
+            expect(startPerfettoSessionStub.calledOnce, 'should only open a single socket for the overlapping calls').to.be.true;
+            expect((perfettoManager as any).socket).to.equal(mockSocket);
+        });
+
+        it('allows a retry after a failed start attempt', async () => {
+            const createWriteStreamStub = sinon.stub(perfettoManager as any, 'createWriteStream');
+            createWriteStreamStub.onFirstCall().rejects(new Error('First attempt failed'));
+            createWriteStreamStub.onSecondCall().resolves(mockWriteStream);
+
+            try {
+                await perfettoManager.startTracing();
+                expect.fail('Should have thrown an error');
+            } catch {
+                // expected
+            }
+
+            await perfettoManager.startTracing();
+
+            expect((perfettoManager as any).socket).to.equal(mockSocket);
         });
     });
 
@@ -222,11 +288,88 @@ describe('PerfettoManager', () => {
             expect(perfettoManager['pingTimer']).to.be.null;
             expect(perfettoManager['filePath']).to.be.undefined;
         });
+
+        it('terminates after the stream goes quiet when the device never sends a close frame', async () => {
+            const clock = sinon.useFakeTimers();
+            try {
+                // Mimic the real device: close() halts the stream but the device never sends a close frame back,
+                // so 'close' only fires once we terminate. A plain close() would otherwise hang on the ws closeTimeout.
+                const deviceSocket: any = new EventEmitter();
+                deviceSocket.readyState = WebSocket.OPEN;
+                deviceSocket.close = sinon.stub();
+                deviceSocket.pause = sinon.stub();
+                deviceSocket.resume = sinon.stub();
+                deviceSocket.terminate = sinon.stub().callsFake(() => {
+                    deviceSocket.readyState = WebSocket.CLOSED;
+                    deviceSocket.emit('close', 1006, Buffer.from(''));
+                });
+
+                perfettoManager['socket'] = deviceSocket;
+                perfettoManager['writeStream'] = mockWriteStream;
+                perfettoManager['filePath'] = s`${tempDir}/profiling/test.perfetto-trace`;
+                // pretend a trace message just arrived so the quiet window must elapse before we close
+                perfettoManager['lastMessageTime'] = Date.now();
+
+                const stopPromise = perfettoManager.stopTracing();
+
+                // within the quiet window: the close frame is sent but we have not terminated yet
+                await clock.tickAsync(100);
+                expect(deviceSocket.close.called, 'should send the close frame').to.be.true;
+                expect(deviceSocket.terminate.called, 'should not terminate within the quiet window').to.be.false;
+
+                // once the stream has been silent past the quiet window, force-terminate so 'close' fires immediately
+                await clock.tickAsync(500);
+                expect(deviceSocket.terminate.called, 'should terminate after the quiet window').to.be.true;
+
+                await stopPromise;
+                expect(perfettoManager['socket']).to.be.null;
+            } finally {
+                clock.restore();
+            }
+        });
+
+        it('terminates at the ceiling if the device never stops streaming', async () => {
+            const clock = sinon.useFakeTimers();
+            try {
+                const deviceSocket: any = new EventEmitter();
+                deviceSocket.readyState = WebSocket.OPEN;
+                deviceSocket.close = sinon.stub();
+                deviceSocket.pause = sinon.stub();
+                deviceSocket.resume = sinon.stub();
+                deviceSocket.terminate = sinon.stub().callsFake(() => {
+                    deviceSocket.readyState = WebSocket.CLOSED;
+                    deviceSocket.emit('close', 1006, Buffer.from(''));
+                });
+
+                perfettoManager['socket'] = deviceSocket;
+                perfettoManager['writeStream'] = mockWriteStream;
+                perfettoManager['filePath'] = s`${tempDir}/profiling/test.perfetto-trace`;
+
+                const stopPromise = perfettoManager.stopTracing();
+
+                // keep the stream "alive" so the quiet window never elapses
+                const keepAlive = setInterval(() => {
+                    perfettoManager['lastMessageTime'] = Date.now();
+                }, 50);
+
+                // before the ceiling we should still be waiting
+                await clock.tickAsync(2000);
+                expect(deviceSocket.terminate.called, 'should still be waiting before the ceiling').to.be.false;
+
+                // past the 3s ceiling we force-terminate regardless of ongoing data
+                await clock.tickAsync(1100);
+                clearInterval(keepAlive);
+                expect(deviceSocket.terminate.called, 'should terminate at the ceiling').to.be.true;
+
+                await stopPromise;
+            } finally {
+                clock.restore();
+            }
+        });
     });
 
     describe('enableTracing', () => {
         it('enables tracing and emits enable event', async () => {
-            const { rokuECP } = await import('./RokuECP');
             sinon.stub(rokuECP, 'enablePerfettoTracing').resolves({
                 status: EcpStatus.ok,
                 enabledChannels: ['dev']
@@ -244,7 +387,6 @@ describe('PerfettoManager', () => {
         });
 
         it('throws and emits error when ECP request fails', async () => {
-            const { rokuECP } = await import('./RokuECP');
             sinon.stub(rokuECP, 'enablePerfettoTracing').rejects(new Error('404 Not Found'));
 
             const errorSpy = sinon.spy();
@@ -262,11 +404,10 @@ describe('PerfettoManager', () => {
         });
 
         it('throws error when no host configured', async () => {
-            const { rokuECP } = await import('./RokuECP');
             sinon.stub(rokuECP, 'enablePerfettoTracing').rejects(new Error('No host configured'));
 
             perfettoManager = new PerfettoManager({
-                host: undefined as any,
+                device: undefined as any,
                 enabled: true,
                 dir: '/tmp/traces'
             });
@@ -280,7 +421,6 @@ describe('PerfettoManager', () => {
         });
 
         it('propagates network errors', async () => {
-            const { rokuECP } = await import('./RokuECP');
             sinon.stub(rokuECP, 'enablePerfettoTracing').rejects(new Error('Network error'));
 
             try {
@@ -534,8 +674,7 @@ describe('PerfettoManager', () => {
             (perfettoManager as any).socket = mockSocket;
             (perfettoManager as any).filePath = '/tmp/traces/test.perfetto-trace';
 
-            const { rokuECP } = await import('./RokuECP');
-            sinon.stub(rokuECP, 'captureHeapSnapshot').resolves({
+            sinon.stub(rokuECP, 'triggerHeapSnapshot').resolves({
                 status: EcpStatus.ok,
                 timestamp: Date.now(),
                 timestampEnd: Date.now()
@@ -554,8 +693,7 @@ describe('PerfettoManager', () => {
             mockSocket.readyState = WebSocket.OPEN;
             (perfettoManager as any).socket = mockSocket;
 
-            const { rokuECP } = await import('./RokuECP');
-            sinon.stub(rokuECP, 'captureHeapSnapshot').rejects(new Error('500 Internal Server Error'));
+            sinon.stub(rokuECP, 'triggerHeapSnapshot').rejects(new Error('500 Internal Server Error'));
 
             const errorSpy = sinon.spy();
             perfettoManager.on('error', errorSpy);
@@ -575,8 +713,7 @@ describe('PerfettoManager', () => {
             mockSocket.readyState = WebSocket.OPEN;
             (perfettoManager as any).socket = mockSocket;
 
-            const { rokuECP } = await import('./RokuECP');
-            sinon.stub(rokuECP, 'captureHeapSnapshot').rejects(new Error('404 Not Found'));
+            sinon.stub(rokuECP, 'triggerHeapSnapshot').rejects(new Error('404 Not Found'));
 
             const stopSpy = sinon.spy();
             perfettoManager.on('stop', stopSpy);
@@ -634,14 +771,7 @@ describe('PerfettoManager', () => {
             expect(result).to.equal('/tmp/traces/test.perfetto-trace');
         });
 
-        it('returns undefined when file is empty and skipEmpty is true', () => {
-            sinon.stub(fs, 'statSync').returns({ size: 0 } as any);
-
-            const result = (perfettoManager as any).getResult('/tmp/traces/test.perfetto-trace', { skipEmpty: true });
-            expect(result).to.be.undefined;
-        });
-
-        it('returns filePath when file is empty but skipEmpty is false', () => {
+        it('returns filePath when file is empty (empty traces are still reported)', () => {
             sinon.stub(fs, 'statSync').returns({ size: 0 } as any);
 
             const result = (perfettoManager as any).getResult('/tmp/traces/test.perfetto-trace');
@@ -771,24 +901,26 @@ describe('PerfettoManager', () => {
     });
 
     describe('createWebSocket', () => {
-        it('creates WebSocket with correct URL', () => {
+        it('opens a perfetto session through rokuDeploy with the device and ecpPort', async () => {
             // Restore the stub to test actual createWebSocket
             sinon.restore();
             perfettoManager = new PerfettoManager({
-                host: '192.168.1.200',
+                device: { host: '192.168.1.200' },
                 remotePort: 8080,
                 enabled: true,
                 rootDir: rootDir
             });
 
-            // Stub WebSocket constructor to capture the URL
-            const WebSocketStub = sinon.stub().returns(mockSocket);
-            (perfettoManager as any).socket = null;
+            const stub = sinon.stub(rokuDeploy, 'startPerfettoSession').resolves(mockSocket);
 
-            // We can't easily test the actual WebSocket creation without network
-            // But we can verify the URL format by checking the implementation
-            const expectedUrl = 'ws://192.168.1.200:8080/perfetto-session';
-            expect(expectedUrl).to.match(/^ws:\/\/\d+\.\d+\.\d+\.\d+:\d+\/perfetto-session$/);
+            const result = await (perfettoManager as any).createWebSocket();
+
+            expect(stub.getCall(0).args).to.eql([{
+                device: { host: '192.168.1.200' },
+                ecpPort: 8080
+            }]);
+            expect(result).to.equal(mockSocket);
+            expect((perfettoManager as any).socket).to.equal(mockSocket);
         });
     });
 
@@ -797,14 +929,7 @@ describe('PerfettoManager', () => {
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
             // Start tracing with excludeResultOnStop: true
-            const startPromise = perfettoManager.startTracing({ excludeResultOnStop: true });
-
-            // Delay emit to ensure event handlers are registered
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing({ excludeResultOnStop: true });
 
             expect((perfettoManager as any).socket).to.equal(mockSocket);
         });
@@ -815,12 +940,7 @@ describe('PerfettoManager', () => {
             const startSpy = sinon.spy();
             perfettoManager.on('start', startSpy);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             expect(startSpy.calledOnce).to.be.true;
             expect(startSpy.firstCall.args[0]).to.eql({ type: 'trace' });
@@ -829,12 +949,7 @@ describe('PerfettoManager', () => {
         it('starts ping timer after successful connection', async () => {
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             expect((perfettoManager as any).pingTimer).to.not.be.null;
             clearInterval((perfettoManager as any).pingTimer);
@@ -845,12 +960,7 @@ describe('PerfettoManager', () => {
         it('writes binary data to file stream', async () => {
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             // Simulate receiving binary data
             const binaryData = Buffer.from('test data');
@@ -862,12 +972,7 @@ describe('PerfettoManager', () => {
         it('ignores non-binary messages', async () => {
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             // Simulate receiving non-binary data
             mockSocket.emit('message', 'text data', false);
@@ -879,12 +984,7 @@ describe('PerfettoManager', () => {
             mockWriteStream.write = sinon.stub().returns(false); // Simulate backpressure
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             // Simulate receiving binary data that causes backpressure
             const binaryData = Buffer.from('test data');
@@ -897,12 +997,7 @@ describe('PerfettoManager', () => {
             mockWriteStream.write = sinon.stub().returns(false);
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             // Simulate backpressure
             mockSocket.emit('message', Buffer.from('data'), true);
@@ -917,12 +1012,7 @@ describe('PerfettoManager', () => {
             mockWriteStream.write = sinon.stub().returns(false);
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             // Send multiple messages while backpressured
             mockSocket.emit('message', Buffer.from('data1'), true);
@@ -942,19 +1032,14 @@ describe('PerfettoManager', () => {
             const stopSpy = sinon.spy();
             perfettoManager.on('stop', stopSpy);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             // Simulate WebSocket close
             mockSocket.emit('close', 1000, Buffer.from('Normal closure'));
 
             // Wait for cleanup to complete
             await new Promise(resolve => {
-                setTimeout(resolve, 50); 
+                setTimeout(resolve, 50);
             });
 
             expect(stopSpy.called).to.be.true;
@@ -964,7 +1049,6 @@ describe('PerfettoManager', () => {
 
     describe('enableTracing channel validation', () => {
         it('throws when channel is not in enabled channels list', async () => {
-            const { rokuECP } = await import('./RokuECP');
             sinon.stub(rokuECP, 'enablePerfettoTracing').resolves({
                 status: EcpStatus.ok,
                 enabledChannels: ['other-channel', 'another-channel']
@@ -984,7 +1068,6 @@ describe('PerfettoManager', () => {
         });
 
         it('succeeds when channel is in enabled channels list (case insensitive)', async () => {
-            const { rokuECP } = await import('./RokuECP');
             sinon.stub(rokuECP, 'enablePerfettoTracing').resolves({
                 status: EcpStatus.ok,
                 enabledChannels: ['DEV', 'prod'] // uppercase 'DEV'
@@ -996,14 +1079,15 @@ describe('PerfettoManager', () => {
         });
     });
 
-    describe('captureHeapSnapshot when already tracing', () => {
+    describe('captureHeapSnapshot when already tracing', function() {
+        this.timeout(10_000);
+
         it('does not start new tracing when already tracing', async () => {
             mockSocket.readyState = WebSocket.OPEN;
             (perfettoManager as any).socket = mockSocket;
             (perfettoManager as any).filePath = '/tmp/traces/existing.perfetto-trace';
 
-            const { rokuECP } = await import('./RokuECP');
-            sinon.stub(rokuECP, 'captureHeapSnapshot').resolves({
+            sinon.stub(rokuECP, 'triggerHeapSnapshot').resolves({
                 status: EcpStatus.ok,
                 timestamp: Date.now(),
                 timestampEnd: Date.now()
@@ -1020,8 +1104,7 @@ describe('PerfettoManager', () => {
             (perfettoManager as any).socket = mockSocket;
             (perfettoManager as any).filePath = '/tmp/traces/test.perfetto-trace';
 
-            const { rokuECP } = await import('./RokuECP');
-            sinon.stub(rokuECP, 'captureHeapSnapshot').resolves({
+            sinon.stub(rokuECP, 'triggerHeapSnapshot').resolves({
                 status: EcpStatus.ok,
                 timestamp: Date.now(),
                 timestampEnd: Date.now()
@@ -1041,8 +1124,7 @@ describe('PerfettoManager', () => {
             (perfettoManager as any).socket = mockSocket;
             (perfettoManager as any).filePath = '/tmp/traces/test.perfetto-trace';
 
-            const { rokuECP } = await import('./RokuECP');
-            sinon.stub(rokuECP, 'captureHeapSnapshot').resolves({
+            sinon.stub(rokuECP, 'triggerHeapSnapshot').resolves({
                 status: EcpStatus.ok,
                 timestamp: Date.now(),
                 timestampEnd: Date.now()
@@ -1059,8 +1141,7 @@ describe('PerfettoManager', () => {
             (perfettoManager as any).socket = mockSocket;
             (perfettoManager as any).filePath = '/tmp/traces/test.perfetto-trace';
 
-            const { rokuECP } = await import('./RokuECP');
-            sinon.stub(rokuECP, 'captureHeapSnapshot').resolves({
+            sinon.stub(rokuECP, 'triggerHeapSnapshot').resolves({
                 status: EcpStatus.ok,
                 timestamp: Date.now(),
                 timestampEnd: Date.now()
@@ -1331,12 +1412,7 @@ describe('PerfettoManager', () => {
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
             // Start first call
-            const promise1 = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await promise1;
+            await perfettoManager.startTracing();
 
             // Second call should return early since socket exists
             await perfettoManager.startTracing();
@@ -1355,12 +1431,7 @@ describe('PerfettoManager', () => {
         it('handles dispose while tracing', async () => {
             sinon.stub(perfettoManager as any, 'createWriteStream').resolves(mockWriteStream);
 
-            const startPromise = perfettoManager.startTracing();
-            await new Promise<void>(resolve => {
-                setImmediate(resolve); 
-            });
-            mockSocket.emit('open');
-            await startPromise;
+            await perfettoManager.startTracing();
 
             await perfettoManager.dispose();
 

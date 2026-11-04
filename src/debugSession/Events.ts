@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-useless-constructor */
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { BSDebugDiagnostic } from '../CompileErrorProcessor';
-import type { LaunchConfiguration } from '../LaunchConfiguration';
+import type { ResolvedLaunchConfiguration } from '../LaunchConfiguration';
+import { isRceDeviceConfig } from 'roku-deploy';
 import type { ChanperfData } from '../ChanperfTracker';
 import type { RendezvousHistory } from '../RendezvousTracker';
+import type { ProjectStagingInfo } from '../managers/ProjectManager';
 
 export class CustomEvent<T> {
     public constructor(body: T) {
@@ -108,12 +110,25 @@ export function isChanperfEvent(event: any): event is ChanperfEvent {
 
 
 /**
+ * Copy a launch configuration for echoing back to the client, without the credentials that ride the
+ * device config: the rceToken is hydrated onto the device at normalize time (from the ROKU_RCE_TOKEN
+ * env var the extension injects) and must not travel back over DAP, where it would land in protocol
+ * logs and trace files.
+ */
+function scrubLaunchConfiguration(launchConfiguration: ResolvedLaunchConfiguration): ResolvedLaunchConfiguration {
+    if (typeof launchConfiguration?.device === 'object' && isRceDeviceConfig(launchConfiguration.device) && launchConfiguration.device.rceToken) {
+        return { ...launchConfiguration, device: { ...launchConfiguration.device, rceToken: undefined } };
+    }
+    return launchConfiguration;
+}
+
+/**
  * Emitted when the launch sequence first starts. This is right after the debug session receives the `launch` request,
  * which happens before any zipping, sideloading, etc.
  */
-export class LaunchStartEvent extends CustomEvent<LaunchConfiguration> {
-    constructor(launchConfiguration: LaunchConfiguration) {
-        super(launchConfiguration);
+export class LaunchStartEvent extends CustomEvent<ResolvedLaunchConfiguration> {
+    constructor(launchConfiguration: ResolvedLaunchConfiguration) {
+        super(scrubLaunchConfiguration(launchConfiguration));
     }
 }
 
@@ -125,13 +140,35 @@ export function isLaunchStartEvent(event: any): event is LaunchStartEvent {
 }
 
 /**
+ * Emitted as soon as the device accepts the sideload (the `plugin_install` upload succeeded), which is BEFORE
+ * the session waits for the BrightScript debug protocol to connect. The device has replaced any previously
+ * running dev channel and is launching THIS package, so clients can start attaching other debuggers here.
+ * TS/JS (Hermes) apps need this: with `inspect=1` the device waits only a few seconds for the JS debugger, and
+ * it does so BEFORE opening the BrightScript debug port, so `ChannelPublishedEvent` always arrives too late.
+ */
+export class ChannelSideloadedEvent extends CustomEvent<{ launchConfiguration: ResolvedLaunchConfiguration }> {
+    constructor(
+        launchConfiguration: ResolvedLaunchConfiguration
+    ) {
+        super({ launchConfiguration: scrubLaunchConfiguration(launchConfiguration) });
+    }
+}
+
+/**
+ * Is the object a `ChannelSideloadedEvent`
+ */
+export function isChannelSideloadedEvent(event: any): event is ChannelSideloadedEvent {
+    return !!event && event.event === ChannelSideloadedEvent.name;
+}
+
+/**
  * Emitted once the channel has been sideloaded to the channel and the session is ready to start actually debugging.
  */
-export class ChannelPublishedEvent extends CustomEvent<{ launchConfiguration: LaunchConfiguration }> {
+export class ChannelPublishedEvent extends CustomEvent<{ launchConfiguration: ResolvedLaunchConfiguration }> {
     constructor(
-        launchConfiguration: LaunchConfiguration
+        launchConfiguration: ResolvedLaunchConfiguration
     ) {
-        super({ launchConfiguration });
+        super({ launchConfiguration: scrubLaunchConfiguration(launchConfiguration) });
     }
 }
 
@@ -241,6 +278,43 @@ export function isExecuteTaskCustomRequest(event: any): event is CustomRequestEv
 
 export function isShowPopupMessageCustomRequest(event: any): event is CustomRequestEvent<{ message: string; severity: 'error' | 'warn' | 'info'; modal: boolean; actions: string[] }> {
     return !!event && event.event === CustomRequestEvent.name && event.body.name === 'showPopupMessage';
+}
+
+export function isProcessStagingDirCustomRequest(event: any): event is CustomRequestEvent<{ projects: ProjectStagingInfo[] }> {
+    return !!event && event.event === CustomRequestEvent.name && event.body.name === 'processStagingDir';
+}
+
+export interface ProcessCrashEventData {
+    type: 'uncaughtException' | 'unhandledRejection';
+    message: string;
+    stack?: string;
+    /**
+     * Optional extra diagnostic data provided by the debugger. Keys are human-readable labels;
+     * values are serialized as JSON when displayed to the user.
+     */
+    additionalInfo?: {
+        clientName?: string;
+        rokuDebugVersion?: string;
+        ecpMode?: string;
+        developerMode?: boolean;
+        firmware?: string;
+        protocolVersion?: string;
+        protocolEnabled?: boolean;
+    };
+}
+
+/**
+ * Emitted when the debug adapter process encounters an uncaught exception or unhandled rejection.
+ * The client should display an error to the user and terminate the debug session.
+ */
+export class ProcessCrashEvent extends CustomEvent<ProcessCrashEventData> {
+    constructor(data: ProcessCrashEventData) {
+        super(data);
+    }
+}
+
+export function isProcessCrashEvent(event: any): event is ProcessCrashEvent {
+    return !!event && event.event === ProcessCrashEvent.name;
 }
 
 export enum ClientToServerCustomEventName {
