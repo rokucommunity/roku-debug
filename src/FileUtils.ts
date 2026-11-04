@@ -3,6 +3,7 @@ import * as findInFiles from 'find-in-files';
 import * as fsExtra from 'fs-extra';
 import * as path from 'path';
 import { util } from './util';
+import { logger } from './logging';
 
 export class FileUtils {
 
@@ -84,7 +85,7 @@ export class FileUtils {
 
         //TODO is there something more we should do about finding multiple matches?
         if (results.length > 1) {
-            console.warn(
+            logger.warn(
                 `Found multiple paths in '${directoryPath}' that match '${partialFilePath}'. Returning the first result, but you should consider renaming files in longer file paths to something unique`
             );
         }

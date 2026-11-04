@@ -17,6 +17,7 @@ import { isPromise } from 'util/types';
 import type { Logger } from '@rokucommunity/logger';
 import type { DeviceConfig, RokuDeploySocket } from 'roku-deploy';
 import { isRceDeviceConfigById, isRceDeviceConfigByUrl, isRceDeviceConfig } from 'roku-deploy';
+import { logger } from './logging';
 
 class Util {
     /**
@@ -646,7 +647,7 @@ class Util {
             //if this value is a promise, add a .catch to it so we don't bring down the app
             if (isPromise(value)) {
                 value.catch(e => {
-                    console.error('Unhandled promise during dispose', e);
+                    logger.error('Unhandled promise during dispose', e);
                 });
             }
         }

@@ -2,6 +2,7 @@ import { default as defaultLogger, QueuedTransport, FileTransport } from '@rokuc
 import type { Logger } from '@rokucommunity/logger';
 import type { LaunchConfiguration } from './LaunchConfiguration';
 import * as path from 'path';
+import { Console } from 'console';
 import { util } from './util';
 import * as fsExtra from 'fs-extra';
 import { formatLogDate } from './formatUtils';
@@ -24,6 +25,28 @@ logger.addTransport(debugServerLogOutputEventTransport);
 logger.addTransport(fileTransport);
 
 logger.logLevel = 'log';
+
+/**
+ * Route every `console.*` method to stderr. Used in standalone `--dap` mode, where stdout carries the debug adapter protocol
+ * and any stray text (our own ConsoleTransport, third-party libraries, etc.) corrupts the stream for the client.
+ * @returns a function that restores the original console methods
+ */
+export function redirectConsoleToStderr(stderr: NodeJS.WritableStream = process.stderr) {
+    const stderrConsole = new Console({ stdout: stderr, stderr: stderr });
+    const originals = new Map<string, unknown>();
+    for (const key of Object.keys(stderrConsole)) {
+        if (typeof stderrConsole[key] === 'function') {
+            originals.set(key, console[key]);
+            console[key] = stderrConsole[key];
+        }
+    }
+    return () => {
+        for (const [key, original] of originals) {
+            console[key] = original;
+        }
+    };
+}
+
 const createLogger = logger.createLogger.bind(logger) as typeof Logger.prototype.createLogger;
 
 export { logger, createLogger };
