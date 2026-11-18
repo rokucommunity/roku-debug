@@ -89,6 +89,21 @@ describe('FileUtils', () => {
         it('returns undefined when no results found', async () => {
             expect(await fileUtils.findPartialFileInDirectory('...promise.brs', 'SomeAppDir')).to.be.undefined;
         });
+
+        it('uses the provided relativePaths instead of walking the tree', async () => {
+            //getAllRelativePaths is stubbed in beforeEach; if the provided list is used it should never be called
+            const getAllRelativePaths = fileUtils.getAllRelativePaths as sinonActual.SinonStub;
+            getAllRelativePaths.resetHistory();
+
+            const result = await fileUtils.findPartialFileInDirectory('...other/thing.brs', 'SomeAppDir', [
+                'source/main.brs',
+                'other/thing.brs'
+            ]);
+
+            expect(result).to.equal('other/thing.brs');
+            //it did NOT walk the tree
+            expect(getAllRelativePaths.called).to.be.false;
+        });
     });
 
     describe('getComponentLibraryIndex', () => {
