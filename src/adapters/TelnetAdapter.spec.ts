@@ -9,6 +9,7 @@ import type { EvaluateContainer } from './DebugProtocolAdapter';
 import { createSandbox } from 'sinon';
 import { rokuDeploy } from 'roku-deploy';
 import type { SocketOptions } from 'roku-deploy';
+import type { SinonStub } from 'sinon';
 
 const sinon = createSandbox();
 
@@ -229,6 +230,259 @@ describe('TelnetAdapter ', () => {
                 children: [],
                 highLevelType: 'object'
             }]);
+        });
+    });
+
+    describe('checkForRuntimeError', () => {
+        let emitStub: SinonStub;
+
+        beforeEach(() => {
+            emitStub = sinon.stub(adapter as any, 'emit');
+        });
+
+        function check(text: string) {
+            return adapter['checkForRuntimeError'](text) as boolean;
+        }
+
+        function expectError(text: string, message: string, errorCode: string) {
+            expect(check(text)).to.be.true;
+            expect(emitStub.callCount).to.equal(1);
+            expect(emitStub.firstCall.args).to.eql(['runtime-error', { message: message, errorCode: errorCode }]);
+        }
+
+        function expectNoError(text: string) {
+            expect(check(text)).to.be.false;
+            expect(emitStub.called).to.be.false;
+        }
+
+        it('detects a basic runtime error', () => {
+            expectError(
+                `Divide by Zero. (runtime error &h14) in pkg:/source/main.brs(12)`,
+                'Divide by Zero.',
+                '&h14'
+            );
+        });
+
+        it('detects a runtime error whose message contains parens and quotes', () => {
+            expectError(
+                `Type Mismatch. Operator "+" can't be applied to "String" and "Integer". (runtime error &h18) in pkg:/source/main.brs(5)`,
+                `Type Mismatch. Operator "+" can't be applied to "String" and "Integer".`,
+                '&h18'
+            );
+        });
+
+        it('lowercases the error code', () => {
+            expectError(
+                `Divide by Zero. (runtime error &H14) in pkg:/source/main.brs(12)`,
+                'Divide by Zero.',
+                '&h14'
+            );
+        });
+
+        it('allows extra whitespace between the keywords', () => {
+            expectError(
+                `Divide by Zero. (runtime   error \t &h14)   in pkg:/source/main.brs(12)`,
+                'Divide by Zero.',
+                '&h14'
+            );
+        });
+
+        it('detects a runtime error surrounded by other lines', () => {
+            expectError(
+                [
+                    '------ Running dev \'app\' main ------',
+                    'some log line',
+                    'Divide by Zero. (runtime error &h14) in pkg:/source/main.brs(12)',
+                    '012: print 1/0',
+                    'Backtrace:',
+                    '#0  Function main() As Void',
+                    'Brightscript Debugger>'
+                ].join('\n'),
+                'Divide by Zero.',
+                '&h14'
+            );
+        });
+
+        it('detects a runtime error with CRLF line endings', () => {
+            expectError(
+                'some log line\r\nDivide by Zero. (runtime error &h14) in pkg:/source/main.brs(12)\r\n012: print 1/0\r\n',
+                'Divide by Zero.',
+                '&h14'
+            );
+        });
+
+        it('detects a runtime error when the message is on the previous line', () => {
+            expectError(
+                'first\nDivide by Zero.\n(runtime error &h14) in pkg:/source/main.brs(12)',
+                'Divide by Zero.',
+                '&h14'
+            );
+        });
+
+        it('detects a runtime error when "in" is on the next line', () => {
+            expectError(
+                'Divide by Zero. (runtime error &h14)\nin pkg:/source/main.brs(12)',
+                'Divide by Zero.',
+                '&h14'
+            );
+        });
+
+        it('detects a runtime error with an empty message at the start of the text', () => {
+            expectError(
+                ' (runtime error &h14) in pkg:/source/main.brs(12)',
+                '',
+                '&h14'
+            );
+        });
+
+        it('reports the first runtime error when there are several on different lines', () => {
+            expectError(
+                [
+                    'Divide by Zero. (runtime error &h14) in pkg:/source/main.brs(12)',
+                    'Type Mismatch. (runtime error &h18) in pkg:/source/main.brs(5)'
+                ].join('\n'),
+                'Divide by Zero.',
+                '&h14'
+            );
+        });
+
+        it('uses the same capture groups as before when one line contains several runtime errors', () => {
+            //the greedy capture groups grab as much of the line as possible
+            expectError(
+                'A. (runtime error &h14) in x B. (runtime error &h18) in y',
+                'A. (runtime error &h14) in x B.',
+                '&h18'
+            );
+        });
+
+        it('skips a line that has "(runtime error" but no " in" and finds a later one', () => {
+            expectError(
+                [
+                    'Nope. (runtime error &h14) at pkg:/source/main.brs(12)',
+                    'Divide by Zero. (runtime error &h18) in pkg:/source/main.brs(12)'
+                ].join('\n'),
+                'Divide by Zero.',
+                '&h18'
+            );
+        });
+
+        it('ignores STOP (&hf7)', () => {
+            expectNoError(`STOP (runtime error &hf7) in pkg:/source/main.brs(3)`);
+        });
+
+        it('ignores scriptBreak() (&hf8)', () => {
+            expectNoError(`BREAK (runtime error &hF8) in pkg:/source/main.brs(3)`);
+        });
+
+        it('returns false for regular output', () => {
+            expectNoError('');
+            expectNoError('hello world');
+            expectNoError('------ Running dev \'app\' main ------\nBrightscript Debugger>');
+        });
+
+        it('returns false for near misses', () => {
+            //no parens
+            expectNoError('runtime error &h14 in pkg:/source/main.brs(12)');
+            //no whitespace before the paren
+            expectNoError('Divide by Zero.(runtime error &h14) in pkg:/source/main.brs(12)');
+            //no closing paren
+            expectNoError('Divide by Zero. (runtime error &h14 in pkg:/source/main.brs(12)');
+            //no " in"
+            expectNoError('Divide by Zero. (runtime error &h14) at pkg:/source/main.brs(12)');
+            //case sensitive
+            expectNoError('Divide by Zero. (Runtime Error &h14) in pkg:/source/main.brs(12)');
+            //closing paren is on a different line
+            expectNoError('Divide by Zero. (runtime error &h14\n) in pkg:/source/main.brs(12)');
+        });
+
+        it('matches the original regex on a wide range of generated inputs', () => {
+            //the original implementation. The new one must produce identical results.
+            const original = /(.*)\s\(runtime\s+error\s+(.*)\)\s+in/;
+            const pieces = [
+                'a', 'Divide by Zero.', ' ', '  ', '\t', '\n', '\r\n', '\r', String.fromCharCode(0x2028), '(', ')', ' in', 'in', 'x',
+                '(runtime', ' (runtime', 'runtime', ' error', 'error', ' &h14', '&hF7', '&hf8', ') in', ')\nin',
+                ' (runtime error &h14) in', ' (runtime error &hf7) in', ' (runtime  error\n&h18)\n in'
+            ];
+            //simple deterministic PRNG so failures are reproducible
+            let seed = 12345;
+            const random = () => {
+                seed = (seed * 1103515245 + 12345) % 2147483648;
+                return seed / 2147483648;
+            };
+            let matchCount = 0;
+            for (let i = 0; i < 20_000; i++) {
+                let text = '';
+                const count = Math.floor(random() * 12);
+                for (let j = 0; j < count; j++) {
+                    text += pieces[Math.floor(random() * pieces.length)];
+                }
+
+                emitStub.resetHistory();
+                const match = original.exec(text);
+                let expected: any;
+                if (!match) {
+                    expected = { result: false, emitted: undefined };
+                } else {
+                    const errorCode = match[2].trim().toLowerCase();
+                    if (errorCode === '&hf7' || errorCode === '&hf8') {
+                        expected = { result: false, emitted: undefined };
+                    } else {
+                        matchCount++;
+                        expected = { result: true, emitted: ['runtime-error', { message: match[1].trim(), errorCode: errorCode }] };
+                    }
+                }
+                const result = check(text);
+                expect(
+                    { result: result, emitted: emitStub.firstCall?.args },
+                    JSON.stringify(text)
+                ).to.eql(expected);
+            }
+            //sanity check that the generator actually produced a meaningful number of matches
+            expect(matchCount).to.be.greaterThan(500);
+        });
+
+        //https://github.com/rokucommunity/roku-debug/issues/440
+        describe('performance on very long lines', () => {
+            //the Roku Advertising Framework prints a ~68KB single line on sideloaded builds
+            const longLine = 'key: value '.repeat(Math.ceil(68_000 / 11)).slice(0, 68_000);
+
+            function time(fn: () => void) {
+                const start = process.hrtime.bigint();
+                fn();
+                return Number(process.hrtime.bigint() - start) / 1e6;
+            }
+
+            it('handles a long line with no runtime error quickly', () => {
+                const ms = time(() => {
+                    expectNoError(longLine);
+                });
+                expect(ms).to.be.lessThan(100);
+            });
+
+            it('handles many long lines with no runtime error quickly', () => {
+                const ms = time(() => {
+                    expectNoError(`${longLine}\n${longLine}\n${longLine}\n${longLine}`);
+                });
+                expect(ms).to.be.lessThan(100);
+            });
+
+            it('handles a long line with a runtime error at the end quickly', () => {
+                const ms = time(() => {
+                    expectError(
+                        `${longLine}\n${longLine} Divide by Zero. (runtime error &h14) in pkg:/source/main.brs(12)`,
+                        `${longLine} Divide by Zero.`,
+                        '&h14'
+                    );
+                });
+                expect(ms).to.be.lessThan(100);
+            });
+
+            it('handles a long line containing an incomplete runtime error quickly', () => {
+                const ms = time(() => {
+                    expectNoError(`${longLine} (runtime error &h14 ${longLine}`);
+                });
+                expect(ms).to.be.lessThan(100);
+            });
         });
     });
 
