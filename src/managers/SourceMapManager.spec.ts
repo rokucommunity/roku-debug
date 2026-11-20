@@ -181,6 +181,92 @@ describe('SourceMapManager', () => {
         });
     });
 
+    describe('getGeneratedLocations', () => {
+        const brsPath = s`${tmpPath}/staging/components/foo.brs`;
+        const mapPath = `${brsPath}.map`;
+        const tsPath = s`${tmpPath}/src/foo.ts`;
+
+        async function writeMap(mappings: Array<{ generated: [number, number]; original: [number, number] }>) {
+            const { SourceMapGenerator } = await import('source-map');
+            const gen = new SourceMapGenerator({ file: 'foo.brs' });
+            for (const m of mappings) {
+                gen.addMapping({
+                    generated: { line: m.generated[0], column: m.generated[1] },
+                    original: { line: m.original[0], column: m.original[1] },
+                    source: tsPath
+                });
+            }
+            fsExtra.ensureDirSync(path.dirname(mapPath));
+            fsExtra.writeFileSync(mapPath, gen.toString());
+        }
+
+        function getLocations(lineNumber: number, columnIndex: number) {
+            return manager.getGeneratedLocations([mapPath], { filePath: tsPath, lineNumber: lineNumber, columnIndex: columnIndex });
+        }
+
+        it('returns every generated copy of a source line', async () => {
+            await writeMap([
+                { generated: [2, 0], original: [5, 0] },
+                { generated: [6, 0], original: [5, 0] }
+            ]);
+            const locations = await getLocations(5, 0);
+            expect(locations.map(x => [x.filePath, x.lineNumber, x.columnIndex])).to.eql([
+                [brsPath, 2, 0],
+                [brsPath, 6, 0]
+            ]);
+        });
+
+        it('returns every copy when the copies sit at different generated columns', async () => {
+            await writeMap([
+                { generated: [2, 4], original: [5, 4] },
+                { generated: [6, 8], original: [5, 4] }
+            ]);
+            //breakpoint column is before the first mapped column on the line
+            const locations = await getLocations(5, 0);
+            expect(locations.map(x => [x.lineNumber, x.columnIndex])).to.eql([
+                [2, 4],
+                [6, 8]
+            ]);
+        });
+
+        it('returns the same copies regardless of the breakpoint column', async () => {
+            await writeMap([
+                { generated: [2, 0], original: [5, 0] },
+                { generated: [2, 10], original: [5, 10] },
+                { generated: [6, 0], original: [5, 0] },
+                { generated: [6, 10], original: [5, 10] }
+            ]);
+            expect((await getLocations(5, 0)).map(x => x.lineNumber)).to.eql([2, 6]);
+            expect((await getLocations(5, 5)).map(x => x.lineNumber)).to.eql([2, 6]);
+            expect((await getLocations(5, 10)).map(x => x.lineNumber)).to.eql([2, 6]);
+        });
+
+        it('still snaps to the next mapped line when the source line has no mappings', async () => {
+            await writeMap([
+                { generated: [2, 0], original: [5, 0] },
+                { generated: [4, 0], original: [7, 0] },
+                { generated: [8, 0], original: [7, 0] }
+            ]);
+            expect((await getLocations(6, 0)).map(x => x.lineNumber)).to.eql([4, 8]);
+        });
+
+        it('returns a single location when the line was emitted once', async () => {
+            await writeMap([
+                { generated: [2, 0], original: [5, 0] },
+                { generated: [3, 0], original: [6, 0] }
+            ]);
+            expect((await getLocations(5, 0)).map(x => x.lineNumber)).to.eql([2]);
+        });
+
+        it('does not return duplicate locations for one generated line', async () => {
+            await writeMap([
+                { generated: [2, 0], original: [5, 0] },
+                { generated: [2, 10], original: [5, 0] }
+            ]);
+            expect((await getLocations(5, 0)).map(x => x.lineNumber)).to.eql([2]);
+        });
+    });
+
     describe('getOriginalLocation', () => {
         it('resolves location using a map with a relative sourceRoot', async () => {
             // staging/components/foo.brs maps back to src/components/foo.brs
