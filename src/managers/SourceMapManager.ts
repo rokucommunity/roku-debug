@@ -194,17 +194,38 @@ export class SourceMapManager {
 
                 //if the source path was found in the sourceMap, convert the source location into a target location
                 if (parsedSourceMap?.sources.includes(sourcePath)) {
-                    let position = await SourceMapConsumer.with(parsedSourceMap, null, (consumer) => {
-                        return consumer.generatedPositionFor({
+                    let positions = await SourceMapConsumer.with(parsedSourceMap, null, (consumer) => {
+                        const first = consumer.generatedPositionFor({
                             line: sourceLocation.lineNumber,
                             column: sourceLocation.columnIndex,
-                            source: fileUtils.standardizePath(sourceLocation.filePath),
+                            source: sourcePath,
                             //snap to the NEXT item if the current position could not be found
                             bias: SourceMapConsumer.LEAST_UPPER_BOUND
                         });
+                        if (first?.line === null || first?.line === undefined) {
+                            return [];
+                        }
+                        //a single source position can be emitted more than once in the same file (i.e. a function inlined into several callers).
+                        //find the exact original position we snapped to, then collect every generated copy of it
+                        const original = consumer.originalPositionFor({ line: first.line, column: first.column });
+                        if (original?.source !== sourcePath || original.line === null) {
+                            return [first];
+                        }
+                        const all = consumer.allGeneratedPositionsFor({
+                            line: original.line,
+                            column: original.column,
+                            source: sourcePath
+                        });
+                        return all.length > 0 ? all : [first];
                     });
 
-                    if (position) {
+                    //roku breakpoints are line-based, so only keep one location per generated line
+                    const seenLines = new Set<number>();
+                    for (const position of positions) {
+                        if (seenLines.has(position.line)) {
+                            continue;
+                        }
+                        seenLines.add(position.line);
                         locations.push({
                             lineNumber: position.line,
                             columnIndex: position.column,

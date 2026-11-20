@@ -1245,6 +1245,46 @@ describe('BreakpointManager', () => {
             } as SourceLocation);
         });
 
+        it('places a breakpoint at every generated copy of a source line', async () => {
+            let sourceFilePath = s`${srcDir}/source/main.bs`;
+            function n(line, col, txt) {
+                return new SourceNode(line, col, sourceFilePath, txt);
+            }
+            //source line 5 (`print "shared"`) was inlined into both subs
+            let result = new SourceNode(null, null, sourceFilePath, [
+                n(1, 0, 'sub a()\n'),
+                n(5, 4, '    print "shared"\n'),
+                n(2, 0, 'end sub\n'),
+                n(3, 0, 'sub b()\n'),
+                n(5, 4, '    print "shared"\n'),
+                n(4, 0, 'end sub')
+            ]).toStringWithSourceMap();
+
+            fsExtra.writeFileSync(`${stagingDir}/source/main.brs`, result.code);
+            fsExtra.writeFileSync(`${stagingDir}/source/main.brs.map`, result.map.toString());
+
+            bpManager.setBreakpoint(sourceFilePath, { line: 5, column: 0 });
+
+            await injectBreakpointsForProject(new Project({
+                files: ['source/main.brs'],
+                stagingDir: stagingDir,
+                outDir: outDir,
+                rootDir: rootDir,
+                enhanceREPLCompletions: false
+            }));
+
+            expect(fsExtra.readFileSync(s`${stagingDir}/source/main.brs`).toString()).to.eql(
+                'sub a()\n' +
+                'STOP\n' +
+                '    print "shared"\n' +
+                'end sub\n' +
+                'sub b()\n' +
+                'STOP\n' +
+                '    print "shared"\n' +
+                'end sub'
+            );
+        });
+
         it('replaces in-memory cache when creating breakpoint source map', async () => {
             let sourceFilePath = s`${srcDir}/source/main.brs`;
             function n(line, col, txt) {
