@@ -457,7 +457,10 @@ export class TelnetAdapter {
      * @param responseText
      */
     private checkForRuntimeError(responseText: string) {
-        let match = /(.*)\s\(runtime\s+error\s+(.*)\)\s+in/.exec(responseText);
+        // Anchored to line starts (`^` + `m`) so the engine doesn't retry the greedy `(.*)` from every position in the line,
+        // which was quadratic on very long lines (https://github.com/rokucommunity/roku-debug/issues/440).
+        // This matches exactly what the unanchored regex did, because its leftmost match always began at a line start anyway.
+        let match = /^(.*)\s\(runtime\s+error\s+(.*)\)\s+in/m.exec(responseText);
         if (match) {
             let message = match[1].trim();
             let errorCode = match[2].trim().toLowerCase();
