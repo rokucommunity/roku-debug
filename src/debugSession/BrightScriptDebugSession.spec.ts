@@ -25,6 +25,9 @@ import { EventEmitter } from 'eventemitter3';
 import type { EvaluateContainer, Thread as AdapterThread } from '../adapters/DebugProtocolAdapter';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { PerfettoManager } from '../PerfettoManager';
+import type { LogMessage } from '../logging';
+import { clearSecrets, logger as rootLogger } from '../logging';
+import { DebugProtocolClient } from '../debugProtocol/client/DebugProtocolClient';
 
 //DebugSession.shutdown() calls process.exit() after a sleep, so we need to prevent that during tests. This should not be a mock, it needs to be permanent for this flow
 DebugSession.prototype.shutdown = () => { };
@@ -3487,6 +3490,82 @@ describe('BrightScriptDebugSession', () => {
         it('does not add a `profiling` block when one is not present in the config', () => {
             const config = session['normalizeLaunchConfig']({} as any);
             expect(config.profiling).to.be.undefined;
+        });
+    });
+
+    describe('credentials in logs (issue #441)', () => {
+        let originalEnvToken: string | undefined;
+
+        beforeEach(() => {
+            originalEnvToken = process.env.ROKU_RCE_TOKEN;
+        });
+
+        afterEach(() => {
+            if (originalEnvToken === undefined) {
+                delete process.env.ROKU_RCE_TOKEN;
+            } else {
+                process.env.ROKU_RCE_TOKEN = originalEnvToken;
+            }
+            clearSecrets();
+        });
+
+        /**
+         * Run the real path from the issue: the session normalizes the launch config, the debug protocol adapter hands
+         * it to a `DebugProtocolClient`, and `connect()` logs it. Returns the `connect` line as it reached the debugger's
+         * own transports (debug console + log file) and the parent logger's (console).
+         */
+        async function captureConnectLog(launchConfig: any) {
+            const config = session['normalizeLaunchConfig'](launchConfig);
+            //same construction as DebugProtocolAdapter.createDebugProtocolClient
+            const client = new DebugProtocolClient(config as any);
+            client['logger'].logLevel = 'log';
+            //stop right after the log line instead of opening a real socket
+            sinon.stub(client as any, 'establishControlConnection').rejects(new Error('stop after logging'));
+
+            const ownMessages: LogMessage[] = [];
+            const parentMessages: LogMessage[] = [];
+            const unsubscribers = [
+                rootLogger.subscribe(x => ownMessages.push(x)),
+                rootLogger.parent.subscribe(x => parentMessages.push(x))
+            ];
+            try {
+                await expectThrowsAsync(() => client.connect());
+            } finally {
+                unsubscribers.forEach(x => x());
+            }
+            const find = (messages: LogMessage[]) => messages.find(x => x.argsText.startsWith('connect '));
+            return [find(ownMessages), find(parentMessages)];
+        }
+
+        function expectNoLeak(message: LogMessage, ...secrets: string[]) {
+            expect(message, 'connect line was not logged').to.exist;
+            //prove the line really carried the config, so a missing secret means masked rather than absent
+            expect(message.argsText).to.include('"controlPort":8081');
+            for (const secret of secrets) {
+                expect(message.argsText).not.to.include(secret);
+                expect(JSON.stringify(message.args)).not.to.include(secret);
+            }
+        }
+
+        it('does not log the password or rceToken from the launch config when the client connects', async () => {
+            const messages = await captureConnectLog({
+                password: 'dev-password-value',
+                device: { id: 83, rceToken: 'rce-token-value' }
+            });
+            for (const message of messages) {
+                expectNoLeak(message, 'dev-password-value', 'rce-token-value');
+            }
+        });
+
+        it('does not log an rceToken hydrated from ROKU_RCE_TOKEN', async () => {
+            process.env.ROKU_RCE_TOKEN = 'env-rce-token-value';
+            const messages = await captureConnectLog({
+                password: 'dev-password-value',
+                device: { id: 83 }
+            });
+            for (const message of messages) {
+                expectNoLeak(message, 'dev-password-value', 'env-rce-token-value');
+            }
         });
     });
 

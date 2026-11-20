@@ -63,7 +63,7 @@ import type { ResolvedLaunchConfiguration } from '../LaunchConfiguration';
 import { BreakpointManager } from '../managers/BreakpointManager';
 import type { LogMessage } from '../logging';
 import { PerfettoManager } from '../PerfettoManager';
-import { logger, FileLoggingManager, debugServerLogOutputEventTransport } from '../logging';
+import { logger, FileLoggingManager, debugServerLogOutputEventTransport, registerSecret } from '../logging';
 import { VariableType } from '../debugProtocol/events/responses/VariablesResponse';
 import { DiagnosticSeverity } from 'brighterscript';
 import type { ExceptionBreakpoint } from '../debugProtocol/events/requests/SetExceptionBreakpointsRequest';
@@ -635,6 +635,9 @@ export class BrightScriptDebugSession extends LoggingDebugSession {
         //launch config over DAP). The custom events that echo this config back to the client scrub
         //the token out again (see Events.ts), so it never rides the DAP wire in either direction.
         config.device = util.hydrateRceTokenFromEnv(config.device);
+        //mask the credentials out of every log line from here on
+        registerSecret(config.password);
+        registerSecret((config.device as { rceToken?: string })?.rceToken);
         config.cwd ??= process.cwd();
         config.outDir ??= s`${config.cwd}/out`;
         config.stagingDir ??= util.getStagingDir({ outDir: config.outDir, cwd: config.cwd });
