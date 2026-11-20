@@ -3,10 +3,148 @@ import * as fsExtra from 'fs-extra';
 import * as sinonActual from 'sinon';
 import type { LaunchConfiguration } from './LaunchConfiguration';
 import { standardizePath as s } from 'brighterscript';
-import { FileLoggingManager, fileTransport } from './logging';
+import type { LogMessage } from './logging';
+import { clearSecrets, FileLoggingManager, fileTransport, logger, redactLogMessage, registerSecret } from './logging';
 
 const sinon = sinonActual.createSandbox();
 const tempDir = s`${__dirname}/../../.tmp`;
+
+describe('logging secret masking', () => {
+    function buildMessage(...args: any[]) {
+        return logger['buildLogMessage']('log', ...args) as LogMessage;
+    }
+
+    beforeEach(() => {
+        clearSecrets();
+    });
+
+    afterEach(() => {
+        clearSecrets();
+    });
+
+    describe('redactLogMessage', () => {
+        it('returns the original message untouched when it holds no registered secret', () => {
+            registerSecret('dev-password');
+            for (const message of [
+                buildMessage('connect', { host: '1.2.3.4', password: 'other' }),
+                buildMessage('the password was wrong'),
+                buildMessage('buffer', Buffer.from('a'))
+            ]) {
+                expect(redactLogMessage(message)).to.equal(message);
+            }
+        });
+
+        it('masks a secret wherever it appears, whatever the key', () => {
+            registerSecret('dev-password');
+            registerSecret('rce-token');
+            const message = redactLogMessage(buildMessage(
+                'connect',
+                { pw: 'dev-password', device: { id: 83, someOtherName: 'rce-token' } },
+                'https://example.com?token=rce-token',
+                new Error('bad password dev-password')
+            ));
+            expect(message.argsText).not.to.include('dev-password');
+            expect(message.argsText).not.to.include('rce-token');
+            expect(message.argsText).to.include('{"pw":"<redacted>","device":{"id":83,"someOtherName":"<redacted>"}}');
+            expect(message.argsText).to.include('https://example.com?token=<redacted>');
+            //raw args are replaced so transports that print them (i.e. the console) can't leak the secret
+            expect(message.args).to.eql([message.argsText]);
+        });
+
+        it('masks a secret whose JSON form is escaped', () => {
+            registerSecret('pa"ss\\word');
+            const message = redactLogMessage(buildMessage({ password: 'pa"ss\\word' }, 'raw pa"ss\\word'));
+            expect(message.argsText).to.equal('{"password":"<redacted>"} raw <redacted>');
+        });
+
+        it('masks the longer of two overlapping secrets whole', () => {
+            registerSecret('abc');
+            registerSecret('abcdef');
+            expect(redactLogMessage(buildMessage('abcdef abc')).argsText).to.equal('<redacted> <redacted>');
+        });
+
+        it('ignores empty and non-string values', () => {
+            registerSecret('');
+            registerSecret(undefined);
+            registerSecret(1234);
+            const message = buildMessage('nothing 1234');
+            expect(redactLogMessage(message)).to.equal(message);
+        });
+    });
+
+    it('masks secrets in every message logged by any descendant logger', () => {
+        registerSecret('dev-password');
+        const messages: LogMessage[] = [];
+        const unsubscribe = logger.subscribe((message) => messages.push(message));
+        try {
+            const child = logger.createLogger('[child]').createLogger('[grandchild]');
+            child.logLevel = 'log';
+            child.log('connect', { host: '1.2.3.4', password: 'dev-password' });
+            child.log('nothing secret', { host: '1.2.3.4' });
+
+            expect(messages[0].argsText).to.equal('connect {"host":"1.2.3.4","password":"<redacted>"}');
+            expect(messages[1].argsText).to.equal('nothing secret {"host":"1.2.3.4"}');
+        } finally {
+            unsubscribe();
+        }
+    });
+
+    describe('performance', () => {
+        /**
+         * Run `action` `iterations` times (after a warmup) and return the elapsed milliseconds
+         */
+        function time(iterations: number, action: () => void) {
+            for (let i = 0; i < 5; i++) {
+                action();
+            }
+            const start = process.hrtime.bigint();
+            for (let i = 0; i < iterations; i++) {
+                action();
+            }
+            return Number(process.hrtime.bigint() - start) / 1e6;
+        }
+
+        //a large, realistic, credential-free payload (think: a variables response or breakpoint list)
+        const largeCleanPayload = Array.from({ length: 2_000 }, (_, i) => ({
+            id: i,
+            name: `variable${i}`,
+            type: 'roAssociativeArray',
+            value: `some value ${i}`,
+            children: [{ key: 'a', line: i }, { key: 'b', column: i }]
+        }));
+
+        beforeEach(() => {
+            registerSecret('dev-password');
+            registerSecret('a-long-rce-token-value-1234567890');
+        });
+
+        it('never touches the args of a message holding no secret', () => {
+            const message = buildMessage('variables', largeCleanPayload);
+            //any enumeration or property read of the args would throw
+            const trap = () => {
+                throw new Error('args were walked');
+            };
+            message.args = [new Proxy({}, { ownKeys: trap, get: trap, getOwnPropertyDescriptor: trap })];
+            expect(redactLogMessage(message)).to.equal(message);
+        });
+
+        it('costs a small fraction of the stringify that logging already does', () => {
+            const message = buildMessage('variables', largeCleanPayload);
+            const stringifyMs = time(50, () => logger.stringifyArgs(message.args));
+            const redactMs = time(50, () => redactLogMessage(message));
+            expect(redactMs).to.be.lessThan(stringifyMs * 0.25, `redact took ${redactMs}ms vs stringify ${stringifyMs}ms`);
+        });
+
+        it('scales linearly with message size', () => {
+            const small = buildMessage('x'.repeat(100_000));
+            const large = buildMessage('x'.repeat(1_000_000));
+            const smallMs = time(20, () => redactLogMessage(small));
+            const largeMs = time(20, () => redactLogMessage(large));
+            //10x the input should take ~10x the time; allow generous slack for timer noise
+            expect(largeMs).to.be.lessThan(Math.max(smallMs, 1) * 30, `10x input took ${largeMs}ms vs ${smallMs}ms`);
+        });
+    });
+});
 
 describe('LoggingManager', () => {
     let manager: FileLoggingManager;

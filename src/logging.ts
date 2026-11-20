@@ -1,5 +1,5 @@
 import { default as defaultLogger, QueuedTransport, FileTransport } from '@rokucommunity/logger';
-import type { Logger } from '@rokucommunity/logger';
+import type { Logger, LogMessage } from '@rokucommunity/logger';
 import type { LaunchConfiguration } from './LaunchConfiguration';
 import * as path from 'path';
 import { util } from './util';
@@ -13,6 +13,59 @@ const logger = defaultLogger.createLogger('[dap]');
 logger.enableColor = false;
 //force log levels to be same width
 logger.consistentLogLevelWidth = true;
+
+/**
+ * Credential values (device password, RCE token, ...) that must never appear in a log, longest first so a secret
+ * that contains another is replaced whole.
+ */
+let secrets: string[] = [];
+
+/**
+ * Register a credential value so it is masked out of every log message from now on, wherever it appears (any
+ * property, a plain string, a url, an error message, ...). Objects are logged as JSON, so the value's JSON-escaped
+ * form is registered too.
+ */
+export function registerSecret(value: unknown) {
+    if (typeof value !== 'string' || value === '') {
+        return;
+    }
+    const forms = [value, JSON.stringify(value).slice(1, -1)];
+    secrets = [...new Set([...secrets, ...forms])].sort((a, b) => b.length - a.length);
+}
+
+/**
+ * Forget every registered secret (for unit tests)
+ */
+export function clearSecrets() {
+    secrets = [];
+}
+
+/**
+ * Mask every registered secret in a log message. A message containing none is returned untouched, so the common
+ * case costs one `includes()` per secret over text the logger has already built.
+ */
+export function redactLogMessage(message: LogMessage): LogMessage {
+    let argsText = message.argsText;
+    for (const secret of secrets) {
+        if (argsText.includes(secret)) {
+            argsText = argsText.split(secret).join('<redacted>');
+        }
+    }
+    if (argsText === message.argsText) {
+        return message;
+    }
+    //the raw args still hold the secret and some transports (i.e. the console) print them, so swap in the masked text
+    return { ...message, args: [argsText], argsText: argsText };
+}
+
+//every roku-debug logger descends from this one and only this one has transports, so masking here keeps secrets
+//out of every log line (debug console, log file, and the parent default logger) without touching any call site
+//(`emit` is private in the logger's typings, hence the cast)
+const emittingLogger = logger as unknown as { emit: (message: LogMessage) => void };
+const emit = emittingLogger.emit.bind(logger) as typeof emittingLogger.emit;
+emittingLogger.emit = (message: LogMessage) => {
+    emit(redactLogMessage(message));
+};
 
 export const debugServerLogOutputEventTransport = new QueuedTransport();
 /**
